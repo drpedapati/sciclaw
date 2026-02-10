@@ -82,3 +82,22 @@ func (r *ToolRegistry) GetDefinitions() []map[string]interface{} {
 	}
 	return definitions
 }
+
+// List returns a list of all registered tool names.
+func (r *ToolRegistry) List() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	return names
+}
+
+// Count returns the number of registered tools.
+func (r *ToolRegistry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.tools)
+}
