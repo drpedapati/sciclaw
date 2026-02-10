@@ -159,8 +159,12 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		}
 	}
 
+	history := al.sessions.GetHistory(msg.SessionKey)
+	summary := al.sessions.GetSummary(msg.SessionKey)
+
 	messages := al.contextBuilder.BuildMessages(
-		al.sessions.GetHistory(msg.SessionKey),
+		history,
+		summary,
 		msg.Content,
 		nil,
 		msg.Channel,
@@ -347,8 +351,11 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	}
 
 	// Build messages with the announce content
+	history := al.sessions.GetHistory(sessionKey)
+	summary := al.sessions.GetSummary(sessionKey)
 	messages := al.contextBuilder.BuildMessages(
-		al.sessions.GetHistory(sessionKey),
+		history,
+		summary,
 		msg.Content,
 		nil,
 		originChannel,

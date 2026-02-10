@@ -146,11 +146,7 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	return result
 }
 
-<<<<<<< HEAD
-func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string) []providers.Message {
-=======
 func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string) []providers.Message {
->>>>>>> fd1dd87 (Add memory system, debug mode, and tools)
 	messages := []providers.Message{}
 
 	systemPrompt := cb.BuildSystemPrompt()
@@ -243,7 +239,8 @@ func (cb *ContextBuilder) GetSkillsInfo() map[string]interface{} {
 		skillNames = append(skillNames, s.Name)
 	}
 	return map[string]interface{}{
-		"total": len(allSkills),
-		"names": skillNames,
+		"total":     len(allSkills),
+		"available": len(allSkills),
+		"names":     skillNames,
 	}
 }
