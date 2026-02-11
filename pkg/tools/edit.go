@@ -8,10 +8,17 @@ import (
 	"strings"
 )
 
-type EditFileTool struct{}
+// EditFileTool edits a file by replacing old_text with new_text.
+// The old_text must exist exactly in the file.
+type EditFileTool struct {
+	allowedDir string // Optional directory restriction for security
+}
 
-func NewEditFileTool() *EditFileTool {
-	return &EditFileTool{}
+// NewEditFileTool creates a new EditFileTool with optional directory restriction.
+func NewEditFileTool(allowedDir string) *EditFileTool {
+	return &EditFileTool{
+		allowedDir: allowedDir,
+	}
 }
 
 func (t *EditFileTool) Name() string {
@@ -59,13 +66,34 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 		return "", fmt.Errorf("new_text is required")
 	}
 
-	filePath := filepath.Clean(path)
+	// Resolve path and enforce directory restriction if configured
+	resolvedPath := path
+	if filepath.IsAbs(path) {
+		resolvedPath = filepath.Clean(path)
+	} else {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve path: %w", err)
+		}
+		resolvedPath = abs
+	}
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	// Check directory restriction
+	if t.allowedDir != "" {
+		allowedAbs, err := filepath.Abs(t.allowedDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve allowed directory: %w", err)
+		}
+		if !strings.HasPrefix(resolvedPath, allowedAbs) {
+			return "", fmt.Errorf("path %s is outside allowed directory %s", path, t.allowedDir)
+		}
+	}
+
+	if _, err := os.Stat(resolvedPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("file not found: %s", path)
 	}
 
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
@@ -83,7 +111,7 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 
 	newContent := strings.Replace(contentStr, oldText, newText, 1)
 
-	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+	if err := os.WriteFile(resolvedPath, []byte(newContent), 0644); err != nil {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 

@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
 )
@@ -13,54 +16,115 @@ import (
 type ContextBuilder struct {
 	workspace    string
 	skillsLoader *skills.SkillsLoader
+	memory       *MemoryStore
+	toolsSummary func() []string // Function to get tool summaries dynamically
 }
 
-func NewContextBuilder(workspace string) *ContextBuilder {
-	builtinSkillsDir := filepath.Join(filepath.Dir(workspace), "picoclaw", "skills")
+func getGlobalConfigDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".picoclaw")
+}
+
+func NewContextBuilder(workspace string, toolsSummaryFunc func() []string) *ContextBuilder {
+	// builtin skills: 当前项目的 skills 目录
+	// 使用当前工作目录下的 skills/ 目录
+	wd, _ := os.Getwd()
+	builtinSkillsDir := filepath.Join(wd, "skills")
+	globalSkillsDir := filepath.Join(getGlobalConfigDir(), "skills")
+
 	return &ContextBuilder{
 		workspace:    workspace,
-		skillsLoader: skills.NewSkillsLoader(workspace, builtinSkillsDir),
+		skillsLoader: skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
+		memory:       NewMemoryStore(workspace),
+		toolsSummary: toolsSummaryFunc,
 	}
 }
 
-func (cb *ContextBuilder) BuildSystemPrompt() string {
+func (cb *ContextBuilder) getIdentity() string {
 	now := time.Now().Format("2006-01-02 15:04 (Monday)")
 	workspacePath, _ := filepath.Abs(filepath.Join(cb.workspace))
+	runtime := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
+
+	// Build tools section dynamically
+	toolsSection := cb.buildToolsSection()
 
 	return fmt.Sprintf(`# picoclaw 🦞
 
-You are picoclaw, a helpful AI assistant. You have access to tools that allow you to:
-- Read, write, and edit files
-- Execute shell commands
-- Search the web and fetch web pages
-- Send messages to users on chat channels
-- Spawn subagents for complex background tasks
+You are picoclaw, a helpful AI assistant.
 
 ## Current Time
 %s
 
+## Runtime
+%s
+
 ## Workspace
 Your workspace is at: %s
-- Memory files: %s/memory/MEMORY.md
-- Daily notes: %s/memory/2006-01-02.md
-- Custom skills: %s/skills/{skill-name}/SKILL.md
+- Memory: %s/memory/MEMORY.md
+- Daily Notes: %s/memory/YYYYMM/YYYYMMDD.md
+- Skills: %s/skills/{skill-name}/SKILL.md
 
-## Weather Information
-When users ask about weather, use the web_fetch tool with wttr.in URLs:
-- Current weather: https://wttr.in/{city}?format=j1
-- Beijing: https://wttr.in/Beijing?format=j1
-- Shanghai: https://wttr.in/Shanghai?format=j1
-- New York: https://wttr.in/New_York?format=j1
-- London: https://wttr.in/London?format=j1
-- Tokyo: https://wttr.in/Tokyo?format=j1
-
-IMPORTANT: When responding to direct questions or conversations, reply directly with your text response.
-Only use the 'message' tool when you need to send a message to a specific chat channel (like WhatsApp).
-For normal conversation, just respond with text - do not call the message tool.
+%s
 
 Always be helpful, accurate, and concise. When using tools, explain what you're doing.
 When remembering something, write to %s/memory/MEMORY.md`,
-		now, workspacePath, workspacePath, workspacePath, workspacePath, workspacePath)
+		now, runtime, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
+}
+
+func (cb *ContextBuilder) buildToolsSection() string {
+	if cb.toolsSummary == nil {
+		return ""
+	}
+
+	summaries := cb.toolsSummary()
+	if len(summaries) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## Available Tools\n\n")
+	sb.WriteString("You have access to the following tools:\n\n")
+	for _, s := range summaries {
+		sb.WriteString(s)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+func (cb *ContextBuilder) BuildSystemPrompt() string {
+	parts := []string{}
+
+	// Core identity section
+	parts = append(parts, cb.getIdentity())
+
+	// Bootstrap files
+	bootstrapContent := cb.LoadBootstrapFiles()
+	if bootstrapContent != "" {
+		parts = append(parts, bootstrapContent)
+	}
+
+	// Skills - show summary, AI can read full content with read_file tool
+	skillsSummary := cb.skillsLoader.BuildSkillsSummary()
+	if skillsSummary != "" {
+		parts = append(parts, fmt.Sprintf(`# Skills
+
+The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
+
+%s`, skillsSummary))
+	}
+
+	// Memory context
+	memoryContext := cb.memory.GetMemoryContext()
+	if memoryContext != "" {
+		parts = append(parts, "# Memory\n\n"+memoryContext)
+	}
+
+	// Join with "---" separator
+	return strings.Join(parts, "\n\n---\n\n")
 }
 
 func (cb *ContextBuilder) LoadBootstrapFiles() string {
@@ -68,9 +132,7 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 		"AGENTS.md",
 		"SOUL.md",
 		"USER.md",
-		"TOOLS.md",
 		"IDENTITY.md",
-		"MEMORY.md",
 	}
 
 	var result string
@@ -84,24 +146,33 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	return result
 }
 
-func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string) []providers.Message {
+func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string) []providers.Message {
 	messages := []providers.Message{}
 
 	systemPrompt := cb.BuildSystemPrompt()
-	bootstrapContent := cb.LoadBootstrapFiles()
-	if bootstrapContent != "" {
-		systemPrompt += "\n\n" + bootstrapContent
+
+	// Add Current Session info if provided
+	if channel != "" && chatID != "" {
+		systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
 	}
 
-	skillsSummary := cb.skillsLoader.BuildSkillsSummary()
-	if skillsSummary != "" {
-		systemPrompt += "\n\n## Available Skills\n\n" + skillsSummary
-	}
+	// Log system prompt summary for debugging (debug mode only)
+	logger.DebugCF("agent", "System prompt built",
+		map[string]interface{}{
+			"total_chars": len(systemPrompt),
+			"total_lines": strings.Count(systemPrompt, "\n") + 1,
+			"section_count": strings.Count(systemPrompt, "\n\n---\n\n") + 1,
+		})
 
-	skillsContent := cb.loadSkills()
-	if skillsContent != "" {
-		systemPrompt += "\n\n" + skillsContent
+	// Log preview of system prompt (avoid logging huge content)
+	preview := systemPrompt
+	if len(preview) > 500 {
+		preview = preview[:500] + "... (truncated)"
 	}
+	logger.DebugCF("agent", "System prompt preview",
+		map[string]interface{}{
+			"preview": preview,
+		})
 
 	if summary != "" {
 		systemPrompt += "\n\n## Summary of Previous Conversation\n\n" + summary
@@ -136,14 +207,13 @@ func (cb *ContextBuilder) AddAssistantMessage(messages []providers.Message, cont
 		Role:    "assistant",
 		Content: content,
 	}
-	if len(toolCalls) > 0 {
-		messages = append(messages, msg)
-	}
+	// Always add assistant message, whether or not it has tool calls
+	messages = append(messages, msg)
 	return messages
 }
 
 func (cb *ContextBuilder) loadSkills() string {
-	allSkills := cb.skillsLoader.ListSkills(true)
+	allSkills := cb.skillsLoader.ListSkills()
 	if len(allSkills) == 0 {
 		return ""
 	}
@@ -159,4 +229,18 @@ func (cb *ContextBuilder) loadSkills() string {
 	}
 
 	return "# Skill Definitions\n\n" + content
+}
+
+// GetSkillsInfo returns information about loaded skills.
+func (cb *ContextBuilder) GetSkillsInfo() map[string]interface{} {
+	allSkills := cb.skillsLoader.ListSkills()
+	skillNames := make([]string, 0, len(allSkills))
+	for _, s := range allSkills {
+		skillNames = append(skillNames, s.Name)
+	}
+	return map[string]interface{}{
+		"total":     len(allSkills),
+		"available": len(allSkills),
+		"names":     skillNames,
+	}
 }

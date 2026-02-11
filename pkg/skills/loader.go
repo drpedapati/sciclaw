@@ -4,22 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 type SkillMetadata struct {
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	Always      bool               `json:"always"`
-	Requires    *SkillRequirements `json:"requires,omitempty"`
-}
-
-type SkillRequirements struct {
-	Bins []string `json:"bins"`
-	Env  []string `json:"env"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 type SkillInfo struct {
@@ -27,25 +19,25 @@ type SkillInfo struct {
 	Path        string `json:"path"`
 	Source      string `json:"source"`
 	Description string `json:"description"`
-	Available   bool   `json:"available"`
-	Missing     string `json:"missing,omitempty"`
 }
 
 type SkillsLoader struct {
 	workspace       string
-	workspaceSkills string
-	builtinSkills   string
+	workspaceSkills string // workspace skills (项目级别)
+	globalSkills    string // 全局 skills (~/.picoclaw/skills)
+	builtinSkills   string // 内置 skills
 }
 
-func NewSkillsLoader(workspace string, builtinSkills string) *SkillsLoader {
+func NewSkillsLoader(workspace string, globalSkills string, builtinSkills string) *SkillsLoader {
 	return &SkillsLoader{
 		workspace:       workspace,
 		workspaceSkills: filepath.Join(workspace, "skills"),
+		globalSkills:    globalSkills, // ~/.picoclaw/skills
 		builtinSkills:   builtinSkills,
 	}
 }
 
-func (sl *SkillsLoader) ListSkills(filterUnavailable bool) []SkillInfo {
+func (sl *SkillsLoader) ListSkills() []SkillInfo {
 	skills := make([]SkillInfo, 0)
 
 	if sl.workspaceSkills != "" {
@@ -62,12 +54,41 @@ func (sl *SkillsLoader) ListSkills(filterUnavailable bool) []SkillInfo {
 						metadata := sl.getSkillMetadata(skillFile)
 						if metadata != nil {
 							info.Description = metadata.Description
-							info.Available = sl.checkRequirements(metadata.Requires)
-							if !info.Available {
-								info.Missing = sl.getMissingRequirements(metadata.Requires)
+						}
+						skills = append(skills, info)
+					}
+				}
+			}
+		}
+	}
+
+	// 全局 skills (~/.picoclaw/skills) - 被 workspace skills 覆盖
+	if sl.globalSkills != "" {
+		if dirs, err := os.ReadDir(sl.globalSkills); err == nil {
+			for _, dir := range dirs {
+				if dir.IsDir() {
+					skillFile := filepath.Join(sl.globalSkills, dir.Name(), "SKILL.md")
+					if _, err := os.Stat(skillFile); err == nil {
+						// 检查是否已被 workspace skills 覆盖
+						exists := false
+						for _, s := range skills {
+							if s.Name == dir.Name() && s.Source == "workspace" {
+								exists = true
+								break
 							}
-						} else {
-							info.Available = true
+						}
+						if exists {
+							continue
+						}
+
+						info := SkillInfo{
+							Name:   dir.Name(),
+							Path:   skillFile,
+							Source: "global",
+						}
+						metadata := sl.getSkillMetadata(skillFile)
+						if metadata != nil {
+							info.Description = metadata.Description
 						}
 						skills = append(skills, info)
 					}
@@ -82,9 +103,10 @@ func (sl *SkillsLoader) ListSkills(filterUnavailable bool) []SkillInfo {
 				if dir.IsDir() {
 					skillFile := filepath.Join(sl.builtinSkills, dir.Name(), "SKILL.md")
 					if _, err := os.Stat(skillFile); err == nil {
+						// 检查是否已被 workspace 或 global skills 覆盖
 						exists := false
 						for _, s := range skills {
-							if s.Name == dir.Name() && s.Source == "workspace" {
+							if s.Name == dir.Name() && (s.Source == "workspace" || s.Source == "global") {
 								exists = true
 								break
 							}
@@ -101,12 +123,6 @@ func (sl *SkillsLoader) ListSkills(filterUnavailable bool) []SkillInfo {
 						metadata := sl.getSkillMetadata(skillFile)
 						if metadata != nil {
 							info.Description = metadata.Description
-							info.Available = sl.checkRequirements(metadata.Requires)
-							if !info.Available {
-								info.Missing = sl.getMissingRequirements(metadata.Requires)
-							}
-						} else {
-							info.Available = true
 						}
 						skills = append(skills, info)
 					}
@@ -115,20 +131,11 @@ func (sl *SkillsLoader) ListSkills(filterUnavailable bool) []SkillInfo {
 		}
 	}
 
-	if filterUnavailable {
-		filtered := make([]SkillInfo, 0)
-		for _, s := range skills {
-			if s.Available {
-				filtered = append(filtered, s)
-			}
-		}
-		return filtered
-	}
-
 	return skills
 }
 
 func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
+	// 1. 优先从 workspace skills 加载（项目级别）
 	if sl.workspaceSkills != "" {
 		skillFile := filepath.Join(sl.workspaceSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -136,6 +143,15 @@ func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
 		}
 	}
 
+	// 2. 其次从全局 skills 加载 (~/.picoclaw/skills)
+	if sl.globalSkills != "" {
+		skillFile := filepath.Join(sl.globalSkills, name, "SKILL.md")
+		if content, err := os.ReadFile(skillFile); err == nil {
+			return sl.stripFrontmatter(string(content)), true
+		}
+	}
+
+	// 3. 最后从内置 skills 加载
 	if sl.builtinSkills != "" {
 		skillFile := filepath.Join(sl.builtinSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -163,7 +179,7 @@ func (sl *SkillsLoader) LoadSkillsForContext(skillNames []string) string {
 }
 
 func (sl *SkillsLoader) BuildSkillsSummary() string {
-	allSkills := sl.ListSkills(false)
+	allSkills := sl.ListSkills()
 	if len(allSkills) == 0 {
 		return ""
 	}
@@ -175,38 +191,16 @@ func (sl *SkillsLoader) BuildSkillsSummary() string {
 		escapedDesc := escapeXML(s.Description)
 		escapedPath := escapeXML(s.Path)
 
-		available := "true"
-		if !s.Available {
-			available = "false"
-		}
-
-		lines = append(lines, fmt.Sprintf("  <skill available=\"%s\">", available))
+		lines = append(lines, fmt.Sprintf("  <skill>"))
 		lines = append(lines, fmt.Sprintf("    <name>%s</name>", escapedName))
 		lines = append(lines, fmt.Sprintf("    <description>%s</description>", escapedDesc))
 		lines = append(lines, fmt.Sprintf("    <location>%s</location>", escapedPath))
-
-		if !s.Available && s.Missing != "" {
-			escapedMissing := escapeXML(s.Missing)
-			lines = append(lines, fmt.Sprintf("    <requires>%s</requires>", escapedMissing))
-		}
-
+		lines = append(lines, fmt.Sprintf("    <source>%s</source>", s.Source))
 		lines = append(lines, "  </skill>")
 	}
 	lines = append(lines, "</skills>")
 
 	return strings.Join(lines, "\n")
-}
-
-func (sl *SkillsLoader) GetAlwaysSkills() []string {
-	skills := sl.ListSkills(true)
-	var always []string
-	for _, s := range skills {
-		metadata := sl.getSkillMetadata(s.Path)
-		if metadata != nil && metadata.Always {
-			always = append(always, s.Name)
-		}
-	}
-	return always
 }
 
 func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
@@ -222,27 +216,54 @@ func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
 		}
 	}
 
-	var metadata struct {
-		Name        string             `json:"name"`
-		Description string             `json:"description"`
-		Always      bool               `json:"always"`
-		Requires    *SkillRequirements `json:"requires"`
+	// Try JSON first (for backward compatibility)
+	var jsonMeta struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(frontmatter), &jsonMeta); err == nil {
+		return &SkillMetadata{
+			Name:        jsonMeta.Name,
+			Description: jsonMeta.Description,
+		}
 	}
 
-	if err := json.Unmarshal([]byte(frontmatter), &metadata); err != nil {
-		return nil
-	}
-
+	// Fall back to simple YAML parsing
+	yamlMeta := sl.parseSimpleYAML(frontmatter)
 	return &SkillMetadata{
-		Name:        metadata.Name,
-		Description: metadata.Description,
-		Always:      metadata.Always,
-		Requires:    metadata.Requires,
+		Name:        yamlMeta["name"],
+		Description: yamlMeta["description"],
 	}
 }
 
+// parseSimpleYAML parses simple key: value YAML format
+// Example: name: github\n description: "..."
+func (sl *SkillsLoader) parseSimpleYAML(content string) map[string]string {
+	result := make(map[string]string)
+
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			// Remove quotes if present
+			value = strings.Trim(value, "\"'")
+			result[key] = value
+		}
+	}
+
+	return result
+}
+
 func (sl *SkillsLoader) extractFrontmatter(content string) string {
-	re := regexp.MustCompile(`^---\n(.*?)\n---`)
+	// (?s) enables DOTALL mode so . matches newlines
+	// Match first ---, capture everything until next --- on its own line
+	re := regexp.MustCompile(`(?s)^---\n(.*)\n---`)
 	match := re.FindStringSubmatch(content)
 	if len(match) > 1 {
 		return match[1]
@@ -253,49 +274,6 @@ func (sl *SkillsLoader) extractFrontmatter(content string) string {
 func (sl *SkillsLoader) stripFrontmatter(content string) string {
 	re := regexp.MustCompile(`^---\n.*?\n---\n`)
 	return re.ReplaceAllString(content, "")
-}
-
-func (sl *SkillsLoader) checkRequirements(requires *SkillRequirements) bool {
-	if requires == nil {
-		return true
-	}
-
-	for _, bin := range requires.Bins {
-		if _, err := exec.LookPath(bin); err != nil {
-			continue
-		} else {
-			return true
-		}
-	}
-
-	for _, env := range requires.Env {
-		if os.Getenv(env) == "" {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (sl *SkillsLoader) getMissingRequirements(requires *SkillRequirements) string {
-	if requires == nil {
-		return ""
-	}
-
-	var missing []string
-	for _, bin := range requires.Bins {
-		if _, err := exec.LookPath(bin); err != nil {
-			missing = append(missing, fmt.Sprintf("CLI: %s", bin))
-		}
-	}
-
-	for _, env := range requires.Env {
-		if os.Getenv(env) == "" {
-			missing = append(missing, fmt.Sprintf("ENV: %s", env))
-		}
-	}
-
-	return strings.Join(missing, ", ")
 }
 
 func escapeXML(s string) string {

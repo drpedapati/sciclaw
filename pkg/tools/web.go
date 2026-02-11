@@ -36,7 +36,7 @@ func (t *WebSearchTool) Name() string {
 }
 
 func (t *WebSearchTool) Description() string {
-	return "Search the web. Returns titles, URLs, and snippets."
+	return "Search the web for current information. Returns titles, URLs, and snippets from search results."
 }
 
 func (t *WebSearchTool) Parameters() map[string]interface{} {

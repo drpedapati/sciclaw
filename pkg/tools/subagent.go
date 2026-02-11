@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
 type SubagentTask struct {
@@ -21,15 +24,17 @@ type SubagentTask struct {
 type SubagentManager struct {
 	tasks     map[string]*SubagentTask
 	mu        sync.RWMutex
-	provider  LLMProvider
+	provider  providers.LLMProvider
+	bus       *bus.MessageBus
 	workspace string
 	nextID    int
 }
 
-func NewSubagentManager(provider LLMProvider, workspace string) *SubagentManager {
+func NewSubagentManager(provider providers.LLMProvider, workspace string, bus *bus.MessageBus) *SubagentManager {
 	return &SubagentManager{
 		tasks:     make(map[string]*SubagentTask),
 		provider:  provider,
+		bus:       bus,
 		workspace: workspace,
 		nextID:    1,
 	}
@@ -65,7 +70,7 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask) {
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
 
-	messages := []Message{
+	messages := []providers.Message{
 		{
 			Role:    "system",
 			Content: "You are a subagent. Complete the given task independently and report the result.",
@@ -89,6 +94,18 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask) {
 	} else {
 		task.Status = "completed"
 		task.Result = response.Content
+	}
+
+	// Send announce message back to main agent
+	if sm.bus != nil {
+		announceContent := fmt.Sprintf("Task '%s' completed.\n\nResult:\n%s", task.Label, task.Result)
+		sm.bus.PublishInbound(bus.InboundMessage{
+			Channel:  "system",
+			SenderID: fmt.Sprintf("subagent:%s", task.ID),
+			// Format: "original_channel:original_chat_id" for routing back
+			ChatID:  fmt.Sprintf("%s:%s", task.OriginChannel, task.OriginChatID),
+			Content: announceContent,
+		})
 	}
 }
 
