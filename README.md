@@ -132,18 +132,17 @@ git clone https://github.com/Sunwood-AI-OSS-Hub/picoclaw.git
 cd picoclaw
 
 # 2. Set your API keys
-cp .env.example .env
-vim .env                    # Set DISCORD_BOT_TOKEN, OPENROUTER_API_KEY, etc.
-vim config/config.json      # Set provider API keys
+cp config.example.json config/config.json
+vim config/config.json      # Set DISCORD_BOT_TOKEN, API keys, etc.
 
 # 3. Build & Start
-docker compose -f docker-compose.discord.yml up -d
+docker compose --profile gateway up -d
 
 # 4. Check logs
-docker compose -f docker-compose.discord.yml logs -f picoclaw
+docker compose logs -f picoclaw-gateway
 
 # 5. Stop
-docker compose -f docker-compose.discord.yml down
+docker compose --profile gateway down
 ```
 
 ### Agent Mode (One-shot)
@@ -159,8 +158,8 @@ docker compose run --rm picoclaw-agent
 ### Rebuild
 
 ```bash
-docker compose -f docker-compose.discord.yml build --no-cache
-docker compose -f docker-compose.discord.yml up -d
+docker compose --profile gateway build --no-cache
+docker compose --profile gateway up -d
 ```
 
 ### 🚀 Quick Start

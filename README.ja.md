@@ -129,18 +129,17 @@ git clone https://github.com/Sunwood-AI-OSS-Hub/picoclaw.git
 cd picoclaw
 
 # 2. API キーを設定
-cp .env.example .env
-vim .env                    # DISCORD_BOT_TOKEN, OPENROUTER_API_KEY などを設定
-vim config/config.json      # プロバイダーの API キーを設定
+cp config.example.json config/config.json
+vim config/config.json      # DISCORD_BOT_TOKEN, プロバイダーの API キーを設定
 
 # 3. ビルドと起動
-docker compose -f docker-compose.discord.yml up -d
+docker compose --profile gateway up -d
 
 # 4. ログ確認
-docker compose -f docker-compose.discord.yml logs -f picoclaw
+docker compose logs -f picoclaw-gateway
 
 # 5. 停止
-docker compose -f docker-compose.discord.yml down
+docker compose --profile gateway down
 ```
 
 ### Agent モード（ワンショット）
@@ -156,8 +155,8 @@ docker compose run --rm picoclaw-agent
 ### リビルド
 
 ```bash
-docker compose -f docker-compose.discord.yml build --no-cache
-docker compose -f docker-compose.discord.yml up -d
+docker compose --profile gateway build --no-cache
+docker compose --profile gateway up -d
 ```
 
 ### 🚀 クイックスタート（ネイティブ）
@@ -306,53 +305,37 @@ picoclaw gateway
 
 </details>
 
-## ⚙️ 設定
+## 設定 (Configuration)
 
-設定ファイル: `~/.picoclaw/config.json`
+PicoClaw は設定に `config.json` を使用します。
 
-### プロバイダー
+1.  **設定ファイルの作成:**
 
-> [!NOTE]
-> Groq は Whisper 経由の無料音声文字起こしを提供します。設定すると、Telegram の音声メッセージが自動的に文字起こしされます。
+    サンプル設定ファイルをコピーします:
 
-| プロバイダー | 用途 | API キー取得先 |
-|-------------|------|---------------|
-| `gemini` | LLM (Gemini 直接) | [aistudio.google.com](https://aistudio.google.com) |
-| `zhipu` | LLM (Zhipu 直接) | [bigmodel.cn](bigmodel.cn) |
-| `openrouter(テスト中)` | LLM（推奨、全モデルアクセス） | [openrouter.ai](https://openrouter.ai) |
-| `anthropic(テスト中)` | LLM (Claude 直接) | [console.anthropic.com](https://console.anthropic.com) |
-| `openai(テスト中)` | LLM (GPT 直接) | [platform.openai.com](https://platform.openai.com) |
-| `deepseek(テスト中)` | LLM (DeepSeek 直接) | [platform.deepseek.com](https://platform.deepseek.com) |
-| `groq` | LLM + **音声文字起こし** (Whisper) | [console.groq.com](https://console.groq.com) |
+    ```bash
+    cp config.example.json config/config.json
+    ```
 
+2.  **設定の編集:**
 
-<details>
-<summary><b>Zhipu</b></summary>
+    `config/config.json` を開き、APIキーや設定を記述します。
 
-**1. API キーとベース URL を取得**
-- [API キー](https://bigmodel.cn/usercenter/proj-mgmt/apikeys) を取得
-
-**2. 設定**
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "workspace": "~/.picoclaw/workspace",
-      "model": "glm-4.7",
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "max_tool_iterations": 20
+    ```json
+    {
+      "providers": {
+        "openrouter": {
+          "api_key": "sk-or-v1-..."
+        }
+      },
+      "channels": {
+        "discord": {
+          "enabled": true,
+          "token": "YOUR_DISCORD_BOT_TOKEN"
+        }
+      }
     }
-  },
-  "providers": {
-    "zhipu": {
-      "api_key": "Your API Key",
-      "api_base": "https://open.bigmodel.cn/api/paas/v4"
-    },
-  },
-}
-```
+    ```
 
 **3. 実行**
 
