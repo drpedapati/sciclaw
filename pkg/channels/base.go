@@ -73,7 +73,6 @@ func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []st
 		SessionKey: sessionKey,
 		Metadata:   metadata,
 	}
-	}
 
 	c.bus.PublishInbound(msg)
 }
