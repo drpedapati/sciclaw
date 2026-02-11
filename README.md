@@ -183,6 +183,7 @@ Talk to your picoclaw through Telegram
 |---------|-------|
 | **Telegram** | Easy (just a token) |
 | **Discord** | Easy (bot token + intents) |
+| **QQ** | Easy (AppID + AppSecret) |
 
 <details>
 <summary><b>Telegram</b> (Recommended)</summary>
@@ -256,9 +257,42 @@ picoclaw gateway
 **6. Run**
 
 ```bash
-nanobot gateway
+picoclaw gateway
 ```
 
+</details>
+
+
+<details>
+<summary><b>QQ</b></summary>
+
+**1. Create a bot**
+
+- Go to [QQ Open Platform](https://connect.qq.com/)
+- Create an application → Get **AppID** and **AppSecret**
+
+**2. Configure**
+
+```json
+{
+  "channels": {
+    "qq": {
+      "enabled": true,
+      "app_id": "YOUR_APP_ID",
+      "app_secret": "YOUR_APP_SECRET",
+      "allow_from": []
+    }
+  }
+}
+```
+
+> Set `allow_from` to empty to allow all users, or specify QQ numbers to restrict access.
+
+**3. Run**
+
+```bash
+picoclaw gateway
+```
 </details>
 
 ## ⚙️ Configuration
@@ -355,6 +389,12 @@ picoclaw agent -m "Hello"
       "encryptKey": "",
       "verificationToken": "",
       "allowFrom": []
+    },
+    "qq": {
+      "enabled": false,
+      "app_id": "",
+      "app_secret": "",
+      "allow_from": []
     }
   },
   "tools": {
