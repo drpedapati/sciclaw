@@ -15,13 +15,16 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
 )
 
 type HTTPProvider struct {
-	apiKey     string
-	apiBase    string
-	httpClient *http.Client
+	apiKey      string
+	apiBase     string
+	httpClient  *http.Client
+	tokenSource func() (string, error)
+	accountID   string
 }
 
 func NewHTTPProvider(apiKey, apiBase string) *HTTPProvider {
@@ -73,9 +76,17 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
-		authHeader := "Bearer " + p.apiKey
-		req.Header.Set("Authorization", authHeader)
+	if p.tokenSource != nil {
+		token, err := p.tokenSource()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get auth token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		if p.accountID != "" {
+			req.Header.Set("Chatgpt-Account-Id", p.accountID)
+		}
+	} else if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 
 	resp, err := p.httpClient.Do(req)
@@ -170,6 +181,47 @@ func (p *HTTPProvider) GetDefaultModel() string {
 	return ""
 }
 
+func createOAuthTokenSource(provider string) func() (string, error) {
+	return func() (string, error) {
+		cred, err := auth.GetCredential(provider)
+		if err != nil {
+			return "", fmt.Errorf("loading auth credentials: %w", err)
+		}
+		if cred == nil {
+			return "", fmt.Errorf("no OAuth credentials for %s. Run: picoclaw auth login --provider %s", provider, provider)
+		}
+
+		if cred.AuthMethod == "oauth" && cred.NeedsRefresh() && cred.RefreshToken != "" {
+			oauthCfg := auth.OpenAIOAuthConfig()
+			refreshed, err := auth.RefreshAccessToken(cred, oauthCfg)
+			if err != nil {
+				return "", fmt.Errorf("refreshing token: %w", err)
+			}
+			if err := auth.SetCredential(provider, refreshed); err != nil {
+				return "", fmt.Errorf("saving refreshed token: %w", err)
+			}
+			return refreshed.AccessToken, nil
+		}
+
+		return cred.AccessToken, nil
+	}
+}
+
+func createAuthProvider(providerName string, apiBase string) (LLMProvider, error) {
+	cred, err := auth.GetCredential(providerName)
+	if err != nil {
+		return nil, fmt.Errorf("loading auth credentials: %w", err)
+	}
+	if cred == nil {
+		return nil, fmt.Errorf("no credentials for %s. Run: picoclaw auth login --provider %s", providerName, providerName)
+	}
+
+	p := NewHTTPProvider(cred.AccessToken, apiBase)
+	p.tokenSource = createOAuthTokenSource(providerName)
+	p.accountID = cred.AccountID
+	return p, nil
+}
+
 func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	model := cfg.Agents.Defaults.Model
 
@@ -186,14 +238,28 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			apiBase = "https://openrouter.ai/api/v1"
 		}
 
-	case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && cfg.Providers.Anthropic.APIKey != "":
+	case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && (cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != ""):
+		if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" {
+			ab := cfg.Providers.Anthropic.APIBase
+			if ab == "" {
+				ab = "https://api.anthropic.com/v1"
+			}
+			return createAuthProvider("anthropic", ab)
+		}
 		apiKey = cfg.Providers.Anthropic.APIKey
 		apiBase = cfg.Providers.Anthropic.APIBase
 		if apiBase == "" {
 			apiBase = "https://api.anthropic.com/v1"
 		}
 
-	case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && cfg.Providers.OpenAI.APIKey != "":
+	case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && (cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != ""):
+		if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" {
+			ab := cfg.Providers.OpenAI.APIBase
+			if ab == "" {
+				ab = "https://api.openai.com/v1"
+			}
+			return createAuthProvider("openai", ab)
+		}
 		apiKey = cfg.Providers.OpenAI.APIKey
 		apiBase = cfg.Providers.OpenAI.APIBase
 		if apiBase == "" {
