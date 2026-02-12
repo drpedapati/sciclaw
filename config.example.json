@@ -2,6 +2,7 @@
   "agents": {
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
+      "restrict_to_workspace": true,
       "model": "glm-4.7",
       "max_tokens": 8192,
       "temperature": 0.7,
@@ -12,6 +13,7 @@
     "telegram": {
       "enabled": false,
       "token": "YOUR_TELEGRAM_BOT_TOKEN",
+      "proxy": "",
       "allow_from": ["YOUR_USER_ID"]
     },
     "discord": {
@@ -78,6 +80,15 @@
     },
     "vllm": {
       "api_key": "",
+      "api_base": ""
+    },
+    "nvidia": {
+      "api_key": "nvapi-xxx",
+      "api_base": "",
+      "proxy": "http://127.0.0.1:7890"
+    },
+    "moonshot": {
+      "api_key": "sk-xxx",
       "api_base": ""
     }
   },
