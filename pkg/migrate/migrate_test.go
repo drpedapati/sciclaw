@@ -44,8 +44,8 @@ func TestConvertKeysToSnake(t *testing.T) {
 		"apiKey":  "test-key",
 		"apiBase": "https://example.com",
 		"nested": map[string]interface{}{
-			"maxTokens":   float64(8192),
-			"allowFrom":   []interface{}{"user1", "user2"},
+			"maxTokens": float64(8192),
+			"allowFrom": []interface{}{"user1", "user2"},
 			"deeperLevel": map[string]interface{}{
 				"clientId": "abc",
 			},
@@ -256,11 +256,11 @@ func TestConvertConfig(t *testing.T) {
 		data := map[string]interface{}{
 			"agents": map[string]interface{}{
 				"defaults": map[string]interface{}{
-					"model":                "claude-3-opus",
-					"max_tokens":           float64(4096),
-					"temperature":          0.5,
-					"max_tool_iterations":  float64(10),
-					"workspace":            "~/.openclaw/workspace",
+					"model":               "claude-3-opus",
+					"max_tokens":          float64(4096),
+					"temperature":         0.5,
+					"max_tool_iterations": float64(10),
+					"workspace":           "~/.openclaw/workspace",
 				},
 			},
 		}
@@ -390,8 +390,8 @@ func TestPlanWorkspaceMigration(t *testing.T) {
 		if copyCount != 3 {
 			t.Errorf("expected 3 copies, got %d", copyCount)
 		}
-		if skipCount != 2 {
-			t.Errorf("expected 2 skips (TOOLS.md, HEARTBEAT.md), got %d", skipCount)
+		if skipCount != 3 {
+			t.Errorf("expected 3 skips (IDENTITY.md, TOOLS.md, HEARTBEAT.md), got %d", skipCount)
 		}
 	})
 
@@ -489,6 +489,54 @@ func TestPlanWorkspaceMigration(t *testing.T) {
 		}
 		if !hasCopy {
 			t.Error("expected copy action for skills/weather/SKILL.md")
+		}
+	})
+
+	t.Run("handles sessions directory", func(t *testing.T) {
+		srcDir := t.TempDir()
+		dstDir := t.TempDir()
+
+		sessionDir := filepath.Join(srcDir, "sessions")
+		os.MkdirAll(sessionDir, 0755)
+		os.WriteFile(filepath.Join(sessionDir, "2026-02-12.json"), []byte(`{"messages":[]}`), 0644)
+
+		actions, err := PlanWorkspaceMigration(srcDir, dstDir, false)
+		if err != nil {
+			t.Fatalf("PlanWorkspaceMigration: %v", err)
+		}
+
+		hasCopy := false
+		for _, a := range actions {
+			if a.Type == ActionCopy && filepath.Base(a.Source) == "2026-02-12.json" {
+				hasCopy = true
+			}
+		}
+		if !hasCopy {
+			t.Error("expected copy action for sessions/2026-02-12.json")
+		}
+	})
+
+	t.Run("handles cron directory", func(t *testing.T) {
+		srcDir := t.TempDir()
+		dstDir := t.TempDir()
+
+		cronDir := filepath.Join(srcDir, "cron")
+		os.MkdirAll(cronDir, 0755)
+		os.WriteFile(filepath.Join(cronDir, "jobs.json"), []byte(`{"jobs":[]}`), 0644)
+
+		actions, err := PlanWorkspaceMigration(srcDir, dstDir, false)
+		if err != nil {
+			t.Fatalf("PlanWorkspaceMigration: %v", err)
+		}
+
+		hasCopy := false
+		for _, a := range actions {
+			if a.Type == ActionCopy && filepath.Base(a.Source) == "jobs.json" {
+				hasCopy = true
+			}
+		}
+		if !hasCopy {
+			t.Error("expected copy action for cron/jobs.json")
 		}
 	})
 }

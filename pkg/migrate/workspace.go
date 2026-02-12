@@ -7,6 +7,7 @@ import (
 
 var migrateableFiles = []string{
 	"AGENTS.md",
+	"IDENTITY.md",
 	"SOUL.md",
 	"USER.md",
 	"TOOLS.md",
@@ -16,6 +17,8 @@ var migrateableFiles = []string{
 var migrateableDirs = []string{
 	"memory",
 	"skills",
+	"sessions",
+	"cron",
 }
 
 func PlanWorkspaceMigration(srcWorkspace, dstWorkspace string, force bool) ([]Action, error) {
