@@ -3,6 +3,34 @@
 > - Origin: `https://github.com/drpedapati/sciclaw`
 > - Upstream: `https://github.com/sipeed/picoclaw`
 
+## 🔬 sciClaw for Scientists (What Changed from Stock PicoClaw)
+
+This project keeps PicoClaw's lightweight runtime and upstream compatibility, but adds a paired-scientist operating model for reproducible research workflows.
+
+### Stock PicoClaw vs sciClaw
+
+| Area | Stock PicoClaw | sciClaw Revision |
+| --- | --- | --- |
+| Primary framing | General-purpose personal AI assistant | Paired-scientist assistant for hypothesis-driven research loops |
+| Workspace defaults | Generic assistant templates | Scientific templates: `AGENTS.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `USER.md`, structured `memory/MEMORY.md`, plus `sessions/` and `cron/` |
+| Runtime system prompt | Generic assistant identity and tool rules | sciClaw identity with reproducibility, evidence, and uncertainty rules; `TOOLS.md` included in bootstrap context |
+| Migration behavior | Migrates baseline workspace files/dirs | Extended migration for `IDENTITY.md`, `sessions/`, `cron/` with test coverage |
+| CLI brand surface | PicoClaw naming only | User-facing sciClaw branding while preserving `picoclaw` command compatibility |
+| Research traceability | Optional | Required loop artifacts: build/tests, plan/activity logs, manuscript updates, and rendered outputs |
+| Manuscript workflow | Not central | First-class Quarto manuscript pipeline (`manuscript/*.qmd`) updated and rendered each loop |
+
+### What We Keep Compatible
+
+- Command compatibility: keep using `picoclaw` CLI command.
+- Upstream sync model: regular merges from `upstream/main` with low-conflict, surgical changes.
+- Core performance goals: lightweight Go runtime footprint and broad deployment portability.
+
+### Why This Matters for Scientific Teams
+
+- Better reproducibility: each loop ties code changes to logs and manuscript updates.
+- Better reviewability: explicit evidence and decision trails improve internal and peer review.
+- Better maintainability: scientist-focused behavior without abandoning upstream improvements.
+
 <div align="center">
 <img src="assets/logo.jpg" alt="PicoClaw" width="512">
 
