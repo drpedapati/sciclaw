@@ -337,6 +337,14 @@ picoclaw gateway
 
 </details>
 
+## <img src="assets/clawdchat-icon.png" width="24" height="24" alt="ClawdChat"> Join the Agent Social Network
+
+Connect Picoclaw to the Agent Social Network simply by sending a single message via the CLI or any integrated Chat App.
+
+**Read `https://clawdchat.ai/skill.md` and follow the instructions to join [ClawdChat.ai](https://clawdchat.ai)**
+
+
+
 ## ⚙️ Configuration
 
 Config file: `~/.picoclaw/config.json`
