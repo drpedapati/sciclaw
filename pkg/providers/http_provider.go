@@ -194,13 +194,81 @@ func createCodexAuthProvider() (LLMProvider, error) {
 
 func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	model := cfg.Agents.Defaults.Model
+	providerName := strings.ToLower(cfg.Agents.Defaults.Provider)
 
 	var apiKey, apiBase string
 
 	lowerModel := strings.ToLower(model)
 
-	switch {
-	case strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(model, "openai/") || strings.HasPrefix(model, "meta-llama/") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "google/"):
+	// First, try to use explicitly configured provider
+	if providerName != "" {
+		switch providerName {
+		case "groq":
+			if cfg.Providers.Groq.APIKey != "" {
+				apiKey = cfg.Providers.Groq.APIKey
+				apiBase = cfg.Providers.Groq.APIBase
+				if apiBase == "" {
+					apiBase = "https://api.groq.com/openai/v1"
+				}
+			}
+		case "openai", "gpt":
+			if cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != "" {
+				if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" {
+					return createCodexAuthProvider()
+				}
+				apiKey = cfg.Providers.OpenAI.APIKey
+				apiBase = cfg.Providers.OpenAI.APIBase
+				if apiBase == "" {
+					apiBase = "https://api.openai.com/v1"
+				}
+			}
+		case "anthropic", "claude":
+			if cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != "" {
+				if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" {
+					return createClaudeAuthProvider()
+				}
+				apiKey = cfg.Providers.Anthropic.APIKey
+				apiBase = cfg.Providers.Anthropic.APIBase
+				if apiBase == "" {
+					apiBase = "https://api.anthropic.com/v1"
+				}
+			}
+		case "openrouter":
+			if cfg.Providers.OpenRouter.APIKey != "" {
+				apiKey = cfg.Providers.OpenRouter.APIKey
+				if cfg.Providers.OpenRouter.APIBase != "" {
+					apiBase = cfg.Providers.OpenRouter.APIBase
+				} else {
+					apiBase = "https://openrouter.ai/api/v1"
+				}
+			}
+		case "zhipu", "glm":
+			if cfg.Providers.Zhipu.APIKey != "" {
+				apiKey = cfg.Providers.Zhipu.APIKey
+				apiBase = cfg.Providers.Zhipu.APIBase
+				if apiBase == "" {
+					apiBase = "https://open.bigmodel.cn/api/paas/v4"
+				}
+			}
+		case "gemini", "google":
+			if cfg.Providers.Gemini.APIKey != "" {
+				apiKey = cfg.Providers.Gemini.APIKey
+				apiBase = cfg.Providers.Gemini.APIBase
+				if apiBase == "" {
+					apiBase = "https://generativelanguage.googleapis.com/v1beta"
+				}
+			}
+		case "vllm":
+			if cfg.Providers.VLLM.APIBase != "" {
+				apiKey = cfg.Providers.VLLM.APIKey
+				apiBase = cfg.Providers.VLLM.APIBase
+			}
+		}
+	}
+
+	// Fallback: detect provider from model name
+	if apiKey == "" && apiBase == "" {
+		switch {	case strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(model, "openai/") || strings.HasPrefix(model, "meta-llama/") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "google/"):
 		apiKey = cfg.Providers.OpenRouter.APIKey
 		if cfg.Providers.OpenRouter.APIBase != "" {
 			apiBase = cfg.Providers.OpenRouter.APIBase
@@ -264,6 +332,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		} else {
 			return nil, fmt.Errorf("no API key configured for model: %s", model)
 		}
+	}
 	}
 
 	if apiKey == "" && !strings.HasPrefix(model, "bedrock/") {
