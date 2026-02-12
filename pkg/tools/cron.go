@@ -122,10 +122,10 @@ func (t *CronTool) Execute(ctx context.Context, args map[string]interface{}) *To
 }
 
 func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
-	t.mu.RLock()
+	t.mu.Lock()
 	channel := t.channel
 	chatID := t.chatID
-	t.mu.RUnlock()
+	t.mu.Unlock()
 
 	if channel == "" || chatID == "" {
 		return ErrorResult("no session context (channel/chat_id not set). Use this tool in an active conversation.")

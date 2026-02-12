@@ -9,6 +9,7 @@ type SpawnTool struct {
 	manager       *SubagentManager
 	originChannel string
 	originChatID  string
+	callback      AsyncCallback // For async completion notification
 }
 
 func NewSpawnTool(manager *SubagentManager) *SpawnTool {
@@ -17,6 +18,11 @@ func NewSpawnTool(manager *SubagentManager) *SpawnTool {
 		originChannel: "cli",
 		originChatID:  "direct",
 	}
+}
+
+// SetCallback implements AsyncTool interface for async completion notification
+func (t *SpawnTool) SetCallback(cb AsyncCallback) {
+	t.callback = cb
 }
 
 func (t *SpawnTool) Name() string {
@@ -61,10 +67,12 @@ func (t *SpawnTool) Execute(ctx context.Context, args map[string]interface{}) *T
 		return ErrorResult("Subagent manager not configured")
 	}
 
-	result, err := t.manager.Spawn(ctx, task, label, t.originChannel, t.originChatID)
+	// Pass callback to manager for async completion notification
+	result, err := t.manager.Spawn(ctx, task, label, t.originChannel, t.originChatID, t.callback)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to spawn subagent: %v", err))
 	}
 
-	return NewToolResult(result)
+	// Return AsyncResult since the task runs in background
+	return AsyncResult(result)
 }

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
 func TestExecuteHeartbeatWithTools_Async(t *testing.T) {
@@ -23,7 +25,7 @@ func TestExecuteHeartbeatWithTools_Async(t *testing.T) {
 
 	// Track if async handler was called
 	asyncCalled := false
-	asyncResult := &ToolResult{
+	asyncResult := &tools.ToolResult{
 		ForLLM:  "Background task started",
 		ForUser: "Task started in background",
 		Silent:  false,
@@ -31,7 +33,7 @@ func TestExecuteHeartbeatWithTools_Async(t *testing.T) {
 		Async:   true,
 	}
 
-	hs.SetOnHeartbeatWithTools(func(prompt string) *ToolResult {
+	hs.SetOnHeartbeatWithTools(func(prompt string) *tools.ToolResult {
 		asyncCalled = true
 		if prompt == "" {
 			t.Error("Expected non-empty prompt")
@@ -61,7 +63,7 @@ func TestExecuteHeartbeatWithTools_Error(t *testing.T) {
 
 	hs := NewHeartbeatService(tmpDir, nil, 30, true)
 
-	errorResult := &ToolResult{
+	errorResult := &tools.ToolResult{
 		ForLLM:  "Heartbeat failed: connection error",
 		ForUser: "",
 		Silent:  false,
@@ -69,7 +71,7 @@ func TestExecuteHeartbeatWithTools_Error(t *testing.T) {
 		Async:   false,
 	}
 
-	hs.SetOnHeartbeatWithTools(func(prompt string) *ToolResult {
+	hs.SetOnHeartbeatWithTools(func(prompt string) *tools.ToolResult {
 		return errorResult
 	})
 
@@ -101,7 +103,7 @@ func TestExecuteHeartbeatWithTools_Sync(t *testing.T) {
 
 	hs := NewHeartbeatService(tmpDir, nil, 30, true)
 
-	syncResult := &ToolResult{
+	syncResult := &tools.ToolResult{
 		ForLLM:  "Heartbeat completed successfully",
 		ForUser: "",
 		Silent:  true,
@@ -109,7 +111,7 @@ func TestExecuteHeartbeatWithTools_Sync(t *testing.T) {
 		Async:   false,
 	}
 
-	hs.SetOnHeartbeatWithTools(func(prompt string) *ToolResult {
+	hs.SetOnHeartbeatWithTools(func(prompt string) *tools.ToolResult {
 		return syncResult
 	})
 
@@ -185,7 +187,7 @@ func TestExecuteHeartbeatWithTools_NilResult(t *testing.T) {
 
 	hs := NewHeartbeatService(tmpDir, nil, 30, true)
 
-	hs.SetOnHeartbeatWithTools(func(prompt string) *ToolResult {
+	hs.SetOnHeartbeatWithTools(func(prompt string) *tools.ToolResult {
 		return nil
 	})
 

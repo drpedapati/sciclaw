@@ -40,7 +40,7 @@ func NewSubagentManager(provider providers.LLMProvider, workspace string, bus *b
 	}
 }
 
-func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string) (string, error) {
+func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string, callback AsyncCallback) (string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -58,7 +58,8 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 	}
 	sm.tasks[taskID] = subagentTask
 
-	go sm.runTask(ctx, subagentTask)
+	// Start task in background with context cancellation support
+	go sm.runTask(ctx, subagentTask, callback)
 
 	if label != "" {
 		return fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task), nil
@@ -66,7 +67,7 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 	return fmt.Sprintf("Spawned subagent for task: %s", task), nil
 }
 
-func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask) {
+func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, callback AsyncCallback) {
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
 
@@ -81,19 +82,57 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask) {
 		},
 	}
 
+	// Check if context is already cancelled before starting
+	select {
+	case <-ctx.Done():
+		sm.mu.Lock()
+		task.Status = "cancelled"
+		task.Result = "Task cancelled before execution"
+		sm.mu.Unlock()
+		return
+	default:
+	}
+
 	response, err := sm.provider.Chat(ctx, messages, nil, sm.provider.GetDefaultModel(), map[string]interface{}{
 		"max_tokens": 4096,
 	})
 
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	var result *ToolResult
+	defer func() {
+		sm.mu.Unlock()
+		// Call callback if provided and result is set
+		if callback != nil && result != nil {
+			callback(ctx, result)
+		}
+	}()
 
 	if err != nil {
 		task.Status = "failed"
 		task.Result = fmt.Sprintf("Error: %v", err)
+		// Check if it was cancelled
+		if ctx.Err() != nil {
+			task.Status = "cancelled"
+			task.Result = "Task cancelled during execution"
+		}
+		result = &ToolResult{
+			ForLLM:  task.Result,
+			ForUser: "",
+			Silent:  false,
+			IsError: true,
+			Async:   false,
+			Err:     err,
+		}
 	} else {
 		task.Status = "completed"
 		task.Result = response.Content
+		result = &ToolResult{
+			ForLLM:  fmt.Sprintf("Subagent '%s' completed: %s", task.Label, response.Content),
+			ForUser: response.Content,
+			Silent:  false,
+			IsError: false,
+			Async:   false,
+		}
 	}
 
 	// Send announce message back to main agent

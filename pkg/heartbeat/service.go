@@ -16,28 +16,18 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/state"
+	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
 const (
-	minIntervalMinutes    = 5
+	minIntervalMinutes     = 5
 	defaultIntervalMinutes = 30
 	heartbeatOK            = "HEARTBEAT_OK"
 )
 
-// ToolResult represents a structured result from tool execution.
-// This is a minimal local definition to avoid circular dependencies.
-type ToolResult struct {
-	ForLLM  string `json:"for_llm"`
-	ForUser string `json:"for_user,omitempty"`
-	Silent  bool   `json:"silent"`
-	IsError bool   `json:"is_error"`
-	Async   bool   `json:"async"`
-	Err     error  `json:"-"`
-}
-
 // HeartbeatHandler is the function type for handling heartbeat with tool support.
 // It returns a ToolResult that can indicate async operations.
-type HeartbeatHandler func(prompt string) *ToolResult
+type HeartbeatHandler func(prompt string) *tools.ToolResult
 
 // ChannelSender defines the interface for sending messages to channels.
 // This is used to send heartbeat results back to the user.
@@ -213,6 +203,12 @@ func (hs *HeartbeatService) ExecuteHeartbeatWithTools(prompt string) {
 
 // executeHeartbeatWithTools is the internal implementation of tool-supporting heartbeat.
 func (hs *HeartbeatService) executeHeartbeatWithTools(prompt string) {
+	// Check if handler is configured
+	if hs.onHeartbeatWithTools == nil {
+		hs.logError("onHeartbeatWithTools handler not configured")
+		return
+	}
+
 	result := hs.onHeartbeatWithTools(prompt)
 
 	if result == nil {
