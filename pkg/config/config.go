@@ -38,6 +38,7 @@ type ChannelsConfig struct {
 	MaixCam  MaixCamConfig  `json:"maixcam"`
 	QQ       QQConfig       `json:"qq"`
 	DingTalk DingTalkConfig `json:"dingtalk"`
+	Slack    SlackConfig    `json:"slack"`
 }
 
 type WhatsAppConfig struct {
@@ -86,6 +87,13 @@ type DingTalkConfig struct {
 	ClientID         string   `json:"client_id" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_ID"`
 	ClientSecret     string   `json:"client_secret" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_SECRET"`
 	AllowFrom        []string `json:"allow_from" env:"PICOCLAW_CHANNELS_DINGTALK_ALLOW_FROM"`
+}
+
+type SlackConfig struct {
+	Enabled  bool     `json:"enabled" env:"PICOCLAW_CHANNELS_SLACK_ENABLED"`
+	BotToken string   `json:"bot_token" env:"PICOCLAW_CHANNELS_SLACK_BOT_TOKEN"`
+	AppToken string   `json:"app_token" env:"PICOCLAW_CHANNELS_SLACK_APP_TOKEN"`
+	AllowFrom []string `json:"allow_from" env:"PICOCLAW_CHANNELS_SLACK_ALLOW_FROM"`
 }
 
 type ProvidersConfig struct {
@@ -174,6 +182,12 @@ func DefaultConfig() *Config {
 				ClientID:     "",
 				ClientSecret: "",
 				AllowFrom:    []string{},
+			},
+			Slack: SlackConfig{
+				Enabled:   false,
+				BotToken:  "",
+				AppToken:  "",
+				AllowFrom: []string{},
 			},
 		},
 		Providers: ProvidersConfig{

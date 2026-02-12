@@ -136,6 +136,19 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
+	if m.config.Channels.Slack.Enabled && m.config.Channels.Slack.BotToken != "" {
+		logger.DebugC("channels", "Attempting to initialize Slack channel")
+		slackCh, err := NewSlackChannel(m.config.Channels.Slack, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize Slack channel", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["slack"] = slackCh
+			logger.InfoC("channels", "Slack channel enabled successfully")
+		}
+	}
+
 	logger.InfoCF("channels", "Channel initialization completed", map[string]interface{}{
 		"enabled_channels": len(m.channels),
 	})
