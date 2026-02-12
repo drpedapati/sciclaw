@@ -1,0 +1,29 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# R
+.Rhistory
+.RData
+
+# Quarto
+/.quarto/
+*_files/
+
+# Node
+node_modules/
+
+# Environment
+.env
+.env.local
