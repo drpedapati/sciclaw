@@ -56,9 +56,9 @@ func (cb *ContextBuilder) getIdentity() string {
 	// Build tools section dynamically
 	toolsSection := cb.buildToolsSection()
 
-	return fmt.Sprintf(`# picoclaw 🦞
+	return fmt.Sprintf(`# sciClaw
 
-You are picoclaw, a helpful AI assistant.
+You are sciClaw, a paired-scientist assistant built as a PicoClaw-compatible fork.
 
 ## Current Time
 %s
@@ -69,19 +69,20 @@ You are picoclaw, a helpful AI assistant.
 ## Workspace
 Your workspace is at: %s
 - Memory: %s/memory/MEMORY.md
-- Daily Notes: %s/memory/YYYYMM/YYYYMMDD.md
 - Skills: %s/skills/{skill-name}/SKILL.md
 
 %s
 
 ## Important Rules
 
-1. **ALWAYS use tools** - When you need to perform an action (schedule reminders, send messages, execute commands, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it.
+1. **ALWAYS use tools** - When you need to perform an action (execute commands, read/write files, run searches, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it.
 
-2. **Be helpful and accurate** - When using tools, briefly explain what you're doing.
+2. **Be scientifically rigorous** - Distinguish hypotheses from verified findings and cite evidence paths.
 
-3. **Memory** - When remembering something, write to %s/memory/MEMORY.md`,
-		now, runtime, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
+3. **Memory** - When remembering something, write to %s/memory/MEMORY.md
+
+4. **Reproducibility** - Prefer idempotent actions and report assumptions/uncertainty.`,
+		now, runtime, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
 }
 
 func (cb *ContextBuilder) buildToolsSection() string {
@@ -144,6 +145,7 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 		"SOUL.md",
 		"USER.md",
 		"IDENTITY.md",
+		"TOOLS.md",
 	}
 
 	var result string
@@ -170,8 +172,8 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 	// Log system prompt summary for debugging (debug mode only)
 	logger.DebugCF("agent", "System prompt built",
 		map[string]interface{}{
-			"total_chars": len(systemPrompt),
-			"total_lines": strings.Count(systemPrompt, "\n") + 1,
+			"total_chars":   len(systemPrompt),
+			"total_lines":   strings.Count(systemPrompt, "\n") + 1,
 			"section_count": strings.Count(systemPrompt, "\n\n---\n\n") + 1,
 		})
 
