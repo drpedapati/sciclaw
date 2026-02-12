@@ -213,7 +213,7 @@ func TestLogPath(t *testing.T) {
 	hs := NewHeartbeatService(tmpDir, nil, 30, true)
 
 	// Write a log entry
-	hs.log("Test log entry")
+	hs.log("INFO", "Test log entry")
 
 	// Verify log file exists at correct path
 	expectedLogPath := filepath.Join(memDir, "heartbeat.log")
