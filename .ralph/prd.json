@@ -313,8 +313,8 @@
         "go build ./... succeeds"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Already implemented"
     }
   ]
 }
