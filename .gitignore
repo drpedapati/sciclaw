@@ -1,3 +1,24 @@
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/picoclaw
+/picoclaw-test
+
+# Picoclaw specific
+.picoclaw/
+config.json
+sessions/
+build/
+
+# Coverage
+coverage.txt
+coverage.html
+
 # OS
 .DS_Store
 Thumbs.db
@@ -27,6 +48,9 @@ node_modules/
 # Environment
 .env
 .env.local
+
+# Ralph workspace
+ralph/
 
 # Local upstream clone workspace
 github/
