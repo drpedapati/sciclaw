@@ -289,6 +289,12 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiKey = cfg.Providers.VLLM.APIKey
 				apiBase = cfg.Providers.VLLM.APIBase
 			}
+		case "claude-cli", "claudecode", "claude-code":
+			workspace := cfg.Agents.Defaults.Workspace
+			if workspace == "" {
+				workspace = "."
+			}
+			return NewClaudeCliProvider(workspace), nil
 		}
 	}
 

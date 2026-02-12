@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+
 type ExecTool struct {
 	workingDir          string
 	timeout             time.Duration
@@ -94,7 +95,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (st
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(cmdCtx, "cmd", "/c", command)
+		cmd = exec.CommandContext(cmdCtx, "powershell", "-NoProfile", "-NonInteractive", "-Command", command)
 	} else {
 		cmd = exec.CommandContext(cmdCtx, "sh", "-c", command)
 	}

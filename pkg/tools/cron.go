@@ -1,4 +1,4 @@
-package tools
+	package tools
 
 import (
 	"context"
@@ -21,17 +21,19 @@ type CronTool struct {
 	cronService *cron.CronService
 	executor    JobExecutor
 	msgBus      *bus.MessageBus
+	execTool    *ExecTool
 	channel     string
 	chatID      string
 	mu          sync.RWMutex
 }
 
 // NewCronTool creates a new CronTool
-func NewCronTool(cronService *cron.CronService, executor JobExecutor, msgBus *bus.MessageBus) *CronTool {
+func NewCronTool(cronService *cron.CronService, executor JobExecutor, msgBus *bus.MessageBus, workspace string) *CronTool {
 	return &CronTool{
 		cronService: cronService,
 		executor:    executor,
 		msgBus:      msgBus,
+		execTool:    NewExecTool(workspace, false),
 	}
 }
 
@@ -42,7 +44,7 @@ func (t *CronTool) Name() string {
 
 // Description returns the tool description
 func (t *CronTool) Description() string {
-	return "Schedule reminders and tasks. IMPORTANT: When user asks to be reminded or scheduled, you MUST call this tool. Use 'at_seconds' for one-time reminders (e.g., 'remind me in 10 minutes' → at_seconds=600). Use 'every_seconds' ONLY for recurring tasks (e.g., 'every 2 hours' → every_seconds=7200). Use 'cron_expr' for complex recurring schedules (e.g., '0 9 * * *' for daily at 9am)."
+	return "Schedule reminders, tasks, or system commands. IMPORTANT: When user asks to be reminded or scheduled, you MUST call this tool. Use 'at_seconds' for one-time reminders (e.g., 'remind me in 10 minutes' → at_seconds=600). Use 'every_seconds' ONLY for recurring tasks (e.g., 'every 2 hours' → every_seconds=7200). Use 'cron_expr' for complex recurring schedules. Use 'command' to execute shell commands directly."
 }
 
 // Parameters returns the tool parameters schema
@@ -57,7 +59,11 @@ func (t *CronTool) Parameters() map[string]interface{} {
 			},
 			"message": map[string]interface{}{
 				"type":        "string",
-				"description": "The reminder/task message to display when triggered (required for add)",
+				"description": "The reminder/task message to display when triggered. If 'command' is used, this describes what the command does.",
+			},
+			"command": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional: Shell command to execute directly (e.g., 'df -h'). If set, the agent will run this command and report output instead of just showing the message. 'deliver' will be forced to false for commands.",
 			},
 			"at_seconds": map[string]interface{}{
 				"type":        "integer",
@@ -165,6 +171,15 @@ func (t *CronTool) addJob(args map[string]interface{}) (string, error) {
 		deliver = d
 	}
 
+	command, _ := args["command"].(string)
+	if command != "" {
+		// Commands must be processed by agent/exec tool, so deliver must be false (or handled specifically)
+		// Actually, let's keep deliver=false to let the system know it's not a simple chat message
+		// But for our new logic in ExecuteJob, we can handle it regardless of deliver flag if Payload.Command is set.
+		// However, logically, it's not "delivered" to chat directly as is.
+		deliver = false
+	}
+
 	// Truncate message for job name (max 30 chars)
 	messagePreview := utils.Truncate(message, 30)
 
@@ -178,6 +193,12 @@ func (t *CronTool) addJob(args map[string]interface{}) (string, error) {
 	)
 	if err != nil {
 		return fmt.Sprintf("Error adding job: %v", err), nil
+	}
+	
+	if command != "" {
+		job.Payload.Command = command
+		// Need to save the updated payload
+		t.cronService.UpdateJob(job)
 	}
 
 	return fmt.Sprintf("Created job '%s' (id: %s)", job.Name, job.ID), nil
@@ -250,6 +271,27 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 	}
 	if chatID == "" {
 		chatID = "direct"
+	}
+
+	// Execute command if present
+	if job.Payload.Command != "" {
+		args := map[string]interface{}{
+			"command": job.Payload.Command,
+		}
+
+		output, err := t.execTool.Execute(ctx, args)
+		if err != nil {
+			output = fmt.Sprintf("Error executing scheduled command: %v", err)
+		} else {
+			output = fmt.Sprintf("Scheduled command '%s' executed:\n%s", job.Payload.Command, output)
+		}
+
+		t.msgBus.PublishOutbound(bus.OutboundMessage{
+			Channel: channel,
+			ChatID:  chatID,
+			Content: output,
+		})
+		return "ok"
 	}
 
 	// If deliver=true, send message directly without agent processing
