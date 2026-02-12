@@ -6,7 +6,7 @@ Tool 返回值结构化重构 - 将 Tool 接口返回值从 (string, error) 改�
 
 ## Progress
 
-### Completed (6/21)
+### Completed (7/21)
 
 - US-001: Add ToolResult struct and helper functions
 - US-002: Modify Tool interface to return *ToolResult
@@ -14,6 +14,7 @@ Tool 返回值结构化重构 - 将 Tool 接口返回值从 (string, error) 改�
 - US-005: Update AgentLoop tool result processing logic
 - US-006: Add AsyncCallback type and AsyncTool interface
 - US-007: Heartbeat async task execution support
+- US-008: Inject callback into async tools in AgentLoop
 
 ### In Progress
 
@@ -28,7 +29,7 @@ Tool 返回值结构化重构 - 将 Tool 接口返回值从 (string, error) 改�
 | US-005 | Update AgentLoop tool result processing logic | Completed | No test files in pkg/agent yet |
 | US-006 | Add AsyncCallback type and AsyncTool interface | Completed | |
 | US-007 | Heartbeat async task execution support | Completed | |
-| US-008 | Inject callback into async tools in AgentLoop | Pending | |
+| US-008 | Inject callback into async tools in AgentLoop | Completed | |
 | US-009 | State save atomicity - SetLastChannel | Pending | |
 | US-010 | Update RecordLastChannel to use atomic save | Pending | |
 | US-011 | Refactor MessageTool to use ToolResult | Completed | |
@@ -125,5 +126,27 @@ Tool 返回值结构化重构 - 将 Tool 接口返回值从 (string, error) 改�
   - **Patterns discovered:** 为了避免循环依赖，heartbeat 包定义了自己的本地 `ToolResult` 结构体，而不是导入 `pkg/tools` 包。
   - **Gotchas encountered:** 原始代码中的 `running()` 函数逻辑有问题（新创建的服务会被认为是"正在运行"的），但这不在本次修改范围内。
   - **Useful context:** 心跳服务现在支持两种处理器：旧的 `onHeartbeat (返回 string, error)` 和新的 `onHeartbeatWithTools (返回 *ToolResult)`。新的处理器优先级更高。
+
+---
+
+## [2026-02-12] - US-008
+- What was implemented:
+  - 修改 `ToolRegistry.ExecuteWithContext` 方法签名，增加 `asyncCallback AsyncCallback` 参数
+  - 在 `ExecuteWithContext` 中检查工具是否实现 `AsyncTool` 接口
+  - 如果工具实现 `AsyncTool` 且回调非空，调用 `SetCallback` 设置回调
+  - 添加日志记录异步回调注入
+  - 在 `AgentLoop.runLLMIteration` 中定义 `asyncCallback` 回调函数
+  - 回调函数使用 `al.bus.PublishOutbound` 发送结果给用户
+  - 更新 `Execute` 方法以适配新的签名（传递 nil 作为回调）
+  - 添加完整的日志记录异步工具结果发送
+
+- Files changed:
+  - `pkg/tools/registry.go`
+  - `pkg/agent/loop.go`
+
+- **Learnings for future iterations:**
+  - **Patterns discovered:** 回调函数应该在工具执行循环中定义，这样可以捕获 `opts.Channel` 和 `opts.ChatID` 等上下文信息。
+  - **Gotchas encountered:** 更新方法签名时需要同时更新所有调用点。我修改了 `ExecuteWithContext` 的签名，所以也更新了 `Execute` 方法的调用。
+  - **Useful context:** 异步工具完成时会调用回调，回调将 `ForUser` 内容发送给用户。这允许长时间运行的操作（如子代理）在后台完成并通知用户，而不阻塞主循环。
 
 ---

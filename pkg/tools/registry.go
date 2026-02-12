@@ -34,10 +34,13 @@ func (r *ToolRegistry) Get(name string) (Tool, bool) {
 }
 
 func (r *ToolRegistry) Execute(ctx context.Context, name string, args map[string]interface{}) *ToolResult {
-	return r.ExecuteWithContext(ctx, name, args, "", "")
+	return r.ExecuteWithContext(ctx, name, args, "", "", nil)
 }
 
-func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args map[string]interface{}, channel, chatID string) *ToolResult {
+// ExecuteWithContext executes a tool with channel/chatID context and optional async callback.
+// If the tool implements AsyncTool and a non-nil callback is provided,
+// the callback will be set on the tool before execution.
+func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args map[string]interface{}, channel, chatID string, asyncCallback AsyncCallback) *ToolResult {
 	logger.InfoCF("tool", "Tool execution started",
 		map[string]interface{}{
 			"tool": name,
@@ -56,6 +59,15 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	// If tool implements ContextualTool, set context
 	if contextualTool, ok := tool.(ContextualTool); ok && channel != "" && chatID != "" {
 		contextualTool.SetContext(channel, chatID)
+	}
+
+	// If tool implements AsyncTool and callback is provided, set callback
+	if asyncTool, ok := tool.(AsyncTool); ok && asyncCallback != nil {
+		asyncTool.SetCallback(asyncCallback)
+		logger.DebugCF("tool", "Async callback injected",
+			map[string]interface{}{
+				"tool": name,
+			})
 	}
 
 	start := time.Now()

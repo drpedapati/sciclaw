@@ -413,7 +413,25 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"iteration": iteration,
 				})
 
-			toolResult := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID)
+			// Create async callback for tools that implement AsyncTool
+			// This callback sends async completion results to the user
+			asyncCallback := func(callbackCtx context.Context, result *tools.ToolResult) {
+				// Send ForUser content to user if not silent
+				if !result.Silent && result.ForUser != "" {
+					al.bus.PublishOutbound(bus.OutboundMessage{
+						Channel: opts.Channel,
+						ChatID:  opts.ChatID,
+						Content: result.ForUser,
+					})
+					logger.InfoCF("agent", "Async tool result sent to user",
+						map[string]interface{}{
+							"tool":        tc.Name,
+							"content_len": len(result.ForUser),
+						})
+				}
+			}
+
+			toolResult := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
 			lastToolResult = toolResult
 
 			// Send ForUser content to user immediately if not Silent
