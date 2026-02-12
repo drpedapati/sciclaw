@@ -17,6 +17,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/utils"
 	"github.com/sipeed/picoclaw/pkg/voice"
 )
 
@@ -247,7 +248,7 @@ func (c *TelegramChannel) handleMessage(update tgbotapi.Update) {
 		content = "[empty message]"
 	}
 
-	log.Printf("Telegram message from %s: %s...", senderID, truncateString(content, 50))
+	log.Printf("Telegram message from %s: %s...", senderID, utils.Truncate(content, 50))
 
 	// Thinking indicator
 	c.bot.Send(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping))
@@ -392,13 +393,6 @@ func parseChatID(chatIDStr string) (int64, error) {
 	var id int64
 	_, err := fmt.Sscanf(chatIDStr, "%d", &id)
 	return id, err
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen]
 }
 
 func markdownToTelegramHTML(text string) string {

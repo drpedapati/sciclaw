@@ -15,6 +15,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/utils"
 	"github.com/sipeed/picoclaw/pkg/voice"
 )
 
@@ -172,7 +173,7 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 	logger.DebugCF("discord", "Received message", map[string]interface{}{
 		"sender_name": senderName,
 		"sender_id":   senderID,
-		"preview":     truncateString(content, 50),
+		"preview":     utils.Truncate(content, 50),
 	})
 
 	metadata := map[string]string{
