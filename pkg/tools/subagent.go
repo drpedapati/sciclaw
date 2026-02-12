@@ -126,3 +126,108 @@ func (sm *SubagentManager) ListTasks() []*SubagentTask {
 	}
 	return tasks
 }
+
+// SubagentTool executes a subagent task synchronously and returns the result.
+// Unlike SpawnTool which runs tasks asynchronously, SubagentTool waits for completion
+// and returns the result directly in the ToolResult.
+type SubagentTool struct {
+	manager       *SubagentManager
+	originChannel string
+	originChatID  string
+}
+
+func NewSubagentTool(manager *SubagentManager) *SubagentTool {
+	return &SubagentTool{
+		manager:       manager,
+		originChannel: "cli",
+		originChatID:  "direct",
+	}
+}
+
+func (t *SubagentTool) Name() string {
+	return "subagent"
+}
+
+func (t *SubagentTool) Description() string {
+	return "Execute a subagent task synchronously and return the result. Use this for delegating specific tasks to an independent agent instance. Returns execution summary to user and full details to LLM."
+}
+
+func (t *SubagentTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"task": map[string]interface{}{
+				"type":        "string",
+				"description": "The task for subagent to complete",
+			},
+			"label": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional short label for the task (for display)",
+			},
+		},
+		"required": []string{"task"},
+	}
+}
+
+func (t *SubagentTool) SetContext(channel, chatID string) {
+	t.originChannel = channel
+	t.originChatID = chatID
+}
+
+func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+	task, ok := args["task"].(string)
+	if !ok {
+		return ErrorResult("task is required").WithError(fmt.Errorf("task parameter is required"))
+	}
+
+	label, _ := args["label"].(string)
+
+	if t.manager == nil {
+		return ErrorResult("Subagent manager not configured").WithError(fmt.Errorf("manager is nil"))
+	}
+
+	// Execute subagent task synchronously via direct provider call
+	messages := []providers.Message{
+		{
+			Role:    "system",
+			Content: "You are a subagent. Complete the given task independently and provide a clear, concise result.",
+		},
+		{
+			Role:    "user",
+			Content: task,
+		},
+	}
+
+	response, err := t.manager.provider.Chat(ctx, messages, nil, t.manager.provider.GetDefaultModel(), map[string]interface{}{
+		"max_tokens": 4096,
+	})
+
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("Subagent execution failed: %v", err)).WithError(err)
+	}
+
+	// ForUser: Brief summary for user (truncated if too long)
+	userContent := response.Content
+	maxUserLen := 500
+	if len(userContent) > maxUserLen {
+		userContent = userContent[:maxUserLen] + "..."
+	}
+
+	// ForLLM: Full execution details
+	llmContent := fmt.Sprintf("Subagent task completed:\nLabel: %s\nResult: %s",
+		func() string {
+			if label != "" {
+				return label
+			}
+			return "(unnamed)"
+		}(),
+		response.Content)
+
+	return &ToolResult{
+		ForLLM:  llmContent,
+		ForUser:  userContent,
+		Silent:    false,
+		IsError:   false,
+		Async:     false,
+	}
+}

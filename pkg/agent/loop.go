@@ -84,6 +84,10 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	spawnTool := tools.NewSpawnTool(subagentManager)
 	toolsRegistry.Register(spawnTool)
 
+	// Register subagent tool (synchronous execution)
+	subagentTool := tools.NewSubagentTool(subagentManager)
+	toolsRegistry.Register(subagentTool)
+
 	// Register edit file tool
 	editFileTool := tools.NewEditFileTool(workspace)
 	toolsRegistry.Register(editFileTool)
@@ -496,6 +500,11 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 		}
 	}
 	if tool, ok := al.tools.Get("spawn"); ok {
+		if st, ok := tool.(tools.ContextualTool); ok {
+			st.SetContext(channel, chatID)
+		}
+	}
+	if tool, ok := al.tools.Get("subagent"); ok {
 		if st, ok := tool.(tools.ContextualTool); ok {
 			st.SetContext(channel, chatID)
 		}
