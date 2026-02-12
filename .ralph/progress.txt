@@ -6,18 +6,21 @@ Tool 返回值结构化重构 - 将 Tool 接口返回值从 (string, error) 改�
 
 ## Progress
 
-### Completed (10/21)
+### Completed (14/21)
 
 - US-001: Add ToolResult struct and helper functions
 - US-002: Modify Tool interface to return *ToolResult
 - US-004: Delete isToolConfirmationMessage function (already removed in commit 488e7a9)
-- US-005: Update AgentLoop tool result processing logic
+- US-005: Update AgentLoop tool result logic
 - US-006: Add AsyncCallback type and AsyncTool interface
 - US-007: Heartbeat async task execution support
 - US-008: Inject callback into async tools in AgentLoop
 - US-009: State save atomicity - SetLastChannel
 - US-010: Update RecordLastChannel to use atomic save
 - US-011: Refactor MessageTool to use ToolResult
+- US-012: Refactor ShellTool to use ToolResult
+- US-013: Refactor FilesystemTool to use ToolResult
+- US-014: Refactor WebTool to use ToolResult
 - US-012: Refactor ShellTool to use ToolResult
 - US-013: Refactor FilesystemTool to use ToolResult
 
@@ -40,7 +43,7 @@ Tool 返回值结构化重构 - 将 Tool 接口返回值从 (string, error) 改�
 | US-011 | Refactor MessageTool to use ToolResult | Completed | Added test file message_test.go |
 | US-012 | Refactor ShellTool to use ToolResult | Completed | |
 | US-013 | Refactor FilesystemTool to use ToolResult | Completed | Added test file filesystem_test.go |
-| US-014 | Refactor WebTool to use ToolResult | Completed | |
+| US-014 | Refactor WebTool to use ToolResult | Completed | Added test file web_test.go |
 | US-015 | Refactor EditTool to use ToolResult | Completed | |
 | US-016 | Refactor CronTool to use ToolResult | Pending | |
 | US-017 | Refactor SpawnTool to use AsyncTool and callbacks | Pending | |
@@ -268,5 +271,28 @@ Tool 返回值结构化重构 - 将 Tool 接口返回值从 (string, error) 改�
   - **Patterns discovered:** FilesystemTool 中不同操作使用不同的返回值模式：ReadFile/ListDir 使用 NewToolResult（仅设置 ForLLM），WriteFile 使用 SilentResult（设置 Silent=true）。
   - **Gotchas encountered:** 最初误解了 NewToolResult 的行为，以为它会设置 ForUser，但实际上它只设置 ForLLM。
   - **Useful context:** WriteFileTool 会自动创建不存在的目录（使用 os.MkdirAll），这是文件写入工具的重要功能。
+
+---
+
+## [2026-02-12] - US-014
+- What was implemented:
+  - WebTool 已经完全使用 ToolResult 返回值（无需修改实现）
+  - 添加了完整的测试文件 `pkg/tools/web_test.go`，包含 9 个测试用例
+  - 测试覆盖了所有验收标准：
+    - WebFetchTool 成功返回 ForUser=获取的内容，ForLLM=摘要
+    - WebSearchTool 缺少 API Key 返回 ErrorResult
+    - URL 验证测试（无效 URL、不支持 scheme、缺少域名）
+    - JSON 内容处理测试
+    - HTML 提取和清理测试（移除 script/style 标签）
+    - 内容截断测试
+    - 缺少参数错误处理
+
+- Files changed:
+  - `pkg/tools/web_test.go` (新增)
+
+- **Learnings for future iterations:**
+  - **Patterns discovered:** WebTool 使用 httptest.NewServer 创建模拟服务器进行测试，避免依赖外部 API。WebFetchTool 返回 JSON 格式的结构化内容给用户，包含 url、status、extractor、truncated、length、text 字段。
+  - **Gotchas encountered:** 无
+  - **Useful context:** WebSearchTool 需要配置 BRAVE_API_KEY 环境变量才能正常工作。WebFetchTool 支持多种内容类型：JSON（格式化）、HTML（文本提取）、纯文本。
 
 ---

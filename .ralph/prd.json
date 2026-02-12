@@ -212,7 +212,7 @@
         "go test ./pkg/tools -run TestWebTool passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
