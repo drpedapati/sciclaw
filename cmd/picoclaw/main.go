@@ -660,7 +660,7 @@ func gatewayCmd() {
 		cfg.WorkspacePath(),
 		nil,
 		30*60,
-		true,
+		cfg.Heartbeat.Enabled,
 	)
 
 	channelManager, err := channels.NewManager(cfg, msgBus)
