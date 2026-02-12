@@ -121,15 +121,13 @@ make install
 
 Docker Compose を使えば、ローカルにインストールせずに PicoClaw を実行できます。
 
-### クイックスタート（Discord Bot）
-
 ```bash
 # 1. リポジトリをクローン
-git clone https://github.com/Sunwood-AI-OSS-Hub/picoclaw.git
+git clone https://github.com/sipeed/picoclaw.git
 cd picoclaw
 
 # 2. API キーを設定
-cp config.example.json config/config.json
+cp config/config.example.json config/config.json
 vim config/config.json      # DISCORD_BOT_TOKEN, プロバイダーの API キーを設定
 
 # 3. ビルドと起動

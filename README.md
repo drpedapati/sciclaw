@@ -124,15 +124,13 @@ make install
 
 You can also run PicoClaw using Docker Compose without installing anything locally.
 
-### Quick Start (Discord Bot)
-
 ```bash
 # 1. Clone this repo
-git clone https://github.com/Sunwood-AI-OSS-Hub/picoclaw.git
+git clone https://github.com/sipeed/picoclaw.git
 cd picoclaw
 
 # 2. Set your API keys
-cp config.example.json config/config.json
+cp config/config.example.json config/config.json
 vim config/config.json      # Set DISCORD_BOT_TOKEN, API keys, etc.
 
 # 3. Build & Start
