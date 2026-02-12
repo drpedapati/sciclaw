@@ -55,11 +55,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	workspace := cfg.WorkspacePath()
 	os.MkdirAll(workspace, 0755)
 
+	restrict := cfg.Agents.Defaults.RestrictToWorkspace
+
 	toolsRegistry := tools.NewToolRegistry()
-	toolsRegistry.Register(&tools.ReadFileTool{})
-	toolsRegistry.Register(&tools.WriteFileTool{})
-	toolsRegistry.Register(&tools.ListDirTool{})
-	toolsRegistry.Register(tools.NewExecTool(workspace))
+	toolsRegistry.Register(tools.NewReadFileTool(workspace, restrict))
+	toolsRegistry.Register(tools.NewWriteFileTool(workspace, restrict))
+	toolsRegistry.Register(tools.NewListDirTool(workspace, restrict))
+	toolsRegistry.Register(tools.NewExecTool(workspace, restrict))
 
 	braveAPIKey := cfg.Tools.Web.Search.APIKey
 	toolsRegistry.Register(tools.NewWebSearchTool(braveAPIKey, cfg.Tools.Web.Search.MaxResults))
@@ -83,8 +85,9 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	toolsRegistry.Register(spawnTool)
 
 	// Register edit file tool
-	editFileTool := tools.NewEditFileTool(workspace)
+	editFileTool := tools.NewEditFileTool(workspace, restrict)
 	toolsRegistry.Register(editFileTool)
+	toolsRegistry.Register(tools.NewAppendFileTool(workspace, restrict))
 
 	sessionsManager := session.NewSessionManager(filepath.Join(workspace, "sessions"))
 

@@ -2,6 +2,7 @@
   "agents": {
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
+      "restrict_to_workspace": true,
       "model": "glm-4.7",
       "max_tokens": 8192,
       "temperature": 0.7,
