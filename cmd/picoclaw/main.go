@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -31,8 +32,27 @@ import (
 	"github.com/sipeed/picoclaw/pkg/voice"
 )
 
-const version = "0.1.0"
+var (
+	version   = "0.1.0"
+	buildTime string
+	goVersion string
+)
+
 const logo = "🦞"
+
+func printVersion() {
+	fmt.Printf("%s picoclaw v%s\n", logo, version)
+	if buildTime != "" {
+		fmt.Printf("  Build: %s\n", buildTime)
+	}
+	goVer := goVersion
+	if goVer == "" {
+		goVer = runtime.Version()
+	}
+	if goVer != "" {
+		fmt.Printf("  Go: %s\n", goVer)
+	}
+}
 
 func copyDirectory(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
@@ -137,7 +157,7 @@ func main() {
 			skillsHelp()
 		}
 	case "version", "--version", "-v":
-		fmt.Printf("%s picoclaw v%s\n", logo, version)
+		printVersion()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
@@ -771,7 +791,7 @@ func cronHelp() {
 
 func cronListCmd(storePath string) {
 	cs := cron.NewCronService(storePath, nil)
-	jobs := cs.ListJobs(true)  // Show all jobs, including disabled
+	jobs := cs.ListJobs(true) // Show all jobs, including disabled
 
 	if len(jobs) == 0 {
 		fmt.Println("No scheduled jobs.")
