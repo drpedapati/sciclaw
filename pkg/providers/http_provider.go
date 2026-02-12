@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/auth"
@@ -25,19 +26,38 @@ type HTTPProvider struct {
 	httpClient *http.Client
 }
 
-func NewHTTPProvider(apiKey, apiBase string) *HTTPProvider {
+func NewHTTPProvider(apiKey, apiBase, proxy string) *HTTPProvider {
+	client := &http.Client{
+		Timeout: 0,
+	}
+
+	if proxy != "" {
+		proxyURL, err := url.Parse(proxy)
+		if err == nil {
+			client.Transport = &http.Transport{
+				Proxy: http.ProxyURL(proxyURL),
+			}
+		}
+	}
+
 	return &HTTPProvider{
-		apiKey:  apiKey,
-		apiBase: apiBase,
-		httpClient: &http.Client{
-			Timeout: 0,
-		},
+		apiKey:     apiKey,
+		apiBase:    apiBase,
+		httpClient: client,
 	}
 }
 
 func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
 	if p.apiBase == "" {
 		return nil, fmt.Errorf("API base not configured")
+	}
+
+	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5)
+	if idx := strings.Index(model, "/"); idx != -1 {
+		prefix := model[:idx]
+		if prefix == "moonshot" || prefix == "nvidia" {
+			model = model[idx+1:]
+		}
 	}
 
 	requestBody := map[string]interface{}{
@@ -60,7 +80,13 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 
 	if temperature, ok := options["temperature"].(float64); ok {
-		requestBody["temperature"] = temperature
+		lowerModel := strings.ToLower(model)
+		// Kimi k2 models only support temperature=1
+		if strings.Contains(lowerModel, "kimi") && strings.Contains(lowerModel, "k2") {
+			requestBody["temperature"] = 1.0
+		} else {
+			requestBody["temperature"] = temperature
+		}
 	}
 
 	jsonData, err := json.Marshal(requestBody)
@@ -196,7 +222,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	model := cfg.Agents.Defaults.Model
 	providerName := strings.ToLower(cfg.Agents.Defaults.Provider)
 
-	var apiKey, apiBase string
+	var apiKey, apiBase, proxy string
 
 	lowerModel := strings.ToLower(model)
 
@@ -268,71 +294,96 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 
 	// Fallback: detect provider from model name
 	if apiKey == "" && apiBase == "" {
-		switch {	case strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(model, "openai/") || strings.HasPrefix(model, "meta-llama/") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "google/"):
-		apiKey = cfg.Providers.OpenRouter.APIKey
-		if cfg.Providers.OpenRouter.APIBase != "" {
-			apiBase = cfg.Providers.OpenRouter.APIBase
-		} else {
-			apiBase = "https://openrouter.ai/api/v1"
-		}
+		switch {
+		case (strings.Contains(lowerModel, "kimi") || strings.Contains(lowerModel, "moonshot") || strings.HasPrefix(model, "moonshot/")) && cfg.Providers.Moonshot.APIKey != "":
+			apiKey = cfg.Providers.Moonshot.APIKey
+			apiBase = cfg.Providers.Moonshot.APIBase
+			proxy = cfg.Providers.Moonshot.Proxy
+			if apiBase == "" {
+				apiBase = "https://api.moonshot.cn/v1"
+			}
 
-	case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && (cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != ""):
-		if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" {
-			return createClaudeAuthProvider()
-		}
-		apiKey = cfg.Providers.Anthropic.APIKey
-		apiBase = cfg.Providers.Anthropic.APIBase
-		if apiBase == "" {
-			apiBase = "https://api.anthropic.com/v1"
-		}
-
-	case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && (cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != ""):
-		if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" {
-			return createCodexAuthProvider()
-		}
-		apiKey = cfg.Providers.OpenAI.APIKey
-		apiBase = cfg.Providers.OpenAI.APIBase
-		if apiBase == "" {
-			apiBase = "https://api.openai.com/v1"
-		}
-
-	case (strings.Contains(lowerModel, "gemini") || strings.HasPrefix(model, "google/")) && cfg.Providers.Gemini.APIKey != "":
-		apiKey = cfg.Providers.Gemini.APIKey
-		apiBase = cfg.Providers.Gemini.APIBase
-		if apiBase == "" {
-			apiBase = "https://generativelanguage.googleapis.com/v1beta"
-		}
-
-	case (strings.Contains(lowerModel, "glm") || strings.Contains(lowerModel, "zhipu") || strings.Contains(lowerModel, "zai")) && cfg.Providers.Zhipu.APIKey != "":
-		apiKey = cfg.Providers.Zhipu.APIKey
-		apiBase = cfg.Providers.Zhipu.APIBase
-		if apiBase == "" {
-			apiBase = "https://open.bigmodel.cn/api/paas/v4"
-		}
-
-	case (strings.Contains(lowerModel, "groq") || strings.HasPrefix(model, "groq/")) && cfg.Providers.Groq.APIKey != "":
-		apiKey = cfg.Providers.Groq.APIKey
-		apiBase = cfg.Providers.Groq.APIBase
-		if apiBase == "" {
-			apiBase = "https://api.groq.com/openai/v1"
-		}
-
-	case cfg.Providers.VLLM.APIBase != "":
-		apiKey = cfg.Providers.VLLM.APIKey
-		apiBase = cfg.Providers.VLLM.APIBase
-
-	default:
-		if cfg.Providers.OpenRouter.APIKey != "" {
+		case strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(model, "openai/") || strings.HasPrefix(model, "meta-llama/") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "google/"):
 			apiKey = cfg.Providers.OpenRouter.APIKey
+			proxy = cfg.Providers.OpenRouter.Proxy
 			if cfg.Providers.OpenRouter.APIBase != "" {
 				apiBase = cfg.Providers.OpenRouter.APIBase
 			} else {
 				apiBase = "https://openrouter.ai/api/v1"
 			}
-		} else {
-			return nil, fmt.Errorf("no API key configured for model: %s", model)
+
+		case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && (cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != ""):
+			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" {
+				return createClaudeAuthProvider()
+			}
+			apiKey = cfg.Providers.Anthropic.APIKey
+			apiBase = cfg.Providers.Anthropic.APIBase
+			proxy = cfg.Providers.Anthropic.Proxy
+			if apiBase == "" {
+				apiBase = "https://api.anthropic.com/v1"
+			}
+
+		case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && (cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != ""):
+			if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" {
+				return createCodexAuthProvider()
+			}
+			apiKey = cfg.Providers.OpenAI.APIKey
+			apiBase = cfg.Providers.OpenAI.APIBase
+			proxy = cfg.Providers.OpenAI.Proxy
+			if apiBase == "" {
+				apiBase = "https://api.openai.com/v1"
+			}
+
+		case (strings.Contains(lowerModel, "gemini") || strings.HasPrefix(model, "google/")) && cfg.Providers.Gemini.APIKey != "":
+			apiKey = cfg.Providers.Gemini.APIKey
+			apiBase = cfg.Providers.Gemini.APIBase
+			proxy = cfg.Providers.Gemini.Proxy
+			if apiBase == "" {
+				apiBase = "https://generativelanguage.googleapis.com/v1beta"
+			}
+
+		case (strings.Contains(lowerModel, "glm") || strings.Contains(lowerModel, "zhipu") || strings.Contains(lowerModel, "zai")) && cfg.Providers.Zhipu.APIKey != "":
+			apiKey = cfg.Providers.Zhipu.APIKey
+			apiBase = cfg.Providers.Zhipu.APIBase
+			proxy = cfg.Providers.Zhipu.Proxy
+			if apiBase == "" {
+				apiBase = "https://open.bigmodel.cn/api/paas/v4"
+			}
+
+		case (strings.Contains(lowerModel, "groq") || strings.HasPrefix(model, "groq/")) && cfg.Providers.Groq.APIKey != "":
+			apiKey = cfg.Providers.Groq.APIKey
+			apiBase = cfg.Providers.Groq.APIBase
+			proxy = cfg.Providers.Groq.Proxy
+			if apiBase == "" {
+				apiBase = "https://api.groq.com/openai/v1"
+			}
+
+		case (strings.Contains(lowerModel, "nvidia") || strings.HasPrefix(model, "nvidia/")) && cfg.Providers.Nvidia.APIKey != "":
+			apiKey = cfg.Providers.Nvidia.APIKey
+			apiBase = cfg.Providers.Nvidia.APIBase
+			proxy = cfg.Providers.Nvidia.Proxy
+			if apiBase == "" {
+				apiBase = "https://integrate.api.nvidia.com/v1"
+			}
+
+		case cfg.Providers.VLLM.APIBase != "":
+			apiKey = cfg.Providers.VLLM.APIKey
+			apiBase = cfg.Providers.VLLM.APIBase
+			proxy = cfg.Providers.VLLM.Proxy
+
+		default:
+			if cfg.Providers.OpenRouter.APIKey != "" {
+				apiKey = cfg.Providers.OpenRouter.APIKey
+				proxy = cfg.Providers.OpenRouter.Proxy
+				if cfg.Providers.OpenRouter.APIBase != "" {
+					apiBase = cfg.Providers.OpenRouter.APIBase
+				} else {
+					apiBase = "https://openrouter.ai/api/v1"
+				}
+			} else {
+				return nil, fmt.Errorf("no API key configured for model: %s", model)
+			}
 		}
-	}
 	}
 
 	if apiKey == "" && !strings.HasPrefix(model, "bedrock/") {
@@ -343,5 +394,5 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		return nil, fmt.Errorf("no API base configured for provider (model: %s)", model)
 	}
 
-	return NewHTTPProvider(apiKey, apiBase), nil
+	return NewHTTPProvider(apiKey, apiBase, proxy), nil
 }
