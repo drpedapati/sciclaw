@@ -27,3 +27,9 @@ node_modules/
 # Environment
 .env
 .env.local
+
+# Local upstream clone workspace
+github/
+
+# Generated manuscript render output
+manuscript/*.html
