@@ -197,3 +197,43 @@ func TestOpenAIOAuthConfig(t *testing.T) {
 		t.Errorf("Port = %d, want 1455", cfg.Port)
 	}
 }
+
+func TestParseDeviceCodeResponseIntervalAsNumber(t *testing.T) {
+	body := []byte(`{"device_auth_id":"abc","user_code":"DEF-1234","interval":5}`)
+
+	resp, err := parseDeviceCodeResponse(body)
+	if err != nil {
+		t.Fatalf("parseDeviceCodeResponse() error: %v", err)
+	}
+
+	if resp.DeviceAuthID != "abc" {
+		t.Errorf("DeviceAuthID = %q, want %q", resp.DeviceAuthID, "abc")
+	}
+	if resp.UserCode != "DEF-1234" {
+		t.Errorf("UserCode = %q, want %q", resp.UserCode, "DEF-1234")
+	}
+	if resp.Interval != 5 {
+		t.Errorf("Interval = %d, want %d", resp.Interval, 5)
+	}
+}
+
+func TestParseDeviceCodeResponseIntervalAsString(t *testing.T) {
+	body := []byte(`{"device_auth_id":"abc","user_code":"DEF-1234","interval":"5"}`)
+
+	resp, err := parseDeviceCodeResponse(body)
+	if err != nil {
+		t.Fatalf("parseDeviceCodeResponse() error: %v", err)
+	}
+
+	if resp.Interval != 5 {
+		t.Errorf("Interval = %d, want %d", resp.Interval, 5)
+	}
+}
+
+func TestParseDeviceCodeResponseInvalidInterval(t *testing.T) {
+	body := []byte(`{"device_auth_id":"abc","user_code":"DEF-1234","interval":"abc"}`)
+
+	if _, err := parseDeviceCodeResponse(body); err == nil {
+		t.Fatal("expected error for invalid interval")
+	}
+}
