@@ -25,6 +25,7 @@ type CronSchedule struct {
 type CronPayload struct {
 	Kind    string `json:"kind"`
 	Message string `json:"message"`
+	Command string `json:"command,omitempty"`
 	Deliver bool   `json:"deliver"`
 	Channel string `json:"channel,omitempty"`
 	To      string `json:"to,omitempty"`
@@ -356,6 +357,20 @@ func (cs *CronService) AddJob(name string, schedule CronSchedule, message string
 	}
 
 	return &job, nil
+}
+
+func (cs *CronService) UpdateJob(job *CronJob) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	for i := range cs.store.Jobs {
+		if cs.store.Jobs[i].ID == job.ID {
+			cs.store.Jobs[i] = *job
+			cs.store.Jobs[i].UpdatedAtMS = time.Now().UnixMilli()
+			return cs.saveStoreUnsafe()
+		}
+	}
+	return fmt.Errorf("job not found")
 }
 
 func (cs *CronService) RemoveJob(jobID string) bool {

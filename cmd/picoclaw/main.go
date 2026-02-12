@@ -1034,7 +1034,7 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 	cronService := cron.NewCronService(cronStorePath, nil)
 
 	// Create and register CronTool
-	cronTool := tools.NewCronTool(cronService, agentLoop, msgBus)
+	cronTool := tools.NewCronTool(cronService, agentLoop, msgBus, workspace)
 	agentLoop.RegisterTool(cronTool)
 
 	// Set the onJob handler
