@@ -41,9 +41,11 @@ var (
 )
 
 const logo = "🦞"
+const displayName = "sciClaw"
+const cliName = "picoclaw"
 
 func printVersion() {
-	fmt.Printf("%s picoclaw v%s\n", logo, version)
+	fmt.Printf("%s %s (%s) v%s\n", logo, displayName, cliName, version)
 	if buildTime != "" {
 		fmt.Printf("  Build: %s\n", buildTime)
 	}
@@ -172,17 +174,18 @@ func main() {
 }
 
 func printHelp() {
-	fmt.Printf("%s picoclaw - Personal AI Assistant v%s\n\n", logo, version)
+	fmt.Printf("%s %s - Paired Scientist Assistant v%s\n\n", logo, displayName, version)
+	fmt.Printf("CLI compatibility command: %s\n\n", cliName)
 	fmt.Println("Usage: picoclaw <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  onboard     Initialize picoclaw configuration and workspace")
+	fmt.Println("  onboard     Initialize sciClaw configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
-	fmt.Println("  gateway     Start picoclaw gateway")
-	fmt.Println("  status      Show picoclaw status")
+	fmt.Println("  gateway     Start sciClaw gateway")
+	fmt.Println("  status      Show sciClaw status")
 	fmt.Println("  cron        Manage scheduled tasks")
-	fmt.Println("  migrate     Migrate from OpenClaw to PicoClaw")
+	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw (PicoClaw-compatible)")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  version     Show version information")
 }
@@ -214,7 +217,7 @@ func onboard() {
 
 	createWorkspaceTemplates(workspace)
 
-	fmt.Printf("%s picoclaw is ready!\n", logo)
+	fmt.Printf("%s %s is ready!\n", logo, displayName)
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add your API key to", configPath)
 	fmt.Println("     Get one at: https://openrouter.ai/keys")
@@ -744,7 +747,7 @@ func statusCmd() {
 
 	configPath := getConfigPath()
 
-	fmt.Printf("%s picoclaw Status\n\n", logo)
+	fmt.Printf("%s %s Status (%s CLI)\n\n", logo, displayName, cliName)
 
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Println("Config:", configPath, "✓")
@@ -834,6 +837,7 @@ func authHelp() {
 	fmt.Println("  --device-code        Use device code flow (for headless environments)")
 	fmt.Println()
 	fmt.Println("Examples:")
+	fmt.Println("  (Use picoclaw command name for CLI compatibility)")
 	fmt.Println("  picoclaw auth login --provider openai")
 	fmt.Println("  picoclaw auth login --provider openai --device-code")
 	fmt.Println("  picoclaw auth login --provider anthropic")
