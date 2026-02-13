@@ -1,4 +1,4 @@
-.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test
+.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream
 
 # Build variables
 PRIMARY_BINARY_NAME=sciclaw
@@ -164,6 +164,21 @@ deps:
 ## run: Build and run sciclaw (picoclaw-compatible)
 run: build
 	@$(BUILD_DIR)/$(PRIMARY_BINARY_NAME) $(ARGS)
+
+## sync-upstream: Fetch and merge upstream/main into current branch
+sync-upstream:
+	@if ! git remote get-url upstream >/dev/null 2>&1; then \
+		echo "Error: upstream remote is not configured."; \
+		echo "Set it with: git remote add upstream https://github.com/sipeed/picoclaw.git"; \
+		exit 1; \
+	fi
+	@echo "Fetching upstream..."
+	@git fetch upstream
+	@echo "Divergence (current...upstream/main):"
+	@git rev-list --left-right --count HEAD...upstream/main
+	@echo "Merging upstream/main..."
+	@git merge upstream/main --no-edit
+	@echo "Sync complete."
 
 ## help: Show this help message
 help:
