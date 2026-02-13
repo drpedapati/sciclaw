@@ -11,6 +11,7 @@ type MessageTool struct {
 	sendCallback   SendCallback
 	defaultChannel string
 	defaultChatID  string
+	sentInRound    bool // Tracks whether a message was sent in the current processing round
 }
 
 func NewMessageTool() *MessageTool {
@@ -49,6 +50,12 @@ func (t *MessageTool) Parameters() map[string]interface{} {
 func (t *MessageTool) SetContext(channel, chatID string) {
 	t.defaultChannel = channel
 	t.defaultChatID = chatID
+	t.sentInRound = false // Reset send tracking for new processing round
+}
+
+// HasSentInRound returns true if the message tool sent a message during the current round.
+func (t *MessageTool) HasSentInRound() bool {
+	return t.sentInRound
 }
 
 func (t *MessageTool) SetSendCallback(callback SendCallback) {
@@ -83,5 +90,6 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return fmt.Sprintf("Error sending message: %v", err), nil
 	}
 
+	t.sentInRound = true
 	return fmt.Sprintf("Message sent to %s:%s", channel, chatID), nil
 }

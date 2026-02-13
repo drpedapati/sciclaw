@@ -128,11 +128,22 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 			}
 
 			if response != "" {
-				al.bus.PublishOutbound(bus.OutboundMessage{
-					Channel: msg.Channel,
-					ChatID:  msg.ChatID,
-					Content: response,
-				})
+				// Check if the message tool already sent a response during this round.
+				// If so, skip publishing to avoid duplicate messages to the user.
+				alreadySent := false
+				if tool, ok := al.tools.Get("message"); ok {
+					if mt, ok := tool.(*tools.MessageTool); ok {
+						alreadySent = mt.HasSentInRound()
+					}
+				}
+
+				if !alreadySent {
+					al.bus.PublishOutbound(bus.OutboundMessage{
+						Channel: msg.Channel,
+						ChatID:  msg.ChatID,
+						Content: response,
+					})
+				}
 			}
 		}
 	}
@@ -218,8 +229,10 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	// Use the origin session for context
 	sessionKey := fmt.Sprintf("%s:%s", originChannel, originChatID)
 
-	// Process as system message with routing back to origin
-	return al.runAgentLoop(ctx, processOptions{
+	// Process as system message with routing back to origin.
+	// SendResponse: true means runAgentLoop will publish the outbound message itself,
+	// so we return empty string to prevent Run() from publishing a duplicate.
+	_, err := al.runAgentLoop(ctx, processOptions{
 		SessionKey:      sessionKey,
 		Channel:         originChannel,
 		ChatID:          originChatID,
@@ -228,6 +241,8 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 		EnableSummary:   false,
 		SendResponse:    true, // Send response back to original channel
 	})
+	// Return empty string: response was already sent via bus in runAgentLoop
+	return "", err
 }
 
 // runAgentLoop is the core message processing logic.
