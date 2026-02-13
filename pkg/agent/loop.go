@@ -33,14 +33,14 @@ type AgentLoop struct {
 	provider       providers.LLMProvider
 	workspace      string
 	model          string
-	contextWindow  int           // Maximum context window size in tokens
+	contextWindow  int // Maximum context window size in tokens
 	maxIterations  int
 	sessions       *session.SessionManager
 	state          *state.Manager
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
 	running        atomic.Bool
-	summarizing    sync.Map      // Tracks which sessions are currently being summarized
+	summarizing    sync.Map // Tracks which sessions are currently being summarized
 }
 
 // processOptions configures how a message is processed
@@ -296,9 +296,9 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	if constants.IsInternalChannel(originChannel) {
 		logger.InfoCF("agent", "Subagent completed (internal channel)",
 			map[string]interface{}{
-				"sender_id":    msg.SenderID,
-				"content_len":  len(content),
-				"channel":      originChannel,
+				"sender_id":   msg.SenderID,
+				"content_len": len(content),
+				"channel":     originChannel,
 			})
 		return "", nil
 	}
@@ -307,9 +307,9 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	// Don't forward result here, subagent should use message tool to communicate with user
 	logger.InfoCF("agent", "Subagent completed",
 		map[string]interface{}{
-			"sender_id":    msg.SenderID,
-			"channel":      originChannel,
-			"content_len":  len(content),
+			"sender_id":   msg.SenderID,
+			"channel":     originChannel,
+			"content_len": len(content),
 		})
 
 	// Agent only logs, does not respond to user
