@@ -55,6 +55,9 @@ var baselineScienceSkillNames = []string{
 	"experiment-provenance",
 	"benchmark-logging",
 	"humanize-text",
+	"docx",
+	"pptx",
+	"pdf",
 }
 
 func invokedCLIName() string {
