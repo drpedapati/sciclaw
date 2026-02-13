@@ -56,11 +56,13 @@
   "providers": {
     "anthropic": {
       "api_key": "",
-      "api_base": ""
+      "api_base": "",
+      "auth_method": ""
     },
     "openai": {
       "api_key": "",
-      "api_base": ""
+      "api_base": "",
+      "auth_method": ""
     },
     "openrouter": {
       "api_key": "sk-or-v1-xxx",

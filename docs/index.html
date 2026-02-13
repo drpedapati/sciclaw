@@ -327,7 +327,7 @@ flowchart LR
             <h3>Literature → provenance → benchmark</h3>
             <p>
               Added scientific skill modules for writing, PubMed/bioRxiv retrieval, provenance capture,
-              benchmark logging, and manuscript authoring.
+              benchmark logging, manuscript authoring, and Office/PDF artifact workflows.
             </p>
           </article>
           <article class="card">
@@ -363,11 +363,12 @@ flowchart LR
           <div class="mermaid">
 flowchart TB
   A[pubmed-database / biorxiv-database] --> B[scientific-writing]
-  B --> C[humanize-text]
-  C --> D[experiment-provenance]
-  D --> E[benchmark-logging]
-  E --> F[quarto-authoring + beautiful-mermaid]
-  F --> G[manuscript/*.qmd + rendered outputs]
+  B --> C[docx / pptx / xlsx / pdf]
+  C --> D[humanize-text]
+  D --> E[experiment-provenance]
+  E --> F[benchmark-logging]
+  F --> G[quarto-authoring + beautiful-mermaid]
+  G --> H[manuscript/*.qmd + rendered outputs]
           </div>
         </div>
       </section>
@@ -376,8 +377,10 @@ flowchart TB
         <h2>Quick Start Commands</h2>
         <div class="grid">
           <article class="card">
-            <h3>Bootstrap</h3>
+            <h3>Bootstrap + Auth</h3>
             <pre>sciclaw onboard
+sciclaw auth login --provider openai
+sciclaw auth status
 sciclaw status</pre>
           </article>
           <article class="card">

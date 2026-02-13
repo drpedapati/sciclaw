@@ -229,8 +229,8 @@ docker compose --profile gateway up -d
 ### 🚀 Quick Start
 
 > [!TIP]
-> Set your API key in `~/.picoclaw/config.json`.
-> Get API keys: [OpenRouter](https://openrouter.ai/keys) (LLM) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) (LLM)
+> Authenticate with either API keys (`config.json`) or auth commands (`sciclaw auth login ...`).
+> API key providers: [OpenRouter](https://openrouter.ai/keys) (LLM) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) (LLM)
 > Web search is **optional** - get free [Brave Search API](https://brave.com/search/api) (2000 free queries/month)
 
 **1. Initialize**
@@ -269,9 +269,14 @@ sciclaw onboard
 }
 ```
 
-**3. Get API Keys**
+**3. Authenticate Provider**
 
-- **LLM Provider**: [OpenRouter](https://openrouter.ai/keys) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) · [Anthropic](https://console.anthropic.com) · [OpenAI](https://platform.openai.com) · [Gemini](https://aistudio.google.com/api-keys)
+- **API key mode**: configure provider keys in `~/.picoclaw/config.json` (OpenRouter, Zhipu, Anthropic, OpenAI, Gemini, etc.).
+- **Auth command mode**:
+  - OpenAI OAuth (browser): `sciclaw auth login --provider openai`
+  - OpenAI OAuth (headless/device code): `sciclaw auth login --provider openai --device-code`
+  - Anthropic token/session login (paste): `sciclaw auth login --provider anthropic`
+  - Check status: `sciclaw auth status`
 - **Web Search** (optional): [Brave Search](https://brave.com/search/api) - Free tier available (2000 requests/month)
 
 > **Note**: See `config.example.json` for a complete configuration template.
@@ -559,15 +564,36 @@ The subagent has access to tools (message, web_search, etc.) and can communicate
 > [!NOTE]
 > Groq provides free voice transcription via Whisper. If configured, Telegram voice messages will be automatically transcribed.
 
-| Provider | Purpose | Get API Key |
-|----------|---------|-------------|
-| `gemini` | LLM (Gemini direct) | [aistudio.google.com](https://aistudio.google.com) |
-| `zhipu` | LLM (Zhipu direct) | [bigmodel.cn](bigmodel.cn) |
-| `openrouter(To be tested)` | LLM (recommended, access to all models) | [openrouter.ai](https://openrouter.ai) |
-| `anthropic(To be tested)` | LLM (Claude direct) | [console.anthropic.com](https://console.anthropic.com) |
-| `openai(To be tested)` | LLM (GPT direct) | [platform.openai.com](https://platform.openai.com) |
-| `deepseek(To be tested)` | LLM (DeepSeek direct) | [platform.deepseek.com](https://platform.deepseek.com) |
-| `groq` | LLM + **Voice transcription** (Whisper) | [console.groq.com](https://console.groq.com) |
+| Provider | Purpose | Auth Path | API Key Page |
+|----------|---------|-----------|--------------|
+| `gemini` | LLM (Gemini direct) | API key | [aistudio.google.com](https://aistudio.google.com) |
+| `zhipu` | LLM (Zhipu direct) | API key | [bigmodel.cn](bigmodel.cn) |
+| `openrouter(To be tested)` | LLM (recommended, access to all models) | API key | [openrouter.ai](https://openrouter.ai) |
+| `anthropic(To be tested)` | LLM (Claude direct) | `sciclaw auth login --provider anthropic` (token paste) or API key | [console.anthropic.com](https://console.anthropic.com) |
+| `openai(To be tested)` | LLM (GPT direct) | `sciclaw auth login --provider openai` (OAuth browser/device code) or API key | [platform.openai.com](https://platform.openai.com) |
+| `deepseek(To be tested)` | LLM (DeepSeek direct) | API key | [platform.deepseek.com](https://platform.deepseek.com) |
+| `groq` | LLM + **Voice transcription** (Whisper) | API key | [console.groq.com](https://console.groq.com) |
+
+### OAuth / Token Auth Commands
+
+Use these commands when you prefer provider login over copying API keys into config:
+
+```bash
+# OpenAI OAuth in browser
+sciclaw auth login --provider openai
+
+# OpenAI OAuth in headless environments
+sciclaw auth login --provider openai --device-code
+
+# Anthropic token/session login (paste prompt)
+sciclaw auth login --provider anthropic
+
+# Inspect stored auth status
+sciclaw auth status
+```
+
+Credentials are stored in `~/.picoclaw/auth.json` with user-only file permissions.
+Successful login updates `providers.<name>.auth_method` in `~/.picoclaw/config.json` (`openai: oauth`, `anthropic: token`).
 
 <details>
 <summary><b>Zhipu</b></summary>
@@ -676,6 +702,11 @@ sciclaw agent -m "Hello"
 | `sciclaw onboard` | Initialize config & workspace |
 | `sciclaw agent -m "..."` | Chat with the agent |
 | `sciclaw agent` | Interactive chat mode |
+| `sciclaw auth login --provider openai` | Login via OpenAI OAuth (browser) |
+| `sciclaw auth login --provider openai --device-code` | Login via OpenAI OAuth device code |
+| `sciclaw auth login --provider anthropic` | Save Anthropic token/session credential |
+| `sciclaw auth status` | Show stored auth credential status |
+| `sciclaw auth logout --provider <name>` | Remove auth credential for provider |
 | `sciclaw gateway` | Start the gateway |
 | `sciclaw status` | Show status |
 | `sciclaw cron list` | List all scheduled jobs |
@@ -728,6 +759,22 @@ To enable web search:
 ### Getting content filtering errors
 
 Some providers (like Zhipu) have content filtering. Try rephrasing your query or use a different model.
+
+### "no credentials for openai/anthropic" errors
+
+This indicates `auth_method` is set to auth-mode, but no credential is stored yet (or it was removed).
+
+Fix with:
+
+```bash
+sciclaw auth login --provider openai
+# or
+sciclaw auth login --provider openai --device-code
+# or
+sciclaw auth login --provider anthropic
+
+sciclaw auth status
+```
 
 ### Telegram bot says "Conflict: terminated by other getUpdates"
 
