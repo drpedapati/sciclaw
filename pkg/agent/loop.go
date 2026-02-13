@@ -157,11 +157,22 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 			}
 
 			if response != "" {
-				al.bus.PublishOutbound(bus.OutboundMessage{
-					Channel: msg.Channel,
-					ChatID:  msg.ChatID,
-					Content: response,
-				})
+				// Check if the message tool already sent a response during this round.
+				// If so, skip publishing to avoid duplicate messages to the user.
+				alreadySent := false
+				if tool, ok := al.tools.Get("message"); ok {
+					if mt, ok := tool.(*tools.MessageTool); ok {
+						alreadySent = mt.HasSentInRound()
+					}
+				}
+
+				if !alreadySent {
+					al.bus.PublishOutbound(bus.OutboundMessage{
+						Channel: msg.Channel,
+						ChatID:  msg.ChatID,
+						Content: response,
+					})
+				}
 			}
 		}
 	}
