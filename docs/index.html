@@ -363,10 +363,11 @@ flowchart LR
           <div class="mermaid">
 flowchart TB
   A[pubmed-database / biorxiv-database] --> B[scientific-writing]
-  B --> C[experiment-provenance]
-  C --> D[benchmark-logging]
-  D --> E[quarto-authoring + beautiful-mermaid]
-  E --> F[manuscript/*.qmd + rendered outputs]
+  B --> C[humanize-text]
+  C --> D[experiment-provenance]
+  D --> E[benchmark-logging]
+  E --> F[quarto-authoring + beautiful-mermaid]
+  F --> G[manuscript/*.qmd + rendered outputs]
           </div>
         </div>
       </section>
