@@ -40,7 +40,7 @@ var (
 	goVersion string
 )
 
-const logo = "🦞"
+const logo = "🔬"
 const displayName = "sciClaw"
 const cliName = "picoclaw"
 

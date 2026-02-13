@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sciClaw | How the Paired-Scientist Loop Works</title>
+    <meta
+      name="description"
+      content="A practical explainer for sciClaw: a PicoClaw-compatible paired-scientist workflow with reproducible loops, evidence capture, and manuscript integration."
+    />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+      :root {
+        --bg: #f8fafc;
+        --paper: #ffffff;
+        --ink: #0f172a;
+        --muted: #475569;
+        --border: #dbe3ee;
+        --accent: #0f766e;
+        --accent-soft: #ccfbf1;
+        --warn: #b45309;
+        --warn-soft: #fef3c7;
+        --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+        --serif: "Fraunces", "Times New Roman", serif;
+        --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background:
+          radial-gradient(circle at 10% 10%, #d9f8f2 0%, transparent 35%),
+          radial-gradient(circle at 95% 0%, #dbeafe 0%, transparent 30%),
+          var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        line-height: 1.7;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        background: rgba(255, 255, 255, 0.85);
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(10px);
+      }
+
+      .topbar-inner {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        text-decoration: none;
+        color: var(--ink);
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .brand-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent), #0891b2);
+        display: inline-block;
+      }
+
+      .util {
+        text-decoration: none;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .util:hover {
+        color: var(--ink);
+      }
+
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 20px 90px;
+      }
+
+      .hero {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: linear-gradient(180deg, #ffffff 0%, #f9fffe 100%);
+        padding: 28px 24px;
+      }
+
+      .kicker {
+        font-family: var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      h1 {
+        margin: 10px 0 8px;
+        font-family: var(--serif);
+        font-size: clamp(34px, 6vw, 56px);
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+      }
+
+      .subtitle {
+        margin: 0 0 16px;
+        font-family: var(--mono);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .lede {
+        margin: 0;
+        color: #1e293b;
+        font-size: 18px;
+      }
+
+      section {
+        margin-top: 24px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 24px 22px;
+        background: var(--paper);
+      }
+
+      h2 {
+        margin: 0 0 8px;
+        font-family: var(--serif);
+        font-size: clamp(28px, 4vw, 38px);
+        line-height: 1.1;
+      }
+
+      .subhead {
+        margin: 0 0 14px;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        background: #fff;
+      }
+
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+      }
+
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        margin-bottom: 8px;
+      }
+
+      .tag-accent {
+        background: var(--accent-soft);
+        color: #0f766e;
+      }
+
+      .tag-warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+
+      pre {
+        margin: 0;
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid #0f172a;
+        background: #020617;
+        color: #e2e8f0;
+        font-family: var(--mono);
+        font-size: 12px;
+        overflow: auto;
+      }
+
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+
+      .btn {
+        text-decoration: none;
+        border-radius: 9px;
+        border: 1px solid transparent;
+        padding: 9px 12px;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), #0891b2);
+        color: #ffffff;
+      }
+
+      .btn-secondary {
+        border-color: var(--border);
+        color: var(--ink);
+        background: #ffffff;
+      }
+
+      .note {
+        border-left: 3px solid var(--accent);
+        padding-left: 12px;
+        color: var(--muted);
+        margin: 12px 0 0;
+      }
+
+      footer {
+        margin-top: 22px;
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+      }
+
+      @media (max-width: 760px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#">
+          <span class="brand-dot" aria-hidden="true"></span>
+          sciClaw Explainer
+        </a>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <a class="util" href="../README.md">README</a>
+          <a class="util" href="../manuscript/sciclaw-manuscript-outline.qmd">Manuscript</a>
+          <a class="util" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="hero">
+        <div class="kicker">Paired Scientist Workflow · PicoClaw-Compatible Runtime</div>
+        <h1>How sciClaw Works 🔬</h1>
+        <p class="subtitle">A reproducible loop from question to evidence to manuscript.</p>
+        <p class="lede">
+          sciClaw keeps PicoClaw's lightweight execution model and upstream compatibility, then layers
+          a paired-scientist operating pattern: plan clearly, run deterministically, capture evidence,
+          and update manuscript artifacts in the same loop.
+        </p>
+        <p class="note">
+          This page follows the explainer-site format: pipeline view first, deep-dive sections second,
+          and practical commands at the end.
+        </p>
+      </section>
+
+      <section>
+        <h2>The sciClaw Pipeline</h2>
+        <p class="subhead">From research question to review-ready artifact trail.</p>
+        <div class="card">
+          <div class="mermaid">
+flowchart LR
+  A[Question + Hypothesis] --> B[Plan Contract]
+  B --> C[Code + Tool Execution]
+  C --> D[Evidence + Logs]
+  D --> E[Manuscript Update]
+  E --> F[Loop Validation]
+  F --> B
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>What Changed From Stock PicoClaw</h2>
+        <div class="grid">
+          <article class="card">
+            <span class="tag tag-accent">Behavior Layer</span>
+            <h3>Paired-scientist defaults</h3>
+            <p>
+              Workspace templates now center scientific rigor: explicit assumptions, evidence tracking,
+              and uncertainty boundaries.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag tag-accent">Runtime Layer</span>
+            <h3>Scientist identity in core prompt</h3>
+            <p>
+              The system context uses sciClaw framing and reproducibility-first operating rules while
+              preserving command compatibility.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag tag-accent">Skills Layer</span>
+            <h3>Literature → provenance → benchmark</h3>
+            <p>
+              Added scientific skill modules for writing, PubMed/bioRxiv retrieval, provenance capture,
+              benchmark logging, and manuscript authoring.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag tag-warn">Governance Layer</span>
+            <h3>Loop-level traceability contract</h3>
+            <p>
+              Each loop requires build/test/render checks plus log updates to keep claims auditable and
+              reproducible.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Workspace Anatomy</h2>
+        <p class="subhead">The default workspace structure optimized for scientific collaboration.</p>
+        <pre>~/.picoclaw/workspace/
+├── sessions/
+├── memory/
+│   └── MEMORY.md
+├── cron/
+├── skills/
+├── AGENTS.md
+├── IDENTITY.md
+├── SOUL.md
+├── TOOLS.md
+└── USER.md</pre>
+      </section>
+
+      <section>
+        <h2>Skill-to-Outcome Flow 🧪</h2>
+        <div class="card">
+          <div class="mermaid">
+flowchart TB
+  A[pubmed-database / biorxiv-database] --> B[scientific-writing]
+  B --> C[experiment-provenance]
+  C --> D[benchmark-logging]
+  D --> E[quarto-authoring + beautiful-mermaid]
+  E --> F[manuscript/*.qmd + rendered outputs]
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Quick Start Commands</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>Bootstrap</h3>
+            <pre>picoclaw onboard
+picoclaw status</pre>
+          </article>
+          <article class="card">
+            <h3>Run a loop</h3>
+            <pre>go test ./cmd/picoclaw ./pkg/agent ./pkg/migrate
+make build
+quarto render manuscript/sciclaw-manuscript-outline.qmd --to html</pre>
+          </article>
+        </div>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="../README.md">Open README</a>
+          <a class="btn btn-secondary" href="../manuscript/sciclaw-component-revision-plan.qmd">Open Component Plan</a>
+        </div>
+      </section>
+
+      <footer>
+        Built for reproducible paired-scientist work: upstream-compatible runtime + explicit evidence trail.
+      </footer>
+    </main>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "base",
+        securityLevel: "loose",
+        themeVariables: {
+          primaryColor: "#ccfbf1",
+          primaryTextColor: "#0f172a",
+          primaryBorderColor: "#0f766e",
+          lineColor: "#0f766e",
+          secondaryColor: "#e2e8f0",
+          tertiaryColor: "#f8fafc",
+          fontFamily: "IBM Plex Sans"
+        }
+      });
+    </script>
+  </body>
+</html>

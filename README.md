@@ -15,7 +15,7 @@ This project keeps PicoClaw's lightweight runtime and upstream compatibility, bu
 | Workspace defaults | Generic assistant templates | Scientific templates: `AGENTS.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `USER.md`, structured `memory/MEMORY.md`, plus `sessions/` and `cron/` |
 | Runtime system prompt | Generic assistant identity and tool rules | sciClaw identity with reproducibility, evidence, and uncertainty rules; `TOOLS.md` included in bootstrap context |
 | Migration behavior | Migrates baseline workspace files/dirs | Extended migration for `IDENTITY.md`, `sessions/`, `cron/` with test coverage |
-| CLI brand surface | PicoClaw naming only | User-facing sciClaw branding while preserving `picoclaw` command compatibility |
+| CLI brand surface | PicoClaw naming only | User-facing sciClaw branding (including `🔬` CLI icon) while preserving `picoclaw` command compatibility |
 | Research traceability | Optional | Required loop artifacts: build/tests, plan/activity logs, manuscript updates, and rendered outputs |
 | Manuscript workflow | Not central | First-class Quarto manuscript pipeline (`manuscript/*.qmd`) updated and rendered each loop |
 
@@ -24,6 +24,10 @@ This project keeps PicoClaw's lightweight runtime and upstream compatibility, bu
 - Command compatibility: keep using `picoclaw` CLI command.
 - Upstream sync model: regular merges from `upstream/main` with low-conflict, surgical changes.
 - Core performance goals: lightweight Go runtime footprint and broad deployment portability.
+
+### Explainer Landing Page
+
+- Explainer-style landing page: `docs/index.html`
 
 ### Research Skills Added in sciClaw
 
