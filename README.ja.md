@@ -196,6 +196,10 @@ picoclaw onboard
         "max_results": 5
       }
     }
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval": 30
   }
 }
 ```
@@ -303,21 +307,114 @@ picoclaw gateway
 
 </details>
 
-## 設定 (Configuration)
+## ⚙️ 設定
 
-PicoClaw は設定に `config.json` を使用します。
+設定ファイル: `~/.picoclaw/config.json`
+
+### ワークスペース構成
+
+PicoClaw は設定されたワークスペース（デフォルト: `~/.picoclaw/workspace`）にデータを保存します：
+
+```
+~/.picoclaw/workspace/
+├── sessions/          # 会話セッションと履歴
+├── memory/            # 長期メモリ（MEMORY.md）
+├── state/             # 永続状態（最後のチャネルなど）
+├── cron/              # スケジュールジョブデータベース
+├── skills/            # カスタムスキル
+├── AGENTS.md          # エージェントの行動ガイド
+├── HEARTBEAT.md       # 定期タスクプロンプト（30分ごとに確認）
+├── IDENTITY.md        # エージェントのアイデンティティ
+├── SOUL.md            # エージェントのソウル
+├── TOOLS.md           # ツールの説明
+└── USER.md            # ユーザー設定
+```
+
+### ハートビート（定期タスク）
+
+PicoClaw は自動的に定期タスクを実行できます。ワークスペースに `HEARTBEAT.md` ファイルを作成します：
+
+```markdown
+# 定期タスク
+
+- 重要なメールをチェック
+- 今後の予定を確認
+- 天気予報をチェック
+```
+
+エージェントは30分ごと（設定可能）にこのファイルを読み込み、利用可能なツールを使ってタスクを実行します。
+
+#### spawn で非同期タスク実行
+
+時間のかかるタスク（Web検索、API呼び出し）には `spawn` ツールを使って**サブエージェント**を作成します：
+
+```markdown
+# 定期タスク
+
+## クイックタスク（直接応答）
+- 現在時刻を報告
+
+## 長時間タスク（spawn で非同期）
+- AIニュースを検索して要約
+- メールをチェックして重要なメッセージを報告
+```
+
+**主な特徴:**
+
+| 機能 | 説明 |
+|------|------|
+| **spawn** | 非同期サブエージェントを作成、ハートビートをブロックしない |
+| **独立コンテキスト** | サブエージェントは独自のコンテキストを持ち、セッション履歴なし |
+| **message ツール** | サブエージェントは message ツールで直接ユーザーと通信 |
+| **非ブロッキング** | spawn 後、ハートビートは次のタスクへ継続 |
+
+#### サブエージェントの通信方法
+
+```
+ハートビート発動
+    ↓
+エージェントが HEARTBEAT.md を読む
+    ↓
+長いタスク: spawn サブエージェント
+    ↓                           ↓
+次のタスクへ継続          サブエージェントが独立して動作
+    ↓                           ↓
+全タスク完了              message ツールを使用
+    ↓                           ↓
+HEARTBEAT_OK 応答         ユーザーが直接結果を受け取る
+```
+
+サブエージェントはツール（message、web_search など）にアクセスでき、メインエージェントを経由せずにユーザーと通信できます。
+
+**設定:**
+
+```json
+{
+  "heartbeat": {
+    "enabled": true,
+    "interval": 30
+  }
+}
+```
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| `enabled` | `true` | ハートビートの有効/無効 |
+| `interval` | `30` | チェック間隔（分）、最小5分 |
+
+**環境変数:**
+- `PICOCLAW_HEARTBEAT_ENABLED=false` で無効化
+- `PICOCLAW_HEARTBEAT_INTERVAL=60` で間隔変更
+
+### 基本設定
 
 1.  **設定ファイルの作成:**
-
-    サンプル設定ファイルをコピーします:
 
     ```bash
     cp config.example.json config/config.json
     ```
 
 2.  **設定の編集:**
-
-    `config/config.json` を開き、APIキーや設定を記述します。
 
     ```json
     {
@@ -335,11 +432,11 @@ PicoClaw は設定に `config.json` を使用します。
     }
     ```
 
-**3. 実行**
+3.  **実行**
 
-```bash
-picoclaw agent -m "Hello"
-```
+    ```bash
+    picoclaw agent -m "Hello"
+    ```
 </details>
 
 <details>
@@ -389,6 +486,10 @@ picoclaw agent -m "Hello"
         "apiKey": "BSA..."
       }
     }
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval": 30
   }
 }
 ```

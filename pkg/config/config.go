@@ -49,6 +49,7 @@ type Config struct {
 	Providers ProvidersConfig `json:"providers"`
 	Gateway   GatewayConfig   `json:"gateway"`
 	Tools     ToolsConfig     `json:"tools"`
+	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	mu        sync.RWMutex
 }
 
@@ -131,6 +132,11 @@ type SlackConfig struct {
 	BotToken  string   `json:"bot_token" env:"PICOCLAW_CHANNELS_SLACK_BOT_TOKEN"`
 	AppToken  string   `json:"app_token" env:"PICOCLAW_CHANNELS_SLACK_APP_TOKEN"`
 	AllowFrom []string `json:"allow_from" env:"PICOCLAW_CHANNELS_SLACK_ALLOW_FROM"`
+}
+
+type HeartbeatConfig struct {
+	Enabled  bool `json:"enabled" env:"PICOCLAW_HEARTBEAT_ENABLED"`
+	Interval int  `json:"interval" env:"PICOCLAW_HEARTBEAT_INTERVAL"` // minutes, min 5
 }
 
 type ProvidersConfig struct {
@@ -254,6 +260,10 @@ func DefaultConfig() *Config {
 					MaxResults: 5,
 				},
 			},
+		},
+		Heartbeat: HeartbeatConfig{
+			Enabled:  true,
+			Interval: 30, // default 30 minutes
 		},
 	}
 }

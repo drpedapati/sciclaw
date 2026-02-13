@@ -61,6 +61,7 @@ node_modules/
 
 # Ralph workspace
 ralph/
+.ralph/
 
 # Local upstream clone workspace
 github/
