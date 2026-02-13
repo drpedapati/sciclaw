@@ -251,7 +251,7 @@ func (t *WebSearchTool) Parameters() map[string]interface{} {
 func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
 	query, ok := args["query"].(string)
 	if !ok {
-		return "", fmt.Errorf("query is required")
+		return ErrorResult("query is required")
 	}
 
 	count := t.maxResults
@@ -303,23 +303,23 @@ func (t *WebFetchTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	urlStr, ok := args["url"].(string)
 	if !ok {
-		return "", fmt.Errorf("url is required")
+		return ErrorResult("url is required")
 	}
 
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL: %w", err)
+		return ErrorResult(fmt.Sprintf("invalid URL: %v", err))
 	}
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return "", fmt.Errorf("only http/https URLs are allowed")
+		return ErrorResult("only http/https URLs are allowed")
 	}
 
 	if parsedURL.Host == "" {
-		return "", fmt.Errorf("missing domain in URL")
+		return ErrorResult("missing domain in URL")
 	}
 
 	maxChars := t.maxChars
@@ -331,7 +331,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return ErrorResult(fmt.Sprintf("failed to create request: %v", err))
 	}
 
 	req.Header.Set("User-Agent", userAgent)
@@ -354,13 +354,13 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return ErrorResult(fmt.Sprintf("request failed: %v", err))
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return ErrorResult(fmt.Sprintf("failed to read response: %v", err))
 	}
 
 	contentType := resp.Header.Get("Content-Type")
@@ -401,7 +401,11 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	resultJSON, _ := json.MarshalIndent(result, "", "  ")
-	return string(resultJSON), nil
+
+	return &ToolResult{
+		ForLLM:  fmt.Sprintf("Fetched %d bytes from %s (extractor: %s, truncated: %v)", len(text), urlStr, extractor, truncated),
+		ForUser: string(resultJSON),
+	}
 }
 
 func (t *WebFetchTool) extractText(htmlContent string) string {
