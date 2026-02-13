@@ -34,3 +34,4 @@ coverage.html
 
 # Ralph workspace
 ralph/
+.ralph/

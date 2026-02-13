@@ -654,10 +654,27 @@ func gatewayCmd() {
 
 	heartbeatService := heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
-		nil,
-		30*60,
-		true,
+		cfg.Heartbeat.Interval,
+		cfg.Heartbeat.Enabled,
 	)
+	heartbeatService.SetBus(msgBus)
+	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
+		// Use cli:direct as fallback if no valid channel
+		if channel == "" || chatID == "" {
+			channel, chatID = "cli", "direct"
+		}
+		// Use ProcessHeartbeat - no session history, each heartbeat is independent
+		response, err := agentLoop.ProcessHeartbeat(context.Background(), prompt, channel, chatID)
+		if err != nil {
+			return tools.ErrorResult(fmt.Sprintf("Heartbeat error: %v", err))
+		}
+		if response == "HEARTBEAT_OK" {
+			return tools.SilentResult("Heartbeat OK")
+		}
+		// For heartbeat, always return silent - the subagent result will be
+		// sent to user via processSystemMessage when the async task completes
+		return tools.SilentResult(response)
+	})
 
 	channelManager, err := channels.NewManager(cfg, msgBus)
 	if err != nil {

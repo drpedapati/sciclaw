@@ -68,10 +68,10 @@ func (t *ExecTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	command, ok := args["command"].(string)
 	if !ok {
-		return "", fmt.Errorf("command is required")
+		return ErrorResult("command is required")
 	}
 
 	cwd := t.workingDir
@@ -87,7 +87,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (st
 	}
 
 	if guardError := t.guardCommand(command, cwd); guardError != "" {
-		return fmt.Sprintf("Error: %s", guardError), nil
+		return ErrorResult(guardError)
 	}
 
 	cmdCtx, cancel := context.WithTimeout(ctx, t.timeout)
@@ -115,7 +115,12 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (st
 
 	if err != nil {
 		if cmdCtx.Err() == context.DeadlineExceeded {
-			return fmt.Sprintf("Error: Command timed out after %v", t.timeout), nil
+			msg := fmt.Sprintf("Command timed out after %v", t.timeout)
+			return &ToolResult{
+				ForLLM:  msg,
+				ForUser: msg,
+				IsError: true,
+			}
 		}
 		output += fmt.Sprintf("\nExit code: %v", err)
 	}
@@ -129,7 +134,19 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (st
 		output = output[:maxLen] + fmt.Sprintf("\n... (truncated, %d more chars)", len(output)-maxLen)
 	}
 
-	return output, nil
+	if err != nil {
+		return &ToolResult{
+			ForLLM:  output,
+			ForUser: output,
+			IsError: true,
+		}
+	}
+
+	return &ToolResult{
+		ForLLM:  output,
+		ForUser: output,
+		IsError: false,
+	}
 }
 
 func (t *ExecTool) guardCommand(command, cwd string) string {
