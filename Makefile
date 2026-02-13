@@ -1,9 +1,11 @@
-.PHONY: all build install uninstall clean help test
+.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test
 
 # Build variables
-BINARY_NAME=picoclaw
+PRIMARY_BINARY_NAME=sciclaw
+LEGACY_BINARY_NAME=picoclaw
+BINARY_NAME=$(PRIMARY_BINARY_NAME)
 BUILD_DIR=build
-CMD_DIR=cmd/$(BINARY_NAME)
+CMD_DIR=cmd/$(LEGACY_BINARY_NAME)
 MAIN_GO=$(CMD_DIR)/main.go
 
 # Version
@@ -57,37 +59,48 @@ else
 	ARCH=$(UNAME_M)
 endif
 
-BINARY_PATH=$(BUILD_DIR)/$(BINARY_NAME)-$(PLATFORM)-$(ARCH)
+PRIMARY_BINARY_PATH=$(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-$(PLATFORM)-$(ARCH)
+LEGACY_BINARY_PATH=$(BUILD_DIR)/$(LEGACY_BINARY_NAME)-$(PLATFORM)-$(ARCH)
 
 # Default target
 all: build
 
-## build: Build the picoclaw binary for current platform
+## build: Build the sciclaw binary for current platform and emit picoclaw compatibility aliases
 build:
-	@echo "Building $(BINARY_NAME) for $(PLATFORM)/$(ARCH)..."
+	@echo "Building $(PRIMARY_BINARY_NAME) for $(PLATFORM)/$(ARCH)..."
 	@mkdir -p $(BUILD_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_PATH) ./$(CMD_DIR)
-	@echo "Build complete: $(BINARY_PATH)"
-	@ln -sf $(BINARY_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(BINARY_NAME)
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(PRIMARY_BINARY_PATH) ./$(CMD_DIR)
+	@echo "Build complete: $(PRIMARY_BINARY_PATH)"
+	@ln -sf $(PRIMARY_BINARY_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)
+	@ln -sf $(PRIMARY_BINARY_NAME)-$(PLATFORM)-$(ARCH) $(LEGACY_BINARY_PATH)
+	@ln -sf $(PRIMARY_BINARY_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(LEGACY_BINARY_NAME)
+	@echo "Compatibility alias: $(LEGACY_BINARY_PATH)"
 
-## build-all: Build picoclaw for all platforms
+## build-all: Build sciclaw for all platforms and emit picoclaw compatibility aliases
 build-all:
 	@echo "Building for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
-	GOOS=linux GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
-	GOOS=linux GOARCH=riscv64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-riscv64 ./$(CMD_DIR)
-	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
+	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
+	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-amd64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-amd64
+	GOOS=linux GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
+	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-arm64
+	GOOS=linux GOARCH=riscv64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-riscv64 ./$(CMD_DIR)
+	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-riscv64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-riscv64
+	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
+	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-darwin-arm64
+	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
+	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-windows-amd64.exe $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-windows-amd64.exe
 	@echo "All builds complete"
 
-## install: Install picoclaw to system and copy builtin skills
+## install: Install sciclaw and picoclaw compatibility alias to system and copy builtin skills
 install: build
-	@echo "Installing $(BINARY_NAME)..."
+	@echo "Installing $(PRIMARY_BINARY_NAME) + compatibility alias $(LEGACY_BINARY_NAME)..."
 	@mkdir -p $(INSTALL_BIN_DIR)
-	@cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
-	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)
-	@echo "Installed binary to $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
+	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME) $(INSTALL_BIN_DIR)/$(PRIMARY_BINARY_NAME)
+	@chmod +x $(INSTALL_BIN_DIR)/$(PRIMARY_BINARY_NAME)
+	@ln -sf $(PRIMARY_BINARY_NAME) $(INSTALL_BIN_DIR)/$(LEGACY_BINARY_NAME)
+	@echo "Installed binary to $(INSTALL_BIN_DIR)/$(PRIMARY_BINARY_NAME)"
+	@echo "Installed compatibility alias to $(INSTALL_BIN_DIR)/$(LEGACY_BINARY_NAME)"
 	@echo "Installing builtin skills to $(WORKSPACE_SKILLS_DIR)..."
 	@mkdir -p $(WORKSPACE_SKILLS_DIR)
 	@for skill in $(BUILTIN_SKILLS_DIR)/*/; do \
@@ -117,11 +130,12 @@ install-skills:
 	done
 	@echo "Skills installation complete!"
 
-## uninstall: Remove picoclaw from system
+## uninstall: Remove sciclaw and picoclaw compatibility alias from system
 uninstall:
-	@echo "Uninstalling $(BINARY_NAME)..."
-	@rm -f $(INSTALL_BIN_DIR)/$(BINARY_NAME)
-	@echo "Removed binary from $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
+	@echo "Uninstalling $(PRIMARY_BINARY_NAME) and compatibility alias $(LEGACY_BINARY_NAME)..."
+	@rm -f $(INSTALL_BIN_DIR)/$(PRIMARY_BINARY_NAME)
+	@rm -f $(INSTALL_BIN_DIR)/$(LEGACY_BINARY_NAME)
+	@echo "Removed binaries from $(INSTALL_BIN_DIR)"
 	@echo "Note: Only the executable file has been deleted."
 	@echo "If you need to delete all configurations (config.json, workspace, etc.), run 'make uninstall-all'"
 
@@ -147,13 +161,13 @@ deps:
 	@$(GO) get -u ./...
 	@$(GO) mod tidy
 
-## run: Build and run picoclaw
+## run: Build and run sciclaw (picoclaw-compatible)
 run: build
-	@$(BUILD_DIR)/$(BINARY_NAME) $(ARGS)
+	@$(BUILD_DIR)/$(PRIMARY_BINARY_NAME) $(ARGS)
 
 ## help: Show this help message
 help:
-	@echo "picoclaw Makefile"
+	@echo "sciclaw Makefile (picoclaw-compatible)"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make [target]"
@@ -174,6 +188,7 @@ help:
 	@echo ""
 	@echo "Current Configuration:"
 	@echo "  Platform: $(PLATFORM)/$(ARCH)"
-	@echo "  Binary: $(BINARY_PATH)"
+	@echo "  Primary Binary: $(PRIMARY_BINARY_PATH)"
+	@echo "  Compatibility Binary: $(LEGACY_BINARY_PATH)"
 	@echo "  Install Prefix: $(INSTALL_PREFIX)"
 	@echo "  Workspace: $(WORKSPACE_DIR)"

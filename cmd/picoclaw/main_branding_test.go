@@ -34,18 +34,39 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestPrintVersionUsesDisplayNameAndCliName(t *testing.T) {
 	out := captureStdout(t, printVersion)
 
-	if !strings.Contains(out, "sciClaw (picoclaw)") {
-		t.Fatalf("version output missing sciClaw display + picoclaw compatibility: %q", out)
+	if !strings.Contains(out, "sciClaw (sciclaw; picoclaw-compatible)") {
+		t.Fatalf("version output missing sciClaw dual-command branding: %q", out)
 	}
 }
 
 func TestPrintHelpIncludesCompatibilityCommand(t *testing.T) {
+	origArgs := os.Args
+	os.Args = []string{"sciclaw"}
+	defer func() { os.Args = origArgs }()
+
 	out := captureStdout(t, printHelp)
 
-	if !strings.Contains(out, "CLI compatibility command: picoclaw") {
-		t.Fatalf("help output missing compatibility command note: %q", out)
+	if !strings.Contains(out, "Primary command: sciclaw") {
+		t.Fatalf("help output missing primary command note: %q", out)
+	}
+	if !strings.Contains(out, "Compatibility alias: picoclaw") {
+		t.Fatalf("help output missing compatibility alias note: %q", out)
+	}
+	if !strings.Contains(out, "Usage: sciclaw <command>") {
+		t.Fatalf("help output should default usage to sciclaw: %q", out)
 	}
 	if !strings.Contains(out, "Initialize sciClaw configuration and workspace") {
 		t.Fatalf("help output missing sciClaw onboarding wording: %q", out)
+	}
+}
+
+func TestPrintHelpUsesInvokedCompatibilityAliasWhenCalledAsPicoclaw(t *testing.T) {
+	origArgs := os.Args
+	os.Args = []string{"picoclaw"}
+	defer func() { os.Args = origArgs }()
+
+	out := captureStdout(t, printHelp)
+	if !strings.Contains(out, "Usage: picoclaw <command>") {
+		t.Fatalf("help output should use invoked picoclaw command name: %q", out)
 	}
 }

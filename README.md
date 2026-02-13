@@ -15,13 +15,14 @@ This project keeps PicoClaw's lightweight runtime and upstream compatibility, bu
 | Workspace defaults | Generic assistant templates | Scientific templates: `AGENTS.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `USER.md`, structured `memory/MEMORY.md`, plus `sessions/` and `cron/` |
 | Runtime system prompt | Generic assistant identity and tool rules | sciClaw identity with reproducibility, evidence, and uncertainty rules; `TOOLS.md` included in bootstrap context |
 | Migration behavior | Migrates baseline workspace files/dirs | Extended migration for `IDENTITY.md`, `sessions/`, `cron/` with test coverage |
-| CLI brand surface | PicoClaw naming only | User-facing sciClaw branding (including `🔬` CLI icon) while preserving `picoclaw` command compatibility |
+| CLI brand surface | PicoClaw naming only | User-facing sciClaw branding (including `🔬` CLI icon) with `sciclaw` as primary command and `picoclaw` compatibility alias |
 | Research traceability | Optional | Required loop artifacts: build/tests, plan/activity logs, manuscript updates, and rendered outputs |
 | Manuscript workflow | Not central | First-class Quarto manuscript pipeline (`manuscript/*.qmd`) updated and rendered each loop |
 
 ### What We Keep Compatible
 
-- Command compatibility: keep using `picoclaw` CLI command.
+- Primary command: use `sciclaw` by default.
+- Command compatibility: `picoclaw` remains a fully supported alias.
 - Upstream sync model: regular merges from `upstream/main` with low-conflict, surgical changes.
 - Core performance goals: lightweight Go runtime footprint and broad deployment portability.
 
@@ -220,7 +221,7 @@ docker compose --profile gateway up -d
 **1. Initialize**
 
 ```bash
-picoclaw onboard
+sciclaw onboard
 ```
 
 **2. Configure** (`~/.picoclaw/config.json`)
@@ -263,10 +264,12 @@ picoclaw onboard
 **4. Chat**
 
 ```bash
-picoclaw agent -m "What is 2+2?"
+sciclaw agent -m "What is 2+2?"
 ```
 
 That's it! You have a working AI assistant in 2 minutes.
+
+Compatibility note: `picoclaw` remains a fully supported alias for all commands above.
 
 ---
 
@@ -583,7 +586,7 @@ The subagent has access to tools (message, web_search, etc.) and can communicate
 **3. Run**
 
 ```bash
-picoclaw agent -m "Hello"
+sciclaw agent -m "Hello"
 ```
 
 </details>
@@ -655,13 +658,15 @@ picoclaw agent -m "Hello"
 
 | Command | Description |
 |---------|-------------|
-| `picoclaw onboard` | Initialize config & workspace |
-| `picoclaw agent -m "..."` | Chat with the agent |
-| `picoclaw agent` | Interactive chat mode |
-| `picoclaw gateway` | Start the gateway |
-| `picoclaw status` | Show status |
-| `picoclaw cron list` | List all scheduled jobs |
-| `picoclaw cron add ...` | Add a scheduled job |
+| `sciclaw onboard` | Initialize config & workspace |
+| `sciclaw agent -m "..."` | Chat with the agent |
+| `sciclaw agent` | Interactive chat mode |
+| `sciclaw gateway` | Start the gateway |
+| `sciclaw status` | Show status |
+| `sciclaw cron list` | List all scheduled jobs |
+| `sciclaw cron add ...` | Add a scheduled job |
+
+`picoclaw ...` command forms remain available as compatibility aliases.
 
 ### Scheduled Tasks / Reminders
 
@@ -711,7 +716,7 @@ Some providers (like Zhipu) have content filtering. Try rephrasing your query or
 
 ### Telegram bot says "Conflict: terminated by other getUpdates"
 
-This happens when another instance of the bot is running. Make sure only one `picoclaw gateway` is running at a time.
+This happens when another instance of the bot is running. Make sure only one `sciclaw gateway` (or `picoclaw gateway`) is running at a time.
 
 ---
 

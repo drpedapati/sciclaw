@@ -43,9 +43,24 @@ var (
 const logo = "🔬"
 const displayName = "sciClaw"
 const cliName = "picoclaw"
+const primaryCLIName = "sciclaw"
+
+func invokedCLIName() string {
+	if len(os.Args) == 0 {
+		return primaryCLIName
+	}
+	base := strings.ToLower(filepath.Base(os.Args[0]))
+	if strings.HasPrefix(base, primaryCLIName) {
+		return primaryCLIName
+	}
+	if strings.HasPrefix(base, cliName) {
+		return cliName
+	}
+	return primaryCLIName
+}
 
 func printVersion() {
-	fmt.Printf("%s %s (%s) v%s\n", logo, displayName, cliName, version)
+	fmt.Printf("%s %s (%s; %s-compatible) v%s\n", logo, displayName, primaryCLIName, cliName, version)
 	if buildTime != "" {
 		fmt.Printf("  Build: %s\n", buildTime)
 	}
@@ -144,7 +159,7 @@ func main() {
 			skillsInstallCmd(installer)
 		case "remove", "uninstall":
 			if len(os.Args) < 4 {
-				fmt.Printf("Usage: %s skills remove <skill-name>\n", cliName)
+				fmt.Printf("Usage: %s skills remove <skill-name>\n", invokedCLIName())
 				return
 			}
 			skillsRemoveCmd(installer, os.Args[3])
@@ -156,7 +171,7 @@ func main() {
 			skillsSearchCmd(installer)
 		case "show":
 			if len(os.Args) < 4 {
-				fmt.Printf("Usage: %s skills show <skill-name>\n", cliName)
+				fmt.Printf("Usage: %s skills show <skill-name>\n", invokedCLIName())
 				return
 			}
 			skillsShowCmd(skillsLoader, os.Args[3])
@@ -174,9 +189,11 @@ func main() {
 }
 
 func printHelp() {
+	commandName := invokedCLIName()
 	fmt.Printf("%s %s - Paired Scientist Assistant v%s\n\n", logo, displayName, version)
-	fmt.Printf("CLI compatibility command: %s\n\n", cliName)
-	fmt.Printf("Usage: %s <command>\n", cliName)
+	fmt.Printf("Primary command: %s\n", primaryCLIName)
+	fmt.Printf("Compatibility alias: %s\n\n", cliName)
+	fmt.Printf("Usage: %s <command>\n", commandName)
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  onboard     Initialize sciClaw configuration and workspace")
@@ -221,7 +238,7 @@ func onboard() {
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add your API key to", configPath)
 	fmt.Println("     Get one at: https://openrouter.ai/keys")
-	fmt.Printf("  2. Chat: %s agent -m \"Hello!\"\n", cliName)
+	fmt.Printf("  2. Chat: %s agent -m \"Hello!\"\n", invokedCLIName())
 }
 
 func createWorkspaceTemplates(workspace string) {
@@ -442,9 +459,10 @@ func migrateCmd() {
 }
 
 func migrateHelp() {
+	commandName := invokedCLIName()
 	fmt.Println("\nMigrate from OpenClaw to sciClaw (PicoClaw-compatible)")
 	fmt.Println()
-	fmt.Printf("Usage: %s migrate [options]\n", cliName)
+	fmt.Printf("Usage: %s migrate [options]\n", commandName)
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --dry-run          Show what would be migrated without making changes")
@@ -456,10 +474,10 @@ func migrateHelp() {
 	fmt.Println("  --picoclaw-home    Override PicoClaw home directory (default: ~/.picoclaw)")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Printf("  %s migrate              Detect and migrate from OpenClaw\n", cliName)
-	fmt.Printf("  %s migrate --dry-run    Show what would be migrated\n", cliName)
-	fmt.Printf("  %s migrate --refresh    Re-sync workspace files\n", cliName)
-	fmt.Printf("  %s migrate --force      Migrate without confirmation\n", cliName)
+	fmt.Printf("  %s migrate              Detect and migrate from OpenClaw\n", commandName)
+	fmt.Printf("  %s migrate --dry-run    Show what would be migrated\n", commandName)
+	fmt.Printf("  %s migrate --refresh    Re-sync workspace files\n", commandName)
+	fmt.Printf("  %s migrate --force      Migrate without confirmation\n", commandName)
 }
 
 func agentCmd() {
@@ -764,7 +782,7 @@ func statusCmd() {
 
 	configPath := getConfigPath()
 
-	fmt.Printf("%s %s Status (%s CLI)\n\n", logo, displayName, cliName)
+	fmt.Printf("%s %s Status (%s CLI)\n\n", logo, displayName, invokedCLIName())
 
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Println("Config:", configPath, "✓")
@@ -844,6 +862,7 @@ func authCmd() {
 }
 
 func authHelp() {
+	commandName := invokedCLIName()
 	fmt.Println("\nAuth commands:")
 	fmt.Println("  login       Login via OAuth or paste token")
 	fmt.Println("  logout      Remove stored credentials")
@@ -854,12 +873,12 @@ func authHelp() {
 	fmt.Println("  --device-code        Use device code flow (for headless environments)")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Printf("  (Use %s command name for CLI compatibility)\n", cliName)
-	fmt.Printf("  %s auth login --provider openai\n", cliName)
-	fmt.Printf("  %s auth login --provider openai --device-code\n", cliName)
-	fmt.Printf("  %s auth login --provider anthropic\n", cliName)
-	fmt.Printf("  %s auth logout --provider openai\n", cliName)
-	fmt.Printf("  %s auth status\n", cliName)
+	fmt.Printf("  %s auth login --provider openai\n", commandName)
+	fmt.Printf("  %s auth login --provider openai --device-code\n", commandName)
+	fmt.Printf("  %s auth login --provider anthropic\n", commandName)
+	fmt.Printf("  %s auth logout --provider openai\n", commandName)
+	fmt.Printf("  %s auth status\n", commandName)
+	fmt.Printf("  (Compatibility alias also works: %s)\n", cliName)
 }
 
 func authLoginCmd() {
@@ -1018,7 +1037,7 @@ func authStatusCmd() {
 
 	if len(store.Credentials) == 0 {
 		fmt.Println("No authenticated providers.")
-		fmt.Printf("Run: %s auth login --provider <name>\n", cliName)
+		fmt.Printf("Run: %s auth login --provider <name>\n", invokedCLIName())
 		return
 	}
 
@@ -1096,7 +1115,7 @@ func cronCmd() {
 		cronAddCmd(cronStorePath)
 	case "remove":
 		if len(os.Args) < 4 {
-			fmt.Printf("Usage: %s cron remove <job_id>\n", cliName)
+			fmt.Printf("Usage: %s cron remove <job_id>\n", invokedCLIName())
 			return
 		}
 		cronRemoveCmd(cronStorePath, os.Args[3])
@@ -1266,7 +1285,7 @@ func cronRemoveCmd(storePath, jobID string) {
 
 func cronEnableCmd(storePath string, disable bool) {
 	if len(os.Args) < 4 {
-		fmt.Printf("Usage: %s cron enable/disable <job_id>\n", cliName)
+		fmt.Printf("Usage: %s cron enable/disable <job_id>\n", invokedCLIName())
 		return
 	}
 
@@ -1315,7 +1334,7 @@ func skillsCmd() {
 		skillsInstallCmd(installer)
 	case "remove", "uninstall":
 		if len(os.Args) < 4 {
-			fmt.Printf("Usage: %s skills remove <skill-name>\n", cliName)
+			fmt.Printf("Usage: %s skills remove <skill-name>\n", invokedCLIName())
 			return
 		}
 		skillsRemoveCmd(installer, os.Args[3])
@@ -1323,7 +1342,7 @@ func skillsCmd() {
 		skillsSearchCmd(installer)
 	case "show":
 		if len(os.Args) < 4 {
-			fmt.Printf("Usage: %s skills show <skill-name>\n", cliName)
+			fmt.Printf("Usage: %s skills show <skill-name>\n", invokedCLIName())
 			return
 		}
 		skillsShowCmd(skillsLoader, os.Args[3])
@@ -1334,6 +1353,7 @@ func skillsCmd() {
 }
 
 func skillsHelp() {
+	commandName := invokedCLIName()
 	fmt.Println("\nSkills commands:")
 	fmt.Println("  list                    List installed skills")
 	fmt.Println("  install <repo>          Install skill from GitHub")
@@ -1344,11 +1364,12 @@ func skillsHelp() {
 	fmt.Println("  show <name>             Show skill details")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Printf("  %s skills list\n", cliName)
-	fmt.Printf("  %s skills install sipeed/picoclaw-skills/weather\n", cliName)
-	fmt.Printf("  %s skills install-builtin\n", cliName)
-	fmt.Printf("  %s skills list-builtin\n", cliName)
-	fmt.Printf("  %s skills remove weather\n", cliName)
+	fmt.Printf("  %s skills list\n", commandName)
+	fmt.Printf("  %s skills install sipeed/picoclaw-skills/weather\n", commandName)
+	fmt.Printf("  %s skills install-builtin\n", commandName)
+	fmt.Printf("  %s skills list-builtin\n", commandName)
+	fmt.Printf("  %s skills remove weather\n", commandName)
+	fmt.Printf("  (Compatibility alias also works: %s)\n", cliName)
 }
 
 func skillsListCmd(loader *skills.SkillsLoader) {
@@ -1371,8 +1392,9 @@ func skillsListCmd(loader *skills.SkillsLoader) {
 
 func skillsInstallCmd(installer *skills.SkillInstaller) {
 	if len(os.Args) < 4 {
-		fmt.Printf("Usage: %s skills install <github-repo>\n", cliName)
-		fmt.Printf("Example: %s skills install sipeed/picoclaw-skills/weather\n", cliName)
+		commandName := invokedCLIName()
+		fmt.Printf("Usage: %s skills install <github-repo>\n", commandName)
+		fmt.Printf("Example: %s skills install sipeed/picoclaw-skills/weather\n", commandName)
 		return
 	}
 
