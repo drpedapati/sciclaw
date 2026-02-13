@@ -34,6 +34,8 @@ The repository now includes a baseline scientific skill set under `skills/`:
 - `skills/biorxiv-database/` for preprint surveillance (bioRxiv/medRxiv).
 - `skills/quarto-authoring/` for loop-driven `.qmd` authoring and rendering.
 - `skills/beautiful-mermaid/` for publication-grade Mermaid diagram workflows.
+- `skills/experiment-provenance/` for reproducible experiment evidence capture.
+- `skills/benchmark-logging/` for baseline-vs-sciClaw benchmark records with acceptance checks.
 
 ### Why This Matters for Scientific Teams
 
