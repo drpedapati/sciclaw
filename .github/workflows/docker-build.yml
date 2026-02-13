@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/picoclaw
+  IMAGE_NAME: ${{ github.repository_owner }}/sciclaw
 
 jobs:
   build:

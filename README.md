@@ -151,14 +151,25 @@ PicoClaw can be deployed on almost any Linux device!
 
 ### Install with precompiled binary
 
-Download the firmware for your platform from the [release](https://github.com/sipeed/picoclaw/releases) page.
+Download binaries for your platform from the [release](https://github.com/drpedapati/sciclaw/releases) page.
+
+### Install with Homebrew (stable releases)
+
+```bash
+brew tap drpedapati/sciclaw
+brew install sciclaw
+```
+
+This installs `sciclaw` as the primary command and `picoclaw` as a compatibility alias.
+
+Maintainer note: stable release workflow (`.github/workflows/release.yml`) auto-updates `drpedapati/homebrew-sciclaw` when `HOMEBREW_TAP_TOKEN` is configured.
 
 ### Install from source (latest features, recommended for development)
 
 ```bash
-git clone https://github.com/sipeed/picoclaw.git
+git clone https://github.com/drpedapati/sciclaw.git
 
-cd picoclaw
+cd sciclaw
 make deps
 
 # Build, no need to install
@@ -173,12 +184,12 @@ make install
 
 ## 🐳 Docker Compose
 
-You can also run PicoClaw using Docker Compose without installing anything locally.
+You can also run sciClaw using Docker Compose without installing anything locally.
 
 ```bash
 # 1. Clone this repo
-git clone https://github.com/sipeed/picoclaw.git
-cd picoclaw
+git clone https://github.com/drpedapati/sciclaw.git
+cd sciclaw
 
 # 2. Set your API keys
 cp config/config.example.json config/config.json
@@ -188,7 +199,7 @@ vim config/config.json      # Set DISCORD_BOT_TOKEN, API keys, etc.
 docker compose --profile gateway up -d
 
 # 4. Check logs
-docker compose logs -f picoclaw-gateway
+docker compose logs -f sciclaw-gateway
 
 # 5. Stop
 docker compose --profile gateway down
@@ -198,10 +209,10 @@ docker compose --profile gateway down
 
 ```bash
 # Ask a question
-docker compose run --rm picoclaw-agent -m "What is 2+2?"
+docker compose run --rm sciclaw-agent -m "What is 2+2?"
 
 # Interactive mode
-docker compose run --rm picoclaw-agent
+docker compose run --rm sciclaw-agent
 ```
 
 ### Rebuild
@@ -275,7 +286,7 @@ Compatibility note: `picoclaw` remains a fully supported alias for all commands 
 
 ## 💬 Chat Apps
 
-Talk to your picoclaw through Telegram, Discord, or DingTalk
+Talk to your sciClaw through Telegram, Discord, or DingTalk
 
 | Channel | Setup |
 |---------|-------|
@@ -312,7 +323,7 @@ Talk to your picoclaw through Telegram, Discord, or DingTalk
 **3. Run**
 
 ```bash
-picoclaw gateway
+sciclaw gateway
 ```
 
 </details>
@@ -360,7 +371,7 @@ picoclaw gateway
 **6. Run**
 
 ```bash
-picoclaw gateway
+sciclaw gateway
 ```
 
 </details>
@@ -393,7 +404,7 @@ picoclaw gateway
 **3. Run**
 
 ```bash
-picoclaw gateway
+sciclaw gateway
 ```
 
 </details>
@@ -427,7 +438,7 @@ picoclaw gateway
 **3. Run**
 
 ```bash
-picoclaw gateway
+sciclaw gateway
 ```
 
 </details>

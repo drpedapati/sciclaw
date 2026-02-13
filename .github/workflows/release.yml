@@ -18,6 +18,10 @@ on:
         type: boolean
         default: false
 
+env:
+  TAP_REPO: drpedapati/homebrew-sciclaw
+  FORMULA_RELATIVE_PATH: Formula/sciclaw.rb
+
 jobs:
   create-tag:
     name: Create Git Tag
@@ -59,13 +63,14 @@ jobs:
       - name: Generate checksums
         shell: bash
         run: |
-          shasum -a 256 build/picoclaw-* > build/sha256sums.txt
+          shasum -a 256 build/sciclaw-* build/picoclaw-* > build/sha256sums.txt
 
       - name: Upload release binaries artifact
         uses: actions/upload-artifact@v4
         with:
-          name: picoclaw-binaries
+          name: sciclaw-binaries
           path: |
+            build/sciclaw-*
             build/picoclaw-*
             build/sha256sums.txt
           if-no-files-found: error
@@ -97,3 +102,75 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew-tap:
+    name: Update Homebrew Tap Formula
+    needs: [create-tag, build-binaries, create-release]
+    if: ${{ !inputs.prerelease && !inputs.draft && secrets.HOMEBREW_TAP_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Compute source archive checksum
+        id: source
+        shell: bash
+        run: |
+          tag="${{ inputs.tag }}"
+          source_url="https://github.com/${{ github.repository }}/archive/refs/tags/${tag}.tar.gz"
+          curl -fsSL -o source.tar.gz "${source_url}"
+          source_sha256="$(shasum -a 256 source.tar.gz | awk '{print $1}')"
+          echo "url=${source_url}" >> "${GITHUB_OUTPUT}"
+          echo "sha256=${source_sha256}" >> "${GITHUB_OUTPUT}"
+          echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Render formula
+        shell: bash
+        run: |
+          url="${{ steps.source.outputs.url }}"
+          sha256="${{ steps.source.outputs.sha256 }}"
+          version="${{ steps.source.outputs.version }}"
+          mkdir -p "tap/Formula"
+          cat > "tap/${{ env.FORMULA_RELATIVE_PATH }}" <<EOF
+          class Sciclaw < Formula
+            desc "Autonomous paired scientist CLI forked from PicoClaw"
+            homepage "https://github.com/drpedapati/sciclaw"
+            url "${url}"
+            sha256 "${sha256}"
+            license "MIT"
+            version "${version}"
+
+            depends_on "go" => :build
+
+            def install
+              system "go", "build", *std_go_args(output: bin/"sciclaw"), "./cmd/picoclaw"
+              (bin/"picoclaw").make_symlink bin/"sciclaw"
+              pkgshare.install "skills"
+            end
+
+            test do
+              assert_match "Usage:", shell_output("#{bin}/sciclaw --help")
+              assert_match "Usage:", shell_output("#{bin}/picoclaw --help")
+            end
+          end
+          EOF
+
+      - name: Commit and push formula
+        shell: bash
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ env.FORMULA_RELATIVE_PATH }}"
+          if git diff --cached --quiet; then
+            echo "No Homebrew formula changes to commit."
+            exit 0
+          fi
+          git commit -m "sciclaw ${{ inputs.tag }}"
+          git push origin HEAD

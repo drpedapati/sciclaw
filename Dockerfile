@@ -1,5 +1,5 @@
 # ============================================================
-# Stage 1: Build the picoclaw binary
+# Stage 1: Build the sciclaw binary
 # ============================================================
 FROM golang:1.25-alpine AS builder
 
@@ -23,14 +23,15 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
 
 # Copy binary
-COPY --from=builder /src/build/picoclaw /usr/local/bin/picoclaw
+COPY --from=builder /src/build/sciclaw /usr/local/bin/sciclaw
+RUN ln -sf sciclaw /usr/local/bin/picoclaw
 
 # Copy builtin skills
-COPY --from=builder /src/skills /opt/picoclaw/skills
+COPY --from=builder /src/skills /opt/sciclaw/skills
 
-# Create picoclaw home directory
+# Create picoclaw-compatible home directory
 RUN mkdir -p /root/.picoclaw/workspace/skills && \
-    cp -r /opt/picoclaw/skills/* /root/.picoclaw/workspace/skills/ 2>/dev/null || true
+    cp -r /opt/sciclaw/skills/* /root/.picoclaw/workspace/skills/ 2>/dev/null || true
 
-ENTRYPOINT ["picoclaw"]
+ENTRYPOINT ["sciclaw"]
 CMD ["gateway"]
