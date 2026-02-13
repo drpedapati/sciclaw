@@ -25,6 +25,16 @@ This project keeps PicoClaw's lightweight runtime and upstream compatibility, bu
 - Upstream sync model: regular merges from `upstream/main` with low-conflict, surgical changes.
 - Core performance goals: lightweight Go runtime footprint and broad deployment portability.
 
+### Research Skills Added in sciClaw
+
+The repository now includes a baseline scientific skill set under `skills/`:
+
+- `skills/scientific-writing/` for manuscript drafting with claim-evidence discipline.
+- `skills/pubmed-database/` for reproducible PubMed retrieval workflows.
+- `skills/biorxiv-database/` for preprint surveillance (bioRxiv/medRxiv).
+- `skills/quarto-authoring/` for loop-driven `.qmd` authoring and rendering.
+- `skills/beautiful-mermaid/` for publication-grade Mermaid diagram workflows.
+
 ### Why This Matters for Scientific Teams
 
 - Better reproducibility: each loop ties code changes to logs and manuscript updates.
