@@ -63,8 +63,15 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	toolsRegistry.Register(tools.NewListDirTool(workspace, restrict))
 	toolsRegistry.Register(tools.NewExecTool(workspace, restrict))
 
-	braveAPIKey := cfg.Tools.Web.Search.APIKey
-	toolsRegistry.Register(tools.NewWebSearchTool(braveAPIKey, cfg.Tools.Web.Search.MaxResults))
+	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
+		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
+		BraveMaxResults:      cfg.Tools.Web.Brave.MaxResults,
+		BraveEnabled:         cfg.Tools.Web.Brave.Enabled,
+		DuckDuckGoMaxResults: cfg.Tools.Web.DuckDuckGo.MaxResults,
+		DuckDuckGoEnabled:    cfg.Tools.Web.DuckDuckGo.Enabled,
+	}); searchTool != nil {
+		toolsRegistry.Register(searchTool)
+	}
 	toolsRegistry.Register(tools.NewWebFetchTool(50000))
 
 	// Register message tool

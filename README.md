@@ -194,8 +194,13 @@ picoclaw onboard
   },
   "tools": {
     "web": {
-      "search": {
+      "brave": {
+        "enabled": false,
         "api_key": "YOUR_BRAVE_API_KEY",
+        "max_results": 5
+      },
+      "duckduckgo": {
+        "enabled": true,
         "max_results": 5
       }
     }
@@ -507,8 +512,14 @@ picoclaw agent -m "Hello"
   },
   "tools": {
     "web": {
-      "search": {
-        "api_key": "BSA..."
+      "brave": {
+        "enabled": false,
+        "api_key": "BSA...",
+        "max_results": 5
+      },
+      "duckduckgo": {
+        "enabled": true,
+        "max_results": 5
       }
     }
   }
@@ -564,8 +575,13 @@ Add the key to `~/.picoclaw/config.json` if using Brave:
 {
   "tools": {
     "web": {
-      "search": {
+      "brave": {
+        "enabled": false,
         "api_key": "YOUR_BRAVE_API_KEY",
+        "max_results": 5
+      },
+      "duckduckgo": {
+        "enabled": true,
         "max_results": 5
       }
     }

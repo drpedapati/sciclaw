@@ -188,16 +188,31 @@ type WebSearchTool struct {
 	maxResults int
 }
 
-func NewWebSearchTool(apiKey string, maxResults int) *WebSearchTool {
-	if maxResults <= 0 || maxResults > 10 {
-		maxResults = 5
-	}
+type WebSearchToolOptions struct {
+	BraveAPIKey          string
+	BraveMaxResults      int
+	BraveEnabled         bool
+	DuckDuckGoMaxResults int
+	DuckDuckGoEnabled    bool
+}
 
+func NewWebSearchTool(opts WebSearchToolOptions) *WebSearchTool {
 	var provider SearchProvider
-	if apiKey != "" {
-		provider = &BraveSearchProvider{apiKey: apiKey}
-	} else {
+	maxResults := 5
+
+	// Priority: Brave > DuckDuckGo
+	if opts.BraveEnabled && opts.BraveAPIKey != "" {
+		provider = &BraveSearchProvider{apiKey: opts.BraveAPIKey}
+		if opts.BraveMaxResults > 0 {
+			maxResults = opts.BraveMaxResults
+		}
+	} else if opts.DuckDuckGoEnabled {
 		provider = &DuckDuckGoSearchProvider{}
+		if opts.DuckDuckGoMaxResults > 0 {
+			maxResults = opts.DuckDuckGoMaxResults
+		}
+	} else {
+		return nil
 	}
 
 	return &WebSearchTool{
