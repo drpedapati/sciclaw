@@ -165,6 +165,7 @@ This installs `sciclaw` as the primary command and `picoclaw` as a compatibility
 Maintainer note: stable release workflow (`.github/workflows/release.yml`) auto-updates `drpedapati/homebrew-sciclaw` when `HOMEBREW_TAP_TOKEN` is configured.
 
 Workspace bootstrap templates are versioned at `pkg/workspacetpl/templates/workspace/` and also installed to `~/.picoclaw/templates/workspace/` for transparent review/customization.
+During `sciclaw onboard`, baseline scientific skills are verified and missing defaults are installed into `~/.picoclaw/workspace/skills/` when bundled skill sources are available.
 
 ### Install from source (latest features, recommended for development)
 

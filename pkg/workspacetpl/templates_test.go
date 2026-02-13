@@ -53,6 +53,12 @@ func TestTemplateContentBranding(t *testing.T) {
 	if !strings.Contains(byPath["AGENTS.md"], "You are sciClaw") {
 		t.Fatalf("AGENTS.md missing sciClaw identity")
 	}
+	if !strings.Contains(byPath["AGENTS.md"], "Baseline Scientific Skills") {
+		t.Fatalf("AGENTS.md missing baseline skill manifest")
+	}
+	if !strings.Contains(byPath["TOOLS.md"], "Baseline Skill Policy") {
+		t.Fatalf("TOOLS.md missing baseline skill policy")
+	}
 	if !strings.Contains(byPath["SOUL.md"], "I am sciClaw") {
 		t.Fatalf("SOUL.md missing sciClaw identity")
 	}

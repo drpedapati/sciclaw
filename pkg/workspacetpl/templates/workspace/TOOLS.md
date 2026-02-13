@@ -21,3 +21,8 @@ Use tools as part of a scientific workflow, not ad-hoc actions.
 
 - Link major outputs to file paths and commands.
 - Update plan/activity logs for all materially relevant tool use.
+
+## Baseline Skill Policy
+
+- Keep baseline scientific skills installed and available in `workspace/skills/`.
+- Prefer using these skills before ad-hoc prompt-only behavior for literature, provenance, benchmarking, and manuscript operations.

@@ -46,6 +46,9 @@ func TestCreateWorkspaceTemplatesCreatesExpectedStructure(t *testing.T) {
 	if !strings.Contains(string(agentsContent), "paired-scientist") {
 		t.Fatalf("AGENTS.md missing paired-scientist guidance")
 	}
+	if !strings.Contains(string(agentsContent), "Baseline Scientific Skills") {
+		t.Fatalf("AGENTS.md missing baseline skill manifest")
+	}
 }
 
 func TestCreateWorkspaceTemplatesDoesNotOverwriteExistingFiles(t *testing.T) {
@@ -82,5 +85,64 @@ func TestCreateWorkspaceTemplatesDoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if string(gotMemory) != customMemory {
 		t.Fatalf("MEMORY.md was overwritten unexpectedly")
+	}
+}
+
+func TestEnsureBaselineScienceSkillsFromSourcesInstallsMissingSkills(t *testing.T) {
+	workspace := t.TempDir()
+	sourceRoot := t.TempDir()
+
+	for _, skillName := range baselineScienceSkillNames {
+		skillDir := filepath.Join(sourceRoot, skillName)
+		if err := os.MkdirAll(skillDir, 0755); err != nil {
+			t.Fatalf("create source skill dir %s: %v", skillName, err)
+		}
+		content := "# " + skillName + "\n"
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0644); err != nil {
+			t.Fatalf("write source SKILL.md for %s: %v", skillName, err)
+		}
+	}
+
+	ensureBaselineScienceSkillsFromSources(workspace, []string{sourceRoot})
+
+	for _, skillName := range baselineScienceSkillNames {
+		installedSkill := filepath.Join(workspace, "skills", skillName, "SKILL.md")
+		if _, err := os.Stat(installedSkill); err != nil {
+			t.Fatalf("expected baseline skill %s to be installed: %v", skillName, err)
+		}
+	}
+}
+
+func TestEnsureBaselineScienceSkillsFromSourcesDoesNotOverwriteExistingSkill(t *testing.T) {
+	workspace := t.TempDir()
+	sourceRoot := t.TempDir()
+
+	skillName := baselineScienceSkillNames[0]
+	sourceSkillDir := filepath.Join(sourceRoot, skillName)
+	if err := os.MkdirAll(sourceSkillDir, 0755); err != nil {
+		t.Fatalf("create source skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceSkillDir, "SKILL.md"), []byte("# Source Skill\n"), 0644); err != nil {
+		t.Fatalf("write source SKILL.md: %v", err)
+	}
+
+	existingSkillDir := filepath.Join(workspace, "skills", skillName)
+	if err := os.MkdirAll(existingSkillDir, 0755); err != nil {
+		t.Fatalf("create existing workspace skill dir: %v", err)
+	}
+	custom := "# Custom Skill\n"
+	existingSkillFile := filepath.Join(existingSkillDir, "SKILL.md")
+	if err := os.WriteFile(existingSkillFile, []byte(custom), 0644); err != nil {
+		t.Fatalf("write existing SKILL.md: %v", err)
+	}
+
+	ensureBaselineScienceSkillsFromSources(workspace, []string{sourceRoot})
+
+	got, err := os.ReadFile(existingSkillFile)
+	if err != nil {
+		t.Fatalf("read existing SKILL.md: %v", err)
+	}
+	if string(got) != custom {
+		t.Fatalf("existing baseline skill was overwritten unexpectedly")
 	}
 }

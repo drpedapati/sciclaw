@@ -46,6 +46,17 @@ const displayName = "sciClaw"
 const cliName = "picoclaw"
 const primaryCLIName = "sciclaw"
 
+var baselineScienceSkillNames = []string{
+	"scientific-writing",
+	"pubmed-database",
+	"biorxiv-database",
+	"quarto-authoring",
+	"beautiful-mermaid",
+	"experiment-provenance",
+	"benchmark-logging",
+	"humanize-text",
+}
+
 func invokedCLIName() string {
 	if len(os.Args) == 0 {
 		return primaryCLIName
@@ -263,6 +274,8 @@ func createWorkspaceTemplates(workspace string) {
 			fmt.Sprintf("  Created %s\n", tpl.RelativePath),
 		)
 	}
+
+	ensureBaselineScienceSkills(workspace)
 }
 
 func writeFileIfMissing(path, content, successMsg string) {
@@ -274,6 +287,87 @@ func writeFileIfMissing(path, content, successMsg string) {
 		return
 	}
 	fmt.Print(successMsg)
+}
+
+func ensureBaselineScienceSkills(workspace string) {
+	ensureBaselineScienceSkillsFromSources(workspace, baselineSkillSourceDirs(workspace))
+}
+
+func ensureBaselineScienceSkillsFromSources(workspace string, sourceRoots []string) {
+	workspaceSkillsDir := filepath.Join(workspace, "skills")
+	if err := os.MkdirAll(workspaceSkillsDir, 0755); err != nil {
+		fmt.Printf("  Failed to create workspace skills dir: %v\n", err)
+		return
+	}
+
+	var missing []string
+	for _, skillName := range baselineScienceSkillNames {
+		dstDir := filepath.Join(workspaceSkillsDir, skillName)
+		dstSkillFile := filepath.Join(dstDir, "SKILL.md")
+		if _, err := os.Stat(dstSkillFile); err == nil {
+			continue
+		}
+
+		srcDir, found := findBaselineSkillSource(skillName, sourceRoots)
+		if !found {
+			missing = append(missing, skillName)
+			continue
+		}
+
+		if err := copyDirectory(srcDir, dstDir); err != nil {
+			fmt.Printf("  Failed to install baseline skill %s: %v\n", skillName, err)
+			continue
+		}
+		fmt.Printf("  Installed baseline skill: %s\n", skillName)
+	}
+
+	if len(missing) > 0 {
+		fmt.Printf("  Baseline skill sources unavailable (skipped): %s\n", strings.Join(missing, ", "))
+	}
+}
+
+func findBaselineSkillSource(skillName string, sourceRoots []string) (string, bool) {
+	for _, root := range sourceRoots {
+		skillDir := filepath.Join(root, skillName)
+		skillFile := filepath.Join(skillDir, "SKILL.md")
+		if info, err := os.Stat(skillFile); err == nil && !info.IsDir() {
+			return skillDir, true
+		}
+	}
+	return "", false
+}
+
+func baselineSkillSourceDirs(workspace string) []string {
+	candidates := []string{}
+
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(wd, "skills"))
+	}
+
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates = append(candidates,
+			filepath.Clean(filepath.Join(exeDir, "..", "share", "sciclaw", "skills")),
+			filepath.Clean(filepath.Join(exeDir, "..", "share", "picoclaw", "skills")),
+		)
+	}
+
+	// User-local fallback, e.g. ~/.picoclaw/skills
+	candidates = append(candidates, filepath.Join(filepath.Dir(workspace), "skills"))
+
+	dirs := []string{}
+	seen := map[string]struct{}{}
+	for _, dir := range candidates {
+		cleaned := filepath.Clean(dir)
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		if info, err := os.Stat(cleaned); err == nil && info.IsDir() {
+			dirs = append(dirs, cleaned)
+		}
+	}
+	return dirs
 }
 
 func migrateCmd() {
