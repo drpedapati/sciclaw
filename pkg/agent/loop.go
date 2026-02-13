@@ -368,7 +368,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	// 6. Save final assistant message to session
 	al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
-	al.sessions.Save(al.sessions.GetOrCreate(opts.SessionKey))
+	al.sessions.Save(opts.SessionKey)
 
 	// 7. Optional: summarization
 	if opts.EnableSummary {
@@ -732,7 +732,7 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 	if finalSummary != "" {
 		al.sessions.SetSummary(sessionKey, finalSummary)
 		al.sessions.TruncateHistory(sessionKey, 4)
-		al.sessions.Save(al.sessions.GetOrCreate(sessionKey))
+		al.sessions.Save(sessionKey)
 	}
 }
 
