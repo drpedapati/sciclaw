@@ -6,25 +6,26 @@ package channels
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
 // DingTalkChannel implements the Channel interface for DingTalk (钉钉)
 // It uses WebSocket for receiving messages via stream mode and API for sending
 type DingTalkChannel struct {
 	*BaseChannel
-	config         config.DingTalkConfig
-	clientID       string
-	clientSecret   string
-	streamClient   *client.StreamClient
-	ctx            context.Context
-	cancel         context.CancelFunc
+	config       config.DingTalkConfig
+	clientID     string
+	clientSecret string
+	streamClient *client.StreamClient
+	ctx          context.Context
+	cancel       context.CancelFunc
 	// Map to store session webhooks for each chat
 	sessionWebhooks sync.Map // chatID -> sessionWebhook
 }
@@ -47,7 +48,7 @@ func NewDingTalkChannel(cfg config.DingTalkConfig, messageBus *bus.MessageBus) (
 
 // Start initializes the DingTalk channel with Stream Mode
 func (c *DingTalkChannel) Start(ctx context.Context) error {
-	log.Printf("Starting DingTalk channel (Stream Mode)...")
+	logger.InfoC("dingtalk", "Starting DingTalk channel (Stream Mode)...")
 
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
@@ -69,13 +70,13 @@ func (c *DingTalkChannel) Start(ctx context.Context) error {
 	}
 
 	c.setRunning(true)
-	log.Println("DingTalk channel started (Stream Mode)")
+	logger.InfoC("dingtalk", "DingTalk channel started (Stream Mode)")
 	return nil
 }
 
 // Stop gracefully stops the DingTalk channel
 func (c *DingTalkChannel) Stop(ctx context.Context) error {
-	log.Println("Stopping DingTalk channel...")
+	logger.InfoC("dingtalk", "Stopping DingTalk channel...")
 
 	if c.cancel != nil {
 		c.cancel()
@@ -86,7 +87,7 @@ func (c *DingTalkChannel) Stop(ctx context.Context) error {
 	}
 
 	c.setRunning(false)
-	log.Println("DingTalk channel stopped")
+	logger.InfoC("dingtalk", "DingTalk channel stopped")
 	return nil
 }
 
@@ -107,10 +108,13 @@ func (c *DingTalkChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		return fmt.Errorf("invalid session_webhook type for chat %s", msg.ChatID)
 	}
 
-	log.Printf("DingTalk message to %s: %s", msg.ChatID, truncateStringDingTalk(msg.Content, 100))
+	logger.DebugCF("dingtalk", "Sending message", map[string]interface{}{
+		"chat_id": msg.ChatID,
+		"preview": utils.Truncate(msg.Content, 100),
+	})
 
 	// Use the session webhook to send the reply
-	return c.SendDirectReply(sessionWebhook, msg.Content)
+	return c.SendDirectReply(ctx, sessionWebhook, msg.Content)
 }
 
 // onChatBotMessageReceived implements the IChatBotMessageHandler function signature
@@ -151,7 +155,11 @@ func (c *DingTalkChannel) onChatBotMessageReceived(ctx context.Context, data *ch
 		"session_webhook":   data.SessionWebhook,
 	}
 
-	log.Printf("DingTalk message from %s (%s): %s", senderNick, senderID, truncateStringDingTalk(content, 50))
+	logger.DebugCF("dingtalk", "Received message", map[string]interface{}{
+		"sender_nick": senderNick,
+		"sender_id":   senderID,
+		"preview":     utils.Truncate(content, 50),
+	})
 
 	// Handle the message through the base channel
 	c.HandleMessage(senderID, chatID, content, nil, metadata)
@@ -162,7 +170,7 @@ func (c *DingTalkChannel) onChatBotMessageReceived(ctx context.Context, data *ch
 }
 
 // SendDirectReply sends a direct reply using the session webhook
-func (c *DingTalkChannel) SendDirectReply(sessionWebhook, content string) error {
+func (c *DingTalkChannel) SendDirectReply(ctx context.Context, sessionWebhook, content string) error {
 	replier := chatbot.NewChatbotReplier()
 
 	// Convert string content to []byte for the API
@@ -171,7 +179,7 @@ func (c *DingTalkChannel) SendDirectReply(sessionWebhook, content string) error 
 
 	// Send markdown formatted reply
 	err := replier.SimpleReplyMarkdown(
-		context.Background(),
+		ctx,
 		sessionWebhook,
 		titleBytes,
 		contentBytes,
@@ -182,12 +190,4 @@ func (c *DingTalkChannel) SendDirectReply(sessionWebhook, content string) error 
 	}
 
 	return nil
-}
-
-// truncateStringDingTalk truncates a string to max length for logging (avoiding name collision with telegram.go)
-func truncateStringDingTalk(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen]
 }

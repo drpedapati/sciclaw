@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 )
@@ -47,8 +48,33 @@ func (c *BaseChannel) IsAllowed(senderID string) bool {
 		return true
 	}
 
+	// Extract parts from compound senderID like "123456|username"
+	idPart := senderID
+	userPart := ""
+	if idx := strings.Index(senderID, "|"); idx > 0 {
+		idPart = senderID[:idx]
+		userPart = senderID[idx+1:]
+	}
+
 	for _, allowed := range c.allowList {
-		if senderID == allowed {
+		// Strip leading "@" from allowed value for username matching
+		trimmed := strings.TrimPrefix(allowed, "@")
+		allowedID := trimmed
+		allowedUser := ""
+		if idx := strings.Index(trimmed, "|"); idx > 0 {
+			allowedID = trimmed[:idx]
+			allowedUser = trimmed[idx+1:]
+		}
+
+		// Support either side using "id|username" compound form.
+		// This keeps backward compatibility with legacy Telegram allowlist entries.
+		if senderID == allowed ||
+			idPart == allowed ||
+			senderID == trimmed ||
+			idPart == trimmed ||
+			idPart == allowedID ||
+			(allowedUser != "" && senderID == allowedUser) ||
+			(userPart != "" && (userPart == allowed || userPart == trimmed || userPart == allowedUser)) {
 			return true
 		}
 	}

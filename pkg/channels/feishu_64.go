@@ -17,6 +17,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
 type FeishuChannel struct {
@@ -167,7 +168,7 @@ func (c *FeishuChannel) handleMessageReceive(_ context.Context, event *larkim.P2
 	logger.InfoCF("feishu", "Feishu message received", map[string]interface{}{
 		"sender_id": senderID,
 		"chat_id":   chatID,
-		"preview":   truncateString(content, 80),
+		"preview":   utils.Truncate(content, 80),
 	})
 
 	c.HandleMessage(senderID, chatID, content, nil, metadata)

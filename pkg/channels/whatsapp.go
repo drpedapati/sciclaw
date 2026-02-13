@@ -12,6 +12,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
 type WhatsAppChannel struct {
@@ -177,7 +178,7 @@ func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]interface{}) {
 		metadata["user_name"] = userName
 	}
 
-	log.Printf("WhatsApp message from %s: %s...", senderID, truncateString(content, 50))
+	log.Printf("WhatsApp message from %s: %s...", senderID, utils.Truncate(content, 50))
 
 	c.HandleMessage(senderID, chatID, content, mediaPaths, metadata)
 }

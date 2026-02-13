@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
 type GroqTranscriber struct {
@@ -145,7 +146,7 @@ func (t *GroqTranscriber) Transcribe(ctx context.Context, audioFilePath string) 
 		"text_length":           len(result.Text),
 		"language":              result.Language,
 		"duration_seconds":      result.Duration,
-		"transcription_preview": truncateText(result.Text, 50),
+		"transcription_preview": utils.Truncate(result.Text, 50),
 	})
 
 	return &result, nil
@@ -155,11 +156,4 @@ func (t *GroqTranscriber) IsAvailable() bool {
 	available := t.apiKey != ""
 	logger.DebugCF("voice", "Checking transcriber availability", map[string]interface{}{"available": available})
 	return available
-}
-
-func truncateText(text string, maxLen int) string {
-	if len(text) <= maxLen {
-		return text
-	}
-	return text[:maxLen] + "..."
 }
