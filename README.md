@@ -42,7 +42,7 @@ The repository now includes a baseline scientific skill set under `skills/`:
 - `skills/experiment-provenance/` for reproducible experiment evidence capture.
 - `skills/benchmark-logging/` for baseline-vs-sciClaw benchmark records with acceptance checks.
 - `skills/humanize-text/` for final-pass language polishing when manuscript prose needs a more natural tone.
-- `skills/docx/`, `skills/pptx/`, and `skills/pdf/` for Office/PDF document workflows based on Anthropic official skill references.
+- `skills/docx/`, `skills/pptx/`, `skills/pdf/`, and `skills/xlsx/` for Office/PDF/spreadsheet workflows based on Anthropic official skill references.
 
 ### Why This Matters for Scientific Teams
 

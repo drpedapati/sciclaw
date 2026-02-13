@@ -58,6 +58,7 @@ var baselineScienceSkillNames = []string{
 	"docx",
 	"pptx",
 	"pdf",
+	"xlsx",
 }
 
 func invokedCLIName() string {

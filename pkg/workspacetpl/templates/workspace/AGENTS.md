@@ -31,3 +31,4 @@ Treat the following as required default capabilities in `workspace/skills/`:
 - `docx`: Word document creation/editing workflows (Anthropic official office skill)
 - `pptx`: slide deck creation/editing workflows (Anthropic official office skill)
 - `pdf`: PDF extraction/transformation workflows (Anthropic official office skill)
+- `xlsx`: spreadsheet creation/editing workflows (Anthropic official office skill)
