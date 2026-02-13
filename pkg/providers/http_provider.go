@@ -289,6 +289,14 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiKey = cfg.Providers.VLLM.APIKey
 				apiBase = cfg.Providers.VLLM.APIBase
 			}
+		case "shengsuanyun":
+			if cfg.Providers.ShengSuanYun.APIKey != "" {
+				apiKey = cfg.Providers.ShengSuanYun.APIKey
+				apiBase = cfg.Providers.ShengSuanYun.APIBase
+				if apiBase == "" {
+					apiBase = "https://router.shengsuanyun.com/api/v1"
+				}
+			}
 		case "claude-cli", "claudecode", "claude-code":
 			workspace := cfg.Agents.Defaults.Workspace
 			if workspace == "" {

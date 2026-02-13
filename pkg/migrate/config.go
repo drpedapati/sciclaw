@@ -27,7 +27,7 @@ var supportedChannels = map[string]bool{
 	"whatsapp": true,
 	"feishu":   true,
 	"qq":       true,
-	"dingtalk":  true,
+	"dingtalk": true,
 	"maixcam":  true,
 }
 

@@ -33,14 +33,14 @@ type AgentLoop struct {
 	provider       providers.LLMProvider
 	workspace      string
 	model          string
-	contextWindow  int           // Maximum context window size in tokens
+	contextWindow  int // Maximum context window size in tokens
 	maxIterations  int
 	sessions       *session.SessionManager
 	state          *state.Manager
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
 	running        atomic.Bool
-	summarizing    sync.Map      // Tracks which sessions are currently being summarized
+	summarizing    sync.Map // Tracks which sessions are currently being summarized
 }
 
 // processOptions configures how a message is processed
@@ -157,11 +157,22 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 			}
 
 			if response != "" {
-				al.bus.PublishOutbound(bus.OutboundMessage{
-					Channel: msg.Channel,
-					ChatID:  msg.ChatID,
-					Content: response,
-				})
+				// Check if the message tool already sent a response during this round.
+				// If so, skip publishing to avoid duplicate messages to the user.
+				alreadySent := false
+				if tool, ok := al.tools.Get("message"); ok {
+					if mt, ok := tool.(*tools.MessageTool); ok {
+						alreadySent = mt.HasSentInRound()
+					}
+				}
+
+				if !alreadySent {
+					al.bus.PublishOutbound(bus.OutboundMessage{
+						Channel: msg.Channel,
+						ChatID:  msg.ChatID,
+						Content: response,
+					})
+				}
 			}
 		}
 	}
@@ -285,9 +296,9 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	if constants.IsInternalChannel(originChannel) {
 		logger.InfoCF("agent", "Subagent completed (internal channel)",
 			map[string]interface{}{
-				"sender_id":    msg.SenderID,
-				"content_len":  len(content),
-				"channel":      originChannel,
+				"sender_id":   msg.SenderID,
+				"content_len": len(content),
+				"channel":     originChannel,
 			})
 		return "", nil
 	}
@@ -296,9 +307,9 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	// Don't forward result here, subagent should use message tool to communicate with user
 	logger.InfoCF("agent", "Subagent completed",
 		map[string]interface{}{
-			"sender_id":    msg.SenderID,
-			"channel":      originChannel,
-			"content_len":  len(content),
+			"sender_id":   msg.SenderID,
+			"channel":     originChannel,
+			"content_len": len(content),
 		})
 
 	// Agent only logs, does not respond to user
