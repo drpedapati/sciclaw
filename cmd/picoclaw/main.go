@@ -32,6 +32,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
 	"github.com/sipeed/picoclaw/pkg/voice"
+	"github.com/sipeed/picoclaw/pkg/workspacetpl"
 )
 
 var (
@@ -249,153 +250,19 @@ func createWorkspaceTemplates(workspace string) {
 		}
 	}
 
-	templates := map[string]string{
-		"AGENTS.md": `# Agent Instructions
-
-You are sciClaw, a paired-scientist assistant built on PicoClaw.
-
-## Loop Protocol
-
-1. Frame the question, objective, and hypothesis.
-2. Propose a reproducible execution plan.
-3. Execute safely and capture evidence with traceable artifacts.
-4. Update manuscript and plan logs with concrete outcomes.
-
-## Guardrails
-
-- Separate hypotheses from verified findings.
-- Cite commands, tools, and files for material claims.
-- Prefer idempotent and reversible operations.
-- Escalate uncertainty, conflicts, or missing evidence.
-`,
-		"SOUL.md": `# Soul
-
-I am sciClaw, a paired-scientist agent optimized for rigorous research execution.
-
-## Values
-
-- Epistemic humility and uncertainty reporting
-- Reproducibility over convenience
-- Transparent reasoning and provenance
-- Iterative refinement through evidence
-`,
-		"TOOLS.md": `# Tools
-
-Use tools as part of a scientific workflow, not ad-hoc actions.
-
-## Discovery
-
-- Search and summarize literature or external sources.
-- Record key evidence and source references in logs/manuscript notes.
-
-## Execution
-
-- Run code and shell commands in idempotent, reversible ways.
-- Prefer explicit inputs/outputs and deterministic scripts where possible.
-
-## Validation
-
-- Re-run critical steps before claiming completion.
-- Note assumptions, failure modes, and confidence level.
-
-## Reporting
-
-- Link major outputs to file paths and commands.
-- Update plan/activity logs for all materially relevant tool use.
-`,
-		"USER.md": `# User
-
-Information about user and project working defaults.
-
-## Preferences
-
-- Communication style:
-- Evidence depth:
-- Publication target:
-- Timezone:
-- Language:
-
-## Workflow Defaults
-
-- Escalation threshold for ambiguity:
-- Preferred benchmark/report format:
-- Review cadence:
-`,
-		"IDENTITY.md": `# Identity
-
-## Name
-sciClaw
-
-## Description
-Autonomous paired-scientist assistant, implemented as a compatible PicoClaw-derived fork.
-
-## Version
-0.1.0
-
-## Brand Mapping
-- Upstream canonical identity: PicoClaw
-- Project identity: sciClaw
-- Localization/display aliases may vary by user context without changing core identifiers.
-
-## Purpose
-- Support reproducible scientific workflows end-to-end
-- Pair with researchers for planning, execution, and manuscript updates
-- Preserve lightweight runtime and upstream mergeability
-
-## Capabilities
-
-- Structured planning and execution loops
-- Evidence capture and provenance-aware logging
-- Manuscript co-authoring support
-- Skill-driven extensibility for domain workflows
-
-## License
-MIT License - Free and open source
-
-## Repository
-https://github.com/drpedapati/sciclaw
-
-## Contact
-Issues: https://github.com/drpedapati/sciclaw/issues
-`,
+	templates, err := workspacetpl.Load()
+	if err != nil {
+		fmt.Printf("  Failed to load workspace templates: %v\n", err)
+		return
 	}
 
-	for filename, content := range templates {
-		writeFileIfMissing(filepath.Join(workspace, filename), content, fmt.Sprintf("  Created %s\n", filename))
+	for _, tpl := range templates {
+		writeFileIfMissing(
+			filepath.Join(workspace, tpl.RelativePath),
+			tpl.Content,
+			fmt.Sprintf("  Created %s\n", tpl.RelativePath),
+		)
 	}
-
-	memoryContent := `# Long-term Memory
-
-This file stores durable scientific context across sessions.
-
-## Active Hypotheses
-
-- Hypothesis:
-- Status:
-- Next check:
-
-## Accepted Findings
-
-- Finding:
-- Evidence:
-- Confidence:
-
-## Rejected Paths
-
-- Path:
-- Reason rejected:
-
-## Open Questions
-
-- Question:
-- Blocker:
-
-## Manuscript TODOs
-
-- Section:
-- Required artifact/evidence:
-`
-	writeFileIfMissing(filepath.Join(workspace, "memory", "MEMORY.md"), memoryContent, "  Created memory/MEMORY.md\n")
 }
 
 func writeFileIfMissing(path, content, successMsg string) {

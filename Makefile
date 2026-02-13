@@ -28,6 +28,8 @@ PICOCLAW_HOME?=$(HOME)/.picoclaw
 WORKSPACE_DIR?=$(PICOCLAW_HOME)/workspace
 WORKSPACE_SKILLS_DIR=$(WORKSPACE_DIR)/skills
 BUILTIN_SKILLS_DIR=$(CURDIR)/skills
+BUILTIN_WORKSPACE_TEMPLATES_DIR=$(CURDIR)/pkg/workspacetpl/templates/workspace
+INSTALL_WORKSPACE_TEMPLATES_DIR=$(PICOCLAW_HOME)/templates/workspace
 
 # OS detection
 UNAME_S:=$(shell uname -s)
@@ -112,6 +114,10 @@ install: build
 			fi; \
 		fi; \
 	done
+	@echo "Installing workspace templates to $(INSTALL_WORKSPACE_TEMPLATES_DIR)..."
+	@mkdir -p $(INSTALL_WORKSPACE_TEMPLATES_DIR)
+	@cp -f $(BUILTIN_WORKSPACE_TEMPLATES_DIR)/*.md $(INSTALL_WORKSPACE_TEMPLATES_DIR)/
+	@echo "  ✓ Installed workspace templates"
 	@echo "Installation complete!"
 
 ## install-skills: Install builtin skills to workspace
