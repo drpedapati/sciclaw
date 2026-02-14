@@ -320,37 +320,14 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 		}
 	}
 
-	// Create new context for thinking animation with timeout
-	thinkCtx, thinkCancel := context.WithTimeout(ctx, 5*time.Minute)
+	// Create cancel function for thinking state
+	_, thinkCancel := context.WithTimeout(ctx, 5*time.Minute)
 	c.stopThinking.Store(chatIDStr, &thinkingCancel{fn: thinkCancel})
 
 	pMsg, err := c.bot.SendMessage(ctx, tu.Message(tu.ID(chatID), "Thinking... 💭"))
 	if err == nil {
 		pID := pMsg.MessageID
 		c.placeholders.Store(chatIDStr, pID)
-
-		go func(cid int64, mid int) {
-			dots := []string{".", "..", "..."}
-			emotes := []string{"💭", "🤔", "☁️"}
-			i := 0
-			ticker := time.NewTicker(2000 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-thinkCtx.Done():
-					return
-				case <-ticker.C:
-					i++
-					text := fmt.Sprintf("Thinking%s %s", dots[i%len(dots)], emotes[i%len(emotes)])
-					_, editErr := c.bot.EditMessageText(thinkCtx, tu.EditMessageText(tu.ID(chatID), mid, text))
-					if editErr != nil {
-						logger.DebugCF("telegram", "Failed to edit thinking message", map[string]interface{}{
-							"error": editErr.Error(),
-						})
-					}
-				}
-			}
-		}(chatID, pID)
 	}
 
 	metadata := map[string]string{
