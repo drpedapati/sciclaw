@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ type mockProvider struct{}
 
 func (m *mockProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
 	return &providers.LLMResponse{
-		Content:  "Mock response",
+		Content:   "Mock response",
 		ToolCalls: []providers.ToolCall{},
 	}, nil
 }
@@ -320,6 +321,112 @@ func TestAgentLoop_GetStartupInfo(t *testing.T) {
 	if count.(int) == 0 {
 		t.Error("Expected at least some tools to be registered")
 	}
+
+	hooksInfo, ok := info["hooks"]
+	if !ok {
+		t.Fatal("Expected 'hooks' key in startup info")
+	}
+	hooksMap, ok := hooksInfo.(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected 'hooks' to be a map")
+	}
+	if enabled, ok := hooksMap["enabled"].(bool); !ok || !enabled {
+		t.Fatal("Expected hooks to be enabled by default")
+	}
+	if handlers, ok := hooksMap["handlers"].(int); !ok || handlers == 0 {
+		t.Fatal("Expected hook handlers to be registered by default")
+	}
+}
+
+func TestAgentLoop_HooksCanBeDisabledByPolicy(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Disable hooks completely via workspace policy.
+	policyYAML := "enabled: false\naudit:\n  enabled: false\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "hooks.yaml"), []byte(policyYAML), 0644); err != nil {
+		t.Fatalf("write hooks.yaml: %v", err)
+	}
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				Model:             "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &mockProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+	info := al.GetStartupInfo()
+
+	hooksMap, ok := info["hooks"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected hooks info map")
+	}
+	if enabled, ok := hooksMap["enabled"].(bool); !ok || enabled {
+		t.Fatal("Expected hooks to be disabled by policy")
+	}
+	if handlers, ok := hooksMap["handlers"].(int); !ok || handlers != 0 {
+		t.Fatalf("Expected no hook handlers when disabled, got %#v", hooksMap["handlers"])
+	}
+	if auditPath, ok := hooksMap["audit_path"].(string); !ok || auditPath != "" {
+		t.Fatalf("Expected empty audit path when audit disabled, got %#v", hooksMap["audit_path"])
+	}
+}
+
+func TestAgentLoop_WritesHookAuditEvents(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				Model:             "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &mockProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	_, err = al.processMessage(context.Background(), bus.InboundMessage{
+		Channel:    "cli",
+		SenderID:   "tester",
+		ChatID:     "direct",
+		Content:    "hello",
+		SessionKey: "audit-test",
+	})
+	if err != nil {
+		t.Fatalf("processMessage failed: %v", err)
+	}
+
+	auditPath := filepath.Join(tmpDir, "hooks", "hook-events.jsonl")
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read hook audit file: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, "\"event\":\"before_turn\"") {
+		t.Fatalf("expected before_turn event in audit file")
+	}
+	if !strings.Contains(body, "\"event\":\"after_turn\"") {
+		t.Fatalf("expected after_turn event in audit file")
+	}
 }
 
 // TestAgentLoop_Stop verifies Stop() sets running to false
@@ -364,7 +471,7 @@ type simpleMockProvider struct {
 
 func (m *simpleMockProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
 	return &providers.LLMResponse{
-		Content:  m.response,
+		Content:   m.response,
 		ToolCalls: []providers.ToolCall{},
 	}, nil
 }
@@ -475,7 +582,7 @@ func TestToolResult_SilentToolDoesNotSendUserMessage(t *testing.T) {
 		SenderID:   "user1",
 		ChatID:     "chat1",
 		Content:    "read test.txt",
-		SessionKey:  "test-session",
+		SessionKey: "test-session",
 	}
 
 	response := helper.executeAndGetResponse(t, ctx, msg)
@@ -517,7 +624,7 @@ func TestToolResult_UserFacingToolDoesSendMessage(t *testing.T) {
 		SenderID:   "user1",
 		ChatID:     "chat1",
 		Content:    "run hello",
-		SessionKey:  "test-session",
+		SessionKey: "test-session",
 	}
 
 	response := helper.executeAndGetResponse(t, ctx, msg)

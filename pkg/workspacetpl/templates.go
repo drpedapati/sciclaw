@@ -14,6 +14,7 @@ type Template struct {
 
 var rootTemplateNames = []string{
 	"AGENTS.md",
+	"HOOKS.md",
 	"SOUL.md",
 	"TOOLS.md",
 	"USER.md",

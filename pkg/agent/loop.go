@@ -20,6 +20,9 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/constants"
+	"github.com/sipeed/picoclaw/pkg/hookpolicy"
+	"github.com/sipeed/picoclaw/pkg/hooks"
+	"github.com/sipeed/picoclaw/pkg/hooks/builtin"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/session"
@@ -33,14 +36,17 @@ type AgentLoop struct {
 	provider       providers.LLMProvider
 	workspace      string
 	model          string
-	contextWindow  int           // Maximum context window size in tokens
+	contextWindow  int // Maximum context window size in tokens
 	maxIterations  int
 	sessions       *session.SessionManager
 	state          *state.Manager
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
+	hooks          *hooks.Dispatcher
+	hookAuditPath  string
+	turnCounter    uint64
 	running        atomic.Bool
-	summarizing    sync.Map      // Tracks which sessions are currently being summarized
+	summarizing    sync.Map // Tracks which sessions are currently being summarized
 }
 
 // processOptions configures how a message is processed
@@ -48,6 +54,7 @@ type processOptions struct {
 	SessionKey      string // Session identifier for history/context
 	Channel         string // Target channel for tool execution
 	ChatID          string // Target chat ID for tool execution
+	TurnID          string // Deterministic turn identifier for audit and hooks
 	UserMessage     string // User message content (may include prefix)
 	DefaultResponse string // Response when LLM returns empty
 	EnableSummary   bool   // Whether to trigger summarization
@@ -123,6 +130,52 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	contextBuilder := NewContextBuilder(workspace)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
 
+	var hookDispatcher *hooks.Dispatcher
+	hookAuditPath := ""
+	hookPolicy, hookDiag, hookPolicyErr := hookpolicy.LoadPolicy(workspace)
+	if hookPolicyErr != nil {
+		logger.WarnCF("hooks", "Failed to load hook policy, using defaults", map[string]interface{}{"error": hookPolicyErr.Error()})
+	}
+	for _, warning := range hookDiag.Warnings {
+		logger.WarnCF("hooks", "Hook policy warning", map[string]interface{}{"warning": warning})
+	}
+
+	var auditSink hooks.AuditSink
+	if hookPolicy.AuditEnabled || hookPolicyErr != nil {
+		auditPath := filepath.Join(workspace, "hooks", "hook-events.jsonl")
+		if hookPolicyErr == nil && hookPolicy.AuditPath != "" {
+			auditPath = hookPolicy.AuditPath
+		}
+		sink, err := hooks.NewJSONLAuditSinkAt(auditPath)
+		if err != nil {
+			logger.WarnCF("hooks", "Hook audit sink disabled: %v", map[string]interface{}{"error": err.Error()})
+		} else {
+			auditSink = sink
+			hookAuditPath = sink.Path()
+		}
+	}
+
+	hookDispatcher = hooks.NewDispatcher(auditSink)
+	if hookPolicy.Enabled || hookPolicyErr != nil {
+		provenanceHandler := &builtin.ProvenanceHandler{}
+		policyHandler := builtin.NewPolicyHandler(workspace)
+		if hookPolicyErr != nil {
+			for _, ev := range hooks.KnownEvents() {
+				hookDispatcher.Register(ev, provenanceHandler)
+				hookDispatcher.Register(ev, policyHandler)
+			}
+		} else {
+			for _, ev := range hooks.KnownEvents() {
+				ep := hookPolicy.Events[ev]
+				if !ep.Enabled {
+					continue
+				}
+				hookDispatcher.Register(ev, provenanceHandler)
+				hookDispatcher.Register(ev, policyHandler)
+			}
+		}
+	}
+
 	return &AgentLoop{
 		bus:            msgBus,
 		provider:       provider,
@@ -134,6 +187,8 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		state:          stateManager,
 		contextBuilder: contextBuilder,
 		tools:          toolsRegistry,
+		hooks:          hookDispatcher,
+		hookAuditPath:  hookAuditPath,
 		summarizing:    sync.Map{},
 	}
 }
@@ -285,9 +340,9 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	if constants.IsInternalChannel(originChannel) {
 		logger.InfoCF("agent", "Subagent completed (internal channel)",
 			map[string]interface{}{
-				"sender_id":    msg.SenderID,
-				"content_len":  len(content),
-				"channel":      originChannel,
+				"sender_id":   msg.SenderID,
+				"content_len": len(content),
+				"channel":     originChannel,
 			})
 		return "", nil
 	}
@@ -296,9 +351,9 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	// Don't forward result here, subagent should use message tool to communicate with user
 	logger.InfoCF("agent", "Subagent completed",
 		map[string]interface{}{
-			"sender_id":    msg.SenderID,
-			"channel":      originChannel,
-			"content_len":  len(content),
+			"sender_id":   msg.SenderID,
+			"channel":     originChannel,
+			"content_len": len(content),
 		})
 
 	// Agent only logs, does not respond to user
@@ -308,6 +363,10 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 // runAgentLoop is the core message processing logic.
 // It handles context building, LLM calls, tool execution, and response handling.
 func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (string, error) {
+	if opts.TurnID == "" {
+		opts.TurnID = al.nextTurnID()
+	}
+
 	// 0. Record last channel for heartbeat notifications (skip internal channels)
 	if opts.Channel != "" && opts.ChatID != "" {
 		// Don't record internal channels (cli, system, subagent)
@@ -321,6 +380,15 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	// 1. Update tool contexts
 	al.updateToolContexts(opts.Channel, opts.ChatID)
+	al.dispatchHook(ctx, hooks.EventBeforeTurn, hooks.Context{
+		Timestamp:   time.Now(),
+		TurnID:      opts.TurnID,
+		SessionKey:  opts.SessionKey,
+		Channel:     opts.Channel,
+		ChatID:      opts.ChatID,
+		Model:       al.model,
+		UserMessage: sanitizeHookText(opts.UserMessage),
+	})
 
 	// 2. Build messages (skip history for heartbeat)
 	var history []providers.Message
@@ -344,6 +412,19 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 4. Run LLM iteration loop
 	finalContent, iteration, err := al.runLLMIteration(ctx, messages, opts)
 	if err != nil {
+		al.dispatchHook(ctx, hooks.EventOnError, hooks.Context{
+			Timestamp:    time.Now(),
+			TurnID:       opts.TurnID,
+			SessionKey:   opts.SessionKey,
+			Channel:      opts.Channel,
+			ChatID:       opts.ChatID,
+			Model:        al.model,
+			UserMessage:  sanitizeHookText(opts.UserMessage),
+			ErrorMessage: sanitizeHookText(err.Error()),
+			Metadata: map[string]any{
+				"phase": "llm_iteration",
+			},
+		})
 		return "", err
 	}
 
@@ -381,6 +462,19 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			"iterations":   iteration,
 			"final_length": len(finalContent),
 		})
+	al.dispatchHook(ctx, hooks.EventAfterTurn, hooks.Context{
+		Timestamp:          time.Now(),
+		TurnID:             opts.TurnID,
+		SessionKey:         opts.SessionKey,
+		Channel:            opts.Channel,
+		ChatID:             opts.ChatID,
+		Model:              al.model,
+		UserMessage:        sanitizeHookText(opts.UserMessage),
+		LLMResponseSummary: sanitizeHookText(finalContent),
+		Metadata: map[string]any{
+			"iterations": iteration,
+		},
+	})
 
 	return finalContent, nil
 }
@@ -422,6 +516,20 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"messages_json": formatMessagesForLog(messages),
 				"tools_json":    formatToolsForLog(providerToolDefs),
 			})
+		al.dispatchHook(ctx, hooks.EventBeforeLLM, hooks.Context{
+			Timestamp:   time.Now(),
+			TurnID:      opts.TurnID,
+			SessionKey:  opts.SessionKey,
+			Channel:     opts.Channel,
+			ChatID:      opts.ChatID,
+			Model:       al.model,
+			UserMessage: sanitizeHookText(opts.UserMessage),
+			Metadata: map[string]any{
+				"iteration":      iteration,
+				"messages_count": len(messages),
+				"tools_count":    len(providerToolDefs),
+			},
+		})
 
 		// Call LLM
 		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
@@ -437,6 +545,20 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				})
 			return "", iteration, fmt.Errorf("LLM call failed: %w", err)
 		}
+		al.dispatchHook(ctx, hooks.EventAfterLLM, hooks.Context{
+			Timestamp:          time.Now(),
+			TurnID:             opts.TurnID,
+			SessionKey:         opts.SessionKey,
+			Channel:            opts.Channel,
+			ChatID:             opts.ChatID,
+			Model:              al.model,
+			UserMessage:        sanitizeHookText(opts.UserMessage),
+			LLMResponseSummary: sanitizeHookText(response.Content),
+			Metadata: map[string]any{
+				"iteration":       iteration,
+				"tool_call_count": len(response.ToolCalls),
+			},
+		})
 
 		// Check if no tool calls - we're done
 		if len(response.ToolCalls) == 0 {
@@ -484,6 +606,20 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 		// Execute tool calls
 		for _, tc := range response.ToolCalls {
+			al.dispatchHook(ctx, hooks.EventBeforeTool, hooks.Context{
+				Timestamp:  time.Now(),
+				TurnID:     opts.TurnID,
+				SessionKey: opts.SessionKey,
+				Channel:    opts.Channel,
+				ChatID:     opts.ChatID,
+				Model:      al.model,
+				ToolName:   tc.Name,
+				ToolArgs:   sanitizeHookArgs(tc.Arguments),
+				Metadata: map[string]any{
+					"iteration": iteration,
+				},
+			})
+
 			// Log tool call with arguments preview
 			argsJSON, _ := json.Marshal(tc.Arguments)
 			argsPreview := utils.Truncate(string(argsJSON), 200)
@@ -540,6 +676,43 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 			// Save tool result message to session
 			al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+			al.dispatchHook(ctx, hooks.EventAfterTool, hooks.Context{
+				Timestamp:  time.Now(),
+				TurnID:     opts.TurnID,
+				SessionKey: opts.SessionKey,
+				Channel:    opts.Channel,
+				ChatID:     opts.ChatID,
+				Model:      al.model,
+				ToolName:   tc.Name,
+				ToolArgs:   sanitizeHookArgs(tc.Arguments),
+				ToolResult: sanitizeHookText(contentForLLM),
+				Metadata: map[string]any{
+					"iteration": iteration,
+					"is_error":  toolResult.IsError,
+					"async":     toolResult.Async,
+				},
+			})
+			if toolResult.IsError {
+				errMsg := contentForLLM
+				if errMsg == "" && toolResult.Err != nil {
+					errMsg = toolResult.Err.Error()
+				}
+				al.dispatchHook(ctx, hooks.EventOnError, hooks.Context{
+					Timestamp:    time.Now(),
+					TurnID:       opts.TurnID,
+					SessionKey:   opts.SessionKey,
+					Channel:      opts.Channel,
+					ChatID:       opts.ChatID,
+					Model:        al.model,
+					ToolName:     tc.Name,
+					ToolArgs:     sanitizeHookArgs(tc.Arguments),
+					ErrorMessage: sanitizeHookText(errMsg),
+					Metadata: map[string]any{
+						"iteration": iteration,
+						"phase":     "tool_execution",
+					},
+				})
+			}
 		}
 	}
 
@@ -595,8 +768,70 @@ func (al *AgentLoop) GetStartupInfo() map[string]interface{} {
 
 	// Skills info
 	info["skills"] = al.contextBuilder.GetSkillsInfo()
+	hookEvents := 0
+	hookHandlers := 0
+	if al.hooks != nil {
+		hookEvents = al.hooks.EventCount()
+		hookHandlers = al.hooks.HandlerCount()
+	}
+	info["hooks"] = map[string]interface{}{
+		"enabled":    hookHandlers > 0,
+		"events":     hookEvents,
+		"handlers":   hookHandlers,
+		"audit_path": al.hookAuditPath,
+	}
 
 	return info
+}
+
+func (al *AgentLoop) nextTurnID() string {
+	n := atomic.AddUint64(&al.turnCounter, 1)
+	return fmt.Sprintf("turn-%d-%d", time.Now().UnixNano(), n)
+}
+
+func (al *AgentLoop) dispatchHook(ctx context.Context, event hooks.Event, data hooks.Context) {
+	if al.hooks == nil {
+		return
+	}
+	al.hooks.Dispatch(ctx, event, data)
+}
+
+func sanitizeHookText(input string) string {
+	if input == "" {
+		return ""
+	}
+	flat := strings.ReplaceAll(input, "\n", " ")
+	return utils.Truncate(flat, 500)
+}
+
+func sanitizeHookArgs(args map[string]interface{}) map[string]any {
+	if len(args) == 0 {
+		return nil
+	}
+
+	redactKeys := map[string]struct{}{
+		"api_key":       {},
+		"token":         {},
+		"secret":        {},
+		"authorization": {},
+		"password":      {},
+	}
+
+	out := map[string]any{}
+	for k, v := range args {
+		keyLower := strings.ToLower(strings.TrimSpace(k))
+		if _, ok := redactKeys[keyLower]; ok {
+			out[k] = "[REDACTED]"
+			continue
+		}
+		switch typed := v.(type) {
+		case string:
+			out[k] = sanitizeHookText(typed)
+		default:
+			out[k] = typed
+		}
+	}
+	return out
 }
 
 // formatMessagesForLog formats messages for logging

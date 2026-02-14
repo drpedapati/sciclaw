@@ -13,6 +13,7 @@ func TestLoadWorkspaceTemplates(t *testing.T) {
 
 	want := map[string]bool{
 		"AGENTS.md":        true,
+		"HOOKS.md":         true,
 		"SOUL.md":          true,
 		"TOOLS.md":         true,
 		"USER.md":          true,
@@ -58,6 +59,9 @@ func TestTemplateContentBranding(t *testing.T) {
 	}
 	if !strings.Contains(byPath["TOOLS.md"], "Baseline Skill Policy") {
 		t.Fatalf("TOOLS.md missing baseline skill policy")
+	}
+	if !strings.Contains(byPath["HOOKS.md"], "before_turn") {
+		t.Fatalf("HOOKS.md missing lifecycle sections")
 	}
 	if !strings.Contains(byPath["SOUL.md"], "I am sciClaw") {
 		t.Fatalf("SOUL.md missing sciClaw identity")

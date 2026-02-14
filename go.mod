@@ -17,6 +17,7 @@ require (
 	github.com/slack-go/slack v0.17.3
 	github.com/tencent-connect/botgo v0.2.1
 	golang.org/x/oauth2 v0.35.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

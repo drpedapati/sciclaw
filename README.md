@@ -12,7 +12,7 @@ This project keeps PicoClaw's lightweight runtime and upstream compatibility, bu
 | Area | Stock PicoClaw | sciClaw Revision |
 | --- | --- | --- |
 | Primary framing | General-purpose personal AI assistant | Paired-scientist assistant for hypothesis-driven research loops |
-| Workspace defaults | Generic assistant templates | Scientific templates: `AGENTS.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `USER.md`, structured `memory/MEMORY.md`, plus `sessions/` and `cron/` |
+| Workspace defaults | Generic assistant templates | Scientific templates: `AGENTS.md`, `HOOKS.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `USER.md`, structured `memory/MEMORY.md`, plus `sessions/` and `cron/` |
 | Runtime system prompt | Generic assistant identity and tool rules | sciClaw identity with reproducibility, evidence, and uncertainty rules; `TOOLS.md` included in bootstrap context |
 | Migration behavior | Migrates baseline workspace files/dirs | Extended migration for `IDENTITY.md`, `sessions/`, `cron/` with test coverage |
 | CLI brand surface | PicoClaw naming only | User-facing sciClaw branding (including `🔬` CLI icon) with `sciclaw` as primary command and `picoclaw` compatibility alias |
@@ -476,6 +476,9 @@ PicoClaw stores data in your configured workspace (default: `~/.picoclaw/workspa
 ├── cron/             # Scheduled jobs database
 ├── skills/           # Custom skills
 ├── AGENTS.md         # Agent behavior guide
+├── HOOKS.md          # Natural-language hook behavior by lifecycle event
+├── hooks.yaml        # Optional structured hook overrides
+├── hooks/            # Hook audit logs (JSONL, created on first event)
 ├── HEARTBEAT.md      # Periodic task prompts (checked every 30 min)
 ├── IDENTITY.md       # Agent identity
 ├── SOUL.md           # Agent soul
@@ -538,6 +541,15 @@ Respond HEARTBEAT_OK      User receives result directly
 ```
 
 The subagent has access to tools (message, web_search, etc.) and can communicate with the user independently without going through the main agent.
+
+### Hooks (Hybrid: Natural Language + YAML)
+
+Hooks are lifecycle events that capture reproducibility context without requiring users to write code.
+
+- `HOOKS.md`: primary file for non-technical users (plain-language bullets under event headings like `## before_turn` and `## on_error`).
+- `hooks.yaml`: optional power-user overrides for enable/disable, verbosity, capture fields, redaction keys, and audit settings.
+- Merge precedence: `hooks.yaml` overrides `HOOKS.md`.
+- Audit output: JSONL written to `workspace/hooks/hook-events.jsonl` by default.
 
 **Configuration:**
 

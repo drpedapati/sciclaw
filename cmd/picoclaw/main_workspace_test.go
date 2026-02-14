@@ -26,6 +26,7 @@ func TestCreateWorkspaceTemplatesCreatesExpectedStructure(t *testing.T) {
 
 	files := []string{
 		"AGENTS.md",
+		"HOOKS.md",
 		"SOUL.md",
 		"TOOLS.md",
 		"USER.md",
