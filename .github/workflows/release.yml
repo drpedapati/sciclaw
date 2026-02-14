@@ -106,12 +106,26 @@ jobs:
   update-homebrew-tap:
     name: Update Homebrew Tap Formula
     needs: [create-tag, build-binaries, create-release]
-    if: ${{ !inputs.prerelease && !inputs.draft && secrets.HOMEBREW_TAP_TOKEN != '' }}
+    if: ${{ !inputs.prerelease && !inputs.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
+      - name: Check Homebrew tap token
+        id: tap-token
+        shell: bash
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+            echo "HOMEBREW_TAP_TOKEN is not configured; skipping tap update."
+          else
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Compute source archive checksum
+        if: ${{ steps.tap-token.outputs.available == 'true' }}
         id: source
         shell: bash
         run: |
@@ -124,6 +138,7 @@ jobs:
           echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
 
       - name: Checkout tap repository
+        if: ${{ steps.tap-token.outputs.available == 'true' }}
         uses: actions/checkout@v4
         with:
           repository: ${{ env.TAP_REPO }}
@@ -131,6 +146,7 @@ jobs:
           path: tap
 
       - name: Render formula
+        if: ${{ steps.tap-token.outputs.available == 'true' }}
         shell: bash
         run: |
           url="${{ steps.source.outputs.url }}"
@@ -168,6 +184,7 @@ jobs:
           EOF
 
       - name: Commit and push formula
+        if: ${{ steps.tap-token.outputs.available == 'true' }}
         shell: bash
         run: |
           cd tap
