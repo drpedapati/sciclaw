@@ -36,20 +36,39 @@ import (
 
 var (
 	version   = "dev"
+	gitCommit string
 	buildTime string
 	goVersion string
 )
 
 const logo = "🦞"
 
-func printVersion() {
-	fmt.Printf("%s picoclaw %s\n", logo, version)
-	if buildTime != "" {
-		fmt.Printf("  Build: %s\n", buildTime)
+// formatVersion returns the version string with optional git commit
+func formatVersion() string {
+	v := version
+	if gitCommit != "" {
+		v += fmt.Sprintf(" (git: %s)", gitCommit)
 	}
-	goVer := goVersion
+	return v
+}
+
+// formatBuildInfo returns build time and go version info
+func formatBuildInfo() (build string, goVer string) {
+	if buildTime != "" {
+		build = buildTime
+	}
+	goVer = goVersion
 	if goVer == "" {
 		goVer = runtime.Version()
+	}
+	return
+}
+
+func printVersion() {
+	fmt.Printf("%s picoclaw %s\n", logo, formatVersion())
+	build, goVer := formatBuildInfo()
+	if build != "" {
+		fmt.Printf("  Build: %s\n", build)
 	}
 	if goVer != "" {
 		fmt.Printf("  Go: %s\n", goVer)
@@ -654,10 +673,27 @@ func gatewayCmd() {
 
 	heartbeatService := heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
-		nil,
-		30*60,
-		true,
+		cfg.Heartbeat.Interval,
+		cfg.Heartbeat.Enabled,
 	)
+	heartbeatService.SetBus(msgBus)
+	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
+		// Use cli:direct as fallback if no valid channel
+		if channel == "" || chatID == "" {
+			channel, chatID = "cli", "direct"
+		}
+		// Use ProcessHeartbeat - no session history, each heartbeat is independent
+		response, err := agentLoop.ProcessHeartbeat(context.Background(), prompt, channel, chatID)
+		if err != nil {
+			return tools.ErrorResult(fmt.Sprintf("Heartbeat error: %v", err))
+		}
+		if response == "HEARTBEAT_OK" {
+			return tools.SilentResult("Heartbeat OK")
+		}
+		// For heartbeat, always return silent - the subagent result will be
+		// sent to user via processSystemMessage when the async task completes
+		return tools.SilentResult(response)
+	})
 
 	channelManager, err := channels.NewManager(cfg, msgBus)
 	if err != nil {
@@ -743,7 +779,13 @@ func statusCmd() {
 
 	configPath := getConfigPath()
 
-	fmt.Printf("%s picoclaw Status\n\n", logo)
+	fmt.Printf("%s picoclaw Status\n", logo)
+	fmt.Printf("Version: %s\n", formatVersion())
+	build, _ := formatBuildInfo()
+	if build != "" {
+		fmt.Printf("Build: %s\n", build)
+	}
+	fmt.Println()
 
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Println("Config:", configPath, "✓")
@@ -1261,53 +1303,6 @@ func cronEnableCmd(storePath string, disable bool) {
 		fmt.Printf("✓ Job '%s' %s\n", job.Name, status)
 	} else {
 		fmt.Printf("✗ Job %s not found\n", jobID)
-	}
-}
-
-func skillsCmd() {
-	if len(os.Args) < 3 {
-		skillsHelp()
-		return
-	}
-
-	subcommand := os.Args[2]
-
-	cfg, err := loadConfig()
-	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		os.Exit(1)
-	}
-
-	workspace := cfg.WorkspacePath()
-	installer := skills.NewSkillInstaller(workspace)
-	// 获取全局配置目录和内置 skills 目录
-	globalDir := filepath.Dir(getConfigPath())
-	globalSkillsDir := filepath.Join(globalDir, "skills")
-	builtinSkillsDir := filepath.Join(globalDir, "picoclaw", "skills")
-	skillsLoader := skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir)
-
-	switch subcommand {
-	case "list":
-		skillsListCmd(skillsLoader)
-	case "install":
-		skillsInstallCmd(installer)
-	case "remove", "uninstall":
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: picoclaw skills remove <skill-name>")
-			return
-		}
-		skillsRemoveCmd(installer, os.Args[3])
-	case "search":
-		skillsSearchCmd(installer)
-	case "show":
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: picoclaw skills show <skill-name>")
-			return
-		}
-		skillsShowCmd(skillsLoader, os.Args[3])
-	default:
-		fmt.Printf("Unknown skills command: %s\n", subcommand)
-		skillsHelp()
 	}
 }
 

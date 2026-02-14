@@ -49,6 +49,7 @@ type Config struct {
 	Providers ProvidersConfig `json:"providers"`
 	Gateway   GatewayConfig   `json:"gateway"`
 	Tools     ToolsConfig     `json:"tools"`
+	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	mu        sync.RWMutex
 }
 
@@ -57,13 +58,13 @@ type AgentsConfig struct {
 }
 
 type AgentDefaults struct {
-	Workspace         string  `json:"workspace" env:"PICOCLAW_AGENTS_DEFAULTS_WORKSPACE"`
-	RestrictToWorkspace bool  `json:"restrict_to_workspace" env:"PICOCLAW_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
-	Provider          string  `json:"provider" env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
-	Model             string  `json:"model" env:"PICOCLAW_AGENTS_DEFAULTS_MODEL"`
-	MaxTokens         int     `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
-	Temperature       float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
-	MaxToolIterations int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+	Workspace           string  `json:"workspace" env:"PICOCLAW_AGENTS_DEFAULTS_WORKSPACE"`
+	RestrictToWorkspace bool    `json:"restrict_to_workspace" env:"PICOCLAW_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
+	Provider            string  `json:"provider" env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
+	Model               string  `json:"model" env:"PICOCLAW_AGENTS_DEFAULTS_MODEL"`
+	MaxTokens           int     `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
+	Temperature         float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
+	MaxToolIterations   int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
 }
 
 type ChannelsConfig struct {
@@ -144,16 +145,22 @@ type LINEConfig struct {
 	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_LINE_ALLOW_FROM"`
 }
 
+type HeartbeatConfig struct {
+	Enabled  bool `json:"enabled" env:"PICOCLAW_HEARTBEAT_ENABLED"`
+	Interval int  `json:"interval" env:"PICOCLAW_HEARTBEAT_INTERVAL"` // minutes, min 5
+}
+
 type ProvidersConfig struct {
-	Anthropic  ProviderConfig `json:"anthropic"`
-	OpenAI     ProviderConfig `json:"openai"`
-	OpenRouter ProviderConfig `json:"openrouter"`
-	Groq       ProviderConfig `json:"groq"`
-	Zhipu      ProviderConfig `json:"zhipu"`
-	VLLM       ProviderConfig `json:"vllm"`
-	Gemini     ProviderConfig `json:"gemini"`
-	Nvidia     ProviderConfig `json:"nvidia"`
-	Moonshot   ProviderConfig `json:"moonshot"`
+	Anthropic    ProviderConfig `json:"anthropic"`
+	OpenAI       ProviderConfig `json:"openai"`
+	OpenRouter   ProviderConfig `json:"openrouter"`
+	Groq         ProviderConfig `json:"groq"`
+	Zhipu        ProviderConfig `json:"zhipu"`
+	VLLM         ProviderConfig `json:"vllm"`
+	Gemini       ProviderConfig `json:"gemini"`
+	Nvidia       ProviderConfig `json:"nvidia"`
+	Moonshot     ProviderConfig `json:"moonshot"`
+	ShengSuanYun ProviderConfig `json:"shengsuanyun"`
 }
 
 type ProviderConfig struct {
@@ -168,13 +175,20 @@ type GatewayConfig struct {
 	Port int    `json:"port" env:"PICOCLAW_GATEWAY_PORT"`
 }
 
-type WebSearchConfig struct {
-	APIKey     string `json:"api_key" env:"PICOCLAW_TOOLS_WEB_SEARCH_API_KEY"`
-	MaxResults int    `json:"max_results" env:"PICOCLAW_TOOLS_WEB_SEARCH_MAX_RESULTS"`
+type BraveConfig struct {
+	Enabled    bool   `json:"enabled" env:"PICOCLAW_TOOLS_WEB_BRAVE_ENABLED"`
+	APIKey     string `json:"api_key" env:"PICOCLAW_TOOLS_WEB_BRAVE_API_KEY"`
+	MaxResults int    `json:"max_results" env:"PICOCLAW_TOOLS_WEB_BRAVE_MAX_RESULTS"`
+}
+
+type DuckDuckGoConfig struct {
+	Enabled    bool `json:"enabled" env:"PICOCLAW_TOOLS_WEB_DUCKDUCKGO_ENABLED"`
+	MaxResults int  `json:"max_results" env:"PICOCLAW_TOOLS_WEB_DUCKDUCKGO_MAX_RESULTS"`
 }
 
 type WebToolsConfig struct {
-	Search WebSearchConfig `json:"search"`
+	Brave      BraveConfig      `json:"brave"`
+	DuckDuckGo DuckDuckGoConfig `json:"duckduckgo"`
 }
 
 type ToolsConfig struct {
@@ -185,13 +199,13 @@ func DefaultConfig() *Config {
 	return &Config{
 		Agents: AgentsConfig{
 			Defaults: AgentDefaults{
-				Workspace:         "~/.picoclaw/workspace",
+				Workspace:           "~/.picoclaw/workspace",
 				RestrictToWorkspace: true,
-				Provider:          "",
-				Model:             "glm-4.7",
-				MaxTokens:         8192,
-				Temperature:       0.7,
-				MaxToolIterations: 20,
+				Provider:            "",
+				Model:               "glm-4.7",
+				MaxTokens:           8192,
+				Temperature:         0.7,
+				MaxToolIterations:   20,
 			},
 		},
 		Channels: ChannelsConfig{
@@ -253,15 +267,16 @@ func DefaultConfig() *Config {
 			},
 		},
 		Providers: ProvidersConfig{
-			Anthropic:  ProviderConfig{},
-			OpenAI:     ProviderConfig{},
-			OpenRouter: ProviderConfig{},
-			Groq:       ProviderConfig{},
-			Zhipu:      ProviderConfig{},
-			VLLM:       ProviderConfig{},
-			Gemini:     ProviderConfig{},
-			Nvidia:     ProviderConfig{},
-			Moonshot:   ProviderConfig{},
+			Anthropic:    ProviderConfig{},
+			OpenAI:       ProviderConfig{},
+			OpenRouter:   ProviderConfig{},
+			Groq:         ProviderConfig{},
+			Zhipu:        ProviderConfig{},
+			VLLM:         ProviderConfig{},
+			Gemini:       ProviderConfig{},
+			Nvidia:       ProviderConfig{},
+			Moonshot:     ProviderConfig{},
+			ShengSuanYun: ProviderConfig{},
 		},
 		Gateway: GatewayConfig{
 			Host: "0.0.0.0",
@@ -269,11 +284,20 @@ func DefaultConfig() *Config {
 		},
 		Tools: ToolsConfig{
 			Web: WebToolsConfig{
-				Search: WebSearchConfig{
+				Brave: BraveConfig{
+					Enabled:    false,
 					APIKey:     "",
 					MaxResults: 5,
 				},
+				DuckDuckGo: DuckDuckGoConfig{
+					Enabled:    true,
+					MaxResults: 5,
+				},
 			},
+		},
+		Heartbeat: HeartbeatConfig{
+			Enabled:  true,
+			Interval: 30, // default 30 minutes
 		},
 	}
 }
@@ -346,6 +370,9 @@ func (c *Config) GetAPIKey() string {
 	}
 	if c.Providers.VLLM.APIKey != "" {
 		return c.Providers.VLLM.APIKey
+	}
+	if c.Providers.ShengSuanYun.APIKey != "" {
+		return c.Providers.ShengSuanYun.APIKey
 	}
 	return ""
 }
