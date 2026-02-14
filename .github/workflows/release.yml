@@ -18,6 +18,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
 env:
   TAP_REPO: drpedapati/homebrew-sciclaw
   FORMULA_RELATIVE_PATH: Formula/sciclaw.rb

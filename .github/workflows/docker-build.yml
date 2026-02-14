@@ -2,8 +2,12 @@ name: 🐳 Build & Push Docker Image
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
