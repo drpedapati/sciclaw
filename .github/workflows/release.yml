@@ -152,11 +152,17 @@ jobs:
               system "go", "build", *std_go_args(output: bin/"sciclaw"), "./cmd/picoclaw"
               (bin/"picoclaw").make_symlink bin/"sciclaw"
               pkgshare.install "skills"
+              (pkgshare/"templates"/"workspace").install Dir["pkg/workspacetpl/templates/workspace/*.md"]
             end
 
             test do
               assert_match "Usage:", shell_output("#{bin}/sciclaw --help")
               assert_match "Usage:", shell_output("#{bin}/picoclaw --help")
+              ENV["HOME"] = testpath
+              system "#{bin}/sciclaw", "onboard"
+              assert_predicate testpath/".picoclaw/workspace/AGENTS.md", :exist?
+              assert_predicate testpath/".picoclaw/workspace/HOOKS.md", :exist?
+              assert_predicate testpath/".picoclaw/workspace/skills/scientific-writing/SKILL.md", :exist?
             end
           end
           EOF
