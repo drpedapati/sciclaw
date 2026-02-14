@@ -195,9 +195,9 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 	// --- INICIO DEL FIX ---
 	//Diegox-17
 	for len(history) > 0 && (history[0].Role == "tool") {
-    	logger.DebugCF("agent", "Removing orphaned tool message from history to prevent LLM error", 
-        	map[string]interface{}{"role": history[0].Role})
-    	history = history[1:]
+		logger.DebugCF("agent", "Removing orphaned tool message from history to prevent LLM error",
+			map[string]interface{}{"role": history[0].Role})
+		history = history[1:]
 	}
 	//Diegox-17
 	// --- FIN DEL FIX ---
