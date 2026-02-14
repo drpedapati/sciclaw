@@ -1,0 +1,1123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>sciClaw Documentation</title>
+  <meta name="description" content="sciClaw documentation — a PicoClaw-compatible paired-scientist assistant for reproducible research workflows." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+    :root {
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, Consolas, monospace;
+      --color-bg: #ffffff;
+      --color-bg-soft: #f6f8fa;
+      --color-bg-sidebar: #f9fafb;
+      --color-text: #1a1a2e;
+      --color-text-secondary: #57606a;
+      --color-text-tertiary: #8b949e;
+      --color-border: #d1d9e0;
+      --color-border-light: #e8ecf0;
+      --color-link: #0969da;
+      --color-link-hover: #0550ae;
+      --color-accent: #0f766e;
+      --color-accent-bg: #f0fdfa;
+      --color-code-bg: #24292f;
+      --color-code-text: #e6edf3;
+      --color-sidebar-active: #0969da;
+      --color-sidebar-active-bg: #ddf4ff;
+      --header-height: 60px;
+      --sidebar-width: 280px;
+      --content-max: 820px;
+    }
+
+    html {
+      font-size: 16px;
+      scroll-behavior: smooth;
+      scroll-padding-top: calc(var(--header-height) + 24px);
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-text);
+      background: var(--color-bg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ── */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: var(--header-height);
+      background: var(--color-bg);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--color-text);
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.01em;
+    }
+
+    .header-brand-icon {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .header-nav a {
+      text-decoration: none;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .header-nav a:hover {
+      color: var(--color-text);
+    }
+
+    .header-nav a.active {
+      color: var(--color-text);
+    }
+
+    .menu-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      color: var(--color-text);
+      font-size: 18px;
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      min-height: calc(100vh - var(--header-height));
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: sticky;
+      top: var(--header-height);
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      height: calc(100vh - var(--header-height));
+      overflow-y: auto;
+      border-right: 1px solid var(--color-border);
+      background: var(--color-bg-sidebar);
+      padding: 20px 0;
+      font-size: 14px;
+    }
+
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
+
+    .sidebar-section {
+      margin-bottom: 8px;
+    }
+
+    .sidebar-heading {
+      padding: 6px 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-tertiary);
+    }
+
+    .sidebar-link {
+      display: block;
+      padding: 5px 20px 5px 28px;
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      font-weight: 400;
+      border-left: 2px solid transparent;
+      transition: all 0.12s;
+    }
+
+    .sidebar-link:hover {
+      color: var(--color-text);
+      background: var(--color-border-light);
+    }
+
+    .sidebar-link.active {
+      color: var(--color-sidebar-active);
+      font-weight: 500;
+      background: var(--color-sidebar-active-bg);
+      border-left-color: var(--color-sidebar-active);
+    }
+
+    .sidebar-link.nested {
+      padding-left: 40px;
+      font-size: 13px;
+    }
+
+    /* ── Content ── */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 40px 48px 80px;
+    }
+
+    .content-inner {
+      max-width: var(--content-max);
+    }
+
+    /* ── Typography ── */
+    h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; line-height: 1.2; }
+    h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border-light); line-height: 1.3; }
+    h3 { font-size: 18px; font-weight: 600; margin: 32px 0 12px; line-height: 1.4; }
+    h4 { font-size: 15px; font-weight: 600; margin: 24px 0 8px; }
+
+    .page-subtitle {
+      color: var(--color-text-secondary);
+      font-size: 17px;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    p { margin: 0 0 16px; }
+
+    a { color: var(--color-link); text-decoration: none; }
+    a:hover { color: var(--color-link-hover); text-decoration: underline; }
+
+    strong { font-weight: 600; }
+
+    ul, ol { margin: 0 0 16px; padding-left: 24px; }
+    li { margin-bottom: 4px; }
+    li > ul, li > ol { margin-top: 4px; margin-bottom: 4px; }
+
+    /* ── Code ── */
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      background: var(--color-bg-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--color-border-light);
+    }
+
+    pre {
+      background: var(--color-code-bg);
+      color: var(--color-code-text);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 0 0 20px;
+      line-height: 1.5;
+      font-size: 13.5px;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: inherit;
+      color: inherit;
+    }
+
+    /* syntax highlighting (minimal) */
+    .hl-comment { color: #8b949e; }
+    .hl-string { color: #a5d6ff; }
+    .hl-key { color: #7ee787; }
+    .hl-value { color: #a5d6ff; }
+    .hl-flag { color: #d2a8ff; }
+    .hl-cmd { color: #79c0ff; }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 20px;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border-light);
+    }
+
+    th {
+      background: var(--color-bg-soft);
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    /* ── Callouts ── */
+    .callout {
+      border-left: 3px solid var(--color-accent);
+      background: var(--color-accent-bg);
+      padding: 14px 16px;
+      margin: 0 0 20px;
+      border-radius: 0 6px 6px 0;
+      font-size: 14px;
+    }
+
+    .callout p:last-child { margin-bottom: 0; }
+
+    .callout-title {
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--color-accent);
+      margin-bottom: 4px;
+    }
+
+    .callout-warn {
+      border-left-color: #bf8700;
+      background: #fffbe6;
+    }
+
+    .callout-warn .callout-title { color: #9a6700; }
+
+    /* ── Section dividers ── */
+    .section { scroll-margin-top: calc(var(--header-height) + 20px); }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--color-border-light);
+      margin: 48px 0;
+    }
+
+    /* ── Prev / Next ── */
+    .page-nav {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--color-border-light);
+      font-size: 14px;
+    }
+
+    .page-nav a {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      text-decoration: none;
+    }
+
+    .page-nav a:hover { text-decoration: none; }
+    .page-nav a:hover .page-nav-title { text-decoration: underline; }
+
+    .page-nav-label {
+      font-size: 12px;
+      color: var(--color-text-tertiary);
+      font-weight: 500;
+    }
+
+    .page-nav-title {
+      color: var(--color-link);
+      font-weight: 500;
+    }
+
+    .page-nav-next { text-align: right; margin-left: auto; }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 24px 48px;
+      border-top: 1px solid var(--color-border-light);
+      color: var(--color-text-tertiary);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .sidebar {
+        position: fixed;
+        left: -300px;
+        top: var(--header-height);
+        z-index: 50;
+        transition: left 0.25s ease;
+        box-shadow: none;
+      }
+
+      .sidebar.open {
+        left: 0;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+      }
+
+      .menu-toggle { display: block; }
+
+      .content { padding: 24px 20px 60px; }
+      .footer { padding: 20px; }
+
+      .header-nav { gap: 16px; }
+    }
+
+    @media (max-width: 540px) {
+      h1 { font-size: 26px; }
+      h2 { font-size: 20px; }
+      .header-nav a.hide-mobile { display: none; }
+    }
+
+    /* backdrop for mobile sidebar */
+    .sidebar-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      top: var(--header-height);
+      z-index: 49;
+      background: rgba(0,0,0,0.3);
+    }
+
+    .sidebar-backdrop.open { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header class="header">
+  <div class="header-inner">
+    <div style="display:flex;align-items:center;gap:16px">
+      <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
+      <a href="#" class="header-brand">
+        <span class="header-brand-icon">&#x1F52C;</span> sciClaw
+      </a>
+    </div>
+    <nav class="header-nav">
+      <a href="#" class="active">Documentation</a>
+      <a href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener">Source code</a>
+      <a href="https://github.com/drpedapati/sciclaw/issues" target="_blank" rel="noopener" class="hide-mobile">Help</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ═══════════ LAYOUT ═══════════ -->
+<div class="layout">
+
+  <!-- backdrop -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
+
+  <!-- ─── Sidebar ─── -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Getting Started</div>
+      <a class="sidebar-link active" href="#installation">Installation</a>
+      <a class="sidebar-link" href="#quick-start">Quick Start</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Configuration</div>
+      <a class="sidebar-link" href="#configuration">Overview</a>
+      <a class="sidebar-link nested" href="#providers">Providers</a>
+      <a class="sidebar-link nested" href="#authentication">Authentication</a>
+      <a class="sidebar-link nested" href="#workspace">Workspace Layout</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Commands</div>
+      <a class="sidebar-link" href="#cli-reference">CLI Reference</a>
+      <a class="sidebar-link nested" href="#agent">Agent</a>
+      <a class="sidebar-link nested" href="#gateway">Gateway</a>
+      <a class="sidebar-link nested" href="#skills-cmd">Skills</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Scientific Workflow</div>
+      <a class="sidebar-link" href="#paired-scientist">Paired-Scientist Model</a>
+      <a class="sidebar-link nested" href="#research-loop">Research Loop</a>
+      <a class="sidebar-link nested" href="#skills">Skills</a>
+      <a class="sidebar-link nested" href="#manuscript">Manuscript Pipeline</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Chat Channels</div>
+      <a class="sidebar-link" href="#channels">Overview</a>
+      <a class="sidebar-link nested" href="#telegram">Telegram</a>
+      <a class="sidebar-link nested" href="#discord">Discord</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Advanced</div>
+      <a class="sidebar-link" href="#hooks">Hooks</a>
+      <a class="sidebar-link nested" href="#hook-events">Events</a>
+      <a class="sidebar-link nested" href="#hook-policy">Policy</a>
+      <a class="sidebar-link nested" href="#hook-audit">Audit Log</a>
+      <a class="sidebar-link" href="#heartbeat">Heartbeat</a>
+      <a class="sidebar-link nested" href="#cron">Scheduled Tasks</a>
+      <a class="sidebar-link nested" href="#docker">Docker</a>
+    </div>
+  </nav>
+
+  <!-- ─── Content ─── -->
+  <main class="content">
+    <div class="content-inner">
+
+      <!-- ━━━━━ INSTALLATION ━━━━━ -->
+      <div class="section" id="installation">
+        <h1>Installation</h1>
+        <p class="page-subtitle">Get sciClaw running in minutes. Choose the method that fits your workflow.</p>
+
+        <h3>Homebrew (recommended)</h3>
+        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/sciclaw
+<span class="hl-cmd">brew</span> install sciclaw</code></pre>
+        <p>Then:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span></code></pre>
+        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Stable releases auto-update via the GitHub release workflow.</p>
+
+        <h3>Download a binary</h3>
+        <p>Pre-compiled binaries for Linux (amd64, arm64, riscv64), macOS (arm64), and Windows (amd64) are available on the <a href="https://github.com/drpedapati/sciclaw/releases">releases page</a>.</p>
+
+        <h3>Install from source</h3>
+        <pre><code><span class="hl-cmd">git</span> clone https://github.com/drpedapati/sciclaw.git
+<span class="hl-cmd">cd</span> sciclaw
+<span class="hl-cmd">make</span> deps
+
+<span class="hl-comment"># Build for your platform</span>
+<span class="hl-cmd">make</span> build
+
+<span class="hl-comment"># Or build and install to ~/.local/bin</span>
+<span class="hl-cmd">make</span> install</code></pre>
+
+        <div class="callout">
+          <div class="callout-title">Note</div>
+          <p>sciClaw is a Go binary. Building from source requires Go 1.25+ and <code>make</code>.</p>
+        </div>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ QUICK START ━━━━━ -->
+      <div class="section" id="quick-start">
+        <h2>Quick Start</h2>
+        <p class="page-subtitle">From zero to a working paired-scientist assistant in four steps.</p>
+
+        <h3>1. Initialize</h3>
+        <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
+        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/.picoclaw/workspace/</code>, and installs baseline scientific skills.</p>
+
+        <h3>2. Configure a provider</h3>
+        <p>Edit <code>~/.picoclaw/config.json</code> with your LLM provider credentials:</p>
+        <pre><code>{
+  <span class="hl-key">"agents"</span>: {
+    <span class="hl-key">"defaults"</span>: {
+      <span class="hl-key">"model"</span>: <span class="hl-string">"anthropic/claude-opus-4-5"</span>,
+      <span class="hl-key">"max_tokens"</span>: 8192,
+      <span class="hl-key">"temperature"</span>: 0.7
+    }
+  },
+  <span class="hl-key">"providers"</span>: {
+    <span class="hl-key">"openrouter"</span>: {
+      <span class="hl-key">"api_key"</span>: <span class="hl-string">"sk-or-v1-..."</span>
+    }
+  }
+}</code></pre>
+
+        <h3>3. Authenticate (alternative to API keys)</h3>
+        <pre><code><span class="hl-comment"># OpenAI OAuth (opens browser)</span>
+<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
+
+<span class="hl-comment"># Anthropic token paste</span>
+<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> anthropic
+
+<span class="hl-comment"># Check status</span>
+<span class="hl-cmd">sciclaw</span> auth status</code></pre>
+
+        <h3>4. Chat</h3>
+        <pre><code><span class="hl-comment"># One-shot</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"What pathways are implicated in ALS?"</span>
+
+<span class="hl-comment"># Interactive mode</span>
+<span class="hl-cmd">sciclaw</span> agent</code></pre>
+        <p>That's it. You have a working paired-scientist assistant.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ CONFIGURATION ━━━━━ -->
+      <div class="section" id="configuration">
+        <h2>Configuration</h2>
+        <p class="page-subtitle">All settings live in <code>~/.picoclaw/config.json</code>.</p>
+
+        <p>The config file controls agent defaults, provider credentials, channel integrations, tool settings, and heartbeat behavior. A complete example is shipped at <code>config/config.example.json</code> in the repository.</p>
+
+        <pre><code>{
+  <span class="hl-key">"agents"</span>: {
+    <span class="hl-key">"defaults"</span>: {
+      <span class="hl-key">"workspace"</span>: <span class="hl-string">"~/.picoclaw/workspace"</span>,
+      <span class="hl-key">"model"</span>: <span class="hl-string">"anthropic/claude-opus-4-5"</span>,
+      <span class="hl-key">"max_tokens"</span>: 8192,
+      <span class="hl-key">"temperature"</span>: 0.7,
+      <span class="hl-key">"max_tool_iterations"</span>: 20
+    }
+  },
+  <span class="hl-key">"providers"</span>: { ... },
+  <span class="hl-key">"channels"</span>: { ... },
+  <span class="hl-key">"tools"</span>: {
+    <span class="hl-key">"web"</span>: {
+      <span class="hl-key">"search"</span>: {
+        <span class="hl-key">"api_key"</span>: <span class="hl-string">"YOUR_BRAVE_API_KEY"</span>,
+        <span class="hl-key">"max_results"</span>: 5
+      }
+    }
+  },
+  <span class="hl-key">"heartbeat"</span>: {
+    <span class="hl-key">"enabled"</span>: true,
+    <span class="hl-key">"interval"</span>: 30
+  }
+}</code></pre>
+      </div>
+
+      <!-- ─── Providers ─── -->
+      <div class="section" id="providers">
+        <h3>Providers</h3>
+        <p>sciClaw supports multiple LLM providers. Configure one or more in the <code>providers</code> section.</p>
+
+        <table>
+          <thead>
+            <tr><th>Provider</th><th>Purpose</th><th>Auth</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>openrouter</code></td><td>LLM &mdash; access to all models</td><td>API key</td></tr>
+            <tr><td><code>anthropic</code></td><td>Claude direct</td><td>API key or <code>sciclaw auth login</code></td></tr>
+            <tr><td><code>openai</code></td><td>GPT direct</td><td>API key or OAuth</td></tr>
+            <tr><td><code>gemini</code></td><td>Gemini direct</td><td>API key</td></tr>
+            <tr><td><code>zhipu</code></td><td>GLM models, best for Chinese users</td><td>API key</td></tr>
+            <tr><td><code>deepseek</code></td><td>DeepSeek direct</td><td>API key</td></tr>
+            <tr><td><code>groq</code></td><td>Fast inference + voice transcription</td><td>API key</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <div class="callout-title">Tip</div>
+          <p>Groq provides free voice transcription via Whisper. When configured, Telegram voice messages are automatically transcribed.</p>
+        </div>
+      </div>
+
+      <!-- ─── Authentication ─── -->
+      <div class="section" id="authentication">
+        <h3>Authentication</h3>
+        <p>Two paths: paste an API key into <code>config.json</code>, or use the auth commands for OAuth/token flows.</p>
+
+        <pre><code><span class="hl-comment"># OpenAI OAuth (browser)</span>
+<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
+
+<span class="hl-comment"># OpenAI OAuth (headless / device code)</span>
+<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai <span class="hl-flag">--device-code</span>
+
+<span class="hl-comment"># Anthropic token paste</span>
+<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> anthropic
+
+<span class="hl-comment"># Check status</span>
+<span class="hl-cmd">sciclaw</span> auth status
+
+<span class="hl-comment"># Remove stored credential</span>
+<span class="hl-cmd">sciclaw</span> auth logout <span class="hl-flag">--provider</span> openai</code></pre>
+
+        <p>Credentials are stored in <code>~/.picoclaw/auth.json</code> with user-only file permissions. A successful login sets <code>providers.&lt;name&gt;.auth_method</code> in the config (<code>oauth</code> or <code>token</code>).</p>
+      </div>
+
+      <!-- ─── Workspace ─── -->
+      <div class="section" id="workspace">
+        <h3>Workspace Layout</h3>
+        <p>The workspace lives at the path configured in <code>agents.defaults.workspace</code> (default <code>~/.picoclaw/workspace</code>).</p>
+
+        <pre><code>~/.picoclaw/workspace/
+├── sessions/          <span class="hl-comment"># Conversation history</span>
+├── memory/            <span class="hl-comment"># Long-term memory (MEMORY.md)</span>
+├── state/             <span class="hl-comment"># Persistent state</span>
+├── cron/              <span class="hl-comment"># Scheduled jobs database</span>
+├── skills/            <span class="hl-comment"># Installed skills</span>
+├── hooks/             <span class="hl-comment"># Hook audit log (hook-events.jsonl)</span>
+├── AGENTS.md          <span class="hl-comment"># Agent behavior guide</span>
+├── HEARTBEAT.md       <span class="hl-comment"># Periodic task prompts</span>
+├── HOOKS.md           <span class="hl-comment"># Hook policy (plain-language)</span>
+├── IDENTITY.md        <span class="hl-comment"># sciClaw identity</span>
+├── SOUL.md            <span class="hl-comment"># Agent values &amp; guardrails</span>
+├── TOOLS.md           <span class="hl-comment"># Tool descriptions</span>
+└── USER.md            <span class="hl-comment"># User preferences</span></code></pre>
+
+        <p>Bootstrap templates are versioned at <code>pkg/workspacetpl/templates/workspace/</code> and also installed to <code>~/.picoclaw/templates/workspace/</code> for review and customization.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ CLI REFERENCE ━━━━━ -->
+      <div class="section" id="cli-reference">
+        <h2>CLI Reference</h2>
+
+        <table>
+          <thead>
+            <tr><th>Command</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>sciclaw onboard</code></td><td>Initialize config, workspace, and baseline skills</td></tr>
+            <tr><td><code>sciclaw agent -m "..."</code></td><td>Send a one-shot message to the agent</td></tr>
+            <tr><td><code>sciclaw agent</code></td><td>Start interactive chat mode</td></tr>
+            <tr><td><code>sciclaw gateway</code></td><td>Start the gateway for chat channels</td></tr>
+            <tr><td><code>sciclaw status</code></td><td>Show current status</td></tr>
+            <tr><td><code>sciclaw auth login</code></td><td>Authenticate with a provider</td></tr>
+            <tr><td><code>sciclaw auth status</code></td><td>Show stored credentials</td></tr>
+            <tr><td><code>sciclaw auth logout</code></td><td>Remove a stored credential</td></tr>
+            <tr><td><code>sciclaw skills list</code></td><td>List installed skills</td></tr>
+            <tr><td><code>sciclaw skills install</code></td><td>Install a skill</td></tr>
+            <tr><td><code>sciclaw cron list</code></td><td>List scheduled jobs</td></tr>
+            <tr><td><code>sciclaw cron add</code></td><td>Add a scheduled job</td></tr>
+            <tr><td><code>sciclaw migrate</code></td><td>Migrate from OpenClaw</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <div class="callout-title">Compatibility</div>
+          <p>All commands work with both <code>sciclaw</code> and <code>picoclaw</code>. The <code>picoclaw</code> alias is fully supported for upstream compatibility.</p>
+        </div>
+      </div>
+
+      <!-- ─── Agent ─── -->
+      <div class="section" id="agent">
+        <h3>Agent</h3>
+        <p>The <code>agent</code> command is the primary way to interact with sciClaw.</p>
+
+        <pre><code><span class="hl-comment"># One-shot query</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"Summarize recent ALS biomarker literature"</span>
+
+<span class="hl-comment"># Interactive session</span>
+<span class="hl-cmd">sciclaw</span> agent</code></pre>
+
+        <p>In interactive mode the agent maintains session context, uses tools (filesystem, shell, web search, spawn), and follows the paired-scientist loop defined in <code>AGENTS.md</code>.</p>
+      </div>
+
+      <!-- ─── Gateway ─── -->
+      <div class="section" id="gateway">
+        <h3>Gateway</h3>
+        <p>The gateway bridges sciClaw to chat channels (Telegram, Discord, Slack, etc.).</p>
+
+        <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
+        <p>It reads channel configuration from <code>config.json</code>, starts listeners for each enabled channel, and routes messages through the agent loop. The heartbeat service also starts with the gateway.</p>
+      </div>
+
+      <!-- ─── Skills command ─── -->
+      <div class="section" id="skills-cmd">
+        <h3>Skills</h3>
+        <pre><code><span class="hl-comment"># List installed skills</span>
+<span class="hl-cmd">sciclaw</span> skills list
+
+<span class="hl-comment"># Install a skill from a directory or URL</span>
+<span class="hl-cmd">sciclaw</span> skills install <span class="hl-string">./my-skill</span></code></pre>
+        <p>Skills extend the agent with specialized knowledge and workflows. Each skill is a directory containing a <code>SKILL.md</code> with name, description, and instructions.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ SCIENTIFIC WORKFLOW ━━━━━ -->
+      <div class="section" id="paired-scientist">
+        <h2>Paired-Scientist Model</h2>
+        <p class="page-subtitle">sciClaw adds a research-first operating pattern on top of PicoClaw's lightweight runtime.</p>
+
+        <p>The agent acts as a research collaborator, not just a general-purpose assistant. Every interaction follows principles of <strong>epistemic humility</strong>, <strong>reproducibility</strong>, and <strong>evidence-based reasoning</strong>.</p>
+
+        <table>
+          <thead>
+            <tr><th>Area</th><th>Stock PicoClaw</th><th>sciClaw</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Framing</td><td>General-purpose assistant</td><td>Paired-scientist for hypothesis-driven research</td></tr>
+            <tr><td>Workspace</td><td>Generic templates</td><td>Scientific templates (AGENTS, IDENTITY, SOUL, TOOLS, USER)</td></tr>
+            <tr><td>Traceability</td><td>Optional</td><td>Required: build/test logs, plan activity, manuscript updates</td></tr>
+            <tr><td>Manuscript</td><td>Not central</td><td>First-class Quarto pipeline updated each loop</td></tr>
+            <tr><td>Skills</td><td>Basic tools</td><td>12 baseline scientific skills pre-installed</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ─── Research Loop ─── -->
+      <div class="section" id="research-loop">
+        <h3>Research Loop</h3>
+        <p>Each iteration follows a four-phase protocol defined in <code>AGENTS.md</code>:</p>
+
+        <ol>
+          <li><strong>Frame</strong> &mdash; State the question, objective, and hypothesis explicitly.</li>
+          <li><strong>Plan</strong> &mdash; Propose a reproducible execution plan with specific commands and expected outputs.</li>
+          <li><strong>Execute</strong> &mdash; Run tools, capture evidence and logs. Prefer idempotent and reversible operations.</li>
+          <li><strong>Record</strong> &mdash; Update manuscript sections, plan logs, and rendered outputs. Commit together.</li>
+        </ol>
+
+        <div class="callout">
+          <div class="callout-title">Guardrails</div>
+          <p>The agent separates hypotheses from verified findings, cites commands and files for every claim, and escalates when evidence is missing or conflicting.</p>
+        </div>
+      </div>
+
+      <!-- ─── Skills ─── -->
+      <div class="section" id="skills">
+        <h3>Baseline Scientific Skills</h3>
+        <p>During <code>sciclaw onboard</code>, twelve skills are installed into <code>~/.picoclaw/workspace/skills/</code>:</p>
+
+        <h4>Research &amp; Literature</h4>
+        <ul>
+          <li><strong>scientific-writing</strong> &mdash; Manuscript drafting with claim-evidence alignment</li>
+          <li><strong>pubmed-database</strong> &mdash; Reproducible PubMed retrieval workflows</li>
+          <li><strong>biorxiv-database</strong> &mdash; bioRxiv/medRxiv preprint surveillance</li>
+        </ul>
+
+        <h4>Authoring &amp; Visualization</h4>
+        <ul>
+          <li><strong>quarto-authoring</strong> &mdash; Loop-driven <code>.qmd</code> authoring and rendering</li>
+          <li><strong>beautiful-mermaid</strong> &mdash; Publication-grade diagram workflows</li>
+        </ul>
+
+        <h4>Evidence &amp; Provenance</h4>
+        <ul>
+          <li><strong>experiment-provenance</strong> &mdash; Reproducible experiment evidence capture</li>
+          <li><strong>benchmark-logging</strong> &mdash; Baseline vs sciClaw benchmark records</li>
+        </ul>
+
+        <h4>Polish</h4>
+        <ul>
+          <li><strong>humanize-text</strong> &mdash; Final-pass language polishing for natural tone</li>
+        </ul>
+
+        <h4>Office Integration</h4>
+        <ul>
+          <li><strong>docx</strong>, <strong>pptx</strong>, <strong>pdf</strong>, <strong>xlsx</strong> &mdash; Anthropic official document skills</li>
+        </ul>
+      </div>
+
+      <!-- ─── Manuscript ─── -->
+      <div class="section" id="manuscript">
+        <h3>Manuscript Pipeline</h3>
+        <p>sciClaw treats Quarto manuscripts as first-class artifacts. The pipeline lives in <code>manuscript/</code>:</p>
+
+        <pre><code>manuscript/
+├── sciclaw-manuscript-outline.qmd
+├── sciclaw-component-revision-plan.qmd
+├── references.bib
+└── *.html                          <span class="hl-comment"># rendered outputs</span></code></pre>
+
+        <p>Each research loop updates the relevant <code>.qmd</code> sections, renders with Quarto, logs changes to <code>plans/main-plan-activity.md</code>, and commits manuscript plus logs together.</p>
+
+        <pre><code><span class="hl-cmd">quarto</span> render manuscript/sciclaw-manuscript-outline.qmd <span class="hl-flag">--to</span> html</code></pre>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ CHANNELS ━━━━━ -->
+      <div class="section" id="channels">
+        <h2>Chat Channels</h2>
+        <p class="page-subtitle">Talk to sciClaw through your preferred messaging app.</p>
+
+        <table>
+          <thead>
+            <tr><th>Channel</th><th>Setup Difficulty</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Telegram</strong></td><td>Easy</td><td>Recommended. Just a bot token.</td></tr>
+            <tr><td><strong>Discord</strong></td><td>Easy</td><td>Bot token + message content intent</td></tr>
+            <tr><td><strong>Slack</strong></td><td>Medium</td><td>App + bot token</td></tr>
+            <tr><td><strong>QQ</strong></td><td>Easy</td><td>AppID + AppSecret</td></tr>
+            <tr><td><strong>DingTalk</strong></td><td>Medium</td><td>Client ID + secret</td></tr>
+            <tr><td><strong>WhatsApp</strong></td><td>Advanced</td><td>Requires bridge</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ─── Telegram ─── -->
+      <div class="section" id="telegram">
+        <h3>Telegram</h3>
+
+        <p><strong>1. Create a bot</strong> &mdash; Open Telegram, search <code>@BotFather</code>, send <code>/newbot</code>, and copy the token.</p>
+        <p><strong>2. Get your user ID</strong> &mdash; Message <code>@userinfobot</code> on Telegram.</p>
+        <p><strong>3. Configure</strong></p>
+
+        <pre><code>{
+  <span class="hl-key">"channels"</span>: {
+    <span class="hl-key">"telegram"</span>: {
+      <span class="hl-key">"enabled"</span>: true,
+      <span class="hl-key">"token"</span>: <span class="hl-string">"YOUR_BOT_TOKEN"</span>,
+      <span class="hl-key">"allowFrom"</span>: [<span class="hl-string">"YOUR_USER_ID"</span>]
+    }
+  }
+}</code></pre>
+
+        <p><strong>4. Run</strong></p>
+        <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
+      </div>
+
+      <!-- ─── Discord ─── -->
+      <div class="section" id="discord">
+        <h3>Discord</h3>
+
+        <ol>
+          <li>Go to <a href="https://discord.com/developers/applications">discord.com/developers</a> and create an application.</li>
+          <li>In Bot settings, enable <strong>MESSAGE CONTENT INTENT</strong>.</li>
+          <li>Copy the bot token.</li>
+          <li>Get your User ID (Developer Mode &rarr; right-click avatar &rarr; Copy User ID).</li>
+          <li>Configure:</li>
+        </ol>
+
+        <pre><code>{
+  <span class="hl-key">"channels"</span>: {
+    <span class="hl-key">"discord"</span>: {
+      <span class="hl-key">"enabled"</span>: true,
+      <span class="hl-key">"token"</span>: <span class="hl-string">"YOUR_BOT_TOKEN"</span>,
+      <span class="hl-key">"allowFrom"</span>: [<span class="hl-string">"YOUR_USER_ID"</span>]
+    }
+  }
+}</code></pre>
+
+        <ol start="6">
+          <li>Generate an invite URL via OAuth2 (scopes: <code>bot</code>; permissions: Send Messages, Read Message History).</li>
+          <li>Run <code>sciclaw gateway</code>.</li>
+        </ol>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ HOOKS ━━━━━ -->
+      <div class="section" id="hooks">
+        <h2>Hooks</h2>
+        <p class="page-subtitle">Lifecycle hooks let you capture context, enforce policy, and build an audit trail at every stage of the agent loop.</p>
+
+        <p>sciClaw fires hooks at seven points in the agent lifecycle. Each hook receives an immutable snapshot of the current turn &mdash; session, channel, tool call, LLM response &mdash; and returns a result that is written to the audit log.</p>
+
+        <p>Two built-in handlers ship by default:</p>
+        <ul>
+          <li><strong>policy</strong> &mdash; Reads <code>HOOKS.md</code> and <code>hooks.yaml</code> from your workspace, enables/disables events, and injects per-event instructions.</li>
+          <li><strong>provenance</strong> &mdash; Records normalized event metadata (turn ID, session, tool name) for reproducibility.</li>
+        </ul>
+      </div>
+
+      <!-- ─── Hook Events ─── -->
+      <div class="section" id="hook-events">
+        <h3>Events</h3>
+
+        <table>
+          <thead>
+            <tr><th>Event</th><th>Fires when</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>before_turn</code></td><td>A new user message arrives, before the agent loop begins</td></tr>
+            <tr><td><code>after_turn</code></td><td>The agent loop finishes a turn</td></tr>
+            <tr><td><code>before_llm</code></td><td>Just before calling the LLM provider</td></tr>
+            <tr><td><code>after_llm</code></td><td>Immediately after the LLM responds</td></tr>
+            <tr><td><code>before_tool</code></td><td>Before executing a tool call (shell, file, web, etc.)</td></tr>
+            <tr><td><code>after_tool</code></td><td>After a tool call completes</td></tr>
+            <tr><td><code>on_error</code></td><td>When an error occurs anywhere in the loop</td></tr>
+          </tbody>
+        </table>
+
+        <p>Each handler receives a <code>Context</code> snapshot containing the turn ID, session key, channel, model, user message, tool name/args/result, LLM response summary, and error message as applicable.</p>
+      </div>
+
+      <!-- ─── Hook Policy ─── -->
+      <div class="section" id="hook-policy">
+        <h3>Policy</h3>
+        <p>Hook behavior is configured through workspace files. The policy loader checks two sources in order:</p>
+
+        <ol>
+          <li><strong><code>HOOKS.md</code></strong> &mdash; Plain-language instructions per event, written so non-technical users can maintain them.</li>
+          <li><strong><code>hooks.yaml</code></strong> &mdash; Structured policy with per-event enable/disable, verbosity levels, capture fields, and redaction keys.</li>
+        </ol>
+
+        <p>Example <code>HOOKS.md</code> (installed during <code>sciclaw onboard</code>):</p>
+
+        <pre><code><span class="hl-comment">## before_turn</span>
+- Capture project context needed for reproducibility.
+
+<span class="hl-comment">## after_turn</span>
+- Summarize completed actions and unresolved risks.
+- Record what should be updated in manuscript and logs.
+
+<span class="hl-comment">## before_tool</span>
+- Record the intent of the tool call and key parameters (redacting secrets).
+
+<span class="hl-comment">## after_tool</span>
+- Record tool outcomes and where artifacts were written.
+
+<span class="hl-comment">## on_error</span>
+- Capture failure context, likely cause, and the next recovery step.</code></pre>
+
+        <p>The default policy automatically redacts sensitive fields: <code>api_key</code>, <code>token</code>, <code>secret</code>, <code>authorization</code>, and <code>password</code>.</p>
+
+        <div class="callout">
+          <div class="callout-title">Tip</div>
+          <p>Edit <code>HOOKS.md</code> in your workspace to customize what the agent captures at each lifecycle event. Changes take effect on the next turn &mdash; no restart required.</p>
+        </div>
+      </div>
+
+      <!-- ─── Hook Audit ─── -->
+      <div class="section" id="hook-audit">
+        <h3>Audit Log</h3>
+        <p>Every hook execution is appended to a JSONL audit log at <code>hooks/hook-events.jsonl</code> inside your workspace. Each entry records:</p>
+
+        <ul>
+          <li>Turn ID, event name, and handler name</li>
+          <li>Status (<code>ok</code> or <code>error</code>) and duration in milliseconds</li>
+          <li>Session key, channel, and chat ID</li>
+          <li>Handler-specific metadata and any error messages</li>
+        </ul>
+
+        <pre><code><span class="hl-comment"># View recent hook events</span>
+<span class="hl-cmd">tail</span> <span class="hl-flag">-5</span> ~/.picoclaw/workspace/hooks/hook-events.jsonl | <span class="hl-cmd">jq</span> .</code></pre>
+
+        <p>The audit log is designed for reproducibility &mdash; every claim the agent makes can be traced back to the tool calls and LLM responses that produced it.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ HEARTBEAT ━━━━━ -->
+      <div class="section" id="heartbeat">
+        <h2>Heartbeat</h2>
+        <p class="page-subtitle">Automatic periodic tasks, checked every 30 minutes.</p>
+
+        <p>Create a <code>HEARTBEAT.md</code> file in your workspace with tasks the agent should execute periodically:</p>
+
+        <pre><code><span class="hl-comment"># Periodic Tasks</span>
+
+<span class="hl-comment">## Quick Tasks (respond directly)</span>
+- Report current time
+
+<span class="hl-comment">## Long Tasks (use spawn for async)</span>
+- Search the web for AI news and summarize
+- Check email and report important messages</code></pre>
+
+        <p>For long-running work, the agent uses the <strong>spawn</strong> tool to create async subagents that run independently and communicate results via the message tool.</p>
+
+        <pre><code>{
+  <span class="hl-key">"heartbeat"</span>: {
+    <span class="hl-key">"enabled"</span>: true,
+    <span class="hl-key">"interval"</span>: 30
+  }
+}</code></pre>
+
+        <p>Override via environment variables: <code>PICOCLAW_HEARTBEAT_ENABLED=false</code> or <code>PICOCLAW_HEARTBEAT_INTERVAL=60</code>.</p>
+      </div>
+
+      <!-- ─── Cron ─── -->
+      <div class="section" id="cron">
+        <h3>Scheduled Tasks</h3>
+        <p>sciClaw supports cron-style scheduled tasks for reminders and recurring jobs.</p>
+
+        <ul>
+          <li><strong>One-time reminders</strong> &mdash; "Remind me in 10 minutes"</li>
+          <li><strong>Recurring tasks</strong> &mdash; "Remind me every 2 hours"</li>
+          <li><strong>Cron expressions</strong> &mdash; "Remind me at 9am daily"</li>
+        </ul>
+
+        <pre><code><span class="hl-cmd">sciclaw</span> cron list
+<span class="hl-cmd">sciclaw</span> cron add <span class="hl-string">"Check email"</span> <span class="hl-flag">--every</span> 2h</code></pre>
+
+        <p>Jobs are stored in <code>~/.picoclaw/workspace/cron/</code> and processed automatically by the gateway.</p>
+      </div>
+
+      <!-- ─── Docker ─── -->
+      <div class="section" id="docker">
+        <h3>Docker</h3>
+        <p>Run sciClaw in Docker without installing anything locally.</p>
+
+        <pre><code><span class="hl-comment"># Clone and configure</span>
+<span class="hl-cmd">git</span> clone https://github.com/drpedapati/sciclaw.git
+<span class="hl-cmd">cd</span> sciclaw
+<span class="hl-cmd">cp</span> config/config.example.json config/config.json
+
+<span class="hl-comment"># Start gateway mode</span>
+<span class="hl-cmd">docker</span> compose <span class="hl-flag">--profile</span> gateway up <span class="hl-flag">-d</span>
+
+<span class="hl-comment"># Or run agent one-shot</span>
+<span class="hl-cmd">docker</span> compose run <span class="hl-flag">--rm</span> sciclaw-agent <span class="hl-flag">-m</span> <span class="hl-string">"Hello"</span>
+
+<span class="hl-comment"># Check logs</span>
+<span class="hl-cmd">docker</span> compose logs <span class="hl-flag">-f</span> sciclaw-gateway
+
+<span class="hl-comment"># Stop</span>
+<span class="hl-cmd">docker</span> compose <span class="hl-flag">--profile</span> gateway down</code></pre>
+
+        <p>The Docker image uses a multi-stage build (Go builder &rarr; Alpine) and ships with all baseline skills pre-installed.</p>
+      </div>
+
+      <!-- ━━━━━ PREV / NEXT ━━━━━ -->
+      <div class="page-nav">
+        <a href="index.html">
+          <span class="page-nav-label">&larr; Previous</span>
+          <span class="page-nav-title">Explainer</span>
+        </a>
+        <a href="https://github.com/drpedapati/sciclaw" class="page-nav-next">
+          <span class="page-nav-label">Next &rarr;</span>
+          <span class="page-nav-title">Source Code</span>
+        </a>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer class="footer">
+  sciClaw &mdash; a PicoClaw-compatible paired-scientist assistant for reproducible research. MIT License.
+</footer>
+
+<!-- ═══════════ JS ═══════════ -->
+<script>
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarBackdrop').classList.toggle('open');
+}
+
+// Close sidebar on link click (mobile)
+document.querySelectorAll('.sidebar-link').forEach(function(link) {
+  link.addEventListener('click', function() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarBackdrop').classList.remove('open');
+  });
+});
+
+// Active sidebar link tracking on scroll
+(function() {
+  var links = document.querySelectorAll('.sidebar-link');
+  var sections = [];
+
+  links.forEach(function(link) {
+    var id = link.getAttribute('href');
+    if (id && id.startsWith('#')) {
+      var el = document.querySelector(id);
+      if (el) sections.push({ el: el, link: link });
+    }
+  });
+
+  function updateActive() {
+    var scrollY = window.scrollY + 100;
+    var current = sections[0];
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].el.offsetTop <= scrollY) {
+        current = sections[i];
+      }
+    }
+    links.forEach(function(l) { l.classList.remove('active'); });
+    if (current) current.link.classList.add('active');
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+</script>
+
+</body>
+</html>
