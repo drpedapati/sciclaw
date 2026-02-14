@@ -76,6 +76,7 @@ type ChannelsConfig struct {
 	QQ       QQConfig       `json:"qq"`
 	DingTalk DingTalkConfig `json:"dingtalk"`
 	Slack    SlackConfig    `json:"slack"`
+	LINE     LINEConfig     `json:"line"`
 }
 
 type WhatsAppConfig struct {
@@ -132,6 +133,16 @@ type SlackConfig struct {
 	BotToken  string   `json:"bot_token" env:"PICOCLAW_CHANNELS_SLACK_BOT_TOKEN"`
 	AppToken  string   `json:"app_token" env:"PICOCLAW_CHANNELS_SLACK_APP_TOKEN"`
 	AllowFrom []string `json:"allow_from" env:"PICOCLAW_CHANNELS_SLACK_ALLOW_FROM"`
+}
+
+type LINEConfig struct {
+	Enabled            bool                `json:"enabled" env:"PICOCLAW_CHANNELS_LINE_ENABLED"`
+	ChannelSecret      string              `json:"channel_secret" env:"PICOCLAW_CHANNELS_LINE_CHANNEL_SECRET"`
+	ChannelAccessToken string              `json:"channel_access_token" env:"PICOCLAW_CHANNELS_LINE_CHANNEL_ACCESS_TOKEN"`
+	WebhookHost        string              `json:"webhook_host" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_HOST"`
+	WebhookPort        int                 `json:"webhook_port" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_PORT"`
+	WebhookPath        string              `json:"webhook_path" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_PATH"`
+	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_LINE_ALLOW_FROM"`
 }
 
 type HeartbeatConfig struct {
@@ -244,6 +255,15 @@ func DefaultConfig() *Config {
 				BotToken:  "",
 				AppToken:  "",
 				AllowFrom: []string{},
+			},
+			LINE: LINEConfig{
+				Enabled:            false,
+				ChannelSecret:      "",
+				ChannelAccessToken: "",
+				WebhookHost:        "0.0.0.0",
+				WebhookPort:        18791,
+				WebhookPath:        "/webhook/line",
+				AllowFrom:          FlexibleStringSlice{},
 			},
 		},
 		Providers: ProvidersConfig{
