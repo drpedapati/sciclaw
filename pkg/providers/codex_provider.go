@@ -54,12 +54,39 @@ func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []To
 
 	params := buildCodexParams(messages, tools, model, options)
 
-	resp, err := p.client.Responses.New(ctx, params, opts...)
-	if err != nil {
+	stream := p.client.Responses.NewStreaming(ctx, params, opts...)
+	if stream == nil {
+		return nil, fmt.Errorf("codex API call: empty stream")
+	}
+	defer stream.Close()
+
+	var finalResp *responses.Response
+	for stream.Next() {
+		switch event := stream.Current().AsAny().(type) {
+		case responses.ResponseCompletedEvent:
+			resp := event.Response
+			finalResp = &resp
+		case responses.ResponseIncompleteEvent:
+			// Keep the incomplete response payload so callers can map finish reason.
+			resp := event.Response
+			finalResp = &resp
+		case responses.ResponseErrorEvent:
+			if event.Param != "" {
+				return nil, fmt.Errorf("response error (%s): %s (param=%s)", event.Code, event.Message, event.Param)
+			}
+			return nil, fmt.Errorf("response error (%s): %s", event.Code, event.Message)
+		case responses.ResponseFailedEvent:
+			return nil, fmt.Errorf("response failed with status %q", event.Response.Status)
+		}
+	}
+	if err := stream.Err(); err != nil {
 		return nil, fmt.Errorf("codex API call: %w", err)
 	}
+	if finalResp == nil {
+		return nil, fmt.Errorf("codex API call: stream ended without a response payload")
+	}
 
-	return parseCodexResponse(resp), nil
+	return parseCodexResponse(finalResp), nil
 }
 
 func (p *CodexProvider) GetDefaultModel() string {
@@ -139,14 +166,8 @@ func buildCodexParams(messages []Message, tools []ToolDefinition, model string, 
 	if instructions != "" {
 		params.Instructions = openai.Opt(instructions)
 	}
-
-	if maxTokens, ok := options["max_tokens"].(int); ok {
-		params.MaxOutputTokens = openai.Opt(int64(maxTokens))
-	}
-
-	if temp, ok := options["temperature"].(float64); ok {
-		params.Temperature = openai.Opt(temp)
-	}
+	// Codex backend currently rejects temperature/max_output_tokens for chatgpt.com OAuth calls.
+	// Keep these unset to avoid 400 "Unsupported parameter" errors.
 
 	if len(tools) > 0 {
 		params.Tools = translateToolsForCodex(tools)

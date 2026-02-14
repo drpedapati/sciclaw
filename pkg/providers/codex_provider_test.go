@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -197,31 +198,52 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 			return
 		}
 
-		resp := map[string]interface{}{
-			"id":     "resp_test",
-			"object": "response",
-			"status": "completed",
-			"output": []map[string]interface{}{
-				{
-					"id":     "msg_1",
-					"type":   "message",
-					"role":   "assistant",
-					"status": "completed",
-					"content": []map[string]interface{}{
-						{"type": "output_text", "text": "Hi from Codex!"},
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad json body", http.StatusBadRequest)
+			return
+		}
+		if stream, ok := body["stream"].(bool); !ok || !stream {
+			http.Error(w, "stream must be true", http.StatusBadRequest)
+			return
+		}
+
+		event := map[string]interface{}{
+			"type":            "response.completed",
+			"sequence_number": 1,
+			"response": map[string]interface{}{
+				"id":     "resp_test",
+				"object": "response",
+				"status": "completed",
+				"output": []map[string]interface{}{
+					{
+						"id":     "msg_1",
+						"type":   "message",
+						"role":   "assistant",
+						"status": "completed",
+						"content": []map[string]interface{}{
+							{"type": "output_text", "text": "Hi from Codex!"},
+						},
 					},
 				},
-			},
-			"usage": map[string]interface{}{
-				"input_tokens":          12,
-				"output_tokens":         6,
-				"total_tokens":          18,
-				"input_tokens_details":  map[string]interface{}{"cached_tokens": 0},
-				"output_tokens_details": map[string]interface{}{"reasoning_tokens": 0},
+				"usage": map[string]interface{}{
+					"input_tokens":          12,
+					"output_tokens":         6,
+					"total_tokens":          18,
+					"input_tokens_details":  map[string]interface{}{"cached_tokens": 0},
+					"output_tokens_details": map[string]interface{}{"reasoning_tokens": 0},
+				},
 			},
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		eventJSON, err := json.Marshal(event)
+		if err != nil {
+			http.Error(w, "marshal event failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprintf(w, "event: response.completed\n")
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", string(eventJSON))
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer server.Close()
 
