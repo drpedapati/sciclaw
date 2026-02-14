@@ -103,8 +103,10 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 		for _, tc := range response.ToolCalls {
 			argumentsJSON, _ := json.Marshal(tc.Arguments)
 			assistantMsg.ToolCalls = append(assistantMsg.ToolCalls, providers.ToolCall{
-				ID:   tc.ID,
-				Type: "function",
+				ID:        tc.ID,
+				Type:      "function",
+				Name:      tc.Name,
+				Arguments: tc.Arguments,
 				Function: &providers.FunctionCall{
 					Name:      tc.Name,
 					Arguments: string(argumentsJSON),

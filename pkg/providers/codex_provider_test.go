@@ -58,6 +58,44 @@ func TestBuildCodexParams_ToolCallConversation(t *testing.T) {
 	}
 }
 
+func TestBuildCodexParams_AssistantToolCallUsesLegacyFunctionName(t *testing.T) {
+	messages := []Message{
+		{Role: "user", Content: "Run ls"},
+		{
+			Role: "assistant",
+			ToolCalls: []ToolCall{
+				{
+					ID:   "call_legacy",
+					Name: "",
+					Function: &FunctionCall{
+						Name:      "list_dir",
+						Arguments: `{"path":"."}`,
+					},
+				},
+			},
+		},
+	}
+
+	params := buildCodexParams(messages, nil, "gpt-4o", map[string]interface{}{})
+	if params.Input.OfInputItemList == nil {
+		t.Fatal("Input.OfInputItemList should not be nil")
+	}
+	if len(params.Input.OfInputItemList) != 2 {
+		t.Fatalf("len(Input items) = %d, want 2", len(params.Input.OfInputItemList))
+	}
+
+	fc := params.Input.OfInputItemList[1].OfFunctionCall
+	if fc == nil {
+		t.Fatal("second input item should be a function call")
+	}
+	if fc.Name != "list_dir" {
+		t.Errorf("function call name = %q, want %q", fc.Name, "list_dir")
+	}
+	if fc.Arguments != `{"path":"."}` {
+		t.Errorf("function call args = %q, want %q", fc.Arguments, `{"path":"."}`)
+	}
+}
+
 func TestBuildCodexParams_WithTools(t *testing.T) {
 	tools := []ToolDefinition{
 		{

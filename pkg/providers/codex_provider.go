@@ -128,12 +128,16 @@ func buildCodexParams(messages []Message, tools []ToolDefinition, model string, 
 					})
 				}
 				for _, tc := range msg.ToolCalls {
-					argsJSON, _ := json.Marshal(tc.Arguments)
+					name := resolveToolCallName(tc)
+					if name == "" {
+						continue
+					}
+					argsJSON := resolveToolCallArguments(tc)
 					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
 						OfFunctionCall: &responses.ResponseFunctionToolCallParam{
 							CallID:    tc.ID,
-							Name:      tc.Name,
-							Arguments: string(argsJSON),
+							Name:      name,
+							Arguments: argsJSON,
 						},
 					})
 				}
@@ -174,6 +178,27 @@ func buildCodexParams(messages []Message, tools []ToolDefinition, model string, 
 	}
 
 	return params
+}
+
+func resolveToolCallName(tc ToolCall) string {
+	if tc.Name != "" {
+		return tc.Name
+	}
+	if tc.Function != nil {
+		return tc.Function.Name
+	}
+	return ""
+}
+
+func resolveToolCallArguments(tc ToolCall) string {
+	if len(tc.Arguments) > 0 {
+		argsJSON, _ := json.Marshal(tc.Arguments)
+		return string(argsJSON)
+	}
+	if tc.Function != nil && tc.Function.Arguments != "" {
+		return tc.Function.Arguments
+	}
+	return "{}"
 }
 
 func translateToolsForCodex(tools []ToolDefinition) []responses.ToolUnionParam {
