@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -792,6 +793,12 @@ func statusCmd() {
 			fmt.Printf("vLLM/Local: ✓ %s\n", cfg.Providers.VLLM.APIBase)
 		} else {
 			fmt.Println("vLLM/Local: not set")
+		}
+
+		if irlPath, err := exec.LookPath("irl"); err == nil {
+			fmt.Printf("IRL Runtime: ✓ %s\n", irlPath)
+		} else {
+			fmt.Println("IRL Runtime: missing (reinstall/update your sciClaw Homebrew package)")
 		}
 
 		store, _ := auth.LoadStore()
