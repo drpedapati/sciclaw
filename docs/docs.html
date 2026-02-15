@@ -35,6 +35,25 @@
       --content-max: 820px;
     }
 
+    [data-theme="dark"] {
+      --color-bg: #0d1117;
+      --color-bg-soft: #161b22;
+      --color-bg-sidebar: #0d1117;
+      --color-text: #e6edf3;
+      --color-text-secondary: #8b949e;
+      --color-text-tertiary: #6e7681;
+      --color-border: #30363d;
+      --color-border-light: #21262d;
+      --color-link: #58a6ff;
+      --color-link-hover: #79c0ff;
+      --color-accent: #3fb9a8;
+      --color-accent-bg: #0f2b26;
+      --color-code-bg: #161b22;
+      --color-code-text: #e6edf3;
+      --color-sidebar-active: #58a6ff;
+      --color-sidebar-active-bg: #1c2536;
+    }
+
     html {
       font-size: 16px;
       scroll-behavior: smooth;
@@ -47,6 +66,11 @@
       background: var(--color-bg);
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    html.no-transition, html.no-transition * {
+      transition: none !important;
     }
 
     /* ── Header ── */
@@ -303,6 +327,13 @@
 
     .callout-warn .callout-title { color: #9a6700; }
 
+    [data-theme="dark"] .callout-warn {
+      border-left-color: #d29922;
+      background: #2a2216;
+    }
+
+    [data-theme="dark"] .callout-warn .callout-title { color: #d29922; }
+
     /* ── Section dividers ── */
     .section { scroll-margin-top: calc(var(--header-height) + 20px); }
 
@@ -395,7 +426,36 @@
     }
 
     .sidebar-backdrop.open { display: block; }
+
+    /* ── Theme toggle ── */
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      font-size: 16px;
+      line-height: 1;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .theme-toggle:hover {
+      color: var(--color-text);
+      border-color: var(--color-text-tertiary);
+    }
   </style>
+  <script>
+    // Apply theme before first paint to prevent flash
+    (function() {
+      var saved = localStorage.getItem('sciclaw-theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+      document.documentElement.classList.add('no-transition');
+    })();
+  </script>
 </head>
 <body>
 
@@ -412,6 +472,7 @@
       <a href="#" class="active">Documentation</a>
       <a href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener">Source code</a>
       <a href="https://github.com/drpedapati/sciclaw/issues" target="_blank" rel="noopener" class="hide-mobile">Help</a>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
     </nav>
   </div>
 </header>
@@ -1174,6 +1235,34 @@
 
 <!-- ═══════════ JS ═══════════ -->
 <script>
+// Theme toggle
+function toggleTheme() {
+  var html = document.documentElement;
+  var isDark = html.getAttribute('data-theme') === 'dark';
+  if (isDark) {
+    html.removeAttribute('data-theme');
+    localStorage.setItem('sciclaw-theme', 'light');
+  } else {
+    html.setAttribute('data-theme', 'dark');
+    localStorage.setItem('sciclaw-theme', 'dark');
+  }
+  updateThemeIcon();
+}
+
+function updateThemeIcon() {
+  var btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  btn.innerHTML = isDark ? '&#9788;' : '&#9790;';
+  btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+}
+
+// Set icon on load and remove no-transition class
+updateThemeIcon();
+requestAnimationFrame(function() {
+  document.documentElement.classList.remove('no-transition');
+});
+
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebarBackdrop').classList.toggle('open');
