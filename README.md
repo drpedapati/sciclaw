@@ -25,8 +25,8 @@ Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrit
 ### Homebrew (recommended)
 
 ```bash
-brew tap drpedapati/tap
-brew install drpedapati/tap/sciclaw
+# One-line bootstrap (installs sciclaw + dependencies, initializes workspace, and verifies)
+brew tap drpedapati/tap && brew install sciclaw && sciclaw onboard --yes && sciclaw doctor
 ```
 
 ### Download a binary
@@ -43,19 +43,15 @@ make deps && make install
 
 ### Companion tools
 
-These CLI tools integrate with sciClaw's built-in skills:
-
-```bash
-brew install henrybloomingdale/tools/docx-review   # Word docs with tracked changes (Open XML SDK)
-brew install henrybloomingdale/tools/pubmed-cli     # PubMed search & citation graphs
-```
+If you install via Homebrew, sciClaw pulls companion tools automatically (IRL, ripgrep, docx-review, pubmed-cli).
+If you install via downloaded binary/source, see `sciclaw doctor` for install hints.
 
 ## Quick Start
 
 **1. Initialize**
 
 ```bash
-sciclaw onboard
+sciclaw onboard --yes
 ```
 
 **2. Configure** (`~/.picoclaw/config.json`)
