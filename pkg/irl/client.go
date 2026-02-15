@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -145,6 +146,23 @@ func (c *Client) AdoptProject(ctx context.Context, req AdoptProjectRequest) (*Op
 
 func (c *Client) DiscoverProjects(ctx context.Context) (*OperationResult, error) {
 	parsed, records, err := c.runJSONCommandWithRetry(ctx, "discover_projects", []string{"list", "--json"})
+	if err != nil && isDiscoverUnsupported(records) {
+		fallbackProjects := c.discoverProjectsFromFilesystem()
+		status := StatusPartial
+		if len(records) == 0 {
+			status = StatusSuccess
+		}
+		return &OperationResult{
+			Operation: "discover_projects",
+			Status:    status,
+			Data: map[string]interface{}{
+				"projects": fallbackProjects,
+				"source":   "filesystem_fallback",
+			},
+			Commands: summarizeRecords(records),
+		}, nil
+	}
+
 	res := &OperationResult{
 		Operation: "discover_projects",
 		Status:    aggregateStatus(records),
@@ -458,6 +476,90 @@ func trimForResult(s string) string {
 		return s
 	}
 	return s[:max] + fmt.Sprintf("\n... (truncated %d chars)", len(s)-max)
+}
+
+func isDiscoverUnsupported(records []CommandRecord) bool {
+	if len(records) == 0 {
+		return false
+	}
+	last := records[len(records)-1]
+	combined := strings.ToLower(strings.TrimSpace(last.Stderr + "\n" + last.Error))
+	if combined == "" {
+		return false
+	}
+	if strings.Contains(combined, `unknown command "list"`) {
+		return true
+	}
+	if strings.Contains(combined, "unknown flag: --json") {
+		return true
+	}
+	if strings.Contains(combined, "/dev/tty") {
+		return true
+	}
+	return false
+}
+
+func (c *Client) discoverProjectsFromFilesystem() []map[string]interface{} {
+	roots := c.defaultProjectRoots()
+	seen := map[string]struct{}{}
+	projects := make([]map[string]interface{}, 0, 8)
+
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			projectPath := filepath.Join(root, entry.Name())
+			planPath := filepath.Join(projectPath, "plans", "main-plan.md")
+			if _, err := os.Stat(planPath); err != nil {
+				continue
+			}
+			normalizedPath := filepath.Clean(projectPath)
+			if _, exists := seen[normalizedPath]; exists {
+				continue
+			}
+			seen[normalizedPath] = struct{}{}
+			projects = append(projects, map[string]interface{}{
+				"name": entry.Name(),
+				"path": filepath.ToSlash(normalizedPath),
+			})
+		}
+	}
+
+	sort.Slice(projects, func(i, j int) bool {
+		return fmt.Sprintf("%v", projects[i]["name"]) < fmt.Sprintf("%v", projects[j]["name"])
+	})
+	return projects
+}
+
+func (c *Client) defaultProjectRoots() []string {
+	roots := make([]string, 0, 3)
+	seen := map[string]struct{}{}
+	add := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		path = filepath.Clean(path)
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		roots = append(roots, path)
+	}
+
+	add(c.workspace)
+	if home, err := os.UserHomeDir(); err == nil {
+		add(filepath.Join(home, "Documents", "irl_projects"))
+	}
+	return roots
 }
 
 func summarizeRecords(records []CommandRecord) []CommandSummary {

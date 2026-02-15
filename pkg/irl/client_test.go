@@ -110,6 +110,74 @@ func TestCreateProjectRequiresPurposeOrName(t *testing.T) {
 	}
 }
 
+func TestDiscoverProjectsFallbackWhenListCommandUnsupported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fixture is unix-only")
+	}
+
+	workspace := t.TempDir()
+	projectDir := filepath.Join(workspace, "sciclaw-manuscript")
+	if err := os.MkdirAll(filepath.Join(projectDir, "plans"), 0755); err != nil {
+		t.Fatalf("mkdir project plans: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "plans", "main-plan.md"), []byte("# plan\n"), 0644); err != nil {
+		t.Fatalf("write plan file: %v", err)
+	}
+
+	binDir := t.TempDir()
+	binaryPath := filepath.Join(binDir, "irl")
+	if err := writeFakeIRLBinaryWithoutList(binaryPath); err != nil {
+		t.Fatalf("write fake irl binary: %v", err)
+	}
+
+	client := NewClientWithOptions(workspace, ClientOptions{
+		NowFn: func() time.Time {
+			return time.Date(2026, time.February, 15, 12, 0, 0, 0, time.UTC)
+		},
+		LookPathFn: func(file string) (string, error) {
+			return binaryPath, nil
+		},
+		BinaryCandidates: []string{binaryPath},
+	})
+
+	res, err := client.DiscoverProjects(context.Background())
+	if err != nil {
+		t.Fatalf("DiscoverProjects returned error: %v", err)
+	}
+	if res.Status != StatusPartial {
+		t.Fatalf("expected partial status (fallback mode), got %s", res.Status)
+	}
+
+	projectsRaw, ok := res.Data["projects"]
+	if !ok {
+		t.Fatalf("expected projects in fallback result")
+	}
+	projects, ok := projectsRaw.([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected []map[string]interface{} projects, got %T", projectsRaw)
+	}
+	if len(projects) == 0 {
+		t.Fatalf("expected at least one discovered project in fallback mode")
+	}
+	found := false
+	for _, project := range projects {
+		if project["name"] == "sciclaw-manuscript" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected sciclaw-manuscript in fallback project list, got %v", projects)
+	}
+
+	if source, ok := res.Data["source"]; !ok || source != "filesystem_fallback" {
+		t.Fatalf("expected source=filesystem_fallback, got %v", source)
+	}
+	if len(res.Commands) == 0 {
+		t.Fatalf("expected original failed command to be recorded")
+	}
+}
+
 func TestClientResolvesBinaryFromFallbackCandidates(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script fixture is unix-only")
@@ -209,4 +277,29 @@ esac
 		return err
 	}
 	return nil
+}
+
+func writeFakeIRLBinaryWithoutList(path string) error {
+	content := `#!/bin/sh
+set -eu
+cmd="${1:-}"
+case "$cmd" in
+  --version)
+    echo "irl 0.5.16"
+    ;;
+  list)
+    echo 'Error: unknown command "list" for "irl"' >&2
+    echo "Run 'irl --help' for usage." >&2
+    exit 1
+    ;;
+  config)
+    echo "Configuration"
+    ;;
+  *)
+    echo "unknown command: $cmd" >&2
+    exit 2
+    ;;
+esac
+`
+	return os.WriteFile(path, []byte(content), 0755)
 }
