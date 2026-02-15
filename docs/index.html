@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>sciClaw | How the Paired-Scientist Loop Works</title>
+    <title>sciClaw | Your AI Research Partner</title>
     <meta
       name="description"
-      content="A practical explainer for sciClaw: a PicoClaw-compatible paired-scientist workflow with reproducible loops, evidence capture, and manuscript integration."
+      content="sciClaw is a free, open-source AI research assistant that helps academics search literature, draft manuscripts, review documents, and maintain reproducible evidence trails."
     />
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
@@ -19,19 +19,15 @@
         --border: #dbe3ee;
         --accent: #0f766e;
         --accent-soft: #ccfbf1;
-        --warn: #b45309;
-        --warn-soft: #fef3c7;
+        --accent-hover: #0d655b;
         --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
         --serif: "Fraunces", "Times New Roman", serif;
         --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
-      html,
-      body {
+      html, body {
         margin: 0;
         padding: 0;
         background:
@@ -43,10 +39,10 @@
         line-height: 1.7;
       }
 
-      a {
-        color: var(--accent);
-      }
+      a { color: var(--accent); }
+      a:hover { color: var(--accent-hover); }
 
+      /* ── Top bar ── */
       .topbar {
         position: sticky;
         top: 0;
@@ -73,9 +69,9 @@
         align-items: center;
         gap: 10px;
         font-family: var(--mono);
-        font-size: 12px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
       }
 
       .brand-dot {
@@ -86,28 +82,38 @@
         display: inline-block;
       }
 
+      .nav-links { display: flex; align-items: center; gap: 18px; }
+
       .util {
         text-decoration: none;
         font-family: var(--mono);
         font-size: 12px;
         color: var(--muted);
       }
+      .util:hover { color: var(--ink); }
 
-      .util:hover {
-        color: var(--ink);
-      }
-
+      /* ── Layout ── */
       .wrap {
         max-width: 980px;
         margin: 0 auto;
         padding: 28px 20px 90px;
       }
 
+      section {
+        margin-top: 28px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px 24px;
+        background: var(--paper);
+      }
+
+      /* ── Hero ── */
       .hero {
         border: 1px solid var(--border);
         border-radius: 18px;
         background: linear-gradient(180deg, #ffffff 0%, #f9fffe 100%);
-        padding: 28px 24px;
+        padding: 40px 28px;
+        text-align: center;
       }
 
       .kicker {
@@ -115,114 +121,53 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
         font-size: 11px;
-        color: var(--muted);
+        color: var(--accent);
+        font-weight: 500;
       }
 
       h1 {
-        margin: 10px 0 8px;
+        margin: 14px 0 12px;
         font-family: var(--serif);
-        font-size: clamp(34px, 6vw, 56px);
-        line-height: 1.05;
+        font-size: clamp(32px, 5.5vw, 52px);
+        line-height: 1.08;
         letter-spacing: -0.02em;
       }
 
-      .subtitle {
-        margin: 0 0 16px;
-        font-family: var(--mono);
+      .hero-sub {
+        margin: 0 auto 20px;
+        max-width: 620px;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 17px;
+        line-height: 1.6;
       }
 
-      .lede {
-        margin: 0;
-        color: #1e293b;
-        font-size: 18px;
-      }
-
-      section {
-        margin-top: 24px;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 24px 22px;
-        background: var(--paper);
-      }
-
-      h2 {
-        margin: 0 0 8px;
-        font-family: var(--serif);
-        font-size: clamp(28px, 4vw, 38px);
-        line-height: 1.1;
-      }
-
-      .subhead {
-        margin: 0 0 14px;
-        color: var(--muted);
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-      }
-
-      .card {
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 14px;
-        background: #fff;
-      }
-
-      .card h3 {
-        margin: 0 0 6px;
-        font-size: 16px;
-      }
-
-      .tag {
-        display: inline-block;
-        font-family: var(--mono);
-        font-size: 11px;
-        padding: 3px 8px;
-        border-radius: 999px;
-        margin-bottom: 8px;
-      }
-
-      .tag-accent {
-        background: var(--accent-soft);
-        color: #0f766e;
-      }
-
-      .tag-warn {
-        background: var(--warn-soft);
-        color: var(--warn);
-      }
-
-      pre {
-        margin: 0;
-        padding: 12px;
-        border-radius: 10px;
-        border: 1px solid #0f172a;
-        background: #020617;
-        color: #e2e8f0;
+      .trust {
+        margin: 18px 0 0;
         font-family: var(--mono);
         font-size: 12px;
-        overflow: auto;
+        color: var(--muted);
       }
 
+      /* ── Buttons ── */
       .btn-row {
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
-        margin-top: 14px;
+        justify-content: center;
       }
 
       .btn {
         text-decoration: none;
         border-radius: 9px;
         border: 1px solid transparent;
-        padding: 9px 12px;
+        padding: 10px 18px;
         font-family: var(--mono);
-        font-size: 12px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: opacity 0.15s;
       }
+      .btn:hover { opacity: 0.88; }
 
       .btn-primary {
         background: linear-gradient(135deg, var(--accent), #0891b2);
@@ -235,24 +180,303 @@
         background: #ffffff;
       }
 
-      .note {
-        border-left: 3px solid var(--accent);
-        padding-left: 12px;
+      /* ── Typography ── */
+      h2 {
+        margin: 0 0 6px;
+        font-family: var(--serif);
+        font-size: clamp(26px, 4vw, 36px);
+        line-height: 1.1;
+      }
+
+      .subhead {
+        margin: 0 0 18px;
         color: var(--muted);
-        margin: 12px 0 0;
+        font-size: 16px;
+      }
+
+      /* ── Grid ── */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      /* ── Cards ── */
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px;
+        background: #fff;
+      }
+
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .card ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .card ul li { margin-bottom: 3px; }
+
+      .card-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+        display: block;
+      }
+
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        margin-bottom: 8px;
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      /* ── Pain points ── */
+      .pain-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px;
+        background: #fffbf5;
+      }
+
+      .pain-card h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #92400e;
+      }
+
+      .pain-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      /* ── Tabs (demos) ── */
+      .tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid var(--border);
+        margin-bottom: 16px;
+      }
+
+      .tab-btn {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        padding: 8px 16px;
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--muted);
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+      }
+
+      .tab-btn:hover { color: var(--ink); }
+
+      .tab-btn.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+        font-weight: 500;
+      }
+
+      .tab-panel { display: none; }
+      .tab-panel.active { display: block; }
+
+      .demo-block {
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #fafcfe;
+        overflow: hidden;
+      }
+
+      .demo-prompt {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--ink);
+        background: #fff;
+      }
+
+      .demo-prompt .cmd {
+        color: var(--accent);
+        font-weight: 500;
+      }
+
+      .demo-output {
+        padding: 14px 16px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #334155;
+      }
+
+      .demo-output strong { color: var(--ink); }
+
+      /* ── Steps ── */
+      .steps { counter-reset: step; }
+
+      .step {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        padding: 14px 0;
+      }
+
+      .step + .step { border-top: 1px solid var(--border); }
+
+      .step-num {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .step-body h3 {
+        margin: 0 0 4px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .step-body p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .step-code {
+        margin: 8px 0 0;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: var(--mono);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .copy-btn {
+        background: none;
+        border: 1px solid #334155;
+        border-radius: 5px;
+        color: #94a3b8;
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 3px 8px;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: color 0.15s, border-color 0.15s;
+      }
+
+      .copy-btn:hover {
+        color: #e2e8f0;
+        border-color: #64748b;
+      }
+
+      /* ── Providers ── */
+      .provider-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .provider-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-family: var(--mono);
+        font-size: 13px;
+        background: #fff;
+        color: var(--ink);
+      }
+
+      /* ── FAQ ── */
+      .faq-item {
+        padding: 14px 0;
+      }
+
+      .faq-item + .faq-item { border-top: 1px solid var(--border); }
+
+      .faq-q {
+        margin: 0 0 4px;
+        font-weight: 600;
+        font-size: 15px;
+      }
+
+      .faq-a {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      /* ── Footer ── */
+      .footer-cta {
+        text-align: center;
+        padding: 36px 24px;
+      }
+
+      .footer-cta h2 {
+        margin-bottom: 12px;
+      }
+
+      .footer-cta p {
+        color: var(--muted);
+        margin: 0 0 18px;
       }
 
       footer {
-        margin-top: 22px;
+        margin-top: 24px;
+        padding: 16px 0;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
         text-align: center;
       }
 
+      /* ── Responsive ── */
       @media (max-width: 760px) {
-        .grid {
-          grid-template-columns: 1fr;
-        }
+        .grid, .grid-3 { grid-template-columns: 1fr; }
+        .hero { padding: 28px 18px; }
+        section { padding: 20px 16px; }
+        .step { flex-direction: column; gap: 8px; }
       }
     </style>
   </head>
@@ -261,167 +485,280 @@
       <div class="topbar-inner">
         <a class="brand" href="#">
           <span class="brand-dot" aria-hidden="true"></span>
-          sciClaw Explainer
+          sciClaw
         </a>
-        <div style="display:flex;align-items:center;gap:14px;">
-          <a class="util" href="../README.md">README</a>
-          <a class="util" href="../manuscript/sciclaw-manuscript-outline.qmd">Manuscript</a>
+        <nav class="nav-links">
+          <a class="util" href="docs.html">Documentation</a>
           <a class="util" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
+          <a class="btn btn-primary" href="#install" style="padding:6px 12px;font-size:12px;">Install</a>
+        </nav>
       </div>
     </header>
 
     <main class="wrap">
+      <!-- ── Hero ── -->
       <section class="hero">
-        <div class="kicker">Paired Scientist Workflow · PicoClaw-Compatible Runtime</div>
-        <h1>How sciClaw Works 🔬</h1>
-        <p class="subtitle">A reproducible loop from question to evidence to manuscript.</p>
-        <p class="lede">
-          sciClaw keeps PicoClaw's lightweight execution model and upstream compatibility, then layers
-          a paired-scientist operating pattern: plan clearly, run deterministically, capture evidence,
-          and update manuscript artifacts in the same loop.
+        <div class="kicker">Your AI research partner</div>
+        <h1>From research question to manuscript &mdash; without the busywork</h1>
+        <p class="hero-sub">
+          sciClaw is an AI assistant that searches literature, drafts manuscripts,
+          reviews documents, and keeps a reproducible evidence trail &mdash;
+          all through plain-language conversation.
         </p>
-        <p class="note">
-          This page follows the explainer-site format: pipeline view first, deep-dive sections second,
-          and practical commands at the end.
-        </p>
-      </section>
-
-      <section>
-        <h2>The sciClaw Pipeline</h2>
-        <p class="subhead">From research question to review-ready artifact trail.</p>
-        <div class="card">
-          <div class="mermaid">
-flowchart LR
-  A[Question + Hypothesis] --> B[Plan Contract]
-  B --> C[Code + Tool Execution]
-  C --> D[Evidence + Logs]
-  D --> E[Manuscript Update]
-  E --> F[Loop Validation]
-  F --> B
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2>Architecture</h2>
-        <div class="grid">
-          <article class="card">
-            <span class="tag tag-accent">Behavior Layer</span>
-            <h3>Paired-scientist defaults</h3>
-            <p>
-              Workspace templates now center scientific rigor: explicit assumptions, evidence tracking,
-              and uncertainty boundaries.
-            </p>
-          </article>
-          <article class="card">
-            <span class="tag tag-accent">Runtime Layer</span>
-            <h3>Scientist identity in core prompt</h3>
-            <p>
-              The system context uses sciClaw framing and reproducibility-first operating rules while
-              preserving command compatibility.
-            </p>
-          </article>
-          <article class="card">
-            <span class="tag tag-accent">Skills Layer</span>
-            <h3>Literature → provenance → benchmark</h3>
-            <p>
-              Added scientific skill modules for writing, PubMed/bioRxiv retrieval, provenance capture,
-              benchmark logging, manuscript authoring, and Office/PDF artifact workflows.
-            </p>
-          </article>
-          <article class="card">
-            <span class="tag tag-warn">Governance Layer</span>
-            <h3>Loop-level traceability contract</h3>
-            <p>
-              Each loop requires build/test/render checks plus log updates to keep claims auditable and
-              reproducible.
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <section>
-        <h2>Workspace Anatomy</h2>
-        <p class="subhead">The default workspace structure optimized for scientific collaboration.</p>
-        <pre>~/.picoclaw/workspace/
-├── sessions/
-├── memory/
-│   └── MEMORY.md
-├── cron/
-├── skills/
-├── AGENTS.md
-├── HOOKS.md
-├── hooks.yaml (optional)
-├── hooks/
-│   └── hook-events.jsonl
-├── IDENTITY.md
-├── SOUL.md
-├── TOOLS.md
-└── USER.md</pre>
-      </section>
-
-      <section>
-        <h2>Skill-to-Outcome Flow 🧪</h2>
-        <div class="card">
-          <div class="mermaid">
-flowchart TB
-  A[pubmed-cli / biorxiv-database] --> B[scientific-writing]
-  B --> C[docx-review / pptx / xlsx / pdf]
-  C --> D[humanize-text]
-  D --> E[experiment-provenance]
-  E --> F[benchmark-logging]
-  F --> G[quarto-authoring + beautiful-mermaid]
-  G --> H[manuscript/*.qmd + rendered outputs]
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2>Quick Start Commands</h2>
-        <div class="grid">
-          <article class="card">
-            <h3>Bootstrap + Auth</h3>
-            <pre>sciclaw onboard
-sciclaw auth login --provider openai
-sciclaw auth status
-sciclaw status</pre>
-          </article>
-          <article class="card">
-            <h3>Run a loop</h3>
-            <pre>go test ./cmd/picoclaw ./pkg/agent ./pkg/migrate
-make build
-quarto render manuscript/sciclaw-manuscript-outline.qmd --to html</pre>
-          </article>
-        </div>
         <div class="btn-row">
-          <a class="btn btn-primary" href="../README.md">Open README</a>
-          <a class="btn btn-secondary" href="../manuscript/sciclaw-component-revision-plan.qmd">Open Component Plan</a>
+          <a class="btn btn-primary" href="#install">Install sciClaw</a>
+          <a class="btn btn-secondary" href="docs.html">Read the docs</a>
+        </div>
+        <p class="trust">Free and open source. MIT licensed. Works with your existing tools.</p>
+      </section>
+
+      <!-- ── Pain points ── -->
+      <section>
+        <h2>Sound familiar?</h2>
+        <p class="subhead">Research involves a lot of repetitive work that pulls you away from thinking.</p>
+        <div class="grid-3">
+          <div class="pain-card">
+            <h3>Searching takes forever</h3>
+            <p>Hours lost sifting through PubMed results, chasing citation chains, and formatting references by hand.</p>
+          </div>
+          <div class="pain-card">
+            <h3>Too many tools, too much pasting</h3>
+            <p>Copy data into Excel, export to Word, fix formatting, remake the figure&hellip; rinse and repeat for every revision.</p>
+          </div>
+          <div class="pain-card">
+            <h3>No trail of what changed</h3>
+            <p>Six months later, you can't reconstruct which analysis produced which result or why a parameter was chosen.</p>
+          </div>
+        </div>
+        <p style="margin:18px 0 0;color:var(--muted);font-size:15px;text-align:center;">
+          sciClaw handles the tedious parts so you can focus on the science.
+        </p>
+      </section>
+
+      <!-- ── Demos ── -->
+      <section>
+        <h2>See it in action</h2>
+        <p class="subhead">You type a question. sciClaw does the work.</p>
+
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="lit">Literature search</button>
+          <button class="tab-btn" data-tab="draft">Manuscript draft</button>
+          <button class="tab-btn" data-tab="review">Document review</button>
+        </div>
+
+        <div id="tab-lit" class="tab-panel active">
+          <div class="demo-block">
+            <div class="demo-prompt">
+              <span class="cmd">$</span> sciclaw agent -m <em>"What pathways are implicated in ALS progression?"</em>
+            </div>
+            <div class="demo-output">
+              <strong>Literature search results (PubMed, 2020&ndash;2025):</strong><br><br>
+              1. <strong>TDP-43 proteinopathy</strong> &mdash; Cytoplasmic mislocalization of TDP-43 in &gt;97% of ALS cases. RNA processing disruption leads to downstream neurodegeneration. <em>(Neumann et al., 2023; PMID 37284100)</em><br><br>
+              2. <strong>SOD1 / oxidative stress</strong> &mdash; Gain-of-function SOD1 mutations cause mitochondrial dysfunction and ROS accumulation in motor neurons. <em>(Rosen et al., 2022; PMID 36198432)</em><br><br>
+              3. <strong>C9orf72 repeat expansion</strong> &mdash; Hexanucleotide repeat in C9orf72 accounts for ~40% of familial ALS. Dipeptide repeat proteins impair nucleocytoplasmic transport. <em>(DeJesus-Hernandez et al., 2021; PMID 34892710)</em><br><br>
+              <em style="color:var(--accent);">Found 47 articles. Full citation list saved to session.</em>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-draft" class="tab-panel">
+          <div class="demo-block">
+            <div class="demo-prompt">
+              <span class="cmd">$</span> sciclaw agent -m <em>"Draft a methods section for our ERP correlation analysis"</em>
+            </div>
+            <div class="demo-output">
+              <strong>Methods</strong><br><br>
+              <strong>Participants.</strong> Thirty-two right-handed adults (18 female; mean age = 24.3, SD = 3.1) participated after providing written informed consent. The study was approved by the institutional review board (Protocol #2024-0187).<br><br>
+              <strong>ERP Recording.</strong> Continuous EEG was recorded from 64 Ag/AgCl electrodes using a BioSemi ActiveTwo system (sampling rate: 512 Hz). Data were referenced to the average of bilateral mastoids and filtered offline (0.1&ndash;30 Hz, zero-phase Butterworth).<br><br>
+              <strong>Statistical Analysis.</strong> Spearman rank correlations were computed between P300 amplitude at Pz and ALSFRS-R decline rate (points/month). Multiple comparisons were corrected using the Benjamini-Hochberg procedure (FDR = 0.05).<br><br>
+              <em style="color:var(--accent);">Draft saved. Run "sciclaw agent" to continue refining.</em>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-review" class="tab-panel">
+          <div class="demo-block">
+            <div class="demo-prompt">
+              <span class="cmd">$</span> sciclaw agent -m <em>"Review the discussion section in manuscript.docx"</em>
+            </div>
+            <div class="demo-output">
+              <strong>Review complete.</strong> Output: manuscript-reviewed.docx<br><br>
+              <strong>Tracked changes (7):</strong><br>
+              &bull; Para 2: Strengthened causal language &rarr; hedged to "these findings suggest"<br>
+              &bull; Para 3: Added missing citation for the Bhatt et al. replication study<br>
+              &bull; Para 5: Flagged unsupported claim about treatment efficacy<br><br>
+              <strong>Comments (3):</strong><br>
+              &bull; "Consider acknowledging the sample size limitation here"<br>
+              &bull; "This effect size is smaller than reported in the meta-analysis &mdash; worth noting"<br>
+              &bull; "The transition between paragraphs 4 and 5 could be smoother"<br><br>
+              <em style="color:var(--accent);">Open manuscript-reviewed.docx in Word to accept or reject changes.</em>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Skills grid ── -->
+      <section>
+        <h2>12 built-in skills</h2>
+        <p class="subhead">Installed automatically when you set up sciClaw. No plugins to find or configure.</p>
+        <div class="grid">
+          <article class="card">
+            <span class="tag">Research & Literature</span>
+            <h3>Search, cite, discover</h3>
+            <ul>
+              <li><strong>PubMed search</strong> &mdash; full-text search, citation graphs, MeSH lookup</li>
+              <li><strong>bioRxiv / medRxiv</strong> &mdash; preprint surveillance and alerts</li>
+              <li><strong>Scientific writing</strong> &mdash; claim-evidence aligned drafting</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="tag">Writing & Documents</span>
+            <h3>Word, PowerPoint, PDF, Excel</h3>
+            <ul>
+              <li><strong>Document review</strong> &mdash; tracked changes, comments, semantic diff</li>
+              <li><strong>Presentations</strong> &mdash; create and edit PowerPoint slides</li>
+              <li><strong>PDF &amp; spreadsheets</strong> &mdash; create, merge, split, analyze</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="tag">Visualization & Authoring</span>
+            <h3>Manuscripts and figures</h3>
+            <ul>
+              <li><strong>Quarto authoring</strong> &mdash; loop-driven .qmd manuscripts</li>
+              <li><strong>Mermaid diagrams</strong> &mdash; publication-grade flowcharts</li>
+              <li><strong>Language polish</strong> &mdash; natural tone refinement</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="tag">Reproducibility</span>
+            <h3>Evidence you can trace</h3>
+            <ul>
+              <li><strong>Experiment provenance</strong> &mdash; metadata capture for every run</li>
+              <li><strong>Benchmark logging</strong> &mdash; records with acceptance criteria</li>
+              <li><strong>Session history</strong> &mdash; every conversation is stored</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── Install steps ── -->
+      <section id="install">
+        <h2>Get started in three steps</h2>
+        <p class="subhead">Works on macOS, Linux, and Windows. No coding required.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <h3>Install</h3>
+              <p>If you have <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a>, it's one command. Binaries are also available for direct download.</p>
+              <div class="step-code">
+                <code>brew tap drpedapati/sciclaw && brew install sciclaw</code>
+                <button class="copy-btn" onclick="copyText(this, 'brew tap drpedapati/sciclaw && brew install sciclaw')">Copy</button>
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <h3>Connect your AI provider</h3>
+              <p>sciClaw works with OpenAI, Anthropic, Google Gemini, and more. Authenticate with a single command.</p>
+              <div class="step-code">
+                <code>sciclaw auth login --provider openai</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw auth login --provider openai')">Copy</button>
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <h3>Start a conversation</h3>
+              <p>Ask a question in plain language. sciClaw takes it from there.</p>
+              <div class="step-code">
+                <code>sciclaw agent -m "What pathways are implicated in ALS?"</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw agent -m &quot;What pathways are implicated in ALS?&quot;')">Copy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Providers ── -->
+      <section>
+        <h2>Works with your preferred AI</h2>
+        <p class="subhead">Switch between providers and models anytime. You bring your own API key.</p>
+        <div class="provider-grid">
+          <span class="provider-chip">OpenAI</span>
+          <span class="provider-chip">Anthropic</span>
+          <span class="provider-chip">Google Gemini</span>
+          <span class="provider-chip">OpenRouter</span>
+          <span class="provider-chip">DeepSeek</span>
+          <span class="provider-chip">Groq</span>
+        </div>
+        <p style="margin:14px 0 0;color:var(--muted);font-size:13px;font-family:var(--mono);">
+          Switch models: sciclaw models set anthropic/claude-opus-4-6
+        </p>
+      </section>
+
+      <!-- ── FAQ ── -->
+      <section>
+        <h2>Frequently asked questions</h2>
+        <div class="faq-item">
+          <p class="faq-q">Do I need to know how to code?</p>
+          <p class="faq-a">No. You interact with sciClaw through plain-language conversation. If you can open a terminal and type a sentence, you can use sciClaw.</p>
+        </div>
+        <div class="faq-item">
+          <p class="faq-q">Is my data sent to the cloud?</p>
+          <p class="faq-a">sciClaw runs on your computer. Your conversations are sent to whichever AI provider you choose (OpenAI, Anthropic, etc.) using your own API key. Nothing is shared with us.</p>
+        </div>
+        <div class="faq-item">
+          <p class="faq-q">Can I trust AI-generated content for research?</p>
+          <p class="faq-a">sciClaw is designed for trust: it captures evidence trails, logs provenance metadata, and always shows its sources. You review and approve everything before it becomes part of your work.</p>
+        </div>
+        <div class="faq-item">
+          <p class="faq-q">What operating systems are supported?</p>
+          <p class="faq-a">macOS (Apple Silicon and Intel), Linux (amd64, arm64, riscv64), and Windows (amd64). Pre-built binaries are available on the <a href="https://github.com/drpedapati/sciclaw/releases">releases page</a>.</p>
+        </div>
+        <div class="faq-item">
+          <p class="faq-q">Is it free?</p>
+          <p class="faq-a">Yes. sciClaw is MIT licensed and completely free. The only cost is your AI provider's API usage, which you control directly.</p>
+        </div>
+      </section>
+
+      <!-- ── Footer CTA ── -->
+      <section class="footer-cta">
+        <h2>Ready to streamline your research workflow?</h2>
+        <p>Install sciClaw and start asking questions in under a minute.</p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="#install">Install sciClaw</a>
+          <a class="btn btn-secondary" href="docs.html">Read the documentation</a>
+          <a class="btn btn-secondary" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">View on GitHub</a>
         </div>
       </section>
 
       <footer>
-        Built for reproducible paired-scientist work: upstream-compatible runtime + explicit evidence trail.
+        sciClaw is open source (MIT). Built on <a href="https://github.com/sipeed/picoclaw">PicoClaw</a> by Sipeed.
       </footer>
     </main>
 
-    <script type="module">
-      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
-
-      mermaid.initialize({
-        startOnLoad: true,
-        theme: "base",
-        securityLevel: "loose",
-        themeVariables: {
-          primaryColor: "#ccfbf1",
-          primaryTextColor: "#0f172a",
-          primaryBorderColor: "#0f766e",
-          lineColor: "#0f766e",
-          secondaryColor: "#e2e8f0",
-          tertiaryColor: "#f8fafc",
-          fontFamily: "IBM Plex Sans"
-        }
+    <script>
+      // Tab switching
+      document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+          document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
       });
+
+      // Copy to clipboard
+      function copyText(btn, text) {
+        navigator.clipboard.writeText(text).then(function() {
+          var orig = btn.textContent;
+          btn.textContent = 'Copied';
+          setTimeout(function() { btn.textContent = orig; }, 1500);
+        });
+      }
     </script>
   </body>
 </html>
