@@ -188,10 +188,10 @@ func runDoctor(opts doctorOptions) doctorReport {
 	}
 
 	// Key external CLIs
-	add(checkBinary("docx-review", []string{"--version"}, 3*time.Second))
+	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "brew install henrybloomingdale/tools/docx-review"))
 	// PubMed CLI is usually `pubmed` from `pubmed-cli` formula; accept either name.
 	pubmed := checkBinary("pubmed", []string{"--help"}, 3*time.Second)
-	pubmedcli := checkBinary("pubmed-cli", []string{"--help"}, 3*time.Second)
+	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "brew install henrybloomingdale/tools/pubmed-cli (binary is `pubmed`; may need a `pubmed-cli` shim)")
 	if pubmedcli.Status == doctorOK {
 		add(pubmedcli)
 	} else if pubmed.Status == doctorOK {
@@ -211,10 +211,10 @@ func runDoctor(opts doctorOptions) doctorReport {
 		add(pubmedcli)
 	}
 
-	add(checkBinary("irl", []string{"--version"}, 3*time.Second))
-	add(checkBinary("pandoc", []string{"-v"}, 3*time.Second))
-	add(checkBinary("rg", []string{"--version"}, 3*time.Second))
-	add(checkBinary("python3", []string{"-V"}, 3*time.Second))
+	add(checkBinaryWithHint("irl", []string{"--version"}, 3*time.Second, "brew install irl"))
+	add(checkBinaryWithHint("pandoc", []string{"-v"}, 3*time.Second, "brew install pandoc"))
+	add(checkBinaryWithHint("rg", []string{"--version"}, 3*time.Second, "brew install ripgrep"))
+	add(checkBinaryWithHint("python3", []string{"-V"}, 3*time.Second, "install python3 (e.g. Homebrew, python.org, or system package manager)"))
 
 	// Skills sanity + sync
 	if cfgErr == nil {
@@ -277,6 +277,20 @@ func printDoctorReport(rep doctorReport) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func checkBinaryWithHint(name string, args []string, timeout time.Duration, installHint string) doctorCheck {
+	c := checkBinary(name, args, timeout)
+	if c.Status == doctorErr && installHint != "" {
+		if c.Data == nil {
+			c.Data = map[string]string{}
+		}
+		// Only mention brew if it is present; otherwise keep the message generic.
+		if findBrew() != "" || strings.HasPrefix(installHint, "install ") {
+			c.Data["install_hint"] = installHint
+		}
+	}
+	return c
 }
 
 func checkBinary(name string, args []string, timeout time.Duration) doctorCheck {
