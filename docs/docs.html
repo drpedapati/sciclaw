@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>sciClaw Documentation</title>
-  <meta name="description" content="sciClaw documentation — a PicoClaw-compatible paired-scientist assistant for reproducible research workflows." />
+  <meta name="description" content="sciClaw documentation — an autonomous paired-scientist CLI for reproducible research workflows." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -511,7 +511,6 @@
       <a class="sidebar-link" href="#paired-scientist">Paired-Scientist Model</a>
       <a class="sidebar-link nested" href="#research-loop">Research Loop</a>
       <a class="sidebar-link nested" href="#skills">Skills</a>
-      <a class="sidebar-link nested" href="#manuscript">Manuscript Pipeline</a>
       <a class="sidebar-link" href="#irl">IRL Integration</a>
       <a class="sidebar-link nested" href="#irl-why">Why IRL</a>
       <a class="sidebar-link nested" href="#irl-how">How It Works</a>
@@ -666,7 +665,7 @@
         <pre><code>{
   <span class="hl-key">"agents"</span>: {
     <span class="hl-key">"defaults"</span>: {
-      <span class="hl-key">"model"</span>: <span class="hl-string">"anthropic/claude-opus-4-5"</span>,
+      <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.2"</span>,
       <span class="hl-key">"max_tokens"</span>: 8192,
       <span class="hl-key">"temperature"</span>: 0.7
     }
@@ -710,7 +709,7 @@
   <span class="hl-key">"agents"</span>: {
     <span class="hl-key">"defaults"</span>: {
       <span class="hl-key">"workspace"</span>: <span class="hl-string">"~/.picoclaw/workspace"</span>,
-      <span class="hl-key">"model"</span>: <span class="hl-string">"anthropic/claude-opus-4-5"</span>,
+      <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.2"</span>,
       <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"high"</span>,
       <span class="hl-key">"max_tokens"</span>: 8192,
       <span class="hl-key">"temperature"</span>: 0.7,
@@ -843,7 +842,7 @@
 
         <div class="callout">
           <div class="callout-title">Compatibility</div>
-          <p>All commands work with both <code>sciclaw</code> and <code>picoclaw</code>. The <code>picoclaw</code> alias is fully supported for upstream compatibility.</p>
+          <p>The <code>picoclaw</code> command is available as an alias for upstream compatibility.</p>
         </div>
       </div>
 
@@ -859,7 +858,7 @@
 <span class="hl-cmd">sciclaw</span> agent
 
 <span class="hl-comment"># Override model for one invocation (config unchanged)</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-4o <span class="hl-flag">-m</span> <span class="hl-string">"Quick question"</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2 <span class="hl-flag">-m</span> <span class="hl-string">"Quick question"</span>
 
 <span class="hl-comment"># Set reasoning effort (critical for o-series and Claude thinking)</span>
 <span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--effort</span> high <span class="hl-flag">-m</span> <span class="hl-string">"Analyze this complex dataset"</span>
@@ -877,8 +876,8 @@
 
         <h4>1. Per-invocation override (<code>--model</code>)</h4>
         <p>The <code>--model</code> flag overrides the model for a single command. Your config file is <strong>not changed</strong>, so the next invocation returns to your default. Use this when testing a model, when your primary provider is down, or when a specific task needs a different model.</p>
-        <pre><code><span class="hl-comment"># Quick task with GPT-4o (config unchanged)</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-4o <span class="hl-flag">-m</span> <span class="hl-string">"Summarize this CSV"</span>
+        <pre><code><span class="hl-comment"># Quick task with GPT-5.2 (config unchanged)</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2 <span class="hl-flag">-m</span> <span class="hl-string">"Summarize this CSV"</span>
 
 <span class="hl-comment"># Deep analysis with Claude Opus</span>
 <span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> anthropic/claude-opus-4-6 <span class="hl-flag">-m</span> <span class="hl-string">"Review this manuscript draft"</span>
@@ -896,8 +895,8 @@
 <span class="hl-cmd">sciclaw</span> models list
 
 <span class="hl-comment"># Switch default model (writes to config.json)</span>
-<span class="hl-cmd">sciclaw</span> models set gpt-4o
-<span class="hl-comment"># Output: Model changed: claude-opus-4-6 → gpt-4o</span>
+<span class="hl-cmd">sciclaw</span> models set gpt-5.2
+<span class="hl-comment"># Output: Model changed: claude-opus-4-6 → gpt-5.2</span>
 <span class="hl-comment">#         Provider: openai</span></code></pre>
 
         <h4>3. Config file</h4>
@@ -1014,20 +1013,21 @@
       <!-- ━━━━━ SCIENTIFIC WORKFLOW ━━━━━ -->
       <div class="section" id="paired-scientist">
         <h2>Paired-Scientist Model</h2>
-        <p class="page-subtitle">sciClaw adds a research-first operating pattern on top of PicoClaw's lightweight runtime.</p>
+        <p class="page-subtitle">sciClaw acts as a research collaborator, not a general-purpose assistant.</p>
 
-        <p>The agent acts as a research collaborator, not just a general-purpose assistant. Every interaction follows principles of <strong>epistemic humility</strong>, <strong>reproducibility</strong>, and <strong>evidence-based reasoning</strong>.</p>
+        <p>Every interaction follows principles of <strong>epistemic humility</strong>, <strong>reproducibility</strong>, and <strong>evidence-based reasoning</strong>. The agent separates hypotheses from verified findings, cites commands and files for every claim, and escalates when evidence is missing or conflicting.</p>
 
         <table>
           <thead>
-            <tr><th>Area</th><th>Stock PicoClaw</th><th>sciClaw</th></tr>
+            <tr><th>Area</th><th>What sciClaw provides</th></tr>
           </thead>
           <tbody>
-            <tr><td>Framing</td><td>General-purpose assistant</td><td>Paired-scientist for hypothesis-driven research</td></tr>
-            <tr><td>Workspace</td><td>Generic templates</td><td>Scientific templates (AGENTS, IDENTITY, SOUL, TOOLS, USER)</td></tr>
-            <tr><td>Traceability</td><td>Optional</td><td>Required: build/test logs, plan activity, manuscript updates</td></tr>
-            <tr><td>Manuscript</td><td>Not central</td><td>First-class Quarto pipeline updated each loop</td></tr>
-            <tr><td>Skills</td><td>Basic tools</td><td>12 baseline scientific skills pre-installed</td></tr>
+            <tr><td>Framing</td><td>Paired-scientist for hypothesis-driven research loops</td></tr>
+            <tr><td>Workspace</td><td>Scientific templates (AGENTS, IDENTITY, SOUL, TOOLS, USER)</td></tr>
+            <tr><td>Traceability</td><td>Required: evidence capture, provenance logging, hook audit trails</td></tr>
+            <tr><td>Skills</td><td>12 baseline scientific skills + companion CLI tools</td></tr>
+            <tr><td>Providers</td><td>OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Zhipu</td></tr>
+            <tr><td>Reasoning</td><td>Per-invocation <code>--effort</code> control for reasoning models</td></tr>
           </tbody>
         </table>
       </div>
@@ -1046,7 +1046,7 @@
 
         <div class="callout">
           <div class="callout-title">Guardrails</div>
-          <p>The agent separates hypotheses from verified findings, cites commands and files for every claim, and escalates when evidence is missing or conflicting.</p>
+          <p>Hypotheses are labeled as such until evidence confirms them. Every claim cites the command, file, or tool output that produced it. When evidence is missing or conflicting, the agent escalates rather than guessing.</p>
         </div>
       </div>
 
@@ -1058,7 +1058,7 @@
         <h4>Research &amp; Literature</h4>
         <ul>
           <li><strong>scientific-writing</strong> &mdash; Manuscript drafting with claim-evidence alignment</li>
-          <li><strong>pubmed-database</strong> &mdash; Reproducible PubMed retrieval workflows</li>
+          <li><strong>pubmed-cli</strong> &mdash; PubMed search, article fetch, citation graphs, MeSH lookup (<a href="https://github.com/drpedapati/pubmed-cli">CLI tool</a>)</li>
           <li><strong>biorxiv-database</strong> &mdash; bioRxiv/medRxiv preprint surveillance</li>
         </ul>
 
@@ -1071,7 +1071,15 @@
         <h4>Evidence &amp; Provenance</h4>
         <ul>
           <li><strong>experiment-provenance</strong> &mdash; Reproducible experiment evidence capture</li>
-          <li><strong>benchmark-logging</strong> &mdash; Baseline vs sciClaw benchmark records</li>
+          <li><strong>benchmark-logging</strong> &mdash; Benchmark records with acceptance criteria</li>
+        </ul>
+
+        <h4>Office &amp; Documents</h4>
+        <ul>
+          <li><strong>docx-review</strong> &mdash; Word documents with tracked changes, comments, and semantic diff (<a href="https://github.com/henrybloomingdale/docx-review">CLI tool</a>)</li>
+          <li><strong>pptx</strong> &mdash; PowerPoint creation and editing</li>
+          <li><strong>pdf</strong> &mdash; PDF creation, merging, splitting, and extraction</li>
+          <li><strong>xlsx</strong> &mdash; Spreadsheet creation, analysis, and conversion</li>
         </ul>
 
         <h4>Polish</h4>
@@ -1079,26 +1087,15 @@
           <li><strong>humanize-text</strong> &mdash; Final-pass language polishing for natural tone</li>
         </ul>
 
-        <h4>Office Integration</h4>
-        <ul>
-          <li><strong>docx</strong>, <strong>pptx</strong>, <strong>pdf</strong>, <strong>xlsx</strong> &mdash; Anthropic official document skills</li>
-        </ul>
-      </div>
+        <h4>Companion CLI Tools</h4>
+        <p>Two skills are powered by standalone CLI tools that provide native file format support. Install them alongside sciClaw for full functionality:</p>
+        <pre><code><span class="hl-cmd">brew</span> install henrybloomingdale/tools/docx-review   <span class="hl-comment"># Word docs with tracked changes (Open XML SDK)</span>
+<span class="hl-cmd">brew</span> install henrybloomingdale/tools/pubmed-cli     <span class="hl-comment"># PubMed search &amp; citation graphs</span></code></pre>
 
-      <!-- ─── Manuscript ─── -->
-      <div class="section" id="manuscript">
-        <h3>Manuscript Pipeline</h3>
-        <p>sciClaw treats Quarto manuscripts as first-class artifacts. The pipeline lives in <code>manuscript/</code>:</p>
-
-        <pre><code>manuscript/
-├── sciclaw-manuscript-outline.qmd
-├── sciclaw-component-revision-plan.qmd
-├── references.bib
-└── *.html                          <span class="hl-comment"># rendered outputs</span></code></pre>
-
-        <p>Each research loop updates the relevant <code>.qmd</code> sections, renders with Quarto, logs changes to <code>plans/main-plan-activity.md</code>, and commits manuscript plus logs together.</p>
-
-        <pre><code><span class="hl-cmd">quarto</span> render manuscript/sciclaw-manuscript-outline.qmd <span class="hl-flag">--to</span> html</code></pre>
+        <h4>Skills Catalog</h4>
+        <p>Additional skills are available from the <a href="https://github.com/drpedapati/sciclaw-skills">skills catalog</a>:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> skills install <span class="hl-string">drpedapati/sciclaw-skills/&lt;skill-name&gt;</span></code></pre>
+        <p>The skills installer validates all content before writing to disk: size limits (256KB per skill), binary content rejection, YAML frontmatter validation, and SHA-256 provenance logging.</p>
       </div>
 
       <hr />
@@ -1446,7 +1443,7 @@
 
 <!-- ═══════════ FOOTER ═══════════ -->
 <footer class="footer">
-  sciClaw &mdash; a PicoClaw-compatible paired-scientist assistant for reproducible research. MIT License.
+  sciClaw &mdash; an autonomous paired-scientist CLI for reproducible research workflows. MIT License.
 </footer>
 
 <!-- ═══════════ JS ═══════════ -->

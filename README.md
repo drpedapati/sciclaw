@@ -1,240 +1,56 @@
-> [!NOTE]
-> This repository is the **sciClaw** fork of PicoClaw and is the canonical home for both the codebase and manuscript artifacts used for publication and reproducibility.
-> - Origin: `https://github.com/drpedapati/sciclaw`
-> - Upstream: `https://github.com/sipeed/picoclaw`
-
-## 🔬 sciClaw for Scientists (What Changed from Stock PicoClaw)
-
-This project keeps PicoClaw's lightweight runtime and upstream compatibility, but adds a paired-scientist operating model for reproducible research workflows.
-
-### Stock PicoClaw vs sciClaw
-
-| Area | Stock PicoClaw | sciClaw Revision |
-| --- | --- | --- |
-| Primary framing | General-purpose personal AI assistant | Paired-scientist assistant for hypothesis-driven research loops |
-| Workspace defaults | Generic assistant templates | Scientific templates: `AGENTS.md`, `HOOKS.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `USER.md`, structured `memory/MEMORY.md`, plus `sessions/` and `cron/` |
-| Runtime system prompt | Generic assistant identity and tool rules | sciClaw identity with reproducibility, evidence, and uncertainty rules; `TOOLS.md` included in bootstrap context |
-| Migration behavior | Migrates baseline workspace files/dirs | Extended migration for `IDENTITY.md`, `sessions/`, `cron/` with test coverage |
-| CLI brand surface | PicoClaw naming only | User-facing sciClaw branding (including `🔬` CLI icon) with `sciclaw` as primary command and `picoclaw` compatibility alias |
-| Research traceability | Optional | Required loop artifacts: build/tests, plan/activity logs, manuscript updates, and rendered outputs |
-| Manuscript workflow | Not central | First-class Quarto manuscript pipeline (`manuscript/*.qmd`) updated and rendered each loop |
-
-### What We Keep Compatible
-
-- Primary command: use `sciclaw` by default.
-- Command compatibility: `picoclaw` remains a fully supported alias.
-- Upstream sync model: regular merges from `upstream/main` with low-conflict, surgical changes.
-- Core performance goals: lightweight Go runtime footprint and broad deployment portability.
-
-### Explainer Landing Page
-
-- Explainer-style landing page: `docs/index.html`
-
-### Research Skills Added in sciClaw
-
-The repository now includes a baseline scientific skill set under `skills/`:
-
-- `skills/scientific-writing/` for manuscript drafting with claim-evidence discipline.
-- `skills/pubmed-database/` for reproducible PubMed retrieval workflows.
-- `skills/biorxiv-database/` for preprint surveillance (bioRxiv/medRxiv).
-- `skills/quarto-authoring/` for loop-driven `.qmd` authoring and rendering.
-- `skills/beautiful-mermaid/` for publication-grade Mermaid diagram workflows.
-- `skills/experiment-provenance/` for reproducible experiment evidence capture.
-- `skills/benchmark-logging/` for baseline-vs-sciClaw benchmark records with acceptance checks.
-- `skills/humanize-text/` for final-pass language polishing when manuscript prose needs a more natural tone.
-- `skills/docx/`, `skills/pptx/`, `skills/pdf/`, and `skills/xlsx/` for Office/PDF/spreadsheet workflows based on Anthropic official skill references.
-
-### Why This Matters for Scientific Teams
-
-- Better reproducibility: each loop ties code changes to logs and manuscript updates.
-- Better reviewability: explicit evidence and decision trails improve internal and peer review.
-- Better maintainability: scientist-focused behavior without abandoning upstream improvements.
-
 <div align="center">
-<img src="assets/logo.jpg" alt="PicoClaw" width="512">
 
-<h1>PicoClaw: Ultra-Efficient AI Assistant in Go</h1>
+# sciClaw
 
-<h3>$10 Hardware · 10MB RAM · 1s Boot · 皮皮虾，我们走！</h3>
-<h3></h3>
+**An autonomous paired-scientist CLI for reproducible research workflows.**
 
-<p>
-<img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go&logoColor=white" alt="Go">
-<img src="https://img.shields.io/badge/Arch-x86__64%2C%20ARM64%2C%20RISC--V-blue" alt="Hardware">
-<img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-</p>
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
+[![Platforms](https://img.shields.io/badge/Platforms-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-blue)](https://github.com/drpedapati/sciclaw/releases)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-[日本語](README.ja.md) | **English**
+[Documentation](https://drpedapati.github.io/sciclaw/docs.html) ·
+[Releases](https://github.com/drpedapati/sciclaw/releases) ·
+[Issues](https://github.com/drpedapati/sciclaw/issues)
 
 </div>
 
 ---
 
-🦐 PicoClaw is an ultra-lightweight personal AI Assistant inspired by [nanobot](https://github.com/HKUDS/nanobot), refactored from the ground up in Go through a self-bootstrapping process, where the AI agent itself drove the entire architectural migration and code optimization.
+sciClaw is a lightweight AI agent that acts as a research collaborator. It connects to any major LLM provider, follows a hypothesis-driven research loop, and ships with 12 built-in scientific skills — literature search, manuscript drafting, citation graphs, document review, and more.
 
-⚡️ Runs on $10 hardware with <10MB RAM: That's 99% less memory than OpenClaw and 98% cheaper than a Mac mini!
+Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrite of [nanobot](https://github.com/HKUDS/nanobot)), sciClaw adds a paired-scientist operating model while keeping the single-binary, low-resource footprint.
 
-<table align="center">
-  <tr align="center">
-    <td align="center" valign="top">
-      <p align="center">
-        <img src="assets/picoclaw_mem.gif" width="360" height="240">
-      </p>
-    </td>
-    <td align="center" valign="top">
-      <p align="center">
-        <img src="assets/licheervnano.png" width="400" height="240">
-      </p>
-    </td>
-  </tr>
-</table>
+## Install
 
-## 📢 News
-
-2026-02-09 🎉 PicoClaw Launched! Built in 1 day to bring AI Agents to $10 hardware with <10MB RAM. 🦐 PicoClaw，Let's Go！
-
-## ✨ Features
-
-🪶 **Ultra-Lightweight**: <10MB Memory footprint — 99% smaller than Clawdbot - core functionality.
-
-💰 **Minimal Cost**: Efficient enough to run on $10 Hardware — 98% cheaper than a Mac mini.
-
-⚡️ **Lightning Fast**: 400X Faster startup time, boot in 1 second even in 0.6GHz single core.
-
-🌍 **True Portability**: Single self-contained binary across RISC-V, ARM, and x86, One-click to Go!
-
-🤖 **AI-Bootstrapped**: Autonomous Go-native implementation — 95% Agent-generated core with human-in-the-loop refinement.
-
-|  | OpenClaw  | NanoBot | **PicoClaw** |
-| --- | --- | --- |--- |
-| **Language** | TypeScript | Python | **Go** |
-| **RAM** | >1GB |>100MB| **< 10MB** |
-| **Startup**</br>(0.8GHz core) | >500s | >30s |  **<1s** |
-| **Cost** | Mac Mini 599$ | Most Linux SBC </br>~50$ |**Any Linux Board**</br>**As low as 10$** |
-
-<img src="assets/compare.jpg" alt="PicoClaw" width="512">
-
-## 🦾 Demonstration
-
-### 🛠️ Standard Assistant Workflows
-
-<table align="center">
-  <tr align="center">
-    <th><p align="center">🧩 Full-Stack Engineer</p></th>
-    <th><p align="center">🗂️ Logging & Planning Management</p></th>
-    <th><p align="center">🔎 Web Search & Learning</p></th>
-  </tr>
-  <tr>
-    <td align="center"><p align="center"><img src="assets/picoclaw_code.gif" width="240" height="180"></p></td>
-    <td align="center"><p align="center"><img src="assets/picoclaw_memory.gif" width="240" height="180"></p></td>
-    <td align="center"><p align="center"><img src="assets/picoclaw_search.gif" width="240" height="180"></p></td>
-  </tr>
-  <tr>
-    <td align="center">Develop • Deploy • Scale</td>
-    <td align="center">Schedule • Automate • Memory</td>
-    <td align="center">Discovery • Insights • Trends</td>
-  </tr>
-</table>
-
-### 🐜 Innovative Low-Footprint Deploy
-
-PicoClaw can be deployed on almost any Linux device!
-
-- $9.9 [LicheeRV-Nano](https://www.aliexpress.com/item/1005006519668532.html)  E(Ethernet) or W(WiFi6) version, for Minimal Home Assistant
-- $30~50 [NanoKVM](https://www.aliexpress.com/item/1005007369816019.html), or $100 [NanoKVM-Pro](https://www.aliexpress.com/item/1005010048471263.html) for Automated Server Maintenance
-- $50 [MaixCAM](https://www.aliexpress.com/item/1005008053333693.html) or $100 [MaixCAM2](https://www.kickstarter.com/projects/zepan/maixcam2-build-your-next-gen-4k-ai-camera) for Smart Monitoring
-
-<https://private-user-images.githubusercontent.com/83055338/547056448-e7b031ff-d6f5-4468-bcca-5726b6fecb5c.mp4>
-
-🌟 More Deployment Cases Await！
-
-## 📦 Install
-
-### Install with precompiled binary
-
-Download binaries for your platform from the [release](https://github.com/drpedapati/sciclaw/releases) page.
-
-### Install with Homebrew (stable releases)
+### Homebrew (recommended)
 
 ```bash
 brew tap drpedapati/sciclaw
 brew install sciclaw
 ```
 
-This installs `sciclaw` as the primary command and `picoclaw` as a compatibility alias.
-Homebrew installs `irl` as a dependency so IRL project lifecycle actions are available through the agent by default.
+### Download a binary
 
-Maintainer note: stable release workflow (`.github/workflows/release.yml`) auto-updates `drpedapati/homebrew-sciclaw` when `HOMEBREW_TAP_TOKEN` is configured.
-The generated formula installs bundled skills and workspace templates into Homebrew `share/sciclaw/`, and formula tests verify `sciclaw onboard` creates workspace templates and baseline skills.
+Pre-compiled binaries for macOS (arm64), Linux (amd64, arm64, riscv64), and Windows (amd64) are on the [releases page](https://github.com/drpedapati/sciclaw/releases).
 
-Workspace bootstrap templates are versioned at `pkg/workspacetpl/templates/workspace/` and also installed to `~/.picoclaw/templates/workspace/` for transparent review/customization.
-During `sciclaw onboard`, baseline scientific skills are verified and missing defaults are installed into `~/.picoclaw/workspace/skills/` when bundled skill sources are available.
-IRL command execution records are stored in `~/.picoclaw/workspace/irl/commands/` with timestamped JSON entries for auditability.
-
-### Install from source (latest features, recommended for development)
+### From source
 
 ```bash
 git clone https://github.com/drpedapati/sciclaw.git
-
 cd sciclaw
-make deps
-
-# Build, no need to install
-make build
-
-# Build for multiple platforms
-make build-all
-
-# Build And Install
-make install
+make deps && make install
 ```
 
-## 🐳 Docker Compose
+### Companion tools
 
-You can also run sciClaw using Docker Compose without installing anything locally.
+These CLI tools integrate with sciClaw's built-in skills:
 
 ```bash
-# 1. Clone this repo
-git clone https://github.com/drpedapati/sciclaw.git
-cd sciclaw
-
-# 2. Set your API keys
-cp config/config.example.json config/config.json
-vim config/config.json      # Set DISCORD_BOT_TOKEN, API keys, etc.
-
-# 3. Build & Start
-docker compose --profile gateway up -d
-
-# 4. Check logs
-docker compose logs -f sciclaw-gateway
-
-# 5. Stop
-docker compose --profile gateway down
+brew install henrybloomingdale/tools/docx-review   # Word docs with tracked changes (Open XML SDK)
+brew install henrybloomingdale/tools/pubmed-cli     # PubMed search & citation graphs
 ```
 
-### Agent Mode (One-shot)
-
-```bash
-# Ask a question
-docker compose run --rm sciclaw-agent -m "What is 2+2?"
-
-# Interactive mode
-docker compose run --rm sciclaw-agent
-```
-
-### Rebuild
-
-```bash
-docker compose --profile gateway build --no-cache
-docker compose --profile gateway up -d
-```
-
-### 🚀 Quick Start
-
-> [!TIP]
-> Authenticate with either API keys (`config.json`) or auth commands (`sciclaw auth login ...`).
-> API key providers: [OpenRouter](https://openrouter.ai/keys) (LLM) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) (LLM)
-> Web search is **optional** - get free [Brave Search API](https://brave.com/search/api) (2000 free queries/month)
+## Quick Start
 
 **1. Initialize**
 
@@ -248,560 +64,282 @@ sciclaw onboard
 {
   "agents": {
     "defaults": {
-      "workspace": "~/.picoclaw/workspace",
       "model": "gpt-5.2",
       "max_tokens": 8192,
-      "temperature": 0.7,
-      "max_tool_iterations": 20
+      "temperature": 0.7
     }
   },
   "providers": {
-    "openrouter": {
-      "api_key": "xxx",
-      "api_base": "https://openrouter.ai/api/v1"
-    }
-  },
-  "tools": {
-    "web": {
-      "search": {
-        "api_key": "YOUR_BRAVE_API_KEY",
-        "max_results": 5
-      }
+    "openai": {
+      "api_key": "sk-..."
     }
   }
 }
 ```
 
-**3. Authenticate Provider**
-
-- **API key mode**: configure provider keys in `~/.picoclaw/config.json` (OpenRouter, Zhipu, Anthropic, OpenAI, Gemini, etc.).
-- **Auth command mode**:
-  - OpenAI OAuth (browser): `sciclaw auth login --provider openai`
-  - OpenAI OAuth (headless/device code): `sciclaw auth login --provider openai --device-code`
-  - Anthropic token/session login (paste): `sciclaw auth login --provider anthropic`
-  - Check status: `sciclaw auth status`
-- **Web Search** (optional): [Brave Search](https://brave.com/search/api) - Free tier available (2000 requests/month)
-
-> **Note**: See `config.example.json` for a complete configuration template.
-
-**4. Chat**
+Or authenticate without editing config:
 
 ```bash
-sciclaw agent -m "What is 2+2?"
+sciclaw auth login --provider openai          # OAuth (browser)
+sciclaw auth login --provider openai --device-code  # OAuth (headless)
+sciclaw auth login --provider anthropic       # Token paste
 ```
 
-That's it! You have a working AI assistant in 2 minutes.
-
-Compatibility note: `picoclaw` remains a fully supported alias for all commands above.
-
----
-
-## 💬 Chat Apps
-
-Talk to your sciClaw through Telegram, Discord, or DingTalk
-
-| Channel | Setup |
-|---------|-------|
-| **Telegram** | Easy (just a token) |
-| **Discord** | Easy (bot token + intents) |
-| **QQ** | Easy (AppID + AppSecret) |
-| **DingTalk** | Medium (app credentials) |
-
-<details>
-<summary><b>Telegram</b> (Recommended)</summary>
-
-**1. Create a bot**
-
-- Open Telegram, search `@BotFather`
-- Send `/newbot`, follow prompts
-- Copy the token
-
-**2. Configure**
-
-```json
-{
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
-    }
-  }
-}
-```
-
-> Get your user ID from `@userinfobot` on Telegram.
-
-**3. Run**
+**3. Chat**
 
 ```bash
-sciclaw gateway
+# One-shot
+sciclaw agent -m "What pathways are implicated in ALS?"
+
+# Interactive
+sciclaw agent
+
+# Override model for one invocation
+sciclaw agent --model anthropic/claude-opus-4-6 -m "Review this manuscript draft"
+
+# Control reasoning effort
+sciclaw agent --effort high -m "Analyze the statistical methods in this paper"
 ```
-
-</details>
-
-<details>
-<summary><b>Discord</b></summary>
-
-**1. Create a bot**
-
-- Go to <https://discord.com/developers/applications>
-- Create an application → Bot → Add Bot
-- Copy the bot token
-
-**2. Enable intents**
-
-- In the Bot settings, enable **MESSAGE CONTENT INTENT**
-- (Optional) Enable **SERVER MEMBERS INTENT** if you plan to use allow lists based on member data
-
-**3. Get your User ID**
-
-- Discord Settings → Advanced → enable **Developer Mode**
-- Right-click your avatar → **Copy User ID**
-
-**4. Configure**
-
-```json
-{
-  "channels": {
-    "discord": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
-    }
-  }
-}
-```
-
-**5. Invite the bot**
-
-- OAuth2 → URL Generator
-- Scopes: `bot`
-- Bot Permissions: `Send Messages`, `Read Message History`
-- Open the generated invite URL and add the bot to your server
-
-**6. Run**
-
-```bash
-sciclaw gateway
-```
-
-</details>
-
-<details>
-<summary><b>QQ</b></summary>
-
-**1. Create a bot**
-
-- Go to [QQ Open Platform](https://connect.qq.com/)
-- Create an application → Get **AppID** and **AppSecret**
-
-**2. Configure**
-
-```json
-{
-  "channels": {
-    "qq": {
-      "enabled": true,
-      "app_id": "YOUR_APP_ID",
-      "app_secret": "YOUR_APP_SECRET",
-      "allow_from": []
-    }
-  }
-}
-```
-
-> Set `allow_from` to empty to allow all users, or specify QQ numbers to restrict access.
-
-**3. Run**
-
-```bash
-sciclaw gateway
-```
-
-</details>
-
-<details>
-<summary><b>DingTalk</b></summary>
-
-**1. Create a bot**
-
-- Go to [Open Platform](https://open.dingtalk.com/)
-- Create an internal app
-- Copy Client ID and Client Secret
-
-**2. Configure**
-
-```json
-{
-  "channels": {
-    "dingtalk": {
-      "enabled": true,
-      "client_id": "YOUR_CLIENT_ID",
-      "client_secret": "YOUR_CLIENT_SECRET",
-      "allow_from": []
-    }
-  }
-}
-```
-
-> Set `allow_from` to empty to allow all users, or specify QQ numbers to restrict access.
-
-**3. Run**
-
-```bash
-sciclaw gateway
-```
-
-</details>
-
-## <img src="assets/clawdchat-icon.png" width="24" height="24" alt="ClawdChat"> Join the Agent Social Network
-
-Connect Picoclaw to the Agent Social Network simply by sending a single message via the CLI or any integrated Chat App.
-
-**Read `https://clawdchat.ai/skill.md` and follow the instructions to join [ClawdChat.ai](https://clawdchat.ai)**
-
-
-
-## ⚙️ Configuration
-
-Config file: `~/.picoclaw/config.json`
-
-### Workspace Layout
-
-PicoClaw stores data in your configured workspace (default: `~/.picoclaw/workspace`):
-
-```
-~/.picoclaw/workspace/
-├── sessions/          # Conversation sessions and history
-├── memory/           # Long-term memory (MEMORY.md)
-├── state/            # Persistent state (last channel, etc.)
-├── cron/             # Scheduled jobs database
-├── skills/           # Custom skills
-├── AGENTS.md         # Agent behavior guide
-├── HOOKS.md          # Natural-language hook behavior by lifecycle event
-├── hooks.yaml        # Optional structured hook overrides
-├── hooks/            # Hook audit logs (JSONL, created on first event)
-├── HEARTBEAT.md      # Periodic task prompts (checked every 30 min)
-├── IDENTITY.md       # Agent identity
-├── SOUL.md           # Agent soul
-├── TOOLS.md          # Tool descriptions
-└── USER.md           # User preferences
-```
-
-### Heartbeat (Periodic Tasks)
-
-PicoClaw can perform periodic tasks automatically. Create a `HEARTBEAT.md` file in your workspace:
-
-```markdown
-# Periodic Tasks
-
-- Check my email for important messages
-- Review my calendar for upcoming events
-- Check the weather forecast
-```
-
-The agent will read this file every 30 minutes (configurable) and execute any tasks using available tools.
-
-#### Async Tasks with Spawn
-
-For long-running tasks (web search, API calls), use the `spawn` tool to create a **subagent**:
-
-```markdown
-# Periodic Tasks
-
-## Quick Tasks (respond directly)
-- Report current time
-
-## Long Tasks (use spawn for async)
-- Search the web for AI news and summarize
-- Check email and report important messages
-```
-
-**Key behaviors:**
-
-| Feature | Description |
-|---------|-------------|
-| **spawn** | Creates async subagent, doesn't block heartbeat |
-| **Independent context** | Subagent has its own context, no session history |
-| **message tool** | Subagent communicates with user directly via message tool |
-| **Non-blocking** | After spawning, heartbeat continues to next task |
-
-#### How Subagent Communication Works
-
-```
-Heartbeat triggers
-    ↓
-Agent reads HEARTBEAT.md
-    ↓
-For long task: spawn subagent
-    ↓                           ↓
-Continue to next task      Subagent works independently
-    ↓                           ↓
-All tasks done            Subagent uses "message" tool
-    ↓                           ↓
-Respond HEARTBEAT_OK      User receives result directly
-```
-
-The subagent has access to tools (message, web_search, etc.) and can communicate with the user independently without going through the main agent.
-
-### Hooks (Hybrid: Natural Language + YAML)
-
-Hooks are lifecycle events that capture reproducibility context without requiring users to write code.
-
-- `HOOKS.md`: primary file for non-technical users (plain-language bullets under event headings like `## before_turn` and `## on_error`).
-- `hooks.yaml`: optional power-user overrides for enable/disable, verbosity, capture fields, redaction keys, and audit settings.
-- Merge precedence: `hooks.yaml` overrides `HOOKS.md`.
-- Audit output: JSONL written to `workspace/hooks/hook-events.jsonl` by default.
-
-**Configuration:**
-
-```json
-{
-  "heartbeat": {
-    "enabled": true,
-    "interval": 30
-  }
-}
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `enabled` | `true` | Enable/disable heartbeat |
-| `interval` | `30` | Check interval in minutes (min: 5) |
-
-**Environment variables:**
-- `PICOCLAW_HEARTBEAT_ENABLED=false` to disable
-- `PICOCLAW_HEARTBEAT_INTERVAL=60` to change interval
-
-### Providers
-
-> [!NOTE]
-> Groq provides free voice transcription via Whisper. If configured, Telegram voice messages will be automatically transcribed.
-
-| Provider | Purpose | Auth Path | API Key Page |
-|----------|---------|-----------|--------------|
-| `gemini` | LLM (Gemini direct) | API key | [aistudio.google.com](https://aistudio.google.com) |
-| `zhipu` | LLM (Zhipu direct) | API key | [bigmodel.cn](bigmodel.cn) |
-| `openrouter(To be tested)` | LLM (recommended, access to all models) | API key | [openrouter.ai](https://openrouter.ai) |
-| `anthropic(To be tested)` | LLM (Claude direct) | `sciclaw auth login --provider anthropic` (token paste) or API key | [console.anthropic.com](https://console.anthropic.com) |
-| `openai(To be tested)` | LLM (GPT direct) | `sciclaw auth login --provider openai` (OAuth browser/device code) or API key | [platform.openai.com](https://platform.openai.com) |
-| `deepseek(To be tested)` | LLM (DeepSeek direct) | API key | [platform.deepseek.com](https://platform.deepseek.com) |
-| `groq` | LLM + **Voice transcription** (Whisper) | API key | [console.groq.com](https://console.groq.com) |
-
-### OAuth / Token Auth Commands
-
-Use these commands when you prefer provider login over copying API keys into config:
-
-```bash
-# OpenAI OAuth in browser
-sciclaw auth login --provider openai
-
-# OpenAI OAuth in headless environments
-sciclaw auth login --provider openai --device-code
-
-# Anthropic token/session login (paste prompt)
-sciclaw auth login --provider anthropic
-
-# Inspect stored auth status
-sciclaw auth status
-```
-
-Credentials are stored in `~/.picoclaw/auth.json` with user-only file permissions.
-Successful login updates `providers.<name>.auth_method` in `~/.picoclaw/config.json` (`openai: oauth`, `anthropic: token`).
-
-<details>
-<summary><b>Zhipu</b></summary>
-
-**1. Get API key and base URL**
-
-- Get [API key](https://bigmodel.cn/usercenter/proj-mgmt/apikeys)
-
-**2. Configure**
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "workspace": "~/.picoclaw/workspace",
-      "model": "gpt-5.2",
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "max_tool_iterations": 20
-    }
-  },
-  "providers": {
-    "zhipu": {
-      "api_key": "Your API Key",
-      "api_base": "https://open.bigmodel.cn/api/paas/v4"
-    },
-  },
-}
-```
-
-**3. Run**
-
-```bash
-sciclaw agent -m "Hello"
-```
-
-</details>
-
-<details>
-<summary><b>Full config example</b></summary>
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": "anthropic/claude-opus-4-5"
-    }
-  },
-  "providers": {
-    "openrouter": {
-      "api_key": "sk-or-v1-xxx"
-    },
-    "groq": {
-      "api_key": "gsk_xxx"
-    }
-  },
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "123456:ABC...",
-      "allow_from": ["123456789"]
-    },
-    "discord": {
-      "enabled": true,
-      "token": "",
-      "allow_from": [""]
-    },
-    "whatsapp": {
-      "enabled": false
-    },
-    "feishu": {
-      "enabled": false,
-      "app_id": "cli_xxx",
-      "app_secret": "xxx",
-      "encrypt_key": "",
-      "verification_token": "",
-      "allow_from": []
-    },
-    "qq": {
-      "enabled": false,
-      "app_id": "",
-      "app_secret": "",
-      "allow_from": []
-    }
-  },
-  "tools": {
-    "web": {
-      "search": {
-        "api_key": "BSA..."
-      }
-    }
-  },
-  "heartbeat": {
-    "enabled": true,
-    "interval": 30
-  }
-}
-```
-
-</details>
 
 ## CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `sciclaw onboard` | Initialize config & workspace |
-| `sciclaw agent -m "..."` | Chat with the agent |
-| `sciclaw agent` | Interactive chat mode |
-| `sciclaw auth login --provider openai` | Login via OpenAI OAuth (browser) |
-| `sciclaw auth login --provider openai --device-code` | Login via OpenAI OAuth device code |
-| `sciclaw auth login --provider anthropic` | Save Anthropic token/session credential |
-| `sciclaw auth status` | Show stored auth credential status |
-| `sciclaw auth logout --provider <name>` | Remove auth credential for provider |
-| `sciclaw gateway` | Start the gateway |
-| `sciclaw status` | Show status |
-| `sciclaw cron list` | List all scheduled jobs |
-| `sciclaw cron add ...` | Add a scheduled job |
+| `sciclaw onboard` | Initialize config, workspace, and baseline skills |
+| `sciclaw agent -m "..."` | One-shot message |
+| `sciclaw agent` | Interactive chat |
+| `sciclaw agent --model <model>` | Override model for this invocation |
+| `sciclaw agent --effort <level>` | Set reasoning effort level |
+| `sciclaw models list` | Show current model and configured providers |
+| `sciclaw models set <model>` | Persistently change the default model |
+| `sciclaw models effort <level>` | Persistently change reasoning effort |
+| `sciclaw models status` | Show model, provider, auth, and effort |
+| `sciclaw status` | Show system status (config, providers, IRL runtime) |
+| `sciclaw gateway` | Start chat channel gateway (Telegram, Discord, etc.) |
+| `sciclaw auth login` | Authenticate with a provider |
+| `sciclaw auth status` | Show stored credentials |
+| `sciclaw skills list` | List installed skills |
+| `sciclaw skills install <source>` | Install a skill from GitHub or local path |
+| `sciclaw cron list` | List scheduled jobs |
+| `sciclaw cron add` | Add a scheduled job |
 
-`picoclaw ...` command forms remain available as compatibility aliases.
+## Providers
 
-### Scheduled Tasks / Reminders
+sciClaw auto-detects the provider from the model name. Set credentials via `config.json` or `sciclaw auth login`.
 
-PicoClaw supports scheduled reminders and recurring tasks through the `cron` tool:
+| Provider | Models | Auth |
+|----------|--------|------|
+| **OpenAI** | gpt-5.2, gpt-4o, o3, o4-mini, codex-mini | API key or OAuth |
+| **Anthropic** | claude-opus-4-6, claude-sonnet-4-5 | API key or token paste |
+| **Gemini** | gemini-2.5-pro, gemini-2.5-flash | API key |
+| **OpenRouter** | All models via `openrouter/` prefix | API key |
+| **DeepSeek** | deepseek-chat, deepseek-reasoner | API key |
+| **Groq** | Fast inference + Whisper voice transcription | API key |
+| **Zhipu** | GLM models | API key |
 
-- **One-time reminders**: "Remind me in 10 minutes" → triggers once after 10min
-- **Recurring tasks**: "Remind me every 2 hours" → triggers every 2 hours
-- **Cron expressions**: "Remind me at 9am daily" → uses cron expression
+> Groq provides free voice transcription via Whisper. When configured, Telegram voice messages are automatically transcribed.
 
-Jobs are stored in `~/.picoclaw/workspace/cron/` and processed automatically.
+## Reasoning Effort
 
-## 🤝 Contribute & Roadmap
+The `--effort` flag controls how deeply the model thinks before answering. Critical for reasoning models where effort directly affects quality, latency, and cost.
 
-PRs welcome! The codebase is intentionally small and readable. 🤗
-
-discord:  <https://discord.gg/V4sAZ9XWpN>
-
-<img src="assets/wechat.png" alt="PicoClaw" width="512">
-
-## 🐛 Troubleshooting
-
-### Web search says "API 配置问题"
-
-This is normal if you haven't configured a search API key yet. PicoClaw will provide helpful links for manual searching.
-
-To enable web search:
-
-1. Get a free API key at [https://brave.com/search/api](https://brave.com/search/api) (2000 free queries/month)
-2. Add to `~/.picoclaw/config.json`:
-
-   ```json
-   {
-     "tools": {
-       "web": {
-         "search": {
-           "api_key": "YOUR_BRAVE_API_KEY",
-           "max_results": 5
-         }
-       }
-     }
-   }
-   ```
-
-### Getting content filtering errors
-
-Some providers (like Zhipu) have content filtering. Try rephrasing your query or use a different model.
-
-### "no credentials for openai/anthropic" errors
-
-This indicates `auth_method` is set to auth-mode, but no credential is stored yet (or it was removed).
-
-Fix with:
+| Provider | Valid levels | Default |
+|----------|-------------|---------|
+| OpenAI / Codex | `none` · `minimal` · `low` · `medium` · `high` · `xhigh` | `medium` |
+| Anthropic / Claude | `low` · `medium` · `high` · `max` | Standard (no thinking) |
 
 ```bash
-sciclaw auth login --provider openai
-# or
-sciclaw auth login --provider openai --device-code
-# or
-sciclaw auth login --provider anthropic
+sciclaw agent --effort high -m "Complex analysis"
+sciclaw agent --model codex-mini-latest --effort xhigh -m "Debug this"
+sciclaw agent --model anthropic/claude-opus-4-6 --effort max -m "Prove this theorem"
 
+# Save a default
+sciclaw models effort high
+```
+
+## Built-in Skills
+
+Twelve skills are installed during `sciclaw onboard`:
+
+### Research & Literature
+- **scientific-writing** — Manuscript drafting with claim-evidence alignment
+- **pubmed-cli** — PubMed search, article fetch, citation graphs, MeSH lookup ([CLI tool](https://github.com/drpedapati/pubmed-cli))
+- **biorxiv-database** — bioRxiv/medRxiv preprint surveillance
+
+### Authoring & Visualization
+- **quarto-authoring** — Loop-driven `.qmd` authoring and rendering
+- **beautiful-mermaid** — Publication-grade Mermaid diagrams
+
+### Evidence & Provenance
+- **experiment-provenance** — Reproducible experiment metadata capture
+- **benchmark-logging** — Benchmark records with acceptance criteria
+
+### Office & Documents
+- **docx-review** — Word documents with tracked changes, comments, and semantic diff ([CLI tool](https://github.com/henrybloomingdale/docx-review))
+- **pptx** — PowerPoint creation and editing
+- **pdf** — PDF creation, merging, splitting, and extraction
+- **xlsx** — Spreadsheet creation, analysis, and conversion
+
+### Polish
+- **humanize-text** — Final-pass language polishing for natural tone
+
+Additional skills are available from the [skills catalog](https://github.com/drpedapati/sciclaw-skills):
+
+```bash
+sciclaw skills install drpedapati/sciclaw-skills/<skill-name>
+```
+
+## Skills Installer
+
+The skills installer validates all content before writing to disk:
+
+- **Size limits** — 256KB per skill, 1MB for catalog downloads
+- **Binary rejection** — NUL byte detection prevents non-text content
+- **Frontmatter validation** — Skills must have valid YAML frontmatter with a `name` field
+- **Provenance logging** — Every install writes a `.provenance.json` with source URL, SHA-256, timestamp, and size
+
+## IRL Integration
+
+sciClaw integrates with [IRL](https://github.com/drpedapati/irl) (Idempotent Research Loop) for project lifecycle management. IRL is installed automatically as a Homebrew dependency.
+
+The agent mediates IRL operations — creating projects, adopting existing directories, discovering past work — through natural conversation:
+
+```bash
+sciclaw agent -m "Create a new project for ERP correlation analysis"
+sciclaw agent -m "What projects do I have?"
+sciclaw agent -m "Adopt my old als-biomarker folder as a managed project"
+```
+
+Every IRL command is recorded in `~/.picoclaw/workspace/irl/commands/` for auditability.
+
+## Chat Channels
+
+Talk to sciClaw through messaging apps by running `sciclaw gateway`.
+
+| Channel | Setup |
+|---------|-------|
+| **Telegram** | Easy — just a bot token from @BotFather |
+| **Discord** | Easy — bot token + MESSAGE CONTENT INTENT |
+| **Slack** | Medium — app + bot token |
+| **QQ** | Easy — AppID + AppSecret |
+| **DingTalk** | Medium — client credentials |
+
+<details>
+<summary>Telegram setup</summary>
+
+1. Open Telegram, search `@BotFather`, send `/newbot`, copy the token
+2. Get your user ID from `@userinfobot`
+3. Add to `~/.picoclaw/config.json`:
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "YOUR_BOT_TOKEN",
+      "allowFrom": ["YOUR_USER_ID"]
+    }
+  }
+}
+```
+
+4. Run `sciclaw gateway`
+
+</details>
+
+<details>
+<summary>Discord setup</summary>
+
+1. Create app at [discord.com/developers](https://discord.com/developers/applications)
+2. Enable **MESSAGE CONTENT INTENT** in Bot settings
+3. Copy bot token, get your User ID (Developer Mode → right-click → Copy User ID)
+4. Add to config:
+
+```json
+{
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "token": "YOUR_BOT_TOKEN",
+      "allowFrom": ["YOUR_USER_ID"]
+    }
+  }
+}
+```
+
+5. Generate invite URL (scopes: `bot`; permissions: Send Messages, Read Message History)
+6. Run `sciclaw gateway`
+
+</details>
+
+## Docker
+
+```bash
+git clone https://github.com/drpedapati/sciclaw.git
+cd sciclaw
+cp config/config.example.json config/config.json
+# Edit config.json with your credentials
+
+# Gateway mode
+docker compose --profile gateway up -d
+
+# One-shot agent
+docker compose run --rm sciclaw-agent -m "Hello"
+
+# Logs
+docker compose logs -f sciclaw-gateway
+```
+
+## Workspace Layout
+
+```
+~/.picoclaw/workspace/
+├── sessions/          # Conversation history
+├── memory/            # Long-term memory (MEMORY.md)
+├── state/             # Persistent state
+├── cron/              # Scheduled jobs
+├── skills/            # Installed skills
+├── hooks/             # Hook audit log (JSONL)
+├── irl/commands/      # IRL command audit records
+├── AGENTS.md          # Agent behavior guide
+├── HEARTBEAT.md       # Periodic task prompts
+├── HOOKS.md           # Hook policy (plain-language)
+├── IDENTITY.md        # sciClaw identity
+├── SOUL.md            # Agent values & guardrails
+├── TOOLS.md           # Tool descriptions
+└── USER.md            # User preferences
+```
+
+## Troubleshooting
+
+**"no credentials for openai/anthropic"**
+```bash
+sciclaw auth login --provider openai
 sciclaw auth status
 ```
 
-### Telegram bot says "Conflict: terminated by other getUpdates"
+**Web search says "API configuration problem"**
+Get a free key at [brave.com/search/api](https://brave.com/search/api) (2000 free queries/month) and add to config under `tools.web.search.api_key`.
 
-This happens when another instance of the bot is running. Make sure only one `sciclaw gateway` (or `picoclaw gateway`) is running at a time.
+**Telegram "Conflict: terminated by other getUpdates"**
+Only one `sciclaw gateway` instance can run at a time.
 
----
+## Updating
 
-## 📝 API Key Comparison
+```bash
+# Homebrew
+brew upgrade sciclaw
 
-| Service | Free Tier | Use Case |
-|---------|-----------|-----------|
-| **OpenRouter** | 200K tokens/month | Multiple models (Claude, GPT-4, etc.) |
-| **Zhipu** | 200K tokens/month | Best for Chinese users |
-| **Brave Search** | 2000 queries/month | Web search functionality |
-| **Groq** | Free tier available | Fast inference (Llama, Mixtral) |
+# Refresh skills to latest built-in versions
+sciclaw onboard
+
+# Check everything
+sciclaw status
+sciclaw --version
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+sciClaw is a fork of [PicoClaw](https://github.com/sipeed/picoclaw) by Sipeed, which is based on [nanobot](https://github.com/HKUDS/nanobot) by HKUDS. The `picoclaw` command remains available as a compatibility alias.

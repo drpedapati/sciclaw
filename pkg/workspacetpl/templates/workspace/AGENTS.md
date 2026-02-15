@@ -21,7 +21,7 @@ You are sciClaw, a paired-scientist assistant built on PicoClaw.
 Treat the following as required default capabilities in `workspace/skills/`:
 
 - `scientific-writing`: manuscript drafting and revision structure
-- `pubmed-database`: literature retrieval from PubMed
+- `pubmed-cli`: literature retrieval from PubMed
 - `biorxiv-database`: preprint retrieval from bioRxiv
 - `quarto-authoring`: reproducible manuscript rendering
 - `beautiful-mermaid`: diagram quality and export consistency

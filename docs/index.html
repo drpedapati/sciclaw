@@ -304,7 +304,7 @@ flowchart LR
       </section>
 
       <section>
-        <h2>What Changed From Stock PicoClaw</h2>
+        <h2>Architecture</h2>
         <div class="grid">
           <article class="card">
             <span class="tag tag-accent">Behavior Layer</span>
@@ -366,8 +366,8 @@ flowchart LR
         <div class="card">
           <div class="mermaid">
 flowchart TB
-  A[pubmed-database / biorxiv-database] --> B[scientific-writing]
-  B --> C[docx / pptx / xlsx / pdf]
+  A[pubmed-cli / biorxiv-database] --> B[scientific-writing]
+  B --> C[docx-review / pptx / xlsx / pdf]
   C --> D[humanize-text]
   D --> E[experiment-provenance]
   E --> F[benchmark-logging]
