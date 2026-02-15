@@ -50,14 +50,14 @@ const primaryCLIName = "sciclaw"
 
 var baselineScienceSkillNames = []string{
 	"scientific-writing",
-	"pubmed-database",
+	"pubmed-cli",
 	"biorxiv-database",
 	"quarto-authoring",
 	"beautiful-mermaid",
 	"experiment-provenance",
 	"benchmark-logging",
 	"humanize-text",
-	"docx",
+	"docx-review",
 	"pptx",
 	"pdf",
 	"xlsx",
@@ -269,6 +269,10 @@ func onboard() {
 	fmt.Println("  1. Add your API key to", configPath)
 	fmt.Println("     Get one at: https://openrouter.ai/keys")
 	fmt.Printf("  2. Chat: %s agent -m \"Hello!\"\n", invokedCLIName())
+	fmt.Println("\nRecommended companion tools:")
+	fmt.Println("  brew install henrybloomingdale/tools/docx-review   # Word documents with tracked changes")
+	fmt.Println("  brew install henrybloomingdale/tools/pubmed-cli    # PubMed search and citation graphs")
+	fmt.Println("  export NCBI_API_KEY=\"your-key\"                     # PubMed rate limit: 3/s -> 10/s")
 }
 
 func createWorkspaceTemplates(workspace string) {
