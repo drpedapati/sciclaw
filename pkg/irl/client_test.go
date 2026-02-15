@@ -2,6 +2,7 @@ package irl
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -106,6 +107,51 @@ func TestCreateProjectRequiresPurposeOrName(t *testing.T) {
 	_, err := client.CreateProject(context.Background(), CreateProjectRequest{})
 	if err == nil || !strings.Contains(err.Error(), "purpose or name is required") {
 		t.Fatalf("expected validation error, got %v", err)
+	}
+}
+
+func TestClientResolvesBinaryFromFallbackCandidates(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fixture is unix-only")
+	}
+
+	workspace := t.TempDir()
+	binDir := t.TempDir()
+	binaryPath := filepath.Join(binDir, "irl")
+	if err := writeFakeIRLBinary(binaryPath, false); err != nil {
+		t.Fatalf("write fake irl binary: %v", err)
+	}
+
+	client := NewClientWithOptions(workspace, ClientOptions{
+		NowFn: func() time.Time {
+			return time.Date(2026, time.February, 15, 11, 0, 0, 0, time.UTC)
+		},
+		LookPathFn: func(file string) (string, error) {
+			return "", errors.New("not in PATH")
+		},
+		BinaryCandidates: []string{binaryPath},
+	})
+
+	res, err := client.DiscoverProjects(context.Background())
+	if err != nil {
+		t.Fatalf("DiscoverProjects returned error: %v", err)
+	}
+	if res.Status != StatusSuccess {
+		t.Fatalf("expected discover status success, got %s", res.Status)
+	}
+	if len(res.Commands) != 1 {
+		t.Fatalf("expected one command record, got %d", len(res.Commands))
+	}
+	storePath := res.Commands[0].StorePath
+	if storePath == "" {
+		t.Fatalf("expected store path")
+	}
+	raw, readErr := os.ReadFile(storePath)
+	if readErr != nil {
+		t.Fatalf("read store record: %v", readErr)
+	}
+	if !strings.Contains(string(raw), binaryPath) {
+		t.Fatalf("expected record to include resolved binary path %q", binaryPath)
 	}
 }
 

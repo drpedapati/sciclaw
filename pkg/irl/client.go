@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -35,15 +36,17 @@ type AdoptProjectRequest struct {
 }
 
 type ClientOptions struct {
-	NowFn      func() time.Time
-	LookPathFn func(file string) (string, error)
+	NowFn            func() time.Time
+	LookPathFn       func(file string) (string, error)
+	BinaryCandidates []string
 }
 
 type Client struct {
-	workspace  string
-	store      *commandStore
-	nowFn      func() time.Time
-	lookPathFn func(file string) (string, error)
+	workspace        string
+	store            *commandStore
+	nowFn            func() time.Time
+	lookPathFn       func(file string) (string, error)
+	binaryCandidates []string
 }
 
 func NewClient(workspace string) *Client {
@@ -59,12 +62,17 @@ func NewClientWithOptions(workspace string, opts ClientOptions) *Client {
 	if lookPathFn == nil {
 		lookPathFn = exec.LookPath
 	}
+	binaryCandidates := opts.BinaryCandidates
+	if len(binaryCandidates) == 0 {
+		binaryCandidates = defaultIRLBinaryCandidates()
+	}
 
 	return &Client{
-		workspace:  workspace,
-		store:      newCommandStore(workspace).withNow(nowFn),
-		nowFn:      nowFn,
-		lookPathFn: lookPathFn,
+		workspace:        workspace,
+		store:            newCommandStore(workspace).withNow(nowFn),
+		nowFn:            nowFn,
+		lookPathFn:       lookPathFn,
+		binaryCandidates: binaryCandidates,
 	}
 }
 
@@ -222,9 +230,9 @@ func (c *Client) runCommand(ctx context.Context, operation string, args []string
 		Status:    StatusFailure,
 	}
 
-	binaryPath, err := c.lookPathFn("irl")
+	binaryPath, err := c.resolveBinaryPath()
 	if err != nil {
-		record.Error = fmt.Sprintf("irl binary not found in PATH: %v", err)
+		record.Error = err.Error()
 		c.persistRecord(&record)
 		logger.ErrorCF("irl", "IRL command failed (binary missing)", map[string]interface{}{
 			"event_id":  record.EventID,
@@ -339,6 +347,89 @@ func (c *Client) detectVersion(binaryPath string) string {
 		return ""
 	}
 	return strings.TrimSpace(trimForStore(stdout.String()))
+}
+
+func (c *Client) resolveBinaryPath() (string, error) {
+	if c.lookPathFn != nil {
+		if binaryPath, err := c.lookPathFn("irl"); err == nil && strings.TrimSpace(binaryPath) != "" {
+			return binaryPath, nil
+		}
+	}
+
+	checked := make([]string, 0, len(c.binaryCandidates))
+	for _, candidate := range c.binaryCandidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		checked = append(checked, candidate)
+		if isExecutableFile(candidate) {
+			return candidate, nil
+		}
+	}
+
+	if len(checked) == 0 {
+		return "", errors.New(`irl binary not found in PATH (no fallback candidates configured)`)
+	}
+	return "", fmt.Errorf(`irl binary not found in PATH or fallback paths: %s`, strings.Join(checked, ", "))
+}
+
+func defaultIRLBinaryCandidates() []string {
+	seen := map[string]struct{}{}
+	add := func(out []string, v string) []string {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return out
+		}
+		if _, exists := seen[v]; exists {
+			return out
+		}
+		seen[v] = struct{}{}
+		return append(out, v)
+	}
+
+	candidates := make([]string, 0, 4)
+	candidates = add(candidates, os.Getenv("PICOCLAW_IRL_BINARY"))
+
+	binName := "irl"
+	if runtime.GOOS == "windows" {
+		binName = "irl.exe"
+	}
+
+	if prefix := strings.TrimSpace(os.Getenv("HOMEBREW_PREFIX")); prefix != "" {
+		candidates = add(candidates, filepath.Join(prefix, "bin", binName))
+	}
+
+	switch runtime.GOOS {
+	case "darwin":
+		candidates = add(candidates, filepath.Join("/opt/homebrew/bin", binName))
+		candidates = add(candidates, filepath.Join("/usr/local/bin", binName))
+	case "linux":
+		candidates = add(candidates, filepath.Join("/usr/local/bin", binName))
+		candidates = add(candidates, filepath.Join("/usr/bin", binName))
+	case "windows":
+		if local := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); local != "" {
+			candidates = add(candidates, filepath.Join(local, "Programs", "irl", binName))
+		}
+		if pf := strings.TrimSpace(os.Getenv("ProgramFiles")); pf != "" {
+			candidates = add(candidates, filepath.Join(pf, "irl", binName))
+		}
+		if pfx86 := strings.TrimSpace(os.Getenv("ProgramFiles(x86)")); pfx86 != "" {
+			candidates = add(candidates, filepath.Join(pfx86, "irl", binName))
+		}
+	}
+	return candidates
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if info.IsDir() {
+		return false
+	}
+	return info.Mode().Perm()&0111 != 0
 }
 
 func exitCodeFromErr(err error) int {
