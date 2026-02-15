@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -27,6 +26,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/cron"
 	"github.com/sipeed/picoclaw/pkg/heartbeat"
+	"github.com/sipeed/picoclaw/pkg/irl"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/migrate"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -795,7 +795,7 @@ func statusCmd() {
 			fmt.Println("vLLM/Local: not set")
 		}
 
-		if irlPath, err := exec.LookPath("irl"); err == nil {
+		if irlPath, err := resolveIRLRuntimePath(cfg.WorkspacePath()); err == nil {
 			fmt.Printf("IRL Runtime: ✓ %s\n", irlPath)
 		} else {
 			fmt.Println("IRL Runtime: missing (reinstall/update your sciClaw Homebrew package)")
@@ -815,6 +815,10 @@ func statusCmd() {
 			}
 		}
 	}
+}
+
+func resolveIRLRuntimePath(workspace string) (string, error) {
+	return irl.NewClient(workspace).ResolveBinaryPath()
 }
 
 func authCmd() {

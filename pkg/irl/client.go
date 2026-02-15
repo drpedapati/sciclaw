@@ -54,6 +54,14 @@ func NewClient(workspace string) *Client {
 	return NewClientWithOptions(workspace, ClientOptions{})
 }
 
+// ResolveBinaryPath returns the resolved path to the `irl` binary, using PATH
+// first and then OS-specific fallback candidates (including Homebrew paths).
+// This is safe to call from commands like `sciclaw status` that need to detect
+// IRL availability even when PATH is minimal (e.g., daemons/nohup).
+func (c *Client) ResolveBinaryPath() (string, error) {
+	return c.resolveBinaryPath()
+}
+
 func NewClientWithOptions(workspace string, opts ClientOptions) *Client {
 	nowFn := opts.NowFn
 	if nowFn == nil {
