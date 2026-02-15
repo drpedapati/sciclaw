@@ -202,7 +202,7 @@ The skills installer validates all content before writing to disk:
 
 ## IRL Integration
 
-sciClaw integrates with [IRL](https://github.com/drpedapati/irl) (Idempotent Research Loop) for project lifecycle management. IRL is installed automatically as a Homebrew dependency.
+sciClaw integrates with [IRL](https://github.com/drpedapati/irl-template) (Idempotent Research Loop) for project lifecycle management. IRL is installed automatically as a Homebrew dependency.
 
 The agent mediates IRL operations — creating projects, adopting existing directories, discovering past work — through natural conversation:
 
