@@ -128,6 +128,10 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	if err != nil {
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
+	content := strings.TrimSpace(msg.Content)
+	if content == "" {
+		content = "[empty message]"
+	}
 
 	// Stop thinking animation
 	if stop, ok := c.stopThinking.Load(msg.ChatID); ok {
@@ -137,33 +141,30 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		c.stopThinking.Delete(msg.ChatID)
 	}
 
-	htmlContent := markdownToTelegramHTML(msg.Content)
+	htmlContent := markdownToTelegramHTML(content)
 
-	// Try to edit placeholder
+	var placeholderID *int
 	if pID, ok := c.placeholders.Load(msg.ChatID); ok {
 		c.placeholders.Delete(msg.ChatID)
-		editMsg := tu.EditMessageText(tu.ID(chatID), pID.(int), htmlContent)
-		editMsg.ParseMode = telego.ModeHTML
+		if id, ok := pID.(int); ok {
+			placeholderID = &id
+		}
+	}
 
-		if _, err = c.bot.EditMessageText(ctx, editMsg); err == nil {
+	if runeCount(htmlContent) <= telegramMaxMessageRunes {
+		if err = sendOrEditTelegramMessage(ctx, c.bot, chatID, placeholderID, htmlContent, telego.ModeHTML); err == nil {
 			return nil
 		}
-		// Fallback to new message if edit fails
-	}
-
-	tgMsg := tu.Message(tu.ID(chatID), htmlContent)
-	tgMsg.ParseMode = telego.ModeHTML
-
-	if _, err = c.bot.SendMessage(ctx, tgMsg); err != nil {
-		logger.ErrorCF("telegram", "HTML parse failed, falling back to plain text", map[string]interface{}{
+		logger.ErrorCF("telegram", "HTML send failed, falling back to plain text chunks", map[string]interface{}{
 			"error": err.Error(),
 		})
-		tgMsg.ParseMode = ""
-		_, err = c.bot.SendMessage(ctx, tgMsg)
-		return err
+	} else {
+		logger.ErrorCF("telegram", "Message too long for single HTML send, using plain text chunks", map[string]interface{}{
+			"runes": runeCount(htmlContent),
+		})
 	}
 
-	return nil
+	return sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, content)
 }
 
 func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Update) {
