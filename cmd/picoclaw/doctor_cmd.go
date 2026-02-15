@@ -377,7 +377,12 @@ func checkGatewayLog() doctorCheck {
 		return doctorCheck{Name: "gateway.log", Status: doctorWarn, Message: p, Data: map[string]string{"read_error": err.Error()}}
 	}
 
-	if strings.Contains(tail, "409 \"Conflict: terminated by other getUpdates request") {
+	conflictNeedle := "409 \"Conflict: terminated by other getUpdates request"
+	connectNeedle := "telegram: Telegram bot connected"
+	conflictAt := strings.LastIndex(tail, conflictNeedle)
+	connectedAt := strings.LastIndex(tail, connectNeedle)
+	// Only treat 409 as a current error if it appears after the last successful connect in the log tail.
+	if conflictAt >= 0 && (connectedAt < 0 || connectedAt < conflictAt) {
 		return doctorCheck{Name: "gateway.telegram", Status: doctorErr, Message: "Telegram getUpdates 409 conflict (multiple bot instances running?)", Data: map[string]string{"log": p}}
 	}
 	return doctorCheck{Name: "gateway.log", Status: doctorOK, Message: p}
