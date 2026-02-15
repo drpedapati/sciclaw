@@ -218,10 +218,10 @@ func runDoctor(opts doctorOptions) doctorReport {
 	}
 
 	// Key external CLIs
-	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install docx-review"))
+	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-docx-review"))
 	// PubMed CLI is usually `pubmed` from `pubmed-cli` formula; accept either name.
 	pubmed := checkBinary("pubmed", []string{"--help"}, 3*time.Second)
-	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "brew tap drpedapati/tap && brew install pubmed-cli")
+	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-pubmed-cli")
 	if pubmedcli.Status == doctorOK {
 		add(pubmedcli)
 	} else if pubmed.Status == doctorOK {

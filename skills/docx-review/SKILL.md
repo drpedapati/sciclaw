@@ -1,7 +1,7 @@
 ---
 name: docx-review
 description: "Read, edit, and diff Word documents (.docx) with tracked changes and comments using the docx-review CLI — a .NET 8 tool built on Microsoft's Open XML SDK. Ships as a single 12MB native binary (no runtime). Use when: (1) Adding tracked changes (replace, delete, insert) to a .docx, (2) Adding anchored comments to a .docx, (3) Reading/extracting text, tracked changes, comments, and metadata from a .docx, (4) Diffing two .docx files semantically, (5) Responding to peer reviewer comments with tracked revisions, (6) Proofreading or revising manuscripts with reviewable output, (7) Creating new documents from the NIH template, (8) Any task requiring valid .docx output with proper w:del/w:ins markup that renders natively in Word."
-metadata: {"nanobot":{"emoji":"📝","requires":{"bins":["docx-review"]},"install":[{"id":"brew","kind":"brew","formula":"docx-review","bins":["docx-review"],"label":"Install docx-review (brew)"}]}}
+metadata: {"nanobot":{"emoji":"📝","requires":{"bins":["docx-review"]},"install":[{"id":"brew","kind":"brew","formula":"sciclaw-docx-review","bins":["docx-review"],"label":"Install docx-review (brew)"}]}}
 ---
 
 # docx-review
@@ -12,7 +12,7 @@ CLI tool for Word document review: tracked changes, comments, read, diff, and gi
 
 ```bash
 brew tap drpedapati/tap
-brew install docx-review
+brew install sciclaw-docx-review
 ```
 
 Binary: `/opt/homebrew/bin/docx-review` (12MB, self-contained, no runtime)
