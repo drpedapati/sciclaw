@@ -142,6 +142,8 @@ func main() {
 		gatewayCmd()
 	case "status":
 		statusCmd()
+	case "doctor":
+		doctorCmd()
 	case "migrate":
 		migrateCmd()
 	case "auth":
@@ -224,6 +226,7 @@ func printHelp() {
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start sciClaw gateway")
 	fmt.Println("  status      Show sciClaw status")
+	fmt.Println("  doctor      Check deployment health and dependencies")
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw (PicoClaw-compatible)")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
