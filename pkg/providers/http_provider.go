@@ -79,6 +79,11 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		}
 	}
 
+	if effort, ok := options["reasoning_effort"].(string); ok && effort != "" {
+		// OpenAI Chat Completions API supports reasoning_effort for o-series models.
+		requestBody["reasoning_effort"] = effort
+	}
+
 	if temperature, ok := options["temperature"].(float64); ok {
 		lowerModel := strings.ToLower(model)
 		// Kimi k2 models only support temperature=1

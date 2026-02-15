@@ -1,0 +1,238 @@
+package models
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/sipeed/picoclaw/pkg/auth"
+	"github.com/sipeed/picoclaw/pkg/config"
+)
+
+// ProviderInfo describes a configured provider and its auth status.
+type ProviderInfo struct {
+	Name       string
+	HasAPIKey  bool
+	AuthMethod string // "api_key", "oauth", "token", or ""
+	Models     []string
+}
+
+// ResolveProvider returns the provider name that would handle the given model string.
+func ResolveProvider(model string, cfg *config.Config) string {
+	lower := strings.ToLower(model)
+
+	// Explicit provider prefix
+	if strings.Contains(lower, "claude") || strings.HasPrefix(model, "anthropic/") {
+		return "anthropic"
+	}
+	if strings.Contains(lower, "gpt") || strings.Contains(lower, "o1") || strings.Contains(lower, "o3") || strings.Contains(lower, "o4") || strings.Contains(lower, "codex") || strings.HasPrefix(model, "openai/") {
+		return "openai"
+	}
+	if strings.Contains(lower, "gemini") || strings.HasPrefix(model, "google/") {
+		return "gemini"
+	}
+	if strings.Contains(lower, "glm") || strings.Contains(lower, "zhipu") {
+		return "zhipu"
+	}
+	if strings.Contains(lower, "groq") || strings.HasPrefix(model, "groq/") {
+		return "groq"
+	}
+	if strings.Contains(lower, "deepseek") {
+		return "deepseek"
+	}
+	if strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "meta-llama/") {
+		return "openrouter"
+	}
+
+	// Fall back to explicit provider config
+	if cfg.Agents.Defaults.Provider != "" {
+		return cfg.Agents.Defaults.Provider
+	}
+	return "unknown"
+}
+
+// ListProviders returns info about all configured providers.
+func ListProviders(cfg *config.Config) []ProviderInfo {
+	var providers []ProviderInfo
+
+	add := func(name string, pc config.ProviderConfig, models []string) {
+		if pc.APIKey == "" && pc.AuthMethod == "" {
+			return
+		}
+		method := "api_key"
+		if pc.AuthMethod == "oauth" || pc.AuthMethod == "token" {
+			method = pc.AuthMethod
+		}
+		providers = append(providers, ProviderInfo{
+			Name:       name,
+			HasAPIKey:  pc.APIKey != "",
+			AuthMethod: method,
+			Models:     models,
+		})
+	}
+
+	add("anthropic", cfg.Providers.Anthropic, []string{
+		"claude-opus-4-6", "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001",
+	})
+	add("openai", cfg.Providers.OpenAI, []string{
+		"gpt-4o", "gpt-4o-mini", "o3", "o4-mini", "codex-mini-latest",
+	})
+	add("openrouter", cfg.Providers.OpenRouter, []string{
+		"openrouter/<model>",
+	})
+	add("gemini", cfg.Providers.Gemini, []string{
+		"gemini-2.5-pro", "gemini-2.5-flash",
+	})
+	add("groq", cfg.Providers.Groq, []string{
+		"groq/llama-3.3-70b",
+	})
+	add("deepseek", cfg.Providers.DeepSeek, []string{
+		"deepseek-chat", "deepseek-reasoner",
+	})
+	add("zhipu", cfg.Providers.Zhipu, []string{
+		"glm-4.7",
+	})
+
+	return providers
+}
+
+// PrintList displays the current model, providers, and effort setting.
+func PrintList(cfg *config.Config) {
+	fmt.Printf("Current model: %s\n", cfg.Agents.Defaults.Model)
+
+	provider := ResolveProvider(cfg.Agents.Defaults.Model, cfg)
+	fmt.Printf("Resolved provider: %s\n", provider)
+
+	if cfg.Agents.Defaults.ReasoningEffort != "" {
+		fmt.Printf("Reasoning effort: %s\n", cfg.Agents.Defaults.ReasoningEffort)
+	} else {
+		fmt.Printf("Reasoning effort: (provider default)\n")
+	}
+
+	providers := ListProviders(cfg)
+	if len(providers) == 0 {
+		fmt.Println("\nNo providers configured. Add API keys to ~/.picoclaw/config.json")
+		return
+	}
+
+	fmt.Println("\nConfigured providers:")
+	for _, p := range providers {
+		authStr := p.AuthMethod
+		// Check OAuth credential status
+		if p.AuthMethod == "oauth" || p.AuthMethod == "token" {
+			cred, err := auth.GetCredential(p.Name)
+			if err == nil && cred != nil {
+				if cred.IsExpired() {
+					authStr += " (expired)"
+				} else if cred.NeedsRefresh() {
+					authStr += " (needs refresh)"
+				} else {
+					authStr += " (valid)"
+				}
+			} else {
+				authStr += " (not authenticated)"
+			}
+		}
+
+		fmt.Printf("  %s (%s)\n", p.Name, authStr)
+		for _, m := range p.Models {
+			fmt.Printf("    - %s\n", m)
+		}
+	}
+}
+
+// SetModel validates and persists a new default model.
+func SetModel(cfg *config.Config, configPath string, newModel string) error {
+	oldModel := cfg.Agents.Defaults.Model
+	provider := ResolveProvider(newModel, cfg)
+
+	if provider == "unknown" {
+		fmt.Printf("Warning: could not resolve a provider for model %q.\n", newModel)
+		fmt.Printf("The model will be set but may fail at runtime if no matching provider is configured.\n\n")
+	}
+
+	cfg.Agents.Defaults.Model = newModel
+
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
+	fmt.Printf("Model changed: %s → %s\n", oldModel, newModel)
+	fmt.Printf("Provider: %s\n", provider)
+	return nil
+}
+
+// SetEffort validates and persists a new default reasoning effort.
+func SetEffort(cfg *config.Config, configPath string, effort string) error {
+	old := cfg.Agents.Defaults.ReasoningEffort
+	if old == "" {
+		old = "(none)"
+	}
+
+	cfg.Agents.Defaults.ReasoningEffort = effort
+
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
+	fmt.Printf("Reasoning effort changed: %s → %s\n", old, effort)
+	return nil
+}
+
+// PrintStatus displays the current model status.
+func PrintStatus(cfg *config.Config) {
+	model := cfg.Agents.Defaults.Model
+	provider := ResolveProvider(model, cfg)
+
+	fmt.Printf("Model:            %s\n", model)
+	fmt.Printf("Provider:         %s\n", provider)
+
+	// Show auth method for the resolved provider
+	authMethod := resolveAuthMethod(provider, cfg)
+	if authMethod != "" {
+		fmt.Printf("Auth:             %s\n", authMethod)
+	}
+
+	if cfg.Agents.Defaults.ReasoningEffort != "" {
+		fmt.Printf("Reasoning Effort: %s\n", cfg.Agents.Defaults.ReasoningEffort)
+	} else {
+		fmt.Printf("Reasoning Effort: (provider default)\n")
+	}
+}
+
+// GetConfigPath returns the standard config file path.
+func GetConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".picoclaw", "config.json")
+}
+
+func resolveAuthMethod(provider string, cfg *config.Config) string {
+	var pc config.ProviderConfig
+	switch provider {
+	case "anthropic":
+		pc = cfg.Providers.Anthropic
+	case "openai":
+		pc = cfg.Providers.OpenAI
+	case "openrouter":
+		pc = cfg.Providers.OpenRouter
+	case "gemini":
+		pc = cfg.Providers.Gemini
+	case "groq":
+		pc = cfg.Providers.Groq
+	case "deepseek":
+		pc = cfg.Providers.DeepSeek
+	case "zhipu":
+		pc = cfg.Providers.Zhipu
+	default:
+		return ""
+	}
+
+	if pc.AuthMethod == "oauth" || pc.AuthMethod == "token" {
+		return pc.AuthMethod
+	}
+	if pc.APIKey != "" {
+		return "api_key"
+	}
+	return "not configured"
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
 	"github.com/sipeed/picoclaw/pkg/auth"
 )
 
@@ -53,6 +54,13 @@ func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []To
 	}
 
 	params := buildCodexParams(messages, tools, model, options)
+
+	// Set reasoning effort if provided (critical for o-series and codex models).
+	if effort, ok := options["reasoning_effort"].(string); ok && effort != "" {
+		params.Reasoning = shared.ReasoningParam{
+			Effort: shared.ReasoningEffort(effort),
+		}
+	}
 
 	stream := p.client.Responses.NewStreaming(ctx, params, opts...)
 	if stream == nil {

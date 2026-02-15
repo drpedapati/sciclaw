@@ -35,9 +35,10 @@ type AgentLoop struct {
 	bus            *bus.MessageBus
 	provider       providers.LLMProvider
 	workspace      string
-	model          string
-	contextWindow  int // Maximum context window size in tokens
-	maxIterations  int
+	model            string
+	reasoningEffort  string
+	contextWindow    int // Maximum context window size in tokens
+	maxIterations    int
 	sessions       *session.SessionManager
 	state          *state.Manager
 	contextBuilder *ContextBuilder
@@ -190,12 +191,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 
 	return &AgentLoop{
-		bus:            msgBus,
-		provider:       provider,
-		workspace:      workspace,
-		model:          cfg.Agents.Defaults.Model,
-		contextWindow:  cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
-		maxIterations:  cfg.Agents.Defaults.MaxToolIterations,
+		bus:             msgBus,
+		provider:        provider,
+		workspace:       workspace,
+		model:           cfg.Agents.Defaults.Model,
+		reasoningEffort: cfg.Agents.Defaults.ReasoningEffort,
+		contextWindow:   cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
+		maxIterations:   cfg.Agents.Defaults.MaxToolIterations,
 		sessions:       sessionsManager,
 		state:          stateManager,
 		contextBuilder: contextBuilder,
@@ -560,10 +562,14 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		})
 
 		// Call LLM
-		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
+		llmOpts := map[string]interface{}{
 			"max_tokens":  8192,
 			"temperature": 0.7,
-		})
+		}
+		if al.reasoningEffort != "" {
+			llmOpts["reasoning_effort"] = al.reasoningEffort
+		}
+		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, llmOpts)
 
 		if err != nil {
 			logger.ErrorCF("agent", "LLM call failed",

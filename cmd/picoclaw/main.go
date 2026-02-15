@@ -29,6 +29,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/irl"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/migrate"
+	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -147,6 +148,8 @@ func main() {
 		authCmd()
 	case "cron":
 		cronCmd()
+	case "models":
+		modelsCmd()
 	case "skills":
 		if len(os.Args) < 3 {
 			skillsHelp()
@@ -217,6 +220,7 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  onboard     Initialize sciClaw configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
+	fmt.Println("  models      Manage models (list, set, effort, status)")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start sciClaw gateway")
 	fmt.Println("  status      Show sciClaw status")
@@ -225,6 +229,12 @@ func printHelp() {
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  backup      Backup key sciClaw config/workspace files")
 	fmt.Println("  version     Show version information")
+	fmt.Println()
+	fmt.Println("Agent flags:")
+	fmt.Println("  --model <model>   Override model for this invocation")
+	fmt.Println("  --effort <level>  Set reasoning effort (OpenAI: none/minimal/low/medium/high/xhigh, Anthropic: low/medium/high/max)")
+	fmt.Println("  -m <message>      Send a single message (non-interactive)")
+	fmt.Println("  -s <session>      Use a specific session key")
 }
 
 func onboard() {
@@ -452,6 +462,8 @@ func migrateHelp() {
 func agentCmd() {
 	message := ""
 	sessionKey := "cli:default"
+	modelOverride := ""
+	effortOverride := ""
 
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
@@ -469,6 +481,16 @@ func agentCmd() {
 				sessionKey = args[i+1]
 				i++
 			}
+		case "--model":
+			if i+1 < len(args) {
+				modelOverride = args[i+1]
+				i++
+			}
+		case "--effort":
+			if i+1 < len(args) {
+				effortOverride = args[i+1]
+				i++
+			}
 		}
 	}
 
@@ -476,6 +498,14 @@ func agentCmd() {
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Apply CLI overrides before provider creation
+	if modelOverride != "" {
+		cfg.Agents.Defaults.Model = modelOverride
+	}
+	if effortOverride != "" {
+		cfg.Agents.Defaults.ReasoningEffort = effortOverride
 	}
 
 	provider, err := providers.CreateProvider(cfg)
@@ -742,6 +772,52 @@ func gatewayCmd() {
 	fmt.Println("✓ Gateway stopped")
 }
 
+func modelsCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(os.Args) < 3 {
+		models.PrintList(cfg)
+		return
+	}
+
+	commandName := invokedCLIName()
+	switch os.Args[2] {
+	case "list":
+		models.PrintList(cfg)
+	case "set":
+		if len(os.Args) < 4 {
+			fmt.Printf("Usage: %s models set <model>\n", commandName)
+			os.Exit(1)
+		}
+		configPath := getConfigPath()
+		if err := models.SetModel(cfg, configPath, os.Args[3]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "effort":
+		if len(os.Args) < 4 {
+			fmt.Printf("Usage: %s models effort <level>\n", commandName)
+			fmt.Println("  OpenAI levels:    none, minimal, low, medium, high, xhigh")
+			fmt.Println("  Anthropic levels: low, medium, high, max")
+			os.Exit(1)
+		}
+		configPath := getConfigPath()
+		if err := models.SetEffort(cfg, configPath, os.Args[3]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "status":
+		models.PrintStatus(cfg)
+	default:
+		fmt.Printf("Unknown models command: %s\n", os.Args[2])
+		fmt.Printf("Usage: %s models [list|set|effort|status]\n", commandName)
+	}
+}
+
 func statusCmd() {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -768,6 +844,10 @@ func statusCmd() {
 
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Printf("Model: %s\n", cfg.Agents.Defaults.Model)
+		fmt.Printf("Provider: %s\n", models.ResolveProvider(cfg.Agents.Defaults.Model, cfg))
+		if cfg.Agents.Defaults.ReasoningEffort != "" {
+			fmt.Printf("Reasoning Effort: %s\n", cfg.Agents.Defaults.ReasoningEffort)
+		}
 
 		hasOpenRouter := cfg.Providers.OpenRouter.APIKey != ""
 		hasAnthropic := cfg.Providers.Anthropic.APIKey != ""

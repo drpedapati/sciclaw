@@ -111,7 +111,16 @@ func buildClaudeParams(messages []Message, tools []ToolDefinition, model string,
 		params.System = system
 	}
 
-	if temp, ok := options["temperature"].(float64); ok {
+	if effort, ok := options["reasoning_effort"].(string); ok && effort != "" {
+		// When reasoning effort is set, enable adaptive thinking and set effort.
+		// Temperature must NOT be set when thinking is enabled (Anthropic rejects it).
+		params.Thinking = anthropic.ThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+		}
+		params.OutputConfig = anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffort(effort),
+		}
+	} else if temp, ok := options["temperature"].(float64); ok {
 		params.Temperature = anthropic.Float(temp)
 	}
 
