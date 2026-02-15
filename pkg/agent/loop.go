@@ -457,7 +457,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	// 5. Handle empty response
 	if finalContent == "" {
-		finalContent = opts.DefaultResponse
+		if recovered, ok := al.tryDeterministicFallback(ctx, opts); ok {
+			finalContent = recovered
+		} else {
+			finalContent = opts.DefaultResponse
+		}
 	}
 
 	// 6. Save final assistant message to session
