@@ -195,6 +195,8 @@ func main() {
 			fmt.Printf("Unknown skills command: %s\n", subcommand)
 			skillsHelp()
 		}
+	case "backup":
+		backupCmd()
 	case "version", "--version", "-v":
 		printVersion()
 	default:
@@ -220,6 +222,7 @@ func printHelp() {
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw (PicoClaw-compatible)")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
+	fmt.Println("  backup      Backup key sciClaw config/workspace files")
 	fmt.Println("  version     Show version information")
 }
 
