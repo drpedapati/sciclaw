@@ -115,6 +115,8 @@ sciclaw agent --effort high -m "Analyze the statistical methods in this paper"
 | `sciclaw models effort <level>` | Persistently change reasoning effort |
 | `sciclaw models status` | Show model, provider, auth, and effort |
 | `sciclaw status` | Show system status (config, providers, IRL runtime) |
+| `sciclaw doctor` | Verify deployment: config, tools, skills, auth, gateway |
+| `sciclaw doctor --fix` | Auto-fix: sync baseline skills, remove legacy names |
 | `sciclaw gateway` | Start chat channel gateway (Telegram, Discord, etc.) |
 | `sciclaw auth login` | Authenticate with a provider |
 | `sciclaw auth status` | Show stored credentials |
@@ -309,6 +311,26 @@ docker compose logs -f sciclaw-gateway
 ├── TOOLS.md           # Tool descriptions
 └── USER.md            # User preferences
 ```
+
+## Doctor
+
+Run `sciclaw doctor` to verify your deployment — config, workspace, auth credentials, companion tools, baseline skills, gateway health, and Homebrew update status:
+
+```bash
+sciclaw doctor            # Human-readable report
+sciclaw doctor --json     # Machine-readable output
+sciclaw doctor --fix      # Auto-fix: sync baseline skills, remove legacy skill names
+```
+
+The doctor checks:
+- **Config & workspace** — validates `~/.picoclaw/config.json` and workspace directory exist
+- **Auth credentials** — checks OpenAI OAuth status (authenticated, expired, needs refresh)
+- **Companion tools** — verifies `docx-review`, `pubmed-cli`, `irl`, `pandoc`, `rg`, `python3` are installed, with install hints for missing tools
+- **Baseline skills** — confirms all 12 skills are present, detects legacy skill names (`docx`, `pubmed-database`)
+- **Gateway health** — scans logs for Telegram 409 conflicts (multiple bot instances)
+- **Homebrew** — checks if `sciclaw` is outdated
+
+Exit code 0 = all checks pass. Exit code 1 = at least one error.
 
 ## Troubleshooting
 

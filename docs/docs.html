@@ -505,6 +505,7 @@
       <a class="sidebar-link nested" href="#model-switching">Model Switching</a>
       <a class="sidebar-link nested" href="#gateway">Gateway</a>
       <a class="sidebar-link nested" href="#skills-cmd">Skills</a>
+      <a class="sidebar-link nested" href="#doctor">Doctor</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Scientific Workflow</div>
@@ -829,6 +830,8 @@
             <tr><td><code>sciclaw models status</code></td><td>Show model, provider, auth, and effort</td></tr>
             <tr><td><code>sciclaw gateway</code></td><td>Start the gateway for chat channels</td></tr>
             <tr><td><code>sciclaw status</code></td><td>Show current status (includes IRL runtime check)</td></tr>
+            <tr><td><code>sciclaw doctor</code></td><td>Verify deployment: config, tools, skills, auth, gateway</td></tr>
+            <tr><td><code>sciclaw doctor --fix</code></td><td>Auto-fix: sync baseline skills, remove legacy names</td></tr>
             <tr><td><code>sciclaw auth login</code></td><td>Authenticate with a provider</td></tr>
             <tr><td><code>sciclaw auth status</code></td><td>Show stored credentials</td></tr>
             <tr><td><code>sciclaw auth logout</code></td><td>Remove a stored credential</td></tr>
@@ -1006,6 +1009,57 @@
 <span class="hl-comment"># Install a skill from a directory or URL</span>
 <span class="hl-cmd">sciclaw</span> skills install <span class="hl-string">./my-skill</span></code></pre>
         <p>Skills extend the agent with specialized knowledge and workflows. Each skill is a directory containing a <code>SKILL.md</code> with name, description, and instructions.</p>
+      </div>
+
+      <!-- ─── Doctor ─── -->
+      <div class="section" id="doctor">
+        <h3>Doctor</h3>
+        <p>The <code>doctor</code> command verifies your entire sciClaw deployment in one shot &mdash; config, workspace, auth credentials, companion CLI tools, baseline skills, gateway health, and Homebrew update status.</p>
+
+        <pre><code><span class="hl-comment"># Human-readable report</span>
+<span class="hl-cmd">sciclaw</span> doctor
+
+<span class="hl-comment"># Machine-readable output</span>
+<span class="hl-cmd">sciclaw</span> doctor <span class="hl-flag">--json</span>
+
+<span class="hl-comment"># Auto-fix: sync baseline skills, remove legacy skill names</span>
+<span class="hl-cmd">sciclaw</span> doctor <span class="hl-flag">--fix</span></code></pre>
+
+        <h4>What it checks</h4>
+        <table>
+          <thead>
+            <tr><th>Check</th><th>What it verifies</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>config</code></td><td><code>~/.picoclaw/config.json</code> exists and loads</td></tr>
+            <tr><td><code>workspace</code></td><td>Workspace directory exists</td></tr>
+            <tr><td><code>auth.openai</code></td><td>OAuth status: authenticated, expired, or needs refresh</td></tr>
+            <tr><td><code>docx-review</code></td><td>Word document CLI tool installed</td></tr>
+            <tr><td><code>pubmed-cli</code></td><td>PubMed CLI tool installed (checks both <code>pubmed</code> and <code>pubmed-cli</code> names)</td></tr>
+            <tr><td><code>irl</code></td><td>IRL runtime available</td></tr>
+            <tr><td><code>pandoc</code></td><td>Document converter installed</td></tr>
+            <tr><td><code>rg</code></td><td>ripgrep installed (used by agent tools)</td></tr>
+            <tr><td><code>python3</code></td><td>Python 3 available</td></tr>
+            <tr><td><code>skills.baseline</code></td><td>All 12 baseline skills present; detects legacy names (<code>docx</code>, <code>pubmed-database</code>)</td></tr>
+            <tr><td><code>gateway.telegram</code></td><td>Scans logs for Telegram 409 conflicts (multiple bot instances)</td></tr>
+            <tr><td><code>homebrew.sciclaw</code></td><td>Checks if sciClaw is outdated in Homebrew</td></tr>
+          </tbody>
+        </table>
+
+        <h4>The <code>--fix</code> flag</h4>
+        <p>When <code>--fix</code> is passed, doctor applies safe, non-destructive fixes:</p>
+        <ul>
+          <li>Syncs baseline skills from the bundled Homebrew share directory to your workspace</li>
+          <li>Removes legacy skill directories (<code>docx</code>, <code>pubmed-database</code>) that were replaced by <code>docx-review</code> and <code>pubmed-cli</code></li>
+          <li>Creates a <code>pubmed-cli</code> symlink if only <code>pubmed</code> is found on PATH</li>
+        </ul>
+
+        <p>Exit code 0 = all checks pass. Exit code 1 = at least one error.</p>
+
+        <div class="callout">
+          <div class="callout-title">Tip</div>
+          <p>Run <code>sciclaw doctor --json</code> to pipe the report into other tools. Each check includes a <code>status</code> field (<code>ok</code>, <code>warn</code>, <code>error</code>, <code>skip</code>) and optional <code>data</code> with install hints.</p>
+        </div>
       </div>
 
       <hr />
