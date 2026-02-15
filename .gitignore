@@ -66,5 +66,11 @@ ralph/
 # Local upstream clone workspace
 github/
 
+# Auth credentials
+auth.json
+
+# Git worktrees
+.worktrees/
+
 # Generated manuscript render output
 manuscript/*.html
