@@ -81,7 +81,7 @@ func doctorCmd() {
 func doctorHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nDoctor:")
-	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, and key external tools (docx-review, irl, pandoc, PubMed CLI).\n", commandName)
+	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, and key external tools (docx-review, quarto, irl, pandoc, PubMed CLI).\n", commandName)
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --json        Machine-readable output")
@@ -219,6 +219,11 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	// Key external CLIs
 	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-docx-review"))
+	quartoHint := "brew install --cask quarto"
+	if runtime.GOOS == "linux" {
+		quartoHint = "brew tap drpedapati/tap && brew install sciclaw-quarto"
+	}
+	add(checkBinaryWithHint("quarto", []string{"--version"}, 3*time.Second, quartoHint))
 	// PubMed CLI is usually `pubmed` from `pubmed-cli` formula; accept either name.
 	pubmed := checkBinary("pubmed", []string{"--help"}, 3*time.Second)
 	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-pubmed-cli")

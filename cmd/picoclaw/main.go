@@ -291,7 +291,12 @@ func onboard() {
 	fmt.Println("     Get one at: https://openrouter.ai/keys")
 	fmt.Printf("  2. Chat: %s agent -m \"Hello!\"\n", invokedCLIName())
 	fmt.Println("\nCompanion tools:")
-	fmt.Println("  If you installed via Homebrew, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
+	if runtime.GOOS == "linux" {
+		fmt.Println("  If you installed via Homebrew, Quarto, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
+	} else {
+		fmt.Println("  If you installed via Homebrew, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
+		fmt.Println("  Install Quarto with: brew install --cask quarto")
+	}
 	fmt.Println("  Optional: export NCBI_API_KEY=\"your-key\"  # PubMed rate limit: 3/s -> 10/s")
 }
 

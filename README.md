@@ -29,6 +29,11 @@ Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrit
 brew tap drpedapati/tap && brew install sciclaw && sciclaw onboard --yes && sciclaw doctor
 ```
 
+macOS only:
+```bash
+brew install --cask quarto
+```
+
 ### Download a binary
 
 Pre-compiled binaries for macOS (arm64), Linux (amd64, arm64, riscv64), and Windows (amd64) are on the [releases page](https://github.com/drpedapati/sciclaw/releases).
@@ -43,7 +48,7 @@ make deps && make install
 
 ### Companion tools
 
-If you install via Homebrew, sciClaw pulls companion tools automatically (IRL, ripgrep, docx-review, pubmed-cli).
+If you install via Homebrew, sciClaw pulls companion tools automatically (IRL, ripgrep, docx-review, pubmed-cli; and on Linux also Quarto).
 If you install via downloaded binary/source, see `sciclaw doctor` for install hints.
 
 ## Quick Start
@@ -321,7 +326,7 @@ sciclaw doctor --fix      # Auto-fix: sync baseline skills, remove legacy skill 
 The doctor checks:
 - **Config & workspace** — validates `~/.picoclaw/config.json` and workspace directory exist
 - **Auth credentials** — checks OpenAI OAuth status (authenticated, expired, needs refresh)
-- **Companion tools** — verifies `docx-review`, `pubmed-cli`, `irl`, `pandoc`, `rg`, `python3` are installed, with install hints for missing tools
+- **Companion tools** — verifies `docx-review`, `pubmed-cli`, `quarto`, `irl`, `pandoc`, `rg`, `python3` are installed, with install hints for missing tools
 - **Baseline skills** — confirms all 12 skills are present, detects legacy skill names (`docx`, `pubmed-database`)
 - **Gateway health** — scans logs for Telegram 409 conflicts (multiple bot instances)
 - **Homebrew** — checks if `sciclaw` is outdated

@@ -172,6 +172,10 @@ jobs:
             depends_on "sciclaw-docx-review"
             depends_on "sciclaw-pubmed-cli"
 
+            on_linux do
+              depends_on "sciclaw-quarto"
+            end
+
             def install
               ldflags = "-s -w -X main.version=#{version}"
               system "go", "build", *std_go_args(output: bin/"sciclaw", ldflags: ldflags), "./cmd/picoclaw"
@@ -186,6 +190,9 @@ jobs:
               assert_match "v#{version}", shell_output("#{bin}/sciclaw --version")
               assert_match "ripgrep", shell_output("#{Formula["ripgrep"].opt_bin}/rg --version")
               assert_match "irl", shell_output("#{Formula["irl"].opt_bin}/irl --version 2>&1")
+              if OS.linux?
+                assert_match(/\\d+\\.\\d+\\.\\d+/, shell_output("#{Formula["sciclaw-quarto"].opt_bin}/quarto --version").strip)
+              end
               assert_match "docx-review", shell_output("#{Formula["sciclaw-docx-review"].opt_bin}/docx-review --version")
               assert_match "PubMed", shell_output("#{Formula["sciclaw-pubmed-cli"].opt_bin}/pubmed --help")
               ENV["HOME"] = testpath
