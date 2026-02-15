@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TAP_REPO: drpedapati/homebrew-sciclaw
+  TAP_REPO: drpedapati/homebrew-tap
   FORMULA_RELATIVE_PATH: Formula/sciclaw.rb
 
 jobs:

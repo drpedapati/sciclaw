@@ -25,7 +25,7 @@ Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrit
 ### Homebrew (recommended)
 
 ```bash
-brew tap drpedapati/sciclaw
+brew tap drpedapati/tap
 brew install sciclaw
 ```
 
