@@ -167,6 +167,7 @@ jobs:
             version "${version}"
 
             depends_on "go" => :build
+            depends_on "ripgrep"
 
             def install
               ldflags = "-s -w -X main.version=#{version}"
@@ -180,6 +181,7 @@ jobs:
               assert_match "Usage:", shell_output("#{bin}/sciclaw --help")
               assert_match "Usage:", shell_output("#{bin}/picoclaw --help")
               assert_match "v#{version}", shell_output("#{bin}/sciclaw --version")
+              assert_match "ripgrep", shell_output("#{Formula["ripgrep"].opt_bin}/rg --version")
               ENV["HOME"] = testpath
               system "#{bin}/sciclaw", "onboard"
               assert_predicate testpath/".picoclaw/workspace/AGENTS.md", :exist?
