@@ -249,7 +249,7 @@ sciclaw onboard
   "agents": {
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
-      "model": "glm-4.7",
+      "model": "gpt-5.2",
       "max_tokens": 8192,
       "temperature": 0.7,
       "max_tool_iterations": 20
@@ -624,7 +624,7 @@ Successful login updates `providers.<name>.auth_method` in `~/.picoclaw/config.j
   "agents": {
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
-      "model": "glm-4.7",
+      "model": "gpt-5.2",
       "max_tokens": 8192,
       "temperature": 0.7,
       "max_tool_iterations": 20
