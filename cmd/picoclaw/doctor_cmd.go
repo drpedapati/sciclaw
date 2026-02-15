@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/auth"
+	"github.com/sipeed/picoclaw/pkg/config"
 )
 
 type doctorOptions struct {
@@ -128,22 +129,36 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	// Config + workspace
 	configPath := getConfigPath()
-	if fileExists(configPath) {
+	configExists := fileExists(configPath)
+	if configExists {
 		add(doctorCheck{Name: "config", Status: doctorOK, Message: configPath})
 	} else {
-		add(doctorCheck{Name: "config", Status: doctorErr, Message: fmt.Sprintf("missing: %s", configPath)})
-		// Without config, most checks are still useful but are best-effort.
+		add(doctorCheck{
+			Name:    "config",
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("missing: %s (run: %s onboard --yes)", configPath, invokedCLIName()),
+		})
 	}
 
-	cfg, cfgErr := loadConfig()
-	if cfgErr != nil {
-		add(doctorCheck{Name: "config.load", Status: doctorErr, Message: cfgErr.Error()})
-	} else {
+	var cfg *config.Config
+	var cfgErr error
+	if configExists {
+		cfg, cfgErr = loadConfig()
+		if cfgErr != nil {
+			add(doctorCheck{Name: "config.load", Status: doctorErr, Message: cfgErr.Error()})
+		}
+	}
+
+	if cfgErr == nil && cfg != nil {
 		workspace := cfg.WorkspacePath()
 		if fileExists(workspace) {
 			add(doctorCheck{Name: "workspace", Status: doctorOK, Message: workspace})
 		} else {
-			add(doctorCheck{Name: "workspace", Status: doctorErr, Message: fmt.Sprintf("missing: %s", workspace)})
+			add(doctorCheck{
+				Name:    "workspace",
+				Status:  doctorWarn,
+				Message: fmt.Sprintf("missing: %s (run: %s onboard --yes)", workspace, invokedCLIName()),
+			})
 		}
 
 		// Channels
@@ -161,6 +176,21 @@ func runDoctor(opts doctorOptions) doctorReport {
 			add(doctorCheck{Name: "agent.restrict_to_workspace", Status: doctorOK, Message: "true"})
 		} else {
 			add(doctorCheck{Name: "agent.restrict_to_workspace", Status: doctorWarn, Message: "false (tools can access outside workspace)"})
+		}
+	} else if !configExists {
+		// Best-effort workspace check with default path.
+		home, _ := os.UserHomeDir()
+		if home != "" {
+			defaultWorkspace := filepath.Join(home, ".picoclaw", "workspace")
+			if fileExists(defaultWorkspace) {
+				add(doctorCheck{Name: "workspace", Status: doctorOK, Message: defaultWorkspace})
+			} else {
+				add(doctorCheck{
+					Name:    "workspace",
+					Status:  doctorWarn,
+					Message: fmt.Sprintf("missing: %s (run: %s onboard --yes)", defaultWorkspace, invokedCLIName()),
+				})
+			}
 		}
 	}
 
@@ -188,10 +218,10 @@ func runDoctor(opts doctorOptions) doctorReport {
 	}
 
 	// Key external CLIs
-	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "brew install henrybloomingdale/tools/docx-review"))
+	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install docx-review"))
 	// PubMed CLI is usually `pubmed` from `pubmed-cli` formula; accept either name.
 	pubmed := checkBinary("pubmed", []string{"--help"}, 3*time.Second)
-	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "brew install henrybloomingdale/tools/pubmed-cli (binary is `pubmed`; may need a `pubmed-cli` shim)")
+	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "brew tap drpedapati/tap && brew install pubmed-cli")
 	if pubmedcli.Status == doctorOK {
 		add(pubmedcli)
 	} else if pubmed.Status == doctorOK {
@@ -218,8 +248,10 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	// Skills sanity + sync
 	if cfgErr == nil {
-		workspaceSkillsDir := filepath.Join(cfg.WorkspacePath(), "skills")
-		add(checkBaselineSkills(workspaceSkillsDir, opts))
+		if cfg != nil {
+			workspaceSkillsDir := filepath.Join(cfg.WorkspacePath(), "skills")
+			add(checkBaselineSkills(workspaceSkillsDir, opts))
+		}
 	}
 
 	// Gateway log quick scan: common Telegram 409 conflict from multiple instances.

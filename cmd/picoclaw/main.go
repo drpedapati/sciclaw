@@ -241,16 +241,34 @@ func printHelp() {
 }
 
 func onboard() {
+	args := os.Args[2:]
+	yes, force, showHelp, err := parseOnboardOptions(args)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		onboardHelp()
+		os.Exit(2)
+	}
+	if showHelp {
+		onboardHelp()
+		return
+	}
+
 	configPath := getConfigPath()
 
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Printf("Config already exists at %s\n", configPath)
-		fmt.Print("Overwrite? (y/n): ")
-		var response string
-		fmt.Scanln(&response)
-		if response != "y" {
-			fmt.Println("Aborted.")
-			return
+		if !force {
+			if yes {
+				fmt.Println("Skipping (use --force to overwrite).")
+				return
+			}
+			fmt.Print("Overwrite? (y/n): ")
+			var response string
+			fmt.Scanln(&response)
+			if response != "y" {
+				fmt.Println("Aborted.")
+				return
+			}
 		}
 	}
 
@@ -272,10 +290,40 @@ func onboard() {
 	fmt.Println("  1. Add your API key to", configPath)
 	fmt.Println("     Get one at: https://openrouter.ai/keys")
 	fmt.Printf("  2. Chat: %s agent -m \"Hello!\"\n", invokedCLIName())
-	fmt.Println("\nRecommended companion tools:")
-	fmt.Println("  brew install henrybloomingdale/tools/docx-review   # Word documents with tracked changes")
-	fmt.Println("  brew install henrybloomingdale/tools/pubmed-cli    # PubMed search and citation graphs")
-	fmt.Println("  export NCBI_API_KEY=\"your-key\"                     # PubMed rate limit: 3/s -> 10/s")
+	fmt.Println("\nCompanion tools:")
+	fmt.Println("  If you installed via Homebrew, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
+	fmt.Println("  Optional: export NCBI_API_KEY=\"your-key\"  # PubMed rate limit: 3/s -> 10/s")
+}
+
+func onboardHelp() {
+	commandName := invokedCLIName()
+	fmt.Println("\nOnboard:")
+	fmt.Printf("  %s onboard initializes your sciClaw config and workspace.\n", commandName)
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  --yes        Non-interactive; never prompts (safe defaults)")
+	fmt.Println("  --force      Overwrite existing config without prompting")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Printf("  %s onboard\n", commandName)
+	fmt.Printf("  %s onboard --yes\n", commandName)
+	fmt.Printf("  %s onboard --yes --force\n", commandName)
+}
+
+func parseOnboardOptions(args []string) (yes bool, force bool, showHelp bool, err error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--yes", "-y":
+			yes = true
+		case "--force", "-f":
+			force = true
+		case "help", "--help", "-h":
+			showHelp = true
+		default:
+			return false, false, false, fmt.Errorf("unknown option: %s", args[i])
+		}
+	}
+	return yes, force, showHelp, nil
 }
 
 func createWorkspaceTemplates(workspace string) {
