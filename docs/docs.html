@@ -449,6 +449,10 @@
       <a class="sidebar-link nested" href="#research-loop">Research Loop</a>
       <a class="sidebar-link nested" href="#skills">Skills</a>
       <a class="sidebar-link nested" href="#manuscript">Manuscript Pipeline</a>
+      <a class="sidebar-link" href="#irl">IRL Integration</a>
+      <a class="sidebar-link nested" href="#irl-why">Why IRL</a>
+      <a class="sidebar-link nested" href="#irl-how">How It Works</a>
+      <a class="sidebar-link nested" href="#irl-provenance">Provenance</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Chat Channels</div>
@@ -482,7 +486,7 @@
 <span class="hl-cmd">brew</span> install sciclaw</code></pre>
         <p>Then:</p>
         <pre><code><span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span></code></pre>
-        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Stable releases auto-update via the GitHub release workflow.</p>
+        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs <code>irl</code> as a dependency so IRL project lifecycle actions are available through the agent by default. Stable releases auto-update via the GitHub release workflow.</p>
 
         <h3>Download a binary</h3>
         <p>Pre-compiled binaries for Linux (amd64, arm64, riscv64), macOS (arm64), and Windows (amd64) are available on the <a href="https://github.com/drpedapati/sciclaw/releases">releases page</a>.</p>
@@ -648,6 +652,8 @@
 ├── cron/              <span class="hl-comment"># Scheduled jobs database</span>
 ├── skills/            <span class="hl-comment"># Installed skills</span>
 ├── hooks/             <span class="hl-comment"># Hook audit log (hook-events.jsonl)</span>
+├── irl/
+│   └── commands/      <span class="hl-comment"># IRL command execution audit records</span>
 ├── AGENTS.md          <span class="hl-comment"># Agent behavior guide</span>
 ├── HEARTBEAT.md       <span class="hl-comment"># Periodic task prompts</span>
 ├── HOOKS.md           <span class="hl-comment"># Hook policy (plain-language)</span>
@@ -674,7 +680,7 @@
             <tr><td><code>sciclaw agent -m "..."</code></td><td>Send a one-shot message to the agent</td></tr>
             <tr><td><code>sciclaw agent</code></td><td>Start interactive chat mode</td></tr>
             <tr><td><code>sciclaw gateway</code></td><td>Start the gateway for chat channels</td></tr>
-            <tr><td><code>sciclaw status</code></td><td>Show current status</td></tr>
+            <tr><td><code>sciclaw status</code></td><td>Show current status (includes IRL runtime check)</td></tr>
             <tr><td><code>sciclaw auth login</code></td><td>Authenticate with a provider</td></tr>
             <tr><td><code>sciclaw auth status</code></td><td>Show stored credentials</td></tr>
             <tr><td><code>sciclaw auth logout</code></td><td>Remove a stored credential</td></tr>
@@ -816,6 +822,98 @@
         <p>Each research loop updates the relevant <code>.qmd</code> sections, renders with Quarto, logs changes to <code>plans/main-plan-activity.md</code>, and commits manuscript plus logs together.</p>
 
         <pre><code><span class="hl-cmd">quarto</span> render manuscript/sciclaw-manuscript-outline.qmd <span class="hl-flag">--to</span> html</code></pre>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ IRL INTEGRATION ━━━━━ -->
+      <div class="section" id="irl">
+        <h2>IRL Integration</h2>
+        <p class="page-subtitle">The Idempotent Research Loop manages the project lifecycle layer that sits above sciClaw's per-loop reproducibility.</p>
+
+        <p>sciClaw enforces rigor <em>inside</em> each research loop &mdash; evidence capture, manuscript updates, plan logs. But what about the layer above? Creating new projects, organizing them consistently, rediscovering past work, and switching context between studies. That's where IRL comes in.</p>
+      </div>
+
+      <!-- ─── Why IRL ─── -->
+      <div class="section" id="irl-why">
+        <h3>Why IRL</h3>
+
+        <p>Without project lifecycle management, common problems accumulate:</p>
+
+        <ul>
+          <li><strong>Project sprawl</strong> &mdash; Research directories pile up with inconsistent names and scattered locations. Finding last month's ERP analysis means grepping through your home directory.</li>
+          <li><strong>Boilerplate friction</strong> &mdash; Every new study starts with the same manual work: creating directories, plan files, config, and manuscript scaffolding before the real work begins.</li>
+          <li><strong>Lost context</strong> &mdash; The agent has no structured way to discover what projects exist or switch between them. You end up pasting paths manually.</li>
+          <li><strong>No adoption path</strong> &mdash; Existing messy folders can't be retroactively brought under management without starting over.</li>
+        </ul>
+
+        <p>IRL solves these by providing a thin, idempotent project lifecycle layer:</p>
+
+        <ul>
+          <li><strong>Auto-named, datestamped projects</strong> &mdash; <code>irl init "ERP correlation analysis"</code> creates a consistent <code>260214-erp-correlation-analysis/</code> directory with plans, data, and manuscript scaffolding built in.</li>
+          <li><strong>Discoverability</strong> &mdash; <code>irl list --json</code> gives the agent a structured view of all managed projects for context-switching without remembering paths.</li>
+          <li><strong>Adopt existing work</strong> &mdash; <code>irl adopt ./messy-folder</code> brings existing directories under management without starting over.</li>
+          <li><strong>Templates</strong> &mdash; Different study types get different scaffolding from day one.</li>
+          <li><strong>Safe by default</strong> &mdash; Operations are idempotent and non-destructive. No accidental overwrites, explicit flags for renames.</li>
+        </ul>
+      </div>
+
+      <!-- ─── How It Works ─── -->
+      <div class="section" id="irl-how">
+        <h3>How It Works in sciClaw</h3>
+
+        <p>IRL is bundled as a <strong>Homebrew dependency</strong> &mdash; when you install sciClaw, <code>irl</code> is installed alongside it automatically. There is no <code>sciclaw irl</code> subcommand. Instead, the agent mediates all IRL interactions internally, shelling out to the <code>irl</code> binary and consuming its machine-readable outputs.</p>
+
+        <p>Four operations are available through the agent:</p>
+
+        <table>
+          <thead>
+            <tr><th>Operation</th><th>What the agent does</th><th>IRL command</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Create project</strong></td><td>Scaffolds a new research project with auto-naming</td><td><code>irl init "purpose" [-t template]</code></td></tr>
+            <tr><td><strong>Adopt project</strong></td><td>Brings an existing directory under IRL management</td><td><code>irl adopt &lt;path&gt; [--rename]</code></td></tr>
+            <tr><td><strong>Discover projects</strong></td><td>Lists all managed projects for context-switching</td><td><code>irl list --json</code></td></tr>
+            <tr><td><strong>Workspace context</strong></td><td>Reads current IRL config and profile</td><td><code>irl config --json</code> + <code>irl profile --json</code></td></tr>
+          </tbody>
+        </table>
+
+        <p>You interact with these through natural conversation with the agent. For example:</p>
+
+        <pre><code><span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"Create a new project for ERP correlation analysis"</span>
+
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"What projects do I have?"</span>
+
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"Adopt my old als-biomarker folder as a managed project"</span></code></pre>
+
+        <p>To verify IRL is available:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> status
+<span class="hl-comment"># Output includes: IRL Runtime: ✓ /opt/homebrew/bin/irl</span></code></pre>
+
+        <div class="callout">
+          <div class="callout-title">No subcommand by design</div>
+          <p>IRL operations are agent-mediated, not exposed as <code>sciclaw irl ...</code> commands. This keeps the CLI surface minimal and lets the agent handle argument construction, error recovery, and provenance logging automatically.</p>
+        </div>
+      </div>
+
+      <!-- ─── IRL Provenance ─── -->
+      <div class="section" id="irl-provenance">
+        <h3>Provenance</h3>
+        <p>Every IRL command the agent executes is recorded as a timestamped JSON entry in <code>~/.picoclaw/workspace/irl/commands/</code>. Each record captures:</p>
+
+        <ul>
+          <li>Full command argv and working directory</li>
+          <li>Timestamp and IRL version</li>
+          <li>stdout, stderr, and exit code</li>
+          <li>Parsed payload (for JSON-returning commands)</li>
+          <li>Normalized status (<code>success</code>, <code>failure</code>, <code>partial</code>)</li>
+          <li>Correlation IDs linking to unified runtime logs</li>
+        </ul>
+
+        <pre><code><span class="hl-comment"># View recent IRL command records</span>
+<span class="hl-cmd">ls</span> ~/.picoclaw/workspace/irl/commands/</code></pre>
+
+        <p>The command store is append-only audit material &mdash; no in-place mutation. This gives you a complete trail of every project created, adopted, or discovered through the agent.</p>
       </div>
 
       <hr />
