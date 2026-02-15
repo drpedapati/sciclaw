@@ -501,6 +501,7 @@
       <div class="sidebar-heading">Commands</div>
       <a class="sidebar-link" href="#cli-reference">CLI Reference</a>
       <a class="sidebar-link nested" href="#agent">Agent</a>
+      <a class="sidebar-link nested" href="#model-switching">Model Switching</a>
       <a class="sidebar-link nested" href="#gateway">Gateway</a>
       <a class="sidebar-link nested" href="#skills-cmd">Skills</a>
     </div>
@@ -630,6 +631,7 @@
     <span class="hl-key">"defaults"</span>: {
       <span class="hl-key">"workspace"</span>: <span class="hl-string">"~/.picoclaw/workspace"</span>,
       <span class="hl-key">"model"</span>: <span class="hl-string">"anthropic/claude-opus-4-5"</span>,
+      <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"high"</span>,
       <span class="hl-key">"max_tokens"</span>: 8192,
       <span class="hl-key">"temperature"</span>: 0.7,
       <span class="hl-key">"max_tool_iterations"</span>: 20
@@ -740,6 +742,12 @@
             <tr><td><code>sciclaw onboard</code></td><td>Initialize config, workspace, and baseline skills</td></tr>
             <tr><td><code>sciclaw agent -m "..."</code></td><td>Send a one-shot message to the agent</td></tr>
             <tr><td><code>sciclaw agent</code></td><td>Start interactive chat mode</td></tr>
+            <tr><td><code>sciclaw agent --model &lt;model&gt;</code></td><td>Override model for this invocation</td></tr>
+            <tr><td><code>sciclaw agent --effort &lt;level&gt;</code></td><td>Set reasoning effort level</td></tr>
+            <tr><td><code>sciclaw models list</code></td><td>Show current model and configured providers</td></tr>
+            <tr><td><code>sciclaw models set &lt;model&gt;</code></td><td>Persistently change the default model</td></tr>
+            <tr><td><code>sciclaw models effort &lt;level&gt;</code></td><td>Persistently change the reasoning effort</td></tr>
+            <tr><td><code>sciclaw models status</code></td><td>Show model, provider, auth, and effort</td></tr>
             <tr><td><code>sciclaw gateway</code></td><td>Start the gateway for chat channels</td></tr>
             <tr><td><code>sciclaw status</code></td><td>Show current status (includes IRL runtime check)</td></tr>
             <tr><td><code>sciclaw auth login</code></td><td>Authenticate with a provider</td></tr>
@@ -768,9 +776,137 @@
 <span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"Summarize recent ALS biomarker literature"</span>
 
 <span class="hl-comment"># Interactive session</span>
-<span class="hl-cmd">sciclaw</span> agent</code></pre>
+<span class="hl-cmd">sciclaw</span> agent
+
+<span class="hl-comment"># Override model for one invocation (config unchanged)</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-4o <span class="hl-flag">-m</span> <span class="hl-string">"Quick question"</span>
+
+<span class="hl-comment"># Set reasoning effort (critical for o-series and Claude thinking)</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--effort</span> high <span class="hl-flag">-m</span> <span class="hl-string">"Analyze this complex dataset"</span>
+
+<span class="hl-comment"># Combine both overrides</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> anthropic/claude-opus-4-6 <span class="hl-flag">--effort</span> max <span class="hl-flag">-m</span> <span class="hl-string">"Deep analysis"</span></code></pre>
 
         <p>In interactive mode the agent maintains session context, uses tools (filesystem, shell, web search, spawn), and follows the paired-scientist loop defined in <code>AGENTS.md</code>.</p>
+      </div>
+
+      <!-- ─── Model Switching ─── -->
+      <div class="section" id="model-switching">
+        <h3>Model Switching</h3>
+        <p>Previously, switching models required editing <code>~/.picoclaw/config.json</code> by hand and restarting. sciClaw now supports three ways to change models &mdash; a one-shot CLI flag, a persistent subcommand, and the config file &mdash; so you can move between providers without friction.</p>
+
+        <h4>1. Per-invocation override (<code>--model</code>)</h4>
+        <p>The <code>--model</code> flag overrides the model for a single command. Your config file is <strong>not changed</strong>, so the next invocation returns to your default. Use this when testing a model, when your primary provider is down, or when a specific task needs a different model.</p>
+        <pre><code><span class="hl-comment"># Quick task with GPT-4o (config unchanged)</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-4o <span class="hl-flag">-m</span> <span class="hl-string">"Summarize this CSV"</span>
+
+<span class="hl-comment"># Deep analysis with Claude Opus</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> anthropic/claude-opus-4-6 <span class="hl-flag">-m</span> <span class="hl-string">"Review this manuscript draft"</span>
+
+<span class="hl-comment"># Interactive session with a specific model</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> o3</code></pre>
+
+        <h4>2. Persistent change (<code>sciclaw models</code>)</h4>
+        <p>The <code>models</code> subcommand lets you inspect and change your default model without opening a text editor.</p>
+
+        <pre><code><span class="hl-comment"># See current model, resolved provider, auth method, and effort</span>
+<span class="hl-cmd">sciclaw</span> models status
+
+<span class="hl-comment"># List all configured providers and their available models</span>
+<span class="hl-cmd">sciclaw</span> models list
+
+<span class="hl-comment"># Switch default model (writes to config.json)</span>
+<span class="hl-cmd">sciclaw</span> models set gpt-4o
+<span class="hl-comment"># Output: Model changed: claude-opus-4-6 → gpt-4o</span>
+<span class="hl-comment">#         Provider: openai</span></code></pre>
+
+        <h4>3. Config file</h4>
+        <p>You can also set the model directly in <code>~/.picoclaw/config.json</code>. This is the same file that <code>sciclaw models set</code> writes to.</p>
+        <pre><code>{
+  <span class="hl-key">"agents"</span>: {
+    <span class="hl-key">"defaults"</span>: {
+      <span class="hl-key">"model"</span>: <span class="hl-string">"anthropic/claude-opus-4-6"</span>,
+      <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"high"</span>
+    }
+  }
+}</code></pre>
+        <p>You can also use the environment variable <code>PICOCLAW_AGENTS_DEFAULTS_MODEL</code> to override the model, and <code>PICOCLAW_AGENTS_DEFAULTS_REASONING_EFFORT</code> for effort.</p>
+
+        <h4>Provider auto-detection</h4>
+        <p>sciClaw resolves the provider from the model name automatically. You generally do not need to set <code>agents.defaults.provider</code> explicitly.</p>
+        <table>
+          <thead>
+            <tr><th>Model name contains</th><th>Resolved provider</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>claude</code>, <code>anthropic/</code></td><td>Anthropic</td></tr>
+            <tr><td><code>gpt</code>, <code>o1</code>, <code>o3</code>, <code>o4</code>, <code>codex</code>, <code>openai/</code></td><td>OpenAI</td></tr>
+            <tr><td><code>gemini</code>, <code>google/</code></td><td>Gemini</td></tr>
+            <tr><td><code>deepseek</code></td><td>DeepSeek</td></tr>
+            <tr><td><code>glm</code>, <code>zhipu</code></td><td>Zhipu</td></tr>
+            <tr><td><code>groq/</code></td><td>Groq</td></tr>
+            <tr><td><code>openrouter/</code>, <code>meta-llama/</code></td><td>OpenRouter</td></tr>
+          </tbody>
+        </table>
+        <p>If the provider has an API key or OAuth credential configured, the model is routed to it automatically. If you use OpenRouter, any <code>openrouter/</code>-prefixed model works without additional setup.</p>
+
+        <h4>Reasoning effort</h4>
+        <p>Reasoning effort controls how deeply the model thinks before answering. This is <strong>critical</strong> for reasoning models (OpenAI o-series, codex) where effort directly controls quality, latency, and cost. Without setting it, the provider uses its own default &mdash; and you may not know what that default is.</p>
+
+        <table>
+          <thead>
+            <tr><th>Provider</th><th>Valid levels</th><th>Default when unset</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>OpenAI / Codex</td><td><code>none</code> &middot; <code>minimal</code> &middot; <code>low</code> &middot; <code>medium</code> &middot; <code>high</code> &middot; <code>xhigh</code></td><td><code>medium</code> (o-series pre-gpt-5.1)</td></tr>
+            <tr><td>Anthropic / Claude</td><td><code>low</code> &middot; <code>medium</code> &middot; <code>high</code> &middot; <code>max</code></td><td>Standard behavior (no thinking)</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Per-invocation:</strong> use <code>--effort</code> to set effort for a single command.</p>
+        <pre><code><span class="hl-comment"># High reasoning for a complex analysis</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--effort</span> high <span class="hl-flag">-m</span> <span class="hl-string">"Analyze the statistical methods in this paper"</span>
+
+<span class="hl-comment"># Maximum reasoning for codex-tier models</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> codex-mini-latest <span class="hl-flag">--effort</span> xhigh <span class="hl-flag">-m</span> <span class="hl-string">"Debug this edge case"</span>
+
+<span class="hl-comment"># Claude with extended thinking</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> anthropic/claude-opus-4-6 <span class="hl-flag">--effort</span> max <span class="hl-flag">-m</span> <span class="hl-string">"Prove this theorem"</span>
+
+<span class="hl-comment"># Minimal reasoning for fast, cheap responses</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--effort</span> low <span class="hl-flag">-m</span> <span class="hl-string">"What day is it?"</span></code></pre>
+
+        <p><strong>Persistent:</strong> save a default effort level so you don't have to pass <code>--effort</code> every time.</p>
+        <pre><code><span class="hl-comment"># Save effort to config.json</span>
+<span class="hl-cmd">sciclaw</span> models effort high
+
+<span class="hl-comment"># Check current setting</span>
+<span class="hl-cmd">sciclaw</span> models status
+<span class="hl-comment"># Output: Model:            o3</span>
+<span class="hl-comment">#         Provider:         openai</span>
+<span class="hl-comment">#         Auth:             oauth</span>
+<span class="hl-comment">#         Reasoning Effort: high</span></code></pre>
+
+        <div class="callout">
+          <div class="callout-title">How effort maps to provider APIs</div>
+          <p><strong>OpenAI:</strong> Sets the <code>reasoning.effort</code> field in the Responses API. Affects o3, o4-mini, codex-mini, and other reasoning models. Non-reasoning models (gpt-4o) ignore it.</p>
+          <p><strong>Anthropic:</strong> Enables <a href="https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking">adaptive extended thinking</a> and sets <code>output_config.effort</code>. When effort is set, temperature is automatically disabled (Anthropic requires this). When effort is not set, Claude behaves normally without thinking blocks.</p>
+        </div>
+
+        <div class="callout callout-warn">
+          <div class="callout-title">Choosing an effort level</div>
+          <p><code>low</code> / <code>minimal</code> &mdash; Fast, cheap. Good for simple lookups and formatting tasks.</p>
+          <p><code>medium</code> / <code>high</code> &mdash; Balanced. Good for most research and analysis work.</p>
+          <p><code>xhigh</code> / <code>max</code> &mdash; Maximum reasoning depth. Use for proofs, complex debugging, or multi-step scientific reasoning. Significantly slower and more expensive.</p>
+        </div>
+
+        <h4>Precedence</h4>
+        <p>When multiple sources set the model or effort, the most specific wins:</p>
+        <ol>
+          <li><code>--model</code> / <code>--effort</code> CLI flags (highest priority, single invocation)</li>
+          <li>Environment variables (<code>PICOCLAW_AGENTS_DEFAULTS_MODEL</code>, <code>PICOCLAW_AGENTS_DEFAULTS_REASONING_EFFORT</code>)</li>
+          <li><code>config.json</code> values (lowest priority, persistent default)</li>
+        </ol>
       </div>
 
       <!-- ─── Gateway ─── -->
