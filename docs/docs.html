@@ -488,6 +488,7 @@
     <div class="sidebar-section">
       <div class="sidebar-heading">Getting Started</div>
       <a class="sidebar-link active" href="#installation">Installation</a>
+      <a class="sidebar-link" href="#updating">Updating</a>
       <a class="sidebar-link" href="#quick-start">Quick Start</a>
     </div>
     <div class="sidebar-section">
@@ -567,6 +568,85 @@
         <div class="callout">
           <div class="callout-title">Note</div>
           <p>sciClaw is a Go binary. Building from source requires Go 1.25+ and <code>make</code>.</p>
+        </div>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ UPDATING ━━━━━ -->
+      <div class="section" id="updating">
+        <h2>Updating</h2>
+        <p class="page-subtitle">Keep sciClaw and its components current.</p>
+
+        <p>sciClaw is distributed as a single binary with two bundled sub-components: the <strong>IRL runtime</strong> (Idempotent Research Loop) and <strong>baseline scientific skills</strong>. How you update depends on how you installed.</p>
+
+        <h3>Homebrew (recommended)</h3>
+        <p>If you installed via Homebrew, a single command updates sciClaw <em>and</em> all its dependencies, including the IRL runtime:</p>
+        <pre><code><span class="hl-cmd">brew</span> upgrade sciclaw</code></pre>
+        <p>This pulls the latest formula from the <code>drpedapati/sciclaw</code> tap, rebuilds the binary, and upgrades the <code>irl</code> dependency if a newer version is available.</p>
+
+        <p>To check what version you're running before and after:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span>
+<span class="hl-cmd">sciclaw</span> status</code></pre>
+
+        <h3>Binary releases</h3>
+        <p>If you installed from a downloaded binary, replace it with the latest from the <a href="https://github.com/drpedapati/sciclaw/releases">releases page</a>. The IRL binary must be updated separately &mdash; download it from the <a href="https://github.com/drpedapati/irl/releases">IRL releases page</a> and place it on your <code>PATH</code>.</p>
+
+        <h3>From source</h3>
+        <pre><code><span class="hl-cmd">cd</span> sciclaw
+<span class="hl-cmd">git</span> pull
+<span class="hl-cmd">make</span> deps
+<span class="hl-cmd">make</span> install</code></pre>
+        <p>This rebuilds and reinstalls to <code>~/.local/bin</code>. For IRL, pull and rebuild its repo separately.</p>
+
+        <h3>Updating skills</h3>
+        <p>Baseline scientific skills are installed during <code>sciclaw onboard</code> and live in <code>~/.picoclaw/workspace/skills/</code>. They are <strong>not</strong> automatically updated when you upgrade the binary. To refresh them to the latest built-in versions:</p>
+        <pre><code><span class="hl-comment"># Re-install all built-in skills (overwrites existing)</span>
+<span class="hl-cmd">sciclaw</span> skills install-builtin
+
+<span class="hl-comment"># Or re-run onboard to refresh workspace templates + skills</span>
+<span class="hl-cmd">sciclaw</span> onboard</code></pre>
+
+        <p>Third-party skills installed from GitHub can be updated by re-installing them:</p>
+        <pre><code><span class="hl-comment"># Re-install a GitHub skill to get the latest version</span>
+<span class="hl-cmd">sciclaw</span> skills install <span class="hl-string">username/repo/skill-name</span></code></pre>
+
+        <h3>Updating configuration</h3>
+        <p>New sciClaw versions may add config fields (like <code>reasoning_effort</code>). Your existing <code>config.json</code> continues to work &mdash; new fields use sensible defaults when absent. To see what's available, compare with the default config:</p>
+        <pre><code><span class="hl-comment"># View current config</span>
+<span class="hl-cmd">sciclaw</span> status
+
+<span class="hl-comment"># Check model and provider details</span>
+<span class="hl-cmd">sciclaw</span> models status</code></pre>
+
+        <h3>Verifying the update</h3>
+        <p>After updating, verify all components are working:</p>
+        <pre><code><span class="hl-comment"># Check version</span>
+<span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span>
+
+<span class="hl-comment"># Check all components: config, workspace, providers, IRL runtime</span>
+<span class="hl-cmd">sciclaw</span> status
+
+<span class="hl-comment"># Verify skills are loaded</span>
+<span class="hl-cmd">sciclaw</span> skills list
+
+<span class="hl-comment"># Quick smoke test</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"Hello, what version are you?"</span></code></pre>
+
+        <div class="callout">
+          <div class="callout-title">Component summary</div>
+          <table>
+            <thead>
+              <tr><th>Component</th><th>Updated by</th><th>Location</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>sciclaw</code> binary</td><td><code>brew upgrade sciclaw</code></td><td><code>/opt/homebrew/bin/sciclaw</code></td></tr>
+              <tr><td><code>irl</code> runtime</td><td><code>brew upgrade sciclaw</code> (dependency)</td><td><code>/opt/homebrew/bin/irl</code></td></tr>
+              <tr><td>Baseline skills</td><td><code>sciclaw skills install-builtin</code></td><td><code>~/.picoclaw/workspace/skills/</code></td></tr>
+              <tr><td>Config file</td><td>Manual or <code>sciclaw models set</code></td><td><code>~/.picoclaw/config.json</code></td></tr>
+              <tr><td>Workspace templates</td><td><code>sciclaw onboard</code></td><td><code>~/.picoclaw/workspace/</code></td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
