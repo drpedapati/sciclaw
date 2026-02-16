@@ -12,7 +12,7 @@ services:
       - agent
     volumes:
       - ./config/config.json:/root/.picoclaw/config.json:ro
-      - sciclaw-workspace:/root/.picoclaw/workspace
+      - sciclaw-workspace:/root/sciclaw
     entrypoint: ["sciclaw", "agent"]
     stdin_open: true
     tty: true
@@ -33,7 +33,7 @@ services:
       # Configuration file
       - ./config/config.json:/root/.picoclaw/config.json:ro
       # Persistent workspace (sessions, memory, logs)
-      - sciclaw-workspace:/root/.picoclaw/workspace
+      - sciclaw-workspace:/root/sciclaw
     command: ["gateway"]
 
 volumes:

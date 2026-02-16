@@ -224,7 +224,7 @@ sciclaw agent -m "What projects do I have?"
 sciclaw agent -m "Adopt my old als-biomarker folder as a managed project"
 ```
 
-Every IRL command is recorded in `~/.picoclaw/workspace/irl/commands/` for auditability.
+Every IRL command is recorded in `~/sciclaw/irl/commands/` for auditability (workspace path is configurable).
 
 ## Chat Channels
 
@@ -307,7 +307,7 @@ docker compose logs -f sciclaw-gateway
 ## Workspace Layout
 
 ```
-~/.picoclaw/workspace/
+~/sciclaw/
 ├── sessions/          # Conversation history
 ├── memory/            # Long-term memory (MEMORY.md)
 ├── state/             # Persistent state

@@ -30,8 +30,8 @@ RUN ln -sf sciclaw /usr/local/bin/picoclaw
 COPY --from=builder /src/skills /opt/sciclaw/skills
 
 # Create picoclaw-compatible home directory
-RUN mkdir -p /root/.picoclaw/workspace/skills && \
-    cp -r /opt/sciclaw/skills/* /root/.picoclaw/workspace/skills/ 2>/dev/null || true
+RUN mkdir -p /root/sciclaw/skills && \
+    cp -r /opt/sciclaw/skills/* /root/sciclaw/skills/ 2>/dev/null || true
 
 ENTRYPOINT ["sciclaw"]
 CMD ["gateway"]

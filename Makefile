@@ -204,7 +204,7 @@ help:
 	@echo ""
 	@echo "Environment Variables:"
 	@echo "  INSTALL_PREFIX          # Installation prefix (default: ~/.local)"
-	@echo "  WORKSPACE_DIR           # Workspace directory (default: ~/.picoclaw/workspace)"
+	@echo "  WORKSPACE_DIR           # Workspace directory (default: ~/sciclaw)"
 	@echo "  VERSION                 # Version string (default: git describe)"
 	@echo ""
 	@echo "Current Configuration:"

@@ -600,7 +600,7 @@
         <p>This rebuilds and reinstalls to <code>~/.local/bin</code>. For IRL, pull and rebuild its repo separately.</p>
 
         <h3>Updating skills</h3>
-        <p>Baseline scientific skills are installed during <code>sciclaw onboard</code> and live in <code>~/.picoclaw/workspace/skills/</code>. They are <strong>not</strong> automatically updated when you upgrade the binary. To refresh them to the latest built-in versions:</p>
+        <p>Baseline scientific skills are installed during <code>sciclaw onboard</code> and live in <code>~/sciclaw/skills/</code> by default. They are <strong>not</strong> automatically updated when you upgrade the binary. To refresh them to the latest built-in versions:</p>
         <pre><code><span class="hl-comment"># Re-install all built-in skills (overwrites existing)</span>
 <span class="hl-cmd">sciclaw</span> skills install-builtin
 
@@ -643,9 +643,9 @@
               <tr><td><code>sciclaw</code> binary</td><td><code>brew upgrade sciclaw</code></td><td><code>$(brew --prefix)/bin/sciclaw</code></td></tr>
               <tr><td><code>irl</code> runtime</td><td><code>brew upgrade sciclaw</code> (dependency)</td><td><code>$(brew --prefix)/bin/irl</code></td></tr>
               <tr><td><code>quarto</code> (optional)</td><td>macOS: <code>brew upgrade --cask quarto</code> / Linux: <code>brew upgrade sciclaw</code> (dependency)</td><td><code>$(brew --prefix)/bin/quarto</code></td></tr>
-              <tr><td>Baseline skills</td><td><code>sciclaw skills install-builtin</code></td><td><code>~/.picoclaw/workspace/skills/</code></td></tr>
+              <tr><td>Baseline skills</td><td><code>sciclaw skills install-builtin</code></td><td><code>~/sciclaw/skills/</code></td></tr>
               <tr><td>Config file</td><td>Manual or <code>sciclaw models set</code></td><td><code>~/.picoclaw/config.json</code></td></tr>
-              <tr><td>Workspace templates</td><td><code>sciclaw onboard</code></td><td><code>~/.picoclaw/workspace/</code></td></tr>
+              <tr><td>Workspace templates</td><td><code>sciclaw onboard</code></td><td><code>~/sciclaw/</code></td></tr>
             </tbody>
           </table>
         </div>
@@ -660,7 +660,7 @@
 
         <h3>1. Initialize</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/.picoclaw/workspace/</code>, and installs baseline scientific skills. In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip all prompts.</p>
+        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, and installs baseline scientific skills. In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip all prompts.</p>
 
         <h3>2. Configure a provider</h3>
         <p>Edit <code>~/.picoclaw/config.json</code> with your LLM provider credentials:</p>
@@ -710,7 +710,7 @@
         <pre><code>{
   <span class="hl-key">"agents"</span>: {
     <span class="hl-key">"defaults"</span>: {
-      <span class="hl-key">"workspace"</span>: <span class="hl-string">"~/.picoclaw/workspace"</span>,
+      <span class="hl-key">"workspace"</span>: <span class="hl-string">"~/sciclaw"</span>,
       <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.2"</span>,
       <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"high"</span>,
       <span class="hl-key">"max_tokens"</span>: 8192,
@@ -795,9 +795,9 @@
       <!-- ─── Workspace ─── -->
       <div class="section" id="workspace">
         <h3>Workspace Layout</h3>
-        <p>The workspace lives at the path configured in <code>agents.defaults.workspace</code> (default <code>~/.picoclaw/workspace</code>).</p>
+        <p>The workspace lives at the path configured in <code>agents.defaults.workspace</code> (default <code>~/sciclaw</code>).</p>
 
-        <pre><code>~/.picoclaw/workspace/
+        <pre><code>~/sciclaw/
 ├── sessions/          <span class="hl-comment"># Conversation history</span>
 ├── memory/            <span class="hl-comment"># Long-term memory (MEMORY.md)</span>
 ├── state/             <span class="hl-comment"># Persistent state</span>
@@ -1116,7 +1116,7 @@
       <!-- ─── Skills ─── -->
       <div class="section" id="skills">
         <h3>Baseline Scientific Skills</h3>
-        <p>During <code>sciclaw onboard</code>, twelve skills are installed into <code>~/.picoclaw/workspace/skills/</code>:</p>
+        <p>During <code>sciclaw onboard</code>, twelve skills are installed into <code>~/sciclaw/skills/</code> by default:</p>
 
         <h4>Research &amp; Literature</h4>
         <ul>
@@ -1236,7 +1236,7 @@
       <!-- ─── IRL Provenance ─── -->
       <div class="section" id="irl-provenance">
         <h3>Provenance</h3>
-        <p>Every IRL command the agent executes is recorded as a timestamped JSON entry in <code>~/.picoclaw/workspace/irl/commands/</code>. Each record captures:</p>
+        <p>Every IRL command the agent executes is recorded as a timestamped JSON entry in <code>~/sciclaw/irl/commands/</code> by default. Each record captures:</p>
 
         <ul>
           <li>Full command argv and working directory</li>
@@ -1248,7 +1248,7 @@
         </ul>
 
         <pre><code><span class="hl-comment"># View recent IRL command records</span>
-<span class="hl-cmd">ls</span> ~/.picoclaw/workspace/irl/commands/</code></pre>
+<span class="hl-cmd">ls</span> ~/sciclaw/irl/commands/</code></pre>
 
         <p>The command store is append-only audit material &mdash; no in-place mutation. This gives you a complete trail of every project created, adopted, or discovered through the agent.</p>
       </div>
@@ -1412,7 +1412,7 @@
         </ul>
 
         <pre><code><span class="hl-comment"># View recent hook events</span>
-<span class="hl-cmd">tail</span> <span class="hl-flag">-5</span> ~/.picoclaw/workspace/hooks/hook-events.jsonl | <span class="hl-cmd">jq</span> .</code></pre>
+<span class="hl-cmd">tail</span> <span class="hl-flag">-5</span> ~/sciclaw/hooks/hook-events.jsonl | <span class="hl-cmd">jq</span> .</code></pre>
 
         <p>The audit log is designed for reproducibility &mdash; every claim the agent makes can be traced back to the tool calls and LLM responses that produced it.</p>
       </div>
@@ -1461,7 +1461,7 @@
         <pre><code><span class="hl-cmd">sciclaw</span> cron list
 <span class="hl-cmd">sciclaw</span> cron add <span class="hl-string">"Check email"</span> <span class="hl-flag">--every</span> 2h</code></pre>
 
-        <p>Jobs are stored in <code>~/.picoclaw/workspace/cron/</code> and processed automatically by the gateway.</p>
+        <p>Jobs are stored in <code>~/sciclaw/cron/</code> by default and processed automatically by the gateway.</p>
       </div>
 
       <!-- ─── Docker ─── -->
