@@ -230,7 +230,14 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		}
 
 		pathPattern := regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
-		matches := pathPattern.FindAllString(cmd, -1)
+		pathScanInput := cmd
+		// PubMed search syntax uses field tags like [Title/Abstract], which can be
+		// misread as absolute paths by the generic scanner. Strip bracketed tags
+		// for path scanning only, while still keeping other safety checks active.
+		if isPubMedCommand(cmd) {
+			pathScanInput = stripBracketSegments(cmd)
+		}
+		matches := pathPattern.FindAllString(pathScanInput, -1)
 
 		for _, raw := range matches {
 			p, err := filepath.Abs(raw)
@@ -250,6 +257,46 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 	}
 
 	return ""
+}
+
+func isPubMedCommand(command string) bool {
+	fields := strings.Fields(strings.TrimSpace(command))
+	if len(fields) == 0 {
+		return false
+	}
+	switch strings.ToLower(fields[0]) {
+	case "pubmed", "pubmed-cli":
+		return true
+	default:
+		return false
+	}
+}
+
+func stripBracketSegments(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	depth := 0
+	for _, r := range s {
+		switch r {
+		case '[':
+			depth++
+			b.WriteRune(' ')
+		case ']':
+			if depth > 0 {
+				depth--
+				b.WriteRune(' ')
+			} else {
+				b.WriteRune(r)
+			}
+		default:
+			if depth > 0 {
+				b.WriteRune(' ')
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	return b.String()
 }
 
 func (t *ExecTool) SetTimeout(timeout time.Duration) {

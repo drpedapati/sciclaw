@@ -208,3 +208,26 @@ func TestShellTool_RestrictToWorkspace(t *testing.T) {
 		t.Errorf("Expected 'blocked' message for path traversal, got ForLLM: %s, ForUser: %s", result.ForLLM, result.ForUser)
 	}
 }
+
+func TestShellTool_PubMedFieldTagsNotBlockedByPathGuard(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := `pubmed search "\"innovations in child depression\"[Title/Abstract] AND depression[MeSH Terms]" --json --limit 20`
+	if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
+		t.Fatalf("expected pubmed query with field tags to pass guard, got: %s", blocked)
+	}
+}
+
+func TestShellTool_PubMedStillBlocksOutsideWorkspacePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := `pubmed search "depression[Title/Abstract]" --json > /tmp/pubmed.json`
+	blocked := tool.guardCommand(cmd, tmpDir)
+	if !strings.Contains(blocked, "outside working dir") {
+		t.Fatalf("expected outside-workspace path to be blocked, got: %q", blocked)
+	}
+}
