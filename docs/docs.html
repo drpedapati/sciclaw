@@ -558,8 +558,19 @@
         <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>rg</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
 
         <h3>Step 2 &mdash; Onboard</h3>
-        <pre><code><span class="hl-cmd">sciclaw</span> onboard <span class="hl-flag">--yes</span></code></pre>
-        <p><code>onboard</code> creates the default configuration directory (<code>~/.config/sciclaw/</code>), writes starter config files, and registers the built-in skill pack. The <code>--yes</code> flag accepts defaults so it runs non-interactively. You can re-run <code>sciclaw onboard</code> at any time without losing existing settings.</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
+        <p>The onboard wizard walks you through first-time setup. It starts by creating your config (<code>~/.picoclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. Then it asks four optional questions:</p>
+        <ol>
+          <li><strong>PubMed API key</strong> &mdash; An <a href="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/" target="_blank" rel="noopener">NCBI API key</a> removes rate limits on literature searches. Recommended but not required; you can add one later.</li>
+          <li><strong>OpenAI login</strong> &mdash; Authenticates with OpenAI using a device-code flow (a link opens in your browser). Skip this if you plan to use a different provider.</li>
+          <li><strong>Chat smoke test</strong> &mdash; Sends a single test message to confirm your AI provider is connected and responding.</li>
+          <li><strong>Messaging apps</strong> &mdash; Optionally pairs Telegram and/or Discord so you can chat with sciClaw from a messaging app instead of the terminal.</li>
+        </ol>
+        <p>Every prompt defaults to &ldquo;no&rdquo;, so you can press Enter to skip anything and come back later. Running <code>sciclaw onboard</code> again is safe &mdash; it preserves existing settings and credentials.</p>
+        <div class="callout">
+          <div class="callout-title">Tip</div>
+          <p>If you prefer a non-interactive install (e.g.&nbsp;in a script), use <code>sciclaw onboard --yes</code> to accept all defaults and skip the wizard.</p>
+        </div>
 
         <h3>Step 3 &mdash; Doctor</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> doctor</code></pre>
