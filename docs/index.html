@@ -511,6 +511,7 @@
         <div class="btn-row">
           <a class="btn btn-primary" href="#install">Install sciClaw</a>
           <a class="btn btn-secondary" href="docs.html">Read the docs</a>
+          <a class="btn btn-secondary" href="docs.html#scientist-setup">Scientist setup</a>
         </div>
         <p class="trust">Free and open source. MIT licensed. Works with your existing tools.</p>
       </section>
@@ -677,12 +678,15 @@
           <div class="step">
             <div class="step-num">3</div>
             <div class="step-body">
-              <h3>Start a conversation</h3>
-              <p>Ask a question in plain language. sciClaw takes it from there.</p>
+              <h3>Chat where you already work</h3>
+              <p>Recommended for non-technical users: pair Telegram/Discord and talk to sciClaw from a chat app.</p>
               <div class="step-code">
-                <code>sciclaw agent -m "What pathways are implicated in ALS?"</code>
-                <button class="copy-btn" onclick="copyText(this, 'sciclaw agent -m &quot;What pathways are implicated in ALS?&quot;')">Copy</button>
+                <code>sciclaw channels setup telegram</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw channels setup telegram')">Copy</button>
               </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                Then run <code>sciclaw gateway</code>. Full guide: <a href="docs.html#scientist-setup">Scientist Setup</a>. CLI works too: <code>sciclaw agent -m "…"</code>.
+              </p>
             </div>
           </div>
         </div>

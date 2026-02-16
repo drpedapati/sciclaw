@@ -229,6 +229,7 @@ Every IRL command is recorded in `~/sciclaw/irl/commands/` for auditability (wor
 ## Chat Channels
 
 Talk to sciClaw through messaging apps by running `sciclaw gateway`.
+Scientist-friendly walkthrough: [Scientist Setup Guide](https://drpedapati.github.io/sciclaw/docs.html#scientist-setup).
 
 Recommended setup:
 ```bash

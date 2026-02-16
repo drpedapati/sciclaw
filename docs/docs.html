@@ -490,6 +490,7 @@
       <a class="sidebar-link active" href="#installation">Installation</a>
       <a class="sidebar-link" href="#updating">Updating</a>
       <a class="sidebar-link" href="#quick-start">Quick Start</a>
+      <a class="sidebar-link" href="#scientist-setup">Scientist Setup</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Configuration</div>
@@ -696,6 +697,69 @@
 <span class="hl-comment"># Interactive mode</span>
 <span class="hl-cmd">sciclaw</span> agent</code></pre>
         <p>That's it. You have a working paired-scientist assistant.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ SCIENTIST SETUP ━━━━━ -->
+      <div class="section" id="scientist-setup">
+        <h2>Scientist Setup Guide</h2>
+        <p class="page-subtitle">The intended workflow for non-technical scientific users: chat in Telegram/Discord, keep an auditable workspace.</p>
+
+        <h3>What this feels like</h3>
+        <p>You talk to sciClaw in your normal chat app. sciClaw proposes a plan, runs tools, and writes evidence and drafts into a visible workspace folder. You review outputs and iterate.</p>
+
+        <h3>Recommended setup (Telegram)</h3>
+        <ol>
+          <li><strong>Install</strong> (Homebrew recommended)</li>
+        </ol>
+        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw</code></pre>
+
+        <ol start="2">
+          <li><strong>Initialize</strong> (creates config + workspace + baseline skills)</li>
+        </ol>
+        <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
+
+        <ol start="3">
+          <li><strong>Connect a provider</strong> (OAuth for ChatGPT subscribers, or API keys)</li>
+        </ol>
+        <pre><code><span class="hl-comment"># OpenAI OAuth (opens a browser)</span>
+<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
+
+<span class="hl-comment"># Optional: PubMed rate limits (the onboard wizard can save this too)</span>
+<span class="hl-cmd">export</span> NCBI_API_KEY=<span class="hl-string">"your-key"</span></code></pre>
+
+        <ol start="4">
+          <li><strong>Pair Telegram</strong> (writes an allowlist so only you can talk to the bot)</li>
+        </ol>
+        <pre><code><span class="hl-cmd">sciclaw</span> channels setup telegram</code></pre>
+
+        <ol start="5">
+          <li><strong>Start the gateway</strong> (keep this running on your computer or a server)</li>
+        </ol>
+        <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
+
+        <div class="callout">
+          <div class="callout-title">Where your work lives</div>
+          <p><strong>Workspace (visible):</strong> <code>~/sciclaw/</code> (sessions, evidence, skills, hooks, IRL audit logs).</p>
+          <p><strong>Config + auth (hidden):</strong> <code>~/.picoclaw/config.json</code> and <code>~/.picoclaw/auth.json</code> (secrets and provider credentials).</p>
+        </div>
+
+        <div class="callout callout-warn">
+          <div class="callout-title">Common gotcha</div>
+          <p><strong>Telegram only allows one gateway instance per bot.</strong> If you run multiple instances you will see a 409 conflict. Stop the other instance, then restart <code>sciclaw gateway</code>.</p>
+        </div>
+
+        <h3>Discord instead of Telegram</h3>
+        <p>Discord setup is also first-class:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> channels setup discord
+<span class="hl-cmd">sciclaw</span> gateway</code></pre>
+        <p>Discord requires enabling <strong>MESSAGE CONTENT INTENT</strong> in the Developer Portal.</p>
+
+        <h3>Keep it up to date</h3>
+        <pre><code><span class="hl-cmd">brew</span> upgrade sciclaw
+<span class="hl-cmd">sciclaw</span> doctor</code></pre>
+        <p>If <code>doctor</code> reports missing companion tools (docx-review, pubmed-cli, IRL, ripgrep), install via Homebrew or follow the install hints in the report.</p>
       </div>
 
       <hr />
