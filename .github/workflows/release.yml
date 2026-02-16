@@ -196,9 +196,9 @@ jobs:
               assert_match "PubMed", shell_output("#{Formula["sciclaw-pubmed-cli"].opt_bin}/pubmed --help")
               ENV["HOME"] = testpath
               system bin/"sciclaw", "onboard", "--yes"
-              assert_path_exists testpath/".picoclaw/workspace/AGENTS.md"
-              assert_path_exists testpath/".picoclaw/workspace/HOOKS.md"
-              assert_path_exists testpath/".picoclaw/workspace/skills/scientific-writing/SKILL.md"
+              assert_path_exists testpath/"sciclaw/AGENTS.md"
+              assert_path_exists testpath/"sciclaw/HOOKS.md"
+              assert_path_exists testpath/"sciclaw/skills/scientific-writing/SKILL.md"
             end
           end
           EOF
