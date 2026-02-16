@@ -1241,6 +1241,14 @@
           <li><strong>humanize-text</strong> &mdash; Final-pass language polishing for natural tone</li>
         </ul>
 
+        <h4>Optional Bundled Skill (Manual Install)</h4>
+        <ul>
+          <li><strong>phi-cleaner</strong> &mdash; Clinical text de-identification helper for PHI-safe sharing workflows (<code>phi-clean</code> CLI)</li>
+        </ul>
+        <p>This skill is bundled with sciClaw and available to the agent. Install the companion CLI only if needed:</p>
+        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tools
+<span class="hl-cmd">brew</span> install drpedapati/tools/phi-cleaner</code></pre>
+
         <h4>Office Tool Repo Migration</h4>
         <p>Office companion tools were transferred from <code>henrybloomingdale/*</code> to <code>drpedapati/*</code>. If you install those tools directly, use the new tap:</p>
         <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tools

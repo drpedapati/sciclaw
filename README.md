@@ -197,6 +197,15 @@ Twelve skills are installed during `sciclaw onboard`:
 ### Polish
 - **humanize-text** — Final-pass language polishing for natural tone
 
+### Optional Bundled Skill (Manual Install)
+- **phi-cleaner** — Clinical text de-identification helper for PHI-safe sharing workflows (`phi-clean` CLI).
+- Bundled with sciClaw and available to the agent; install the companion CLI only if needed:
+
+```bash
+brew tap drpedapati/tools
+brew install drpedapati/tools/phi-cleaner
+```
+
 Additional skills are available from the [skills catalog](https://github.com/drpedapati/sciclaw-skills):
 
 ```bash
