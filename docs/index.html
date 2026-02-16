@@ -337,6 +337,95 @@
 
       .demo-output strong { color: var(--ink); }
 
+      /* ── Chat demo bubbles ── */
+      .chat-demo {
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #f1f5f9;
+        padding: 18px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .chat-msg {
+        display: flex;
+        flex-direction: column;
+        max-width: 85%;
+      }
+
+      .chat-msg.user {
+        align-self: flex-end;
+        align-items: flex-end;
+      }
+
+      .chat-msg.agent {
+        align-self: flex-start;
+        align-items: flex-start;
+      }
+
+      .chat-label {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+        padding: 0 4px;
+      }
+
+      .chat-bubble {
+        border-radius: 14px;
+        padding: 12px 16px;
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--ink);
+      }
+
+      .chat-msg.user .chat-bubble {
+        background: #dbeafe;
+        border-bottom-right-radius: 4px;
+      }
+
+      .chat-msg.agent .chat-bubble {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-bottom-left-radius: 4px;
+      }
+
+      .chat-avatar {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent), #0891b2);
+        display: inline-block;
+        margin-right: 4px;
+        vertical-align: middle;
+      }
+
+      .chat-bubble strong { color: var(--ink); }
+
+      /* ── Channel strip ── */
+      .channel-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 14px;
+      }
+
+      .channel-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ch-color, var(--accent));
+        background: color-mix(in srgb, var(--ch-color, var(--accent)) 10%, white);
+        border: 1px solid color-mix(in srgb, var(--ch-color, var(--accent)) 25%, transparent);
+      }
+
       /* ── Steps ── */
       .steps { counter-reset: step; }
 
@@ -477,6 +566,8 @@
         .hero { padding: 28px 18px; }
         section { padding: 20px 16px; }
         .step { flex-direction: column; gap: 8px; }
+        .chat-msg { max-width: 95%; }
+        .channel-strip { flex-direction: column; align-items: center; }
       }
     </style>
   </head>
@@ -498,12 +589,12 @@
     <main class="wrap">
       <!-- ── Hero ── -->
       <section class="hero">
-        <div class="kicker">A paired scientist for your lab</div>
+        <div class="kicker">A paired scientist in your chat</div>
         <h1>From research question to evidence-backed work &mdash; without the busywork</h1>
         <p class="hero-sub">
-          sciClaw is not a "write my paper" bot. It's a paired-scientist agent:
-          it proposes a plan, runs the right tools (literature, documents, code),
-          cites sources, and logs decisions so you can reproduce and audit the work.
+          Message sciClaw from Telegram, Discord, or Slack &mdash; it proposes a plan,
+          runs the right tools (literature, documents, code), cites sources, and logs
+          decisions so you can reproduce and audit the work.
         </p>
         <p style="margin:10px 0 0;color:var(--muted);font-size:14px;">
           You stay in control: approve key steps, review outputs, and keep the evidence in your workspace.
@@ -539,10 +630,24 @@
         </p>
       </section>
 
+      <!-- ── Messaging strip ── -->
+      <section style="text-align:center;">
+        <h2>Chat where you already work</h2>
+        <p class="subhead">No terminal needed. Talk to sciClaw from the app you already have open.</p>
+        <div class="channel-strip">
+          <div class="channel-badge" style="--ch-color:#229ED9;">💬 Telegram</div>
+          <div class="channel-badge" style="--ch-color:#5865F2;">💬 Discord</div>
+          <div class="channel-badge" style="--ch-color:#611f69;">💬 Slack</div>
+        </div>
+        <p style="margin:14px 0 0;color:var(--muted);font-size:13px;">
+          CLI and API also available for power users.
+        </p>
+      </section>
+
       <!-- ── Demos ── -->
       <section>
         <h2>See it in action</h2>
-        <p class="subhead">You type a question. sciClaw does the work.</p>
+        <p class="subhead">Send a message. Get the work done.</p>
 
         <div class="tabs">
           <button class="tab-btn active" data-tab="lit">Literature search</button>
@@ -551,51 +656,63 @@
         </div>
 
         <div id="tab-lit" class="tab-panel active">
-          <div class="demo-block">
-            <div class="demo-prompt">
-              <span class="cmd">$</span> sciclaw agent -m <em>"What pathways are implicated in ALS progression?"</em>
+          <div class="chat-demo">
+            <div class="chat-msg user">
+              <div class="chat-label">You</div>
+              <div class="chat-bubble">What pathways are implicated in ALS progression?</div>
             </div>
-            <div class="demo-output">
-              <strong>Literature search results (PubMed, 2020&ndash;2025):</strong><br><br>
-              1. <strong>TDP-43 proteinopathy</strong> &mdash; Cytoplasmic mislocalization of TDP-43 in &gt;97% of ALS cases. RNA processing disruption leads to downstream neurodegeneration. <em>(Neumann et al., 2023; PMID 37284100)</em><br><br>
-              2. <strong>SOD1 / oxidative stress</strong> &mdash; Gain-of-function SOD1 mutations cause mitochondrial dysfunction and ROS accumulation in motor neurons. <em>(Rosen et al., 2022; PMID 36198432)</em><br><br>
-              3. <strong>C9orf72 repeat expansion</strong> &mdash; Hexanucleotide repeat in C9orf72 accounts for ~40% of familial ALS. Dipeptide repeat proteins impair nucleocytoplasmic transport. <em>(DeJesus-Hernandez et al., 2021; PMID 34892710)</em><br><br>
-              <em style="color:var(--accent);">Found 47 articles. Full citation list saved to session.</em>
+            <div class="chat-msg agent">
+              <div class="chat-label"><span class="chat-avatar"></span> sciClaw</div>
+              <div class="chat-bubble">
+                <strong>Literature search results (PubMed, 2020&ndash;2025):</strong><br><br>
+                1. <strong>TDP-43 proteinopathy</strong> &mdash; Cytoplasmic mislocalization of TDP-43 in &gt;97% of ALS cases. RNA processing disruption leads to downstream neurodegeneration. <em>(Neumann et al., 2023; PMID 37284100)</em><br><br>
+                2. <strong>SOD1 / oxidative stress</strong> &mdash; Gain-of-function SOD1 mutations cause mitochondrial dysfunction and ROS accumulation in motor neurons. <em>(Rosen et al., 2022; PMID 36198432)</em><br><br>
+                3. <strong>C9orf72 repeat expansion</strong> &mdash; Hexanucleotide repeat in C9orf72 accounts for ~40% of familial ALS. Dipeptide repeat proteins impair nucleocytoplasmic transport. <em>(DeJesus-Hernandez et al., 2021; PMID 34892710)</em><br><br>
+                <em style="color:var(--accent);">Found 47 articles. Full citation list saved to session.</em>
+              </div>
             </div>
           </div>
         </div>
 
         <div id="tab-draft" class="tab-panel">
-          <div class="demo-block">
-            <div class="demo-prompt">
-              <span class="cmd">$</span> sciclaw agent -m <em>"Draft a methods section for our ERP correlation analysis"</em>
+          <div class="chat-demo">
+            <div class="chat-msg user">
+              <div class="chat-label">You</div>
+              <div class="chat-bubble">Draft a methods section for our ERP correlation analysis</div>
             </div>
-            <div class="demo-output">
-              <strong>Methods</strong><br><br>
-              <strong>Participants.</strong> Thirty-two right-handed adults (18 female; mean age = 24.3, SD = 3.1) participated after providing written informed consent. The study was approved by the institutional review board (Protocol #2024-0187).<br><br>
-              <strong>ERP Recording.</strong> Continuous EEG was recorded from 64 Ag/AgCl electrodes using a BioSemi ActiveTwo system (sampling rate: 512 Hz). Data were referenced to the average of bilateral mastoids and filtered offline (0.1&ndash;30 Hz, zero-phase Butterworth).<br><br>
-              <strong>Statistical Analysis.</strong> Spearman rank correlations were computed between P300 amplitude at Pz and ALSFRS-R decline rate (points/month). Multiple comparisons were corrected using the Benjamini-Hochberg procedure (FDR = 0.05).<br><br>
-              <em style="color:var(--accent);">Draft saved. Run "sciclaw agent" to continue refining.</em>
+            <div class="chat-msg agent">
+              <div class="chat-label"><span class="chat-avatar"></span> sciClaw</div>
+              <div class="chat-bubble">
+                <strong>Methods</strong><br><br>
+                <strong>Participants.</strong> Thirty-two right-handed adults (18 female; mean age = 24.3, SD = 3.1) participated after providing written informed consent. The study was approved by the institutional review board (Protocol #2024-0187).<br><br>
+                <strong>ERP Recording.</strong> Continuous EEG was recorded from 64 Ag/AgCl electrodes using a BioSemi ActiveTwo system (sampling rate: 512 Hz). Data were referenced to the average of bilateral mastoids and filtered offline (0.1&ndash;30 Hz, zero-phase Butterworth).<br><br>
+                <strong>Statistical Analysis.</strong> Spearman rank correlations were computed between P300 amplitude at Pz and ALSFRS-R decline rate (points/month). Multiple comparisons were corrected using the Benjamini-Hochberg procedure (FDR = 0.05).<br><br>
+                <em style="color:var(--accent);">Draft saved. Send another message to continue refining.</em>
+              </div>
             </div>
           </div>
         </div>
 
         <div id="tab-review" class="tab-panel">
-          <div class="demo-block">
-            <div class="demo-prompt">
-              <span class="cmd">$</span> sciclaw agent -m <em>"Review the discussion section in manuscript.docx"</em>
+          <div class="chat-demo">
+            <div class="chat-msg user">
+              <div class="chat-label">You</div>
+              <div class="chat-bubble">Review the discussion section in manuscript.docx</div>
             </div>
-            <div class="demo-output">
-              <strong>Review complete.</strong> Output: manuscript-reviewed.docx<br><br>
-              <strong>Tracked changes (7):</strong><br>
-              &bull; Para 2: Strengthened causal language &rarr; hedged to "these findings suggest"<br>
-              &bull; Para 3: Added missing citation for the Bhatt et al. replication study<br>
-              &bull; Para 5: Flagged unsupported claim about treatment efficacy<br><br>
-              <strong>Comments (3):</strong><br>
-              &bull; "Consider acknowledging the sample size limitation here"<br>
-              &bull; "This effect size is smaller than reported in the meta-analysis &mdash; worth noting"<br>
-              &bull; "The transition between paragraphs 4 and 5 could be smoother"<br><br>
-              <em style="color:var(--accent);">Open manuscript-reviewed.docx in Word to accept or reject changes.</em>
+            <div class="chat-msg agent">
+              <div class="chat-label"><span class="chat-avatar"></span> sciClaw</div>
+              <div class="chat-bubble">
+                <strong>Review complete.</strong> Output: manuscript-reviewed.docx<br><br>
+                <strong>Tracked changes (7):</strong><br>
+                &bull; Para 2: Strengthened causal language &rarr; hedged to "these findings suggest"<br>
+                &bull; Para 3: Added missing citation for the Bhatt et al. replication study<br>
+                &bull; Para 5: Flagged unsupported claim about treatment efficacy<br><br>
+                <strong>Comments (3):</strong><br>
+                &bull; "Consider acknowledging the sample size limitation here"<br>
+                &bull; "This effect size is smaller than reported in the meta-analysis &mdash; worth noting"<br>
+                &bull; "The transition between paragraphs 4 and 5 could be smoother"<br><br>
+                <em style="color:var(--accent);">Open manuscript-reviewed.docx in Word to accept or reject changes.</em>
+              </div>
             </div>
           </div>
         </div>
@@ -603,9 +720,9 @@
 
       <!-- ── Skills grid ── -->
       <section>
-        <h2>12 built-in skills</h2>
+        <h2>13 built-in skills</h2>
         <p class="subhead">Installed automatically when you set up sciClaw. No plugins to find or configure.</p>
-        <div class="grid">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;">
           <article class="card">
             <span class="tag">Research & Literature</span>
             <h3>Search, cite, discover</h3>
@@ -640,6 +757,14 @@
               <li><strong>Experiment provenance</strong> &mdash; metadata capture for every run</li>
               <li><strong>Benchmark logging</strong> &mdash; records with acceptance criteria</li>
               <li><strong>Session history</strong> &mdash; every conversation is stored</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="tag">Clinical Data</span>
+            <h3>Safe data sharing</h3>
+            <ul>
+              <li><strong>PHI de-identification</strong> &mdash; BERT-based clinical text redaction</li>
+              <li><strong>HIPAA compliance</strong> &mdash; automated PII detection and masking</li>
             </ul>
           </article>
         </div>
@@ -714,7 +839,7 @@
         <h2>Frequently asked questions</h2>
         <div class="faq-item">
           <p class="faq-q">Do I need to know how to code?</p>
-          <p class="faq-a">No. You interact with sciClaw through plain-language conversation. If you can open a terminal and type a sentence, you can use sciClaw.</p>
+          <p class="faq-a">No. You chat with sciClaw through Telegram, Discord, or Slack &mdash; the same apps you already use. No terminal required. A CLI is available for power users.</p>
         </div>
         <div class="faq-item">
           <p class="faq-q">Is my data sent to the cloud?</p>
@@ -737,7 +862,7 @@
       <!-- ── Footer CTA ── -->
       <section class="footer-cta">
         <h2>Ready to streamline your research workflow?</h2>
-        <p>Install sciClaw and start asking questions in under a minute.</p>
+        <p>Install sciClaw and start chatting in under a minute.</p>
         <div class="btn-row">
           <a class="btn btn-primary" href="#install">Install sciClaw</a>
           <a class="btn btn-secondary" href="docs.html">Read the documentation</a>
