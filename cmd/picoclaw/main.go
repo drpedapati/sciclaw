@@ -342,8 +342,9 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 	}
 
 	// Chat smoke test
-	if promptYesNo(r, "Run a quick chat smoke test now (may incur API usage)?", false) {
-		if err := runSelfAgentOneShot("Hello! Confirm you're running and summarize what you can do as my paired scientist."); err != nil {
+	if promptYesNo(r, "Run a quick chat smoke test now?", false) {
+		msg := "Smoke test: reply with ONE short sentence (max 12 words) confirming you're ready as my paired-scientist. No tool calls."
+		if err := runSelfAgentOneShot(msg); err != nil {
 			fmt.Printf("  Chat smoke test failed: %v\n", err)
 		}
 	}
