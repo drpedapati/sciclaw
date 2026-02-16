@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>sciClaw | Your AI Research Partner</title>
+    <title>sciClaw | Paired-Scientist Research Agent</title>
     <meta
       name="description"
-      content="sciClaw is a free, open-source AI research assistant that helps academics search literature, draft manuscripts, review documents, and maintain reproducible evidence trails."
+      content="sciClaw is a free, open-source paired-scientist agent that plans research work, runs tools, cites sources, and keeps an auditable evidence trail."
     />
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
@@ -498,12 +498,15 @@
     <main class="wrap">
       <!-- ── Hero ── -->
       <section class="hero">
-        <div class="kicker">Your AI research partner</div>
-        <h1>From research question to manuscript &mdash; without the busywork</h1>
+        <div class="kicker">A paired scientist for your lab</div>
+        <h1>From research question to evidence-backed work &mdash; without the busywork</h1>
         <p class="hero-sub">
-          sciClaw is an AI assistant that searches literature, drafts manuscripts,
-          reviews documents, and keeps a reproducible evidence trail &mdash;
-          all through plain-language conversation.
+          sciClaw is not a "write my paper" bot. It's a paired-scientist agent:
+          it proposes a plan, runs the right tools (literature, documents, code),
+          cites sources, and logs decisions so you can reproduce and audit the work.
+        </p>
+        <p style="margin:10px 0 0;color:var(--muted);font-size:14px;">
+          You stay in control: approve key steps, review outputs, and keep the evidence in your workspace.
         </p>
         <div class="btn-row">
           <a class="btn btn-primary" href="#install">Install sciClaw</a>
@@ -655,6 +658,9 @@
                 <code>brew tap drpedapati/tap && brew install sciclaw && sciclaw onboard --yes && sciclaw doctor</code>
                 <button class="copy-btn" onclick="copyText(this, 'brew tap drpedapati/tap && brew install sciclaw && sciclaw onboard --yes && sciclaw doctor')">Copy</button>
               </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                macOS: install Quarto for manuscript rendering with <code>brew install --cask quarto</code>.
+              </p>
             </div>
           </div>
           <div class="step">

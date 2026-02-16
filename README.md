@@ -16,9 +16,9 @@
 
 ---
 
-sciClaw is a lightweight AI agent that acts as a research collaborator. It connects to any major LLM provider, follows a hypothesis-driven research loop, and ships with 12 built-in scientific skills — literature search, manuscript drafting, citation graphs, document review, and more.
+sciClaw is a paired-scientist agent for rigorous research work. It connects to major LLM providers, proposes and executes hypothesis-driven loops, runs real tools (literature, documents, shell), and keeps an auditable evidence trail in your workspace.
 
-Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrite of [nanobot](https://github.com/HKUDS/nanobot)), sciClaw adds a paired-scientist operating model while keeping the single-binary, low-resource footprint.
+Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrite of [nanobot](https://github.com/HKUDS/nanobot)), sciClaw keeps a single-binary footprint while adding a paired-scientist operating model: plan, evidence, review, iterate.
 
 ## Install
 

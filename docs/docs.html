@@ -548,7 +548,7 @@
         <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw &amp;&amp; <span class="hl-cmd">sciclaw</span> onboard <span class="hl-flag">--yes</span> &amp;&amp; <span class="hl-cmd">sciclaw</span> doctor</code></pre>
         <p>Then:</p>
         <pre><code><span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span></code></pre>
-        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies. Stable releases auto-update via the GitHub release workflow.</p>
+        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>rg</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies. On Linux, the tap also installs Quarto for reproducible manuscript rendering. On macOS, install Quarto via <code>brew install --cask quarto</code>. Stable releases auto-update via the GitHub release workflow.</p>
 
         <h3>Download a binary</h3>
         <p>Pre-compiled binaries for Linux (amd64, arm64, riscv64), macOS (arm64), and Windows (amd64) are available on the <a href="https://github.com/drpedapati/sciclaw/releases">releases page</a>.</p>
@@ -583,6 +583,7 @@
         <p>If you installed via Homebrew, a single command updates sciClaw <em>and</em> all its dependencies, including the IRL runtime:</p>
         <pre><code><span class="hl-cmd">brew</span> upgrade sciclaw</code></pre>
         <p>This pulls the latest formula from the <code>drpedapati/tap</code> tap, rebuilds the binary, and upgrades the <code>irl</code> dependency if a newer version is available.</p>
+        <p>Note: on macOS, Quarto is typically installed via a Homebrew cask, so update it separately with <code>brew upgrade --cask quarto</code>.</p>
 
         <p>To check what version you're running before and after:</p>
         <pre><code><span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span>
@@ -639,8 +640,9 @@
               <tr><th>Component</th><th>Updated by</th><th>Location</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>sciclaw</code> binary</td><td><code>brew upgrade sciclaw</code></td><td><code>/opt/homebrew/bin/sciclaw</code></td></tr>
-              <tr><td><code>irl</code> runtime</td><td><code>brew upgrade sciclaw</code> (dependency)</td><td><code>/opt/homebrew/bin/irl</code></td></tr>
+              <tr><td><code>sciclaw</code> binary</td><td><code>brew upgrade sciclaw</code></td><td><code>$(brew --prefix)/bin/sciclaw</code></td></tr>
+              <tr><td><code>irl</code> runtime</td><td><code>brew upgrade sciclaw</code> (dependency)</td><td><code>$(brew --prefix)/bin/irl</code></td></tr>
+              <tr><td><code>quarto</code> (optional)</td><td>macOS: <code>brew upgrade --cask quarto</code> / Linux: <code>brew upgrade sciclaw</code> (dependency)</td><td><code>$(brew --prefix)/bin/quarto</code></td></tr>
               <tr><td>Baseline skills</td><td><code>sciclaw skills install-builtin</code></td><td><code>~/.picoclaw/workspace/skills/</code></td></tr>
               <tr><td>Config file</td><td>Manual or <code>sciclaw models set</code></td><td><code>~/.picoclaw/config.json</code></td></tr>
               <tr><td>Workspace templates</td><td><code>sciclaw onboard</code></td><td><code>~/.picoclaw/workspace/</code></td></tr>
