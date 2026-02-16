@@ -141,6 +141,8 @@ func main() {
 		agentCmd()
 	case "gateway":
 		gatewayCmd()
+	case "channels":
+		channelsCmd()
 	case "status":
 		statusCmd()
 	case "doctor":
@@ -226,6 +228,7 @@ func printHelp() {
 	fmt.Println("  models      Manage models (list, set, effort, status)")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start sciClaw gateway")
+	fmt.Println("  channels    Setup and manage chat channels (Telegram, Discord, etc.)")
 	fmt.Println("  status      Show sciClaw status")
 	fmt.Println("  doctor      Check deployment health and dependencies")
 	fmt.Println("  cron        Manage scheduled tasks")
@@ -347,6 +350,11 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 		if err := runSelfAgentOneShot(msg); err != nil {
 			fmt.Printf("  Chat smoke test failed: %v\n", err)
 		}
+	}
+
+	// Chat channels (messaging apps)
+	if promptYesNo(r, "Set up messaging apps (Telegram/Discord) now?", false) {
+		runChannelsWizard(r, cfg, configPath)
 	}
 }
 

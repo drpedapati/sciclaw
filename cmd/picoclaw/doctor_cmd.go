@@ -167,9 +167,29 @@ func runDoctor(opts doctorOptions) doctorReport {
 				add(doctorCheck{Name: "telegram", Status: doctorWarn, Message: "enabled but token is empty"})
 			} else {
 				add(doctorCheck{Name: "telegram", Status: doctorOK, Message: "enabled"})
+				if len(cfg.Channels.Telegram.AllowFrom) == 0 {
+					add(doctorCheck{Name: "telegram.allow_from", Status: doctorWarn, Message: "empty (any Telegram user can talk to your bot); run: sciclaw channels setup telegram"})
+				} else {
+					add(doctorCheck{Name: "telegram.allow_from", Status: doctorOK, Message: fmt.Sprintf("%d entries", len(cfg.Channels.Telegram.AllowFrom))})
+				}
 			}
 		} else {
 			add(doctorCheck{Name: "telegram", Status: doctorSkip, Message: "disabled"})
+		}
+
+		if cfg.Channels.Discord.Enabled {
+			if strings.TrimSpace(cfg.Channels.Discord.Token) == "" {
+				add(doctorCheck{Name: "discord", Status: doctorWarn, Message: "enabled but token is empty"})
+			} else {
+				add(doctorCheck{Name: "discord", Status: doctorOK, Message: "enabled"})
+				if len(cfg.Channels.Discord.AllowFrom) == 0 {
+					add(doctorCheck{Name: "discord.allow_from", Status: doctorWarn, Message: "empty (any Discord user can talk to your bot); run: sciclaw channels setup discord"})
+				} else {
+					add(doctorCheck{Name: "discord.allow_from", Status: doctorOK, Message: fmt.Sprintf("%d entries", len(cfg.Channels.Discord.AllowFrom))})
+				}
+			}
+		} else {
+			add(doctorCheck{Name: "discord", Status: doctorSkip, Message: "disabled"})
 		}
 
 		if cfg.Agents.Defaults.RestrictToWorkspace {
