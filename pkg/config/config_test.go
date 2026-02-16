@@ -1,15 +1,18 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
-// TestDefaultConfig_HeartbeatEnabled verifies heartbeat is enabled by default
+// TestDefaultConfig_HeartbeatEnabled verifies heartbeat is disabled by default
 func TestDefaultConfig_HeartbeatEnabled(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if !cfg.Heartbeat.Enabled {
-		t.Error("Heartbeat should be enabled by default")
+	if cfg.Heartbeat.Enabled {
+		t.Error("Heartbeat should be disabled by default")
 	}
 }
 
@@ -173,7 +176,29 @@ func TestConfig_Complete(t *testing.T) {
 	if cfg.Gateway.Port == 0 {
 		t.Error("Gateway port should have default value")
 	}
-	if !cfg.Heartbeat.Enabled {
-		t.Error("Heartbeat should be enabled by default")
+	if cfg.Heartbeat.Enabled {
+		t.Error("Heartbeat should be disabled by default")
+	}
+}
+
+func TestSaveConfig_UsesRestrictiveFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permission semantics differ on windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := DefaultConfig()
+
+	if err := SaveConfig(path, cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat config file failed: %v", err)
+	}
+
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected config mode 0600, got %o", got)
 	}
 }

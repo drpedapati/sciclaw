@@ -1,6 +1,9 @@
 package channels
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 func TestBaseChannelIsAllowed(t *testing.T) {
 	tests := []struct {
@@ -49,4 +52,19 @@ func TestBaseChannelIsAllowed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBaseChannelRunningConcurrentAccess(t *testing.T) {
+	ch := NewBaseChannel("test", nil, nil, nil)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ch.setRunning(i%2 == 0)
+			_ = ch.IsRunning()
+		}(i)
+	}
+	wg.Wait()
 }

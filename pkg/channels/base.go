@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 )
@@ -20,19 +21,20 @@ type Channel interface {
 type BaseChannel struct {
 	config    interface{}
 	bus       *bus.MessageBus
-	running   bool
+	running   atomic.Bool
 	name      string
 	allowList []string
 }
 
 func NewBaseChannel(name string, config interface{}, bus *bus.MessageBus, allowList []string) *BaseChannel {
-	return &BaseChannel{
+	ch := &BaseChannel{
 		config:    config,
 		bus:       bus,
 		name:      name,
 		allowList: allowList,
-		running:   false,
 	}
+	ch.running.Store(false)
+	return ch
 }
 
 func (c *BaseChannel) Name() string {
@@ -40,7 +42,7 @@ func (c *BaseChannel) Name() string {
 }
 
 func (c *BaseChannel) IsRunning() bool {
-	return c.running
+	return c.running.Load()
 }
 
 func (c *BaseChannel) IsAllowed(senderID string) bool {
@@ -104,5 +106,5 @@ func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []st
 }
 
 func (c *BaseChannel) setRunning(running bool) {
-	c.running = running
+	c.running.Store(running)
 }
