@@ -177,6 +177,13 @@ func runDoctor(opts doctorOptions) doctorReport {
 		} else {
 			add(doctorCheck{Name: "agent.restrict_to_workspace", Status: doctorWarn, Message: "false (tools can access outside workspace)"})
 		}
+
+		// Optional: PubMed API key (improves rate limits).
+		if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" || strings.TrimSpace(os.Getenv("NCBI_API_KEY")) != "" {
+			add(doctorCheck{Name: "pubmed.api_key", Status: doctorOK, Message: "set"})
+		} else {
+			add(doctorCheck{Name: "pubmed.api_key", Status: doctorWarn, Message: "not set (optional, improves PubMed rate limits)"})
+		}
 	} else if !configExists {
 		// Best-effort workspace check with default path.
 		home, _ := os.UserHomeDir()

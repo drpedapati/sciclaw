@@ -199,8 +199,13 @@ type WebToolsConfig struct {
 	DuckDuckGo DuckDuckGoConfig `json:"duckduckgo"`
 }
 
+type PubMedToolsConfig struct {
+	APIKey string `json:"api_key" env:"PICOCLAW_TOOLS_PUBMED_API_KEY"`
+}
+
 type ToolsConfig struct {
-	Web WebToolsConfig `json:"web"`
+	Web    WebToolsConfig    `json:"web"`
+	PubMed PubMedToolsConfig `json:"pubmed"`
 }
 
 func DefaultConfig() *Config {
@@ -301,6 +306,9 @@ func DefaultConfig() *Config {
 					Enabled:    true,
 					MaxResults: 5,
 				},
+			},
+			PubMed: PubMedToolsConfig{
+				APIKey: "",
 			},
 		},
 		Heartbeat: HeartbeatConfig{

@@ -19,6 +19,7 @@ type ExecTool struct {
 	denyPatterns        []*regexp.Regexp
 	allowPatterns       []*regexp.Regexp
 	restrictToWorkspace bool
+	extraEnv            map[string]string
 }
 
 func NewExecTool(workingDir string, restrict bool) *ExecTool {
@@ -39,6 +40,24 @@ func NewExecTool(workingDir string, restrict bool) *ExecTool {
 		denyPatterns:        denyPatterns,
 		allowPatterns:       nil,
 		restrictToWorkspace: restrict,
+		extraEnv:            nil,
+	}
+}
+
+// SetExtraEnv provides environment variables that will be injected into all shell commands.
+// Values override any existing variables with the same name.
+func (t *ExecTool) SetExtraEnv(env map[string]string) {
+	if len(env) == 0 {
+		return
+	}
+	if t.extraEnv == nil {
+		t.extraEnv = map[string]string{}
+	}
+	for k, v := range env {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		t.extraEnv[k] = v
 	}
 }
 
@@ -101,6 +120,9 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
+	if len(t.extraEnv) > 0 {
+		cmd.Env = mergeEnv(os.Environ(), t.extraEnv)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -146,6 +168,32 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		ForUser: output,
 		IsError: false,
 	}
+}
+
+func mergeEnv(base []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return base
+	}
+
+	// Remove keys we override (case-sensitive; matches typical UNIX semantics).
+	out := make([]string, 0, len(base)+len(overrides))
+	for _, kv := range base {
+		keep := true
+		for k := range overrides {
+			prefix := k + "="
+			if strings.HasPrefix(kv, prefix) {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			out = append(out, kv)
+		}
+	}
+	for k, v := range overrides {
+		out = append(out, fmt.Sprintf("%s=%s", k, v))
+	}
+	return out
 }
 
 func (t *ExecTool) guardCommand(command, cwd string) string {

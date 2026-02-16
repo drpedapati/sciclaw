@@ -76,7 +76,11 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewAppendFileTool(workspace, restrict))
 
 	// Shell execution
-	registry.Register(tools.NewExecTool(workspace, restrict))
+	execTool := tools.NewExecTool(workspace, restrict)
+	if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
+		execTool.SetExtraEnv(map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey})
+	}
+	registry.Register(execTool)
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
