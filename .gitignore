@@ -72,5 +72,5 @@ auth.json
 # Git worktrees
 .worktrees/
 
-# Generated manuscript render output
-manuscript/*.html
+# Manuscript files (private)
+manuscript/

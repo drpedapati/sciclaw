@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -17,7 +19,13 @@ import (
 const (
 	transcriptionTimeout = 30 * time.Second
 	sendTimeout          = 10 * time.Second
+	typingInterval       = 8 * time.Second
 )
+
+type typingState struct {
+	pending int
+	cancel  context.CancelFunc
+}
 
 type DiscordChannel struct {
 	*BaseChannel
@@ -25,6 +33,12 @@ type DiscordChannel struct {
 	config      config.DiscordConfig
 	transcriber *voice.GroqTranscriber
 	ctx         context.Context
+
+	typingMu      sync.Mutex
+	typing        map[string]*typingState
+	typingEvery   time.Duration
+	sendMessageFn func(channelID, content string) error
+	sendTypingFn  func(channelID string) error
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, bus *bus.MessageBus) (*DiscordChannel, error) {
@@ -41,6 +55,15 @@ func NewDiscordChannel(cfg config.DiscordConfig, bus *bus.MessageBus) (*DiscordC
 		config:      cfg,
 		transcriber: nil,
 		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: typingInterval,
+		sendMessageFn: func(channelID, content string) error {
+			_, err := session.ChannelMessageSend(channelID, content)
+			return err
+		},
+		sendTypingFn: func(channelID string) error {
+			return session.ChannelTyping(channelID)
+		},
 	}, nil
 }
 
@@ -82,6 +105,11 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 func (c *DiscordChannel) Stop(ctx context.Context) error {
 	logger.InfoC("discord", "Stopping Discord bot")
 	c.setRunning(false)
+	c.stopAllTyping()
+
+	if c.session == nil {
+		return nil
+	}
 
 	if err := c.session.Close(); err != nil {
 		return fmt.Errorf("failed to close discord session: %w", err)
@@ -99,6 +127,7 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 	if channelID == "" {
 		return fmt.Errorf("channel ID is empty")
 	}
+	c.stopTyping(channelID)
 
 	message := msg.Content
 
@@ -108,8 +137,7 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := c.session.ChannelMessageSend(channelID, message)
-		done <- err
+		done <- c.sendMessage(channelID, message)
 	}()
 
 	select {
@@ -227,6 +255,7 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		"sender_id":   senderID,
 		"preview":     utils.Truncate(content, 50),
 	})
+	c.startTyping(m.ChannelID)
 
 	metadata := map[string]string{
 		"message_id":   m.ID,
@@ -245,4 +274,116 @@ func (c *DiscordChannel) downloadAttachment(url, filename string) string {
 	return utils.DownloadFile(url, filename, utils.DownloadOptions{
 		LoggerPrefix: "discord",
 	})
+}
+
+func (c *DiscordChannel) sendMessage(channelID, content string) error {
+	if c.sendMessageFn != nil {
+		return c.sendMessageFn(channelID, content)
+	}
+	if c.session == nil {
+		return fmt.Errorf("discord session is nil")
+	}
+	_, err := c.session.ChannelMessageSend(channelID, content)
+	return err
+}
+
+func (c *DiscordChannel) sendTyping(channelID string) error {
+	if c.sendTypingFn != nil {
+		return c.sendTypingFn(channelID)
+	}
+	if c.session == nil {
+		return fmt.Errorf("discord session is nil")
+	}
+	return c.session.ChannelTyping(channelID)
+}
+
+func (c *DiscordChannel) startTyping(channelID string) {
+	if strings.TrimSpace(channelID) == "" {
+		return
+	}
+
+	c.typingMu.Lock()
+	if state, ok := c.typing[channelID]; ok {
+		state.pending++
+		c.typingMu.Unlock()
+		return
+	}
+
+	loopCtx, cancel := context.WithCancel(c.getContext())
+	c.typing[channelID] = &typingState{
+		pending: 1,
+		cancel:  cancel,
+	}
+	every := c.typingEvery
+	c.typingMu.Unlock()
+
+	go c.runTypingLoop(loopCtx, channelID, every)
+}
+
+func (c *DiscordChannel) stopTyping(channelID string) {
+	if strings.TrimSpace(channelID) == "" {
+		return
+	}
+
+	var cancel context.CancelFunc
+	c.typingMu.Lock()
+	state, ok := c.typing[channelID]
+	if ok {
+		state.pending--
+		if state.pending <= 0 {
+			delete(c.typing, channelID)
+			cancel = state.cancel
+		}
+	}
+	c.typingMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (c *DiscordChannel) stopAllTyping() {
+	c.typingMu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(c.typing))
+	for key, state := range c.typing {
+		delete(c.typing, key)
+		if state != nil && state.cancel != nil {
+			cancels = append(cancels, state.cancel)
+		}
+	}
+	c.typingMu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+}
+
+func (c *DiscordChannel) runTypingLoop(ctx context.Context, channelID string, every time.Duration) {
+	if every <= 0 {
+		every = typingInterval
+	}
+
+	if err := c.sendTyping(channelID); err != nil {
+		logger.DebugCF("discord", "Typing indicator send failed", map[string]any{
+			"channel_id": channelID,
+			"error":      err.Error(),
+		})
+	}
+
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := c.sendTyping(channelID); err != nil {
+				logger.DebugCF("discord", "Typing indicator heartbeat failed", map[string]any{
+					"channel_id": channelID,
+					"error":      err.Error(),
+				})
+			}
+		}
+	}
 }
