@@ -26,9 +26,23 @@ type QQChannel struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	sessionManager botgo.SessionManager
-	processedIDs   map[string]bool
+	processedIDs   map[string]time.Time
+	processedOrder []qqDedupEntry
+	dedupTTL       time.Duration
+	dedupMax       int
+	nowFn          func() time.Time
 	mu             sync.RWMutex
 }
+
+type qqDedupEntry struct {
+	id     string
+	seenAt time.Time
+}
+
+const (
+	qqDedupTTL        = 30 * time.Minute
+	qqDedupMaxEntries = 10000
+)
 
 func NewQQChannel(cfg config.QQConfig, messageBus *bus.MessageBus) (*QQChannel, error) {
 	base := NewBaseChannel("qq", cfg, messageBus, cfg.AllowFrom)
@@ -36,7 +50,10 @@ func NewQQChannel(cfg config.QQConfig, messageBus *bus.MessageBus) (*QQChannel, 
 	return &QQChannel{
 		BaseChannel:  base,
 		config:       cfg,
-		processedIDs: make(map[string]bool),
+		processedIDs: make(map[string]time.Time),
+		dedupTTL:     qqDedupTTL,
+		dedupMax:     qqDedupMaxEntries,
+		nowFn:        time.Now,
 	}, nil
 }
 
@@ -217,27 +234,58 @@ func (c *QQChannel) handleGroupATMessage() event.GroupATMessageEventHandler {
 
 // isDuplicate 检查消息是否重复
 func (c *QQChannel) isDuplicate(messageID string) bool {
+	if messageID == "" {
+		return false
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.processedIDs[messageID] {
-		return true
-	}
-
-	c.processedIDs[messageID] = true
-
-	// 简单清理：限制 map 大小
-	if len(c.processedIDs) > 10000 {
-		// 清空一半
-		count := 0
-		for id := range c.processedIDs {
-			if count >= 5000 {
-				break
-			}
-			delete(c.processedIDs, id)
-			count++
+	now := c.currentTime()
+	if seenAt, ok := c.processedIDs[messageID]; ok {
+		if now.Sub(seenAt) <= c.dedupTTL {
+			return true
 		}
+		// Expired entry can be replaced below.
+		delete(c.processedIDs, messageID)
 	}
+
+	c.processedIDs[messageID] = now
+	c.processedOrder = append(c.processedOrder, qqDedupEntry{id: messageID, seenAt: now})
+	c.pruneDedupLocked(now)
 
 	return false
+}
+
+func (c *QQChannel) currentTime() time.Time {
+	if c.nowFn != nil {
+		return c.nowFn()
+	}
+	return time.Now()
+}
+
+func (c *QQChannel) pruneDedupLocked(now time.Time) {
+	// Remove stale and expired entries from the front in deterministic order.
+	for len(c.processedOrder) > 0 {
+		entry := c.processedOrder[0]
+		ts, ok := c.processedIDs[entry.id]
+		if !ok {
+			c.processedOrder = c.processedOrder[1:]
+			continue
+		}
+		if !ts.Equal(entry.seenAt) {
+			// Outdated queue item; newer timestamp exists for this ID.
+			c.processedOrder = c.processedOrder[1:]
+			continue
+		}
+
+		isExpired := now.Sub(entry.seenAt) > c.dedupTTL
+		overCap := len(c.processedIDs) > c.dedupMax
+		if !isExpired && !overCap {
+			break
+		}
+
+		delete(c.processedIDs, entry.id)
+		c.processedOrder = c.processedOrder[1:]
+	}
 }

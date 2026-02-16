@@ -138,3 +138,53 @@ func TestInstallFromGitHub_AlreadyExists(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestDefaultCatalogURL_IsPinnedToImmutableRef(t *testing.T) {
+	url := defaultCatalogURL()
+	if !strings.Contains(url, skillsCatalogPinnedRef) {
+		t.Fatalf("expected pinned ref in catalog url, got: %s", url)
+	}
+	if strings.Contains(url, "/main/") {
+		t.Fatalf("catalog url must not use mutable main ref: %s", url)
+	}
+}
+
+func TestListAvailableSkills_Success(t *testing.T) {
+	payload := `[{"name":"test-skill","repository":"drpedapati/sciclaw-skills/test-skill","description":"demo","author":"sciclaw","tags":["demo"]}]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, payload)
+	}))
+	defer srv.Close()
+
+	si := NewSkillInstaller(t.TempDir())
+	si.catalogURL = srv.URL
+
+	skills, err := si.ListAvailableSkills(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(skills))
+	}
+	if skills[0].Name != "test-skill" {
+		t.Fatalf("unexpected skill name: %s", skills[0].Name)
+	}
+}
+
+func TestListAvailableSkills_BadJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "{")
+	}))
+	defer srv.Close()
+
+	si := NewSkillInstaller(t.TempDir())
+	si.catalogURL = srv.URL
+
+	_, err := si.ListAvailableSkills(context.Background())
+	if err == nil {
+		t.Fatal("expected parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to parse skills list") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

@@ -211,6 +211,15 @@ The skills installer validates all content before writing to disk:
 - **Binary rejection** — NUL byte detection prevents non-text content
 - **Frontmatter validation** — Skills must have valid YAML frontmatter with a `name` field
 - **Provenance logging** — Every install writes a `.provenance.json` with source URL, SHA-256, timestamp, and size
+- **Pinned catalog ref** — catalog fetch uses an immutable commit ref (not mutable `main`) for supply-chain hardening
+
+### Catalog Pin Rotation
+
+To refresh the skills catalog pin:
+
+1. Verify the target commit in `drpedapati/sciclaw-skills`.
+2. Update `skillsCatalogPinnedRef` in `pkg/skills/installer.go`.
+3. Run tests and release.
 
 ## IRL Integration
 

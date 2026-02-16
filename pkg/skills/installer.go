@@ -15,8 +15,13 @@ import (
 )
 
 const (
-	maxSkillSize   = 256 << 10 // 256 KB
-	maxCatalogSize = 1 << 20   // 1 MB
+	maxSkillSize             = 256 << 10 // 256 KB
+	maxCatalogSize           = 1 << 20   // 1 MB
+	skillsCatalogOwner       = "drpedapati"
+	skillsCatalogRepo        = "sciclaw-skills"
+	skillsCatalogFile        = "skills.json"
+	skillsCatalogPinnedRef   = "9131876fda43b968e96e64fc4b11534fef85a27d"
+	defaultHTTPClientTimeout = 15 * time.Second
 )
 
 type SkillProvenance struct {
@@ -27,7 +32,9 @@ type SkillProvenance struct {
 }
 
 type SkillInstaller struct {
-	workspace string
+	workspace  string
+	catalogURL string
+	httpClient *http.Client
 }
 
 type AvailableSkill struct {
@@ -46,8 +53,28 @@ type BuiltinSkill struct {
 
 func NewSkillInstaller(workspace string) *SkillInstaller {
 	return &SkillInstaller{
-		workspace: workspace,
+		workspace:  workspace,
+		catalogURL: defaultCatalogURL(),
+		httpClient: &http.Client{Timeout: defaultHTTPClientTimeout},
 	}
+}
+
+// defaultCatalogURL returns the immutable pinned catalog URL.
+//
+// Rotation process:
+// 1. Verify the new commit in drpedapati/sciclaw-skills.
+// 2. Update skillsCatalogPinnedRef in this file.
+// 3. Run tests and release.
+func defaultCatalogURL() string {
+	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s",
+		skillsCatalogOwner, skillsCatalogRepo, skillsCatalogPinnedRef, skillsCatalogFile)
+}
+
+func (si *SkillInstaller) client() *http.Client {
+	if si.httpClient != nil {
+		return si.httpClient
+	}
+	return &http.Client{Timeout: defaultHTTPClientTimeout}
 }
 
 func (si *SkillInstaller) InstallFromGitHub(ctx context.Context, repo string) error {
@@ -62,13 +89,12 @@ func (si *SkillInstaller) installFromURL(ctx context.Context, url string, skillN
 		return fmt.Errorf("skill '%s' already exists", skillName)
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := si.client().Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to fetch skill: %w", err)
 	}
@@ -140,15 +166,17 @@ func (si *SkillInstaller) Uninstall(skillName string) error {
 }
 
 func (si *SkillInstaller) ListAvailableSkills(ctx context.Context) ([]AvailableSkill, error) {
-	url := "https://raw.githubusercontent.com/drpedapati/sciclaw-skills/main/skills.json"
+	url := si.catalogURL
+	if strings.TrimSpace(url) == "" {
+		url = defaultCatalogURL()
+	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := si.client().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch skills list: %w", err)
 	}
