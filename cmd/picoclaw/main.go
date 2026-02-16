@@ -49,6 +49,8 @@ const displayName = "sciClaw"
 const cliName = "picoclaw"
 const primaryCLIName = "sciclaw"
 
+const docsURLBase = "https://drpedapati.github.io/sciclaw/docs.html"
+
 var baselineScienceSkillNames = []string{
 	"scientific-writing",
 	"pubmed-cli",
@@ -258,28 +260,50 @@ func onboard() {
 	}
 
 	configPath := getConfigPath()
-
-	if _, err := os.Stat(configPath); err == nil {
-		fmt.Printf("Config already exists at %s\n", configPath)
-		if !force {
-			if yes {
-				fmt.Println("Skipping (use --force to overwrite).")
-				return
-			}
-			fmt.Print("Overwrite? (y/n): ")
-			var response string
-			fmt.Scanln(&response)
-			if response != "y" {
-				fmt.Println("Aborted.")
-				return
-			}
-		}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+		fmt.Printf("Error creating config dir: %v\n", err)
+		os.Exit(1)
 	}
 
-	cfg := config.DefaultConfig()
-	if err := config.SaveConfig(configPath, cfg); err != nil {
-		fmt.Printf("Error saving config: %v\n", err)
-		os.Exit(1)
+	exists := false
+	if _, err := os.Stat(configPath); err == nil {
+		exists = true
+	}
+
+	var cfg *config.Config
+	switch {
+	case exists && !force:
+		// Idempotent default: never overwrite existing config (which may contain credentials).
+		cfg, err = config.LoadConfig(configPath)
+		if err != nil {
+			fmt.Printf("Error loading existing config at %s: %v\n", configPath, err)
+			fmt.Printf("Fix the JSON (or move it aside) then re-run: %s onboard\n", invokedCLIName())
+			os.Exit(1)
+		}
+		fmt.Printf("Config already exists at %s (preserving credentials)\n", configPath)
+		fmt.Printf("Reset to defaults (DANGEROUS): %s onboard --force\n", invokedCLIName())
+	case exists && force:
+		backupPath, berr := backupFile(configPath)
+		if berr != nil {
+			fmt.Printf("Error backing up existing config: %v\n", berr)
+			os.Exit(1)
+		}
+		cfg = config.DefaultConfig()
+		if err := config.SaveConfig(configPath, cfg); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Reset config to defaults at %s\n", configPath)
+		if backupPath != "" {
+			fmt.Printf("Backup written to %s\n", backupPath)
+		}
+	default:
+		cfg = config.DefaultConfig()
+		if err := config.SaveConfig(configPath, cfg); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Created config at %s\n", configPath)
 	}
 
 	workspace := cfg.WorkspacePath()
@@ -298,10 +322,18 @@ func onboard() {
 	}
 
 	fmt.Printf("%s %s is ready!\n", logo, displayName)
+	fmt.Println("\nDocs:")
+	fmt.Println(" ", docsLink("#scientist-setup"))
+	fmt.Println(" ", docsLink("#authentication"))
+	fmt.Println(" ", docsLink("#telegram"))
+	fmt.Println(" ", docsLink("#discord"))
+	fmt.Println(" ", docsLink("#doctor"))
+
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Add your API key to", configPath)
-	fmt.Println("     Get one at: https://openrouter.ai/keys")
-	fmt.Printf("  2. Chat: %s agent -m \"Hello!\"\n", invokedCLIName())
+	fmt.Printf("  1. Authenticate (recommended): %s auth login --provider openai\n", invokedCLIName())
+	fmt.Printf("     Or edit: %s\n", configPath)
+	fmt.Printf("  2. Pair a chat app: %s channels setup telegram\n", invokedCLIName())
+	fmt.Printf("  3. Start gateway: %s gateway\n", invokedCLIName())
 	fmt.Println("\nCompanion tools:")
 	if runtime.GOOS == "linux" {
 		fmt.Println("  If you installed via Homebrew, Quarto, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
@@ -319,8 +351,10 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 
 	fmt.Println()
 	fmt.Println("Optional setup (wizard):")
+	fmt.Printf("  Help: %s\n", docsLink("#scientist-setup"))
 
 	// PubMed key
+	fmt.Printf("  Help (PubMed): %s\n", docsLink("#scientist-setup"))
 	if promptYesNo(r, "Set an NCBI API key for faster PubMed (recommended)?", false) {
 		key := promptLine(r, "Paste NCBI_API_KEY (leave blank to skip):")
 		key = strings.TrimSpace(key)
@@ -337,6 +371,7 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 	}
 
 	// OpenAI OAuth login
+	fmt.Printf("  Help (auth): %s\n", docsLink("#authentication"))
 	if promptYesNo(r, "Login to OpenAI via browser OAuth now (ChatGPT subscription optional)?", false) {
 		useDeviceCode := promptYesNo(r, "Use device code flow (headless/SSH)?", false)
 		if err := onboardAuthLoginOpenAI(useDeviceCode); err != nil {
@@ -353,6 +388,7 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 	}
 
 	// Chat channels (messaging apps)
+	fmt.Printf("  Help (channels): %s\n", docsLink("#telegram"))
 	if promptYesNo(r, "Set up messaging apps (Telegram/Discord) now?", false) {
 		runChannelsWizard(r, cfg, configPath)
 	}
@@ -434,10 +470,11 @@ func onboardHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nOnboard:")
 	fmt.Printf("  %s onboard initializes your sciClaw config and workspace.\n", commandName)
+	fmt.Printf("  It is idempotent by default: it preserves existing config/auth and only creates missing workspace files.\n")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --yes        Non-interactive; never prompts (safe defaults)")
-	fmt.Println("  --force      Overwrite existing config without prompting")
+	fmt.Println("  --force      Reset config.json to defaults (backs up existing file first)")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Printf("  %s onboard\n", commandName)
@@ -459,6 +496,36 @@ func parseOnboardOptions(args []string) (yes bool, force bool, showHelp bool, er
 		}
 	}
 	return yes, force, showHelp, nil
+}
+
+func docsLink(anchor string) string {
+	if strings.HasPrefix(anchor, "#") {
+		return docsURLBase + anchor
+	}
+	if anchor == "" {
+		return docsURLBase
+	}
+	return docsURLBase + "#" + anchor
+}
+
+func backupFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	perm := os.FileMode(0600)
+	if st, err := os.Stat(path); err == nil {
+		perm = st.Mode().Perm()
+	}
+	ts := time.Now().UTC().Format("20060102-150405Z")
+	backupPath := fmt.Sprintf("%s.bak.%s", path, ts)
+	if err := os.WriteFile(backupPath, b, perm); err != nil {
+		return "", err
+	}
+	return backupPath, nil
 }
 
 func createWorkspaceTemplates(workspace string) {
