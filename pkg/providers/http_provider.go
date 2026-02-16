@@ -223,6 +223,14 @@ func createCodexAuthProvider() (LLMProvider, error) {
 	return NewCodexProviderWithTokenSource(cred.AccessToken, cred.AccountID, createCodexTokenSource()), nil
 }
 
+func hasStoredCredential(provider string) bool {
+	cred, err := auth.GetCredential(provider)
+	if err != nil || cred == nil {
+		return false
+	}
+	return strings.TrimSpace(cred.AccessToken) != ""
+}
+
 func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	model := cfg.Agents.Defaults.Model
 	providerName := strings.ToLower(cfg.Agents.Defaults.Provider)
@@ -243,10 +251,12 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				}
 			}
 		case "openai", "gpt":
-			if cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != "" {
-				if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" {
-					return createCodexAuthProvider()
-				}
+			// OAuth/token credentials are stored in ~/.picoclaw/auth.json. Treat their presence as "configured"
+			// even if config.json was created earlier (idempotent onboard preserves it).
+			if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" || (cfg.Providers.OpenAI.APIKey == "" && hasStoredCredential("openai")) {
+				return createCodexAuthProvider()
+			}
+			if cfg.Providers.OpenAI.APIKey != "" {
 				apiKey = cfg.Providers.OpenAI.APIKey
 				apiBase = cfg.Providers.OpenAI.APIBase
 				if apiBase == "" {
@@ -254,10 +264,10 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				}
 			}
 		case "anthropic", "claude":
-			if cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != "" {
-				if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" {
-					return createClaudeAuthProvider()
-				}
+			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" || (cfg.Providers.Anthropic.APIKey == "" && hasStoredCredential("anthropic")) {
+				return createClaudeAuthProvider()
+			}
+			if cfg.Providers.Anthropic.APIKey != "" {
 				apiKey = cfg.Providers.Anthropic.APIKey
 				apiBase = cfg.Providers.Anthropic.APIBase
 				if apiBase == "" {
@@ -342,8 +352,8 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiBase = "https://openrouter.ai/api/v1"
 			}
 
-		case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && (cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != ""):
-			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" {
+		case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && (cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != "" || hasStoredCredential("anthropic")):
+			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" || (cfg.Providers.Anthropic.APIKey == "" && hasStoredCredential("anthropic")) {
 				return createClaudeAuthProvider()
 			}
 			apiKey = cfg.Providers.Anthropic.APIKey
@@ -353,8 +363,8 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiBase = "https://api.anthropic.com/v1"
 			}
 
-		case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && (cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != ""):
-			if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" {
+		case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && (cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != "" || hasStoredCredential("openai")):
+			if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" || (cfg.Providers.OpenAI.APIKey == "" && hasStoredCredential("openai")) {
 				return createCodexAuthProvider()
 			}
 			apiKey = cfg.Providers.OpenAI.APIKey

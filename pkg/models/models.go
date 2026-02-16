@@ -234,5 +234,17 @@ func resolveAuthMethod(provider string, cfg *config.Config) string {
 	if pc.APIKey != "" {
 		return "api_key"
 	}
+
+	// If config.json wasn't updated (or was reset) but auth.json has valid credentials,
+	// treat the provider as configured. This is common with idempotent onboard reruns.
+	if provider == "openai" || provider == "anthropic" {
+		if cred, err := auth.GetCredential(provider); err == nil && cred != nil && cred.AccessToken != "" {
+			if cred.AuthMethod != "" {
+				return cred.AuthMethod
+			}
+			return "token"
+		}
+	}
+
 	return "not configured"
 }
