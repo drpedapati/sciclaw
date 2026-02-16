@@ -546,11 +546,28 @@
         <h1>Installation</h1>
         <p class="page-subtitle">Get sciClaw running in minutes. Choose the method that fits your workflow.</p>
 
-        <h3>Homebrew (recommended)</h3>
-        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw &amp;&amp; <span class="hl-cmd">sciclaw</span> onboard <span class="hl-flag">--yes</span> &amp;&amp; <span class="hl-cmd">sciclaw</span> doctor</code></pre>
-        <p>Then:</p>
+        <h3>Prerequisites: install Homebrew</h3>
+        <p>If you don't already have <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a>, install it first. Open <strong>Terminal</strong> (macOS) or your shell (Linux) and paste:</p>
+        <pre><code><span class="hl-cmd">/bin/bash</span> -c <span class="hl-string">"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</span></code></pre>
+        <p>Follow the on-screen prompts. When it finishes, confirm Homebrew is available:</p>
+        <pre><code><span class="hl-cmd">brew</span> <span class="hl-flag">--version</span></code></pre>
+
+        <h3>Step 1 &mdash; Install sciClaw</h3>
+        <p>Add the sciClaw tap and install the package:</p>
+        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw</code></pre>
+        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>rg</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
+
+        <h3>Step 2 &mdash; Onboard</h3>
+        <pre><code><span class="hl-cmd">sciclaw</span> onboard <span class="hl-flag">--yes</span></code></pre>
+        <p><code>onboard</code> creates the default configuration directory (<code>~/.config/sciclaw/</code>), writes starter config files, and registers the built-in skill pack. The <code>--yes</code> flag accepts defaults so it runs non-interactively. You can re-run <code>sciclaw onboard</code> at any time without losing existing settings.</p>
+
+        <h3>Step 3 &mdash; Doctor</h3>
+        <pre><code><span class="hl-cmd">sciclaw</span> doctor</code></pre>
+        <p><code>doctor</code> checks that everything is wired up correctly: it verifies the config directory exists, all companion tools are reachable on your <code>PATH</code>, skill definitions are valid, and your shell environment is ready. If anything is missing or misconfigured it prints a clear explanation and suggested fix.</p>
+
+        <p>Finally, confirm the installed version:</p>
         <pre><code><span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span></code></pre>
-        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>rg</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies. On Linux, the tap also installs Quarto for reproducible manuscript rendering. On macOS, install Quarto via <code>brew install --cask quarto</code>. Stable releases auto-update via the GitHub release workflow.</p>
+        <p>On Linux, the tap also installs Quarto for reproducible manuscript rendering. On macOS, install Quarto via <code>brew install --cask quarto</code>. Stable releases auto-update via the GitHub release workflow.</p>
 
         <h3>Download a binary</h3>
         <p>Pre-compiled binaries for Linux (amd64, arm64, riscv64), macOS (arm64), and Windows (amd64) are available on the <a href="https://github.com/drpedapati/sciclaw/releases">releases page</a>.</p>
