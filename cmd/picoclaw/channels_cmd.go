@@ -186,24 +186,45 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 	fmt.Println("Discord setup:")
 
 	fmt.Printf("  Help: %s\n", docsLink("#discord"))
-	fmt.Println("  Tip: treat your bot token like a password. Do not paste it into chat logs.")
+	fmt.Println("  We'll collect your allowlist FIRST, before asking for the bot token.")
+	fmt.Println("  Reason: if you paste a token and forget the allowlist, your bot may be open to anyone in a server.")
 
-	token := strings.TrimSpace(promptLine(r, "Paste bot token (will be saved to ~/.picoclaw/config.json):"))
+	fmt.Println()
+	fmt.Println("Allowlist (required):")
+	fmt.Println("  Add your Discord user ID(s) (comma-separated).")
+	fmt.Println("  How to get it:")
+	fmt.Println("    1. Discord Settings -> Advanced -> Developer Mode (ON)")
+	fmt.Println("    2. Right-click your avatar -> Copy User ID")
+
+	var allow []string
+	for {
+		raw := strings.TrimSpace(promptLine(r, "User IDs:"))
+		allow = parseCSV(raw)
+		if len(allow) > 0 {
+			break
+		}
+		fmt.Println("  Missing user IDs. This is a security requirement.")
+		if !promptYesNo(r, "Try again?", true) {
+			return fmt.Errorf("aborted: allowlist is required")
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Bot token:")
+	fmt.Println("  Tip: treat your bot token like a password. Do not paste it into chat logs.")
+	fmt.Println("  We'll save it to ~/.picoclaw/config.json and never print it back.")
+
+	token := strings.TrimSpace(promptLine(r, "Paste bot token:"))
 	if token == "" {
 		return fmt.Errorf("token is required")
 	}
 
 	fmt.Println()
-	fmt.Println("Allowlist:")
-	fmt.Println("  Add your Discord user ID(s) (comma-separated).")
-	fmt.Println("  Tip: Enable Developer Mode -> right-click your avatar -> Copy User ID.")
-	raw := strings.TrimSpace(promptLine(r, "User IDs:"))
-	allow := parseCSV(raw)
-	if len(allow) == 0 {
-		fmt.Println("  Warning: empty allowlist means ANYONE can talk to your bot (not recommended).")
-		if !promptYesNo(r, "Continue without an allowlist?", false) {
-			return fmt.Errorf("aborted: allowlist is required for safe defaults")
-		}
+	fmt.Println("Review:")
+	fmt.Printf("  Enabled:   true\n")
+	fmt.Printf("  Allowlist: %s\n", strings.Join(allow, ", "))
+	if !promptYesNo(r, "Save these Discord settings now?", true) {
+		return fmt.Errorf("aborted")
 	}
 
 	cfg.Channels.Discord.Enabled = true
