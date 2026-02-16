@@ -6,13 +6,13 @@ import (
 )
 
 func TestMarkdownToTelegramHTML_PreservesDistinctInlineCodes(t *testing.T) {
-	in := "Paths: `~/.picoclaw/workspace/IDENTITY.md`, `~/.picoclaw/workspace/AGENTS.md`, and `state/`."
+	in := "Paths: `~/sciclaw/IDENTITY.md`, `~/sciclaw/AGENTS.md`, and `state/`."
 	out := markdownToTelegramHTML(in)
 
-	if !strings.Contains(out, "<code>~/.picoclaw/workspace/IDENTITY.md</code>") {
+	if !strings.Contains(out, "<code>~/sciclaw/IDENTITY.md</code>") {
 		t.Fatalf("missing first inline code, got: %s", out)
 	}
-	if !strings.Contains(out, "<code>~/.picoclaw/workspace/AGENTS.md</code>") {
+	if !strings.Contains(out, "<code>~/sciclaw/AGENTS.md</code>") {
 		t.Fatalf("missing second inline code, got: %s", out)
 	}
 	if !strings.Contains(out, "<code>state/</code>") {

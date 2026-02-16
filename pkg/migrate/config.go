@@ -323,6 +323,10 @@ func convertKeysToSnake(data interface{}) interface{} {
 }
 
 func rewriteWorkspacePath(path string) string {
+	// When migrating legacy OpenClaw configs, prefer sciClaw's visible default workspace.
+	if strings.TrimSpace(path) == "~/.openclaw/workspace" {
+		return "~/sciclaw"
+	}
 	path = strings.Replace(path, ".openclaw", ".picoclaw", 1)
 	return path
 }

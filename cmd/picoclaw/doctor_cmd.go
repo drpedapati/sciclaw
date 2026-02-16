@@ -188,7 +188,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 		// Best-effort workspace check with default path.
 		home, _ := os.UserHomeDir()
 		if home != "" {
-			defaultWorkspace := filepath.Join(home, ".picoclaw", "workspace")
+			defaultWorkspace := filepath.Join(home, "sciclaw")
 			if fileExists(defaultWorkspace) {
 				add(doctorCheck{Name: "workspace", Status: doctorOK, Message: defaultWorkspace})
 			} else {

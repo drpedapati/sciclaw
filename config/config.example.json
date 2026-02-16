@@ -1,7 +1,7 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "~/.picoclaw/workspace",
+      "workspace": "~/sciclaw",
       "restrict_to_workspace": true,
       "model": "gpt-5.2",
       "max_tokens": 8192,

@@ -278,8 +278,8 @@ func TestConvertConfig(t *testing.T) {
 		if cfg.Agents.Defaults.Temperature != 0.5 {
 			t.Errorf("Temperature = %f, want %f", cfg.Agents.Defaults.Temperature, 0.5)
 		}
-		if cfg.Agents.Defaults.Workspace != "~/.picoclaw/workspace" {
-			t.Errorf("Workspace = %q, want %q", cfg.Agents.Defaults.Workspace, "~/.picoclaw/workspace")
+		if cfg.Agents.Defaults.Workspace != "~/sciclaw" {
+			t.Errorf("Workspace = %q, want %q", cfg.Agents.Defaults.Workspace, "~/sciclaw")
 		}
 	})
 
@@ -601,7 +601,7 @@ func TestRewriteWorkspacePath(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"default path", "~/.openclaw/workspace", "~/.picoclaw/workspace"},
+		{"default path", "~/.openclaw/workspace", "~/sciclaw"},
 		{"custom path", "/custom/path", "/custom/path"},
 		{"empty", "", ""},
 	}

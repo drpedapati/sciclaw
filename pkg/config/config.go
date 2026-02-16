@@ -212,7 +212,9 @@ func DefaultConfig() *Config {
 	return &Config{
 		Agents: AgentsConfig{
 			Defaults: AgentDefaults{
-				Workspace:           "~/.picoclaw/workspace",
+				// Keep config/auth under ~/.picoclaw for compatibility, but default the *workspace*
+				// to a visible directory for scientific users.
+				Workspace:           "~/sciclaw",
 				RestrictToWorkspace: true,
 				Provider:            "",
 				Model:               "gpt-5.2",
