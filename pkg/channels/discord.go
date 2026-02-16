@@ -20,6 +20,7 @@ const (
 	transcriptionTimeout = 30 * time.Second
 	sendTimeout          = 10 * time.Second
 	typingInterval       = 8 * time.Second
+	discordMaxRunes      = 2000
 )
 
 type typingState struct {
@@ -130,6 +131,10 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 	c.stopTyping(channelID)
 
 	message := msg.Content
+	if strings.TrimSpace(message) == "" {
+		message = "[empty message]"
+	}
+	chunks := splitDiscordMessage(message, discordMaxRunes)
 
 	// 使用传入的 ctx 进行超时控制
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
@@ -137,7 +142,13 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 
 	done := make(chan error, 1)
 	go func() {
-		done <- c.sendMessage(channelID, message)
+		for _, chunk := range chunks {
+			if err := c.sendMessage(channelID, chunk); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
 	}()
 
 	select {
@@ -386,4 +397,63 @@ func (c *DiscordChannel) runTypingLoop(ctx context.Context, channelID string, ev
 			}
 		}
 	}
+}
+
+func splitDiscordMessage(content string, maxRunes int) []string {
+	if maxRunes <= 0 {
+		maxRunes = discordMaxRunes
+	}
+
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return []string{"[empty message]"}
+	}
+
+	runes := []rune(trimmed)
+	if len(runes) <= maxRunes {
+		return []string{trimmed}
+	}
+
+	chunks := make([]string, 0, (len(runes)/maxRunes)+1)
+	remaining := runes
+	for len(remaining) > maxRunes {
+		split := maxRunes
+		windowStart := maxRunes - 200
+		if windowStart < 0 {
+			windowStart = 0
+		}
+		for i := maxRunes - 1; i >= windowStart; i-- {
+			if remaining[i] == '\n' || remaining[i] == ' ' || remaining[i] == '\t' {
+				split = i
+				break
+			}
+		}
+		if split <= 0 {
+			split = maxRunes
+		}
+
+		chunk := strings.TrimSpace(string(remaining[:split]))
+		if chunk == "" {
+			chunk = string(remaining[:maxRunes])
+			split = maxRunes
+		}
+		chunks = append(chunks, chunk)
+
+		remaining = remaining[split:]
+		for len(remaining) > 0 && (remaining[0] == ' ' || remaining[0] == '\n' || remaining[0] == '\t' || remaining[0] == '\r') {
+			remaining = remaining[1:]
+		}
+	}
+
+	if len(remaining) > 0 {
+		last := strings.TrimSpace(string(remaining))
+		if last != "" {
+			chunks = append(chunks, last)
+		}
+	}
+
+	if len(chunks) == 0 {
+		return []string{"[empty message]"}
+	}
+	return chunks
 }

@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -133,5 +134,57 @@ func TestDiscordStopCancelsAllTypingLoops(t *testing.T) {
 	ch.typingMu.Unlock()
 	if n != 0 {
 		t.Fatalf("expected no typing loops after stop, got %d", n)
+	}
+}
+
+func TestSplitDiscordMessage_RespectsLimit(t *testing.T) {
+	msg := strings.Repeat("a", 4205)
+	chunks := splitDiscordMessage(msg, discordMaxRunes)
+	if len(chunks) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(chunks))
+	}
+	if got := len([]rune(chunks[0])); got != 2000 {
+		t.Fatalf("expected first chunk length 2000, got %d", got)
+	}
+	if got := len([]rune(chunks[1])); got != 2000 {
+		t.Fatalf("expected second chunk length 2000, got %d", got)
+	}
+	if got := len([]rune(chunks[2])); got != 205 {
+		t.Fatalf("expected third chunk length 205, got %d", got)
+	}
+}
+
+func TestDiscordSend_SendsChunkedMessages(t *testing.T) {
+	ch := newTestDiscordChannel()
+	var mu sync.Mutex
+	var sent []string
+	ch.sendMessageFn = func(channelID, content string) error {
+		mu.Lock()
+		sent = append(sent, content)
+		mu.Unlock()
+		return nil
+	}
+
+	err := ch.Send(context.Background(), bus.OutboundMessage{
+		Channel: "discord",
+		ChatID:  "chan-3",
+		Content: strings.Repeat("b", 4100),
+	})
+	if err != nil {
+		t.Fatalf("unexpected send error: %v", err)
+	}
+
+	mu.Lock()
+	count := len(sent)
+	copySent := append([]string(nil), sent...)
+	mu.Unlock()
+
+	if count != 3 {
+		t.Fatalf("expected 3 sent chunks, got %d", count)
+	}
+	for i, chunk := range copySent {
+		if n := len([]rune(chunk)); n > discordMaxRunes {
+			t.Fatalf("chunk %d exceeds limit: %d", i, n)
+		}
 	}
 }

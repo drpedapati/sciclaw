@@ -32,22 +32,22 @@ import (
 )
 
 type AgentLoop struct {
-	bus            *bus.MessageBus
-	provider       providers.LLMProvider
-	workspace      string
-	model            string
-	reasoningEffort  string
-	contextWindow    int // Maximum context window size in tokens
-	maxIterations    int
-	sessions       *session.SessionManager
-	state          *state.Manager
-	contextBuilder *ContextBuilder
-	tools          *tools.ToolRegistry
-	hooks          *hooks.Dispatcher
-	hookAuditPath  string
-	turnCounter    uint64
-	running        atomic.Bool
-	summarizing    sync.Map // Tracks which sessions are currently being summarized
+	bus             *bus.MessageBus
+	provider        providers.LLMProvider
+	workspace       string
+	model           string
+	reasoningEffort string
+	contextWindow   int // Maximum context window size in tokens
+	maxIterations   int
+	sessions        *session.SessionManager
+	state           *state.Manager
+	contextBuilder  *ContextBuilder
+	tools           *tools.ToolRegistry
+	hooks           *hooks.Dispatcher
+	hookAuditPath   string
+	turnCounter     uint64
+	running         atomic.Bool
+	summarizing     sync.Map // Tracks which sessions are currently being summarized
 }
 
 // processOptions configures how a message is processed
@@ -77,10 +77,14 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 
 	// Shell execution
 	execTool := tools.NewExecTool(workspace, restrict)
+	pubmedExportTool := tools.NewPubMedExportTool(workspace, restrict)
 	if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
 		execTool.SetExtraEnv(map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey})
+		pubmedExportTool.SetExtraEnv(map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey})
 	}
 	registry.Register(execTool)
+	registry.Register(pubmedExportTool)
+	registry.Register(tools.NewWordCountTool(workspace, restrict))
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
@@ -202,13 +206,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		reasoningEffort: cfg.Agents.Defaults.ReasoningEffort,
 		contextWindow:   cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
 		maxIterations:   cfg.Agents.Defaults.MaxToolIterations,
-		sessions:       sessionsManager,
-		state:          stateManager,
-		contextBuilder: contextBuilder,
-		tools:          toolsRegistry,
-		hooks:          hookDispatcher,
-		hookAuditPath:  hookAuditPath,
-		summarizing:    sync.Map{},
+		sessions:        sessionsManager,
+		state:           stateManager,
+		contextBuilder:  contextBuilder,
+		tools:           toolsRegistry,
+		hooks:           hookDispatcher,
+		hookAuditPath:   hookAuditPath,
+		summarizing:     sync.Map{},
 	}
 }
 
