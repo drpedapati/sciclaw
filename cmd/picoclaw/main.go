@@ -143,6 +143,8 @@ func main() {
 		agentCmd()
 	case "gateway":
 		gatewayCmd()
+	case "service":
+		serviceCmd()
 	case "channels":
 		channelsCmd()
 	case "status":
@@ -230,6 +232,7 @@ func printHelp() {
 	fmt.Println("  models      Manage models (list, set, effort, status)")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start sciClaw gateway")
+	fmt.Println("  service     Manage background gateway service (launchd/systemd)")
 	fmt.Println("  channels    Setup and manage chat channels (Telegram, Discord, etc.)")
 	fmt.Println("  status      Show sciClaw status")
 	fmt.Println("  doctor      Check deployment health and dependencies")

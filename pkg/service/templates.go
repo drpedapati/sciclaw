@@ -1,0 +1,52 @@
+package service
+
+import "fmt"
+
+func renderSystemdUnit(exePath string) string {
+	return fmt.Sprintf(`[Unit]
+Description=sciClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%s gateway
+Restart=always
+RestartSec=3
+Environment=HOME=%%h
+WorkingDirectory=%%h
+
+[Install]
+WantedBy=default.target
+`, exePath)
+}
+
+func renderLaunchdPlist(label, exePath, stdoutPath, stderrPath string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>%s</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>%s</string>
+    <string>gateway</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>%s</string>
+
+  <key>StandardErrorPath</key>
+  <string>%s</string>
+</dict>
+</plist>
+`, label, exePath, stdoutPath, stderrPath)
+}

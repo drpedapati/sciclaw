@@ -126,9 +126,10 @@ sciclaw agent --effort high -m "Analyze the statistical methods in this paper"
 | `sciclaw models effort <level>` | Persistently change reasoning effort |
 | `sciclaw models status` | Show model, provider, auth, and effort |
 | `sciclaw status` | Show system status (config, providers, IRL runtime) |
-| `sciclaw doctor` | Verify deployment: config, tools, skills, auth, gateway |
+| `sciclaw doctor` | Verify deployment: config, tools, skills, auth, gateway, service |
 | `sciclaw doctor --fix` | Auto-fix: sync baseline skills, remove legacy names |
 | `sciclaw gateway` | Start chat channel gateway (Telegram, Discord, etc.) |
+| `sciclaw service <subcommand>` | Manage background gateway service |
 | `sciclaw auth login` | Authenticate with a provider |
 | `sciclaw auth status` | Show stored credentials |
 | `sciclaw skills list` | List installed skills |
@@ -245,6 +246,26 @@ sciclaw channels setup telegram
 sciclaw gateway
 ```
 
+Background service (recommended for always-on bots):
+```bash
+sciclaw service install
+sciclaw service start
+sciclaw service status
+```
+
+Lifecycle controls:
+```bash
+sciclaw service stop
+sciclaw service restart
+sciclaw service logs --lines 200
+sciclaw service uninstall
+```
+
+Platform notes:
+- **macOS**: uses per-user `launchd` (`~/Library/LaunchAgents/io.sciclaw.gateway.plist`)
+- **Linux**: uses `systemd --user` (`~/.config/systemd/user/sciclaw-gateway.service`)
+- **WSL**: service mode works when systemd is enabled; otherwise run `sciclaw gateway` in a terminal
+
 | Channel | Setup |
 |---------|-------|
 | **Telegram** | Easy — just a bot token from @BotFather |
@@ -341,7 +362,7 @@ docker compose logs -f sciclaw-gateway
 
 ## Doctor
 
-Run `sciclaw doctor` to verify your deployment — config, workspace, auth credentials, companion tools, baseline skills, gateway health, and Homebrew update status:
+Run `sciclaw doctor` to verify your deployment — config, workspace, auth credentials, companion tools, baseline skills, gateway health, service health, and Homebrew update status:
 
 ```bash
 sciclaw doctor            # Human-readable report
@@ -355,6 +376,7 @@ The doctor checks:
 - **Companion tools** — verifies `docx-review`, `pubmed-cli`, `quarto`, `irl`, `pandoc`, `rg`, `python3` are installed, with install hints for missing tools
 - **Baseline skills** — confirms all 12 skills are present, detects legacy skill names (`docx`, `pubmed-database`)
 - **Gateway health** — scans logs for Telegram 409 conflicts (multiple bot instances)
+- **Service health** — checks backend support plus installed/running/enabled status for background mode
 - **Homebrew** — checks if `sciclaw` is outdated
 
 Exit code 0 = all checks pass. Exit code 1 = at least one error.
@@ -372,6 +394,10 @@ Get a free key at [brave.com/search/api](https://brave.com/search/api) (2000 fre
 
 **Telegram "Conflict: terminated by other getUpdates"**
 Only one `sciclaw gateway` instance can run at a time.
+If you use service mode, restart it cleanly:
+```bash
+sciclaw service restart
+```
 
 ## Updating
 

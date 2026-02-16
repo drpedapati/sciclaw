@@ -17,6 +17,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
+	svcmgr "github.com/sipeed/picoclaw/pkg/service"
 )
 
 type doctorOptions struct {
@@ -81,7 +82,7 @@ func doctorCmd() {
 func doctorHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nDoctor:")
-	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, and key external tools (docx-review, quarto, irl, pandoc, PubMed CLI).\n", commandName)
+	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, service health, and key external tools (docx-review, quarto, irl, pandoc, PubMed CLI).\n", commandName)
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --json        Machine-readable output")
@@ -288,6 +289,9 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	// Gateway log quick scan: common Telegram 409 conflict from multiple instances.
 	add(checkGatewayLog())
+	for _, c := range checkServiceStatus() {
+		add(c)
+	}
 
 	// Optional: Homebrew outdated status (best-effort).
 	add(checkHomebrewOutdated())
@@ -450,6 +454,73 @@ func checkGatewayLog() doctorCheck {
 		return doctorCheck{Name: "gateway.telegram", Status: doctorErr, Message: "Telegram getUpdates 409 conflict (multiple bot instances running?)", Data: map[string]string{"log": p}}
 	}
 	return doctorCheck{Name: "gateway.log", Status: doctorOK, Message: p}
+}
+
+func checkServiceStatus() []doctorCheck {
+	checks := make([]doctorCheck, 0, 4)
+	add := func(c doctorCheck) { checks = append(checks, c) }
+
+	exePath, err := os.Executable()
+	if err != nil {
+		add(doctorCheck{Name: "service.backend", Status: doctorWarn, Message: "unable to resolve executable path", Data: map[string]string{"error": err.Error()}})
+		return checks
+	}
+
+	mgr, err := svcmgr.NewManager(exePath)
+	if err != nil {
+		add(doctorCheck{Name: "service.backend", Status: doctorWarn, Message: "unable to initialize service manager", Data: map[string]string{"error": err.Error()}})
+		return checks
+	}
+
+	st, err := mgr.Status()
+	if err != nil {
+		add(doctorCheck{Name: "service.backend", Status: doctorWarn, Message: "service status check failed", Data: map[string]string{"error": err.Error()}})
+		return checks
+	}
+
+	backendStatus := doctorOK
+	if st.Backend == svcmgr.BackendUnsupported {
+		backendStatus = doctorSkip
+	}
+	add(doctorCheck{Name: "service.backend", Status: backendStatus, Message: st.Backend})
+
+	if st.Backend == svcmgr.BackendUnsupported {
+		msg := st.Detail
+		if strings.TrimSpace(msg) == "" {
+			msg = "service backend unavailable on this platform"
+		}
+		add(doctorCheck{Name: "service.installed", Status: doctorSkip, Message: msg})
+		add(doctorCheck{Name: "service.running", Status: doctorSkip, Message: msg})
+		add(doctorCheck{Name: "service.enabled", Status: doctorSkip, Message: msg})
+		return checks
+	}
+
+	if st.Installed {
+		add(doctorCheck{Name: "service.installed", Status: doctorOK, Message: "installed"})
+	} else {
+		add(doctorCheck{Name: "service.installed", Status: doctorWarn, Message: fmt.Sprintf("not installed (run: %s service install)", invokedCLIName())})
+	}
+
+	if !st.Installed {
+		add(doctorCheck{Name: "service.running", Status: doctorSkip, Message: "service is not installed"})
+	} else if st.Running {
+		add(doctorCheck{Name: "service.running", Status: doctorOK, Message: "running"})
+	} else {
+		add(doctorCheck{Name: "service.running", Status: doctorWarn, Message: fmt.Sprintf("not running (run: %s service start)", invokedCLIName())})
+	}
+
+	if !st.Installed {
+		add(doctorCheck{Name: "service.enabled", Status: doctorSkip, Message: "service is not installed"})
+	} else if st.Enabled {
+		add(doctorCheck{Name: "service.enabled", Status: doctorOK, Message: "enabled"})
+	} else {
+		add(doctorCheck{Name: "service.enabled", Status: doctorWarn, Message: fmt.Sprintf("not enabled (run: %s service install)", invokedCLIName())})
+	}
+
+	if strings.TrimSpace(st.Detail) != "" {
+		add(doctorCheck{Name: "service.detail", Status: doctorSkip, Message: st.Detail})
+	}
+	return checks
 }
 
 func readTail(path string, maxBytes int64) (string, error) {

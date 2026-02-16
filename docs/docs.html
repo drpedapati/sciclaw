@@ -505,6 +505,7 @@
       <a class="sidebar-link nested" href="#agent">Agent</a>
       <a class="sidebar-link nested" href="#model-switching">Model Switching</a>
       <a class="sidebar-link nested" href="#gateway">Gateway</a>
+      <a class="sidebar-link nested" href="#service">Service</a>
       <a class="sidebar-link nested" href="#skills-cmd">Skills</a>
       <a class="sidebar-link nested" href="#doctor">Doctor</a>
     </div>
@@ -735,9 +736,14 @@
         <pre><code><span class="hl-cmd">sciclaw</span> channels setup telegram</code></pre>
 
         <ol start="5">
-          <li><strong>Start the gateway</strong> (keep this running on your computer or a server)</li>
+          <li><strong>Start the gateway</strong> (background mode recommended for daily use)</li>
         </ol>
-        <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
+        <pre><code><span class="hl-comment"># Background mode</span>
+<span class="hl-cmd">sciclaw</span> service install
+<span class="hl-cmd">sciclaw</span> service start
+
+<span class="hl-comment"># Foreground mode</span>
+<span class="hl-cmd">sciclaw</span> gateway</code></pre>
 
         <div class="callout">
           <div class="callout-title">Where your work lives</div>
@@ -747,13 +753,14 @@
 
         <div class="callout callout-warn">
           <div class="callout-title">Common gotcha</div>
-          <p><strong>Telegram only allows one gateway instance per bot.</strong> If you run multiple instances you will see a 409 conflict. Stop the other instance, then restart <code>sciclaw gateway</code>.</p>
+          <p><strong>Telegram only allows one gateway instance per bot.</strong> If you run multiple instances you will see a 409 conflict. Stop the other instance, then restart the active mode (<code>sciclaw service restart</code> or <code>sciclaw gateway</code>).</p>
         </div>
 
         <h3>Discord instead of Telegram</h3>
         <p>Discord setup is also first-class:</p>
         <pre><code><span class="hl-cmd">sciclaw</span> channels setup discord
-<span class="hl-cmd">sciclaw</span> gateway</code></pre>
+<span class="hl-cmd">sciclaw</span> service install
+<span class="hl-cmd">sciclaw</span> service start</code></pre>
         <p>Discord requires enabling <strong>MESSAGE CONTENT INTENT</strong> in the Developer Portal.</p>
 
         <h3>Keep it up to date</h3>
@@ -899,8 +906,9 @@
             <tr><td><code>sciclaw models effort &lt;level&gt;</code></td><td>Persistently change the reasoning effort</td></tr>
             <tr><td><code>sciclaw models status</code></td><td>Show model, provider, auth, and effort</td></tr>
             <tr><td><code>sciclaw gateway</code></td><td>Start the gateway for chat channels</td></tr>
+            <tr><td><code>sciclaw service &lt;subcommand&gt;</code></td><td>Manage background gateway service (install/start/stop/restart/status/logs)</td></tr>
             <tr><td><code>sciclaw status</code></td><td>Show current status (includes IRL runtime check)</td></tr>
-            <tr><td><code>sciclaw doctor</code></td><td>Verify deployment: config, tools, skills, auth, gateway</td></tr>
+            <tr><td><code>sciclaw doctor</code></td><td>Verify deployment: config, tools, skills, auth, gateway, service</td></tr>
             <tr><td><code>sciclaw doctor --fix</code></td><td>Auto-fix: sync baseline skills, remove legacy names</td></tr>
             <tr><td><code>sciclaw auth login</code></td><td>Authenticate with a provider</td></tr>
             <tr><td><code>sciclaw auth status</code></td><td>Show stored credentials</td></tr>
@@ -1065,6 +1073,29 @@
         <p>It reads channel configuration from <code>config.json</code>, starts listeners for each enabled channel, and routes messages through the agent loop. The heartbeat service also starts with the gateway.</p>
       </div>
 
+      <div class="section" id="service">
+        <h3>Service</h3>
+        <p>Use <code>service</code> to run the gateway in the background and control lifecycle from one command.</p>
+
+        <pre><code><span class="hl-comment"># Install + start background gateway</span>
+<span class="hl-cmd">sciclaw</span> service install
+<span class="hl-cmd">sciclaw</span> service start
+
+<span class="hl-comment"># Lifecycle</span>
+<span class="hl-cmd">sciclaw</span> service status
+<span class="hl-cmd">sciclaw</span> service restart
+<span class="hl-cmd">sciclaw</span> service stop
+<span class="hl-cmd">sciclaw</span> service logs <span class="hl-flag">--lines</span> 200
+<span class="hl-cmd">sciclaw</span> service uninstall</code></pre>
+
+        <h4>Backend by platform</h4>
+        <ul>
+          <li><strong>macOS:</strong> per-user <code>launchd</code> at <code>~/Library/LaunchAgents/io.sciclaw.gateway.plist</code></li>
+          <li><strong>Linux:</strong> <code>systemd --user</code> unit at <code>~/.config/systemd/user/sciclaw-gateway.service</code></li>
+          <li><strong>WSL:</strong> supported when systemd is enabled in the distro; otherwise run <code>sciclaw gateway</code> in a terminal</li>
+        </ul>
+      </div>
+
       <!-- ─── Skills command ─── -->
       <div class="section" id="skills-cmd">
         <h3>Skills</h3>
@@ -1079,7 +1110,7 @@
       <!-- ─── Doctor ─── -->
       <div class="section" id="doctor">
         <h3>Doctor</h3>
-        <p>The <code>doctor</code> command verifies your entire sciClaw deployment in one shot &mdash; config, workspace, auth credentials, companion CLI tools, baseline skills, gateway health, and Homebrew update status.</p>
+        <p>The <code>doctor</code> command verifies your entire sciClaw deployment in one shot &mdash; config, workspace, auth credentials, companion CLI tools, baseline skills, gateway health, service health, and Homebrew update status.</p>
 
         <pre><code><span class="hl-comment"># Human-readable report</span>
 <span class="hl-cmd">sciclaw</span> doctor
@@ -1107,6 +1138,10 @@
             <tr><td><code>python3</code></td><td>Python 3 available</td></tr>
             <tr><td><code>skills.baseline</code></td><td>All 12 baseline skills present; detects legacy names (<code>docx</code>, <code>pubmed-database</code>)</td></tr>
             <tr><td><code>gateway.telegram</code></td><td>Scans logs for Telegram 409 conflicts (multiple bot instances)</td></tr>
+            <tr><td><code>service.backend</code></td><td>Detects service backend (<code>launchd</code>, <code>systemd-user</code>, or unsupported)</td></tr>
+            <tr><td><code>service.installed</code></td><td>Checks whether the background service unit/plist is installed</td></tr>
+            <tr><td><code>service.running</code></td><td>Checks whether the background service is active</td></tr>
+            <tr><td><code>service.enabled</code></td><td>Checks whether the service is enabled on login</td></tr>
             <tr><td><code>homebrew.sciclaw</code></td><td>Checks if sciClaw is outdated in Homebrew</td></tr>
           </tbody>
         </table>
@@ -1355,7 +1390,12 @@
 }</code></pre>
 
         <p><strong>3. Run</strong></p>
-        <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
+        <pre><code><span class="hl-comment"># Always-on background mode (recommended)</span>
+<span class="hl-cmd">sciclaw</span> service install
+<span class="hl-cmd">sciclaw</span> service start
+
+<span class="hl-comment"># Or foreground mode</span>
+<span class="hl-cmd">sciclaw</span> gateway</code></pre>
       </div>
 
       <!-- ─── Discord ─── -->
@@ -1373,11 +1413,16 @@
         <pre><code><span class="hl-cmd">sciclaw</span> channels setup discord</code></pre>
 
         <p><strong>Run</strong></p>
-        <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
+        <pre><code><span class="hl-comment"># Always-on background mode (recommended)</span>
+<span class="hl-cmd">sciclaw</span> service install
+<span class="hl-cmd">sciclaw</span> service start
+
+<span class="hl-comment"># Or foreground mode</span>
+<span class="hl-cmd">sciclaw</span> gateway</code></pre>
 
         <ol start="6">
           <li>Generate an invite URL via OAuth2 (scopes: <code>bot</code>; permissions: Send Messages, Read Message History).</li>
-          <li>Run <code>sciclaw gateway</code>.</li>
+          <li>Use <code>sciclaw service status</code> to confirm the gateway is running in background mode.</li>
         </ol>
       </div>
 
