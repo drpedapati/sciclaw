@@ -164,11 +164,10 @@ jobs:
             url "${url}"
             sha256 "${sha256}"
             license "MIT"
-            version "${version}"
 
             depends_on "go" => :build
-            depends_on "ripgrep"
             depends_on "irl"
+            depends_on "ripgrep"
             depends_on "sciclaw-docx-review"
             depends_on "sciclaw-pubmed-cli"
 
@@ -196,10 +195,10 @@ jobs:
               assert_match "docx-review", shell_output("#{Formula["sciclaw-docx-review"].opt_bin}/docx-review --version")
               assert_match "PubMed", shell_output("#{Formula["sciclaw-pubmed-cli"].opt_bin}/pubmed --help")
               ENV["HOME"] = testpath
-              system "#{bin}/sciclaw", "onboard", "--yes"
-              assert_predicate testpath/".picoclaw/workspace/AGENTS.md", :exist?
-              assert_predicate testpath/".picoclaw/workspace/HOOKS.md", :exist?
-              assert_predicate testpath/".picoclaw/workspace/skills/scientific-writing/SKILL.md", :exist?
+              system bin/"sciclaw", "onboard", "--yes"
+              assert_path_exists testpath/".picoclaw/workspace/AGENTS.md"
+              assert_path_exists testpath/".picoclaw/workspace/HOOKS.md"
+              assert_path_exists testpath/".picoclaw/workspace/skills/scientific-writing/SKILL.md"
             end
           end
           EOF
