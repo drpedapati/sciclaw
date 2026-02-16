@@ -660,7 +660,7 @@
 
         <h3>1. Initialize</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/.picoclaw/workspace/</code>, and installs baseline scientific skills.</p>
+        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/.picoclaw/workspace/</code>, and installs baseline scientific skills. In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip all prompts.</p>
 
         <h3>2. Configure a provider</h3>
         <p>Edit <code>~/.picoclaw/config.json</code> with your LLM provider credentials:</p>
@@ -722,10 +722,18 @@
   <span class="hl-key">"channels"</span>: { ... },
   <span class="hl-key">"tools"</span>: {
     <span class="hl-key">"web"</span>: {
-      <span class="hl-key">"search"</span>: {
+      <span class="hl-key">"brave"</span>: {
+        <span class="hl-key">"enabled"</span>: true,
         <span class="hl-key">"api_key"</span>: <span class="hl-string">"YOUR_BRAVE_API_KEY"</span>,
         <span class="hl-key">"max_results"</span>: 5
+      },
+      <span class="hl-key">"duckduckgo"</span>: {
+        <span class="hl-key">"enabled"</span>: true,
+        <span class="hl-key">"max_results"</span>: 5
       }
+    },
+    <span class="hl-key">"pubmed"</span>: {
+      <span class="hl-key">"api_key"</span>: <span class="hl-string">"YOUR_NCBI_API_KEY"</span>
     }
   },
   <span class="hl-key">"heartbeat"</span>: {

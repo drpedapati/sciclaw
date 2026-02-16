@@ -56,6 +56,11 @@ If you install via downloaded binary/source, see `sciclaw doctor` for install hi
 **1. Initialize**
 
 ```bash
+sciclaw onboard
+```
+
+Non-interactive (CI / scripts):
+```bash
 sciclaw onboard --yes
 ```
 
@@ -84,6 +89,12 @@ Or authenticate without editing config:
 sciclaw auth login --provider openai          # OAuth (browser)
 sciclaw auth login --provider openai --device-code  # OAuth (headless)
 sciclaw auth login --provider anthropic       # Token paste
+```
+
+Optional: PubMed rate limits
+```bash
+# Either set via the onboard wizard, or set manually:
+export NCBI_API_KEY="your-key"
 ```
 
 **3. Chat**

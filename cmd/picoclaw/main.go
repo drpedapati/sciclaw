@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -285,6 +286,14 @@ func onboard() {
 
 	createWorkspaceTemplates(workspace)
 
+	if !yes {
+		runOnboardWizard(cfg, configPath)
+		// Reload to reflect any wizard edits.
+		if cfg2, err := config.LoadConfig(configPath); err == nil && cfg2 != nil {
+			cfg = cfg2
+		}
+	}
+
 	fmt.Printf("%s %s is ready!\n", logo, displayName)
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add your API key to", configPath)
@@ -297,7 +306,119 @@ func onboard() {
 		fmt.Println("  If you installed via Homebrew, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
 		fmt.Println("  Install Quarto with: brew install --cask quarto")
 	}
-	fmt.Println("  Optional: export NCBI_API_KEY=\"your-key\"  # PubMed rate limit: 3/s -> 10/s")
+	if strings.TrimSpace(cfg.Tools.PubMed.APIKey) == "" {
+		fmt.Println("  Optional: export NCBI_API_KEY=\"your-key\"  # PubMed rate limit: 3/s -> 10/s")
+	}
+}
+
+func runOnboardWizard(cfg *config.Config, configPath string) {
+	r := bufio.NewReader(os.Stdin)
+
+	fmt.Println()
+	fmt.Println("Optional setup (wizard):")
+
+	// PubMed key
+	if promptYesNo(r, "Set an NCBI API key for faster PubMed (recommended)?", false) {
+		key := promptLine(r, "Paste NCBI_API_KEY (leave blank to skip):")
+		key = strings.TrimSpace(key)
+		if key != "" {
+			cfg.Tools.PubMed.APIKey = key
+			if err := config.SaveConfig(configPath, cfg); err != nil {
+				fmt.Printf("  Warning: could not save PubMed API key: %v\n", err)
+			} else {
+				fmt.Println("  Saved PubMed API key to config.")
+			}
+		} else {
+			fmt.Println("  Skipped PubMed API key.")
+		}
+	}
+
+	// OpenAI OAuth login
+	if promptYesNo(r, "Login to OpenAI via browser OAuth now (ChatGPT subscription optional)?", false) {
+		useDeviceCode := promptYesNo(r, "Use device code flow (headless/SSH)?", false)
+		if err := onboardAuthLoginOpenAI(useDeviceCode); err != nil {
+			fmt.Printf("  Login failed: %v\n", err)
+		}
+	}
+
+	// Chat smoke test
+	if promptYesNo(r, "Run a quick chat smoke test now (may incur API usage)?", false) {
+		if err := runSelfAgentOneShot("Hello! Confirm you're running and summarize what you can do as my paired scientist."); err != nil {
+			fmt.Printf("  Chat smoke test failed: %v\n", err)
+		}
+	}
+}
+
+func promptYesNo(r *bufio.Reader, question string, defaultYes bool) bool {
+	def := "y/N"
+	if defaultYes {
+		def = "Y/n"
+	}
+	for {
+		fmt.Printf("  %s [%s]: ", question, def)
+		line, _ := r.ReadString('\n')
+		s := strings.TrimSpace(strings.ToLower(line))
+		if s == "" {
+			return defaultYes
+		}
+		if s == "y" || s == "yes" {
+			return true
+		}
+		if s == "n" || s == "no" {
+			return false
+		}
+		fmt.Println("  Please answer y or n.")
+	}
+}
+
+func promptLine(r *bufio.Reader, question string) string {
+	fmt.Printf("  %s ", question)
+	line, _ := r.ReadString('\n')
+	return strings.TrimRight(line, "\r\n")
+}
+
+func onboardAuthLoginOpenAI(useDeviceCode bool) error {
+	cfg := auth.OpenAIOAuthConfig()
+
+	var cred *auth.AuthCredential
+	var err error
+	if useDeviceCode {
+		cred, err = auth.LoginDeviceCode(cfg)
+	} else {
+		cred, err = auth.LoginBrowser(cfg)
+	}
+	if err != nil {
+		return err
+	}
+	if err := auth.SetCredential("openai", cred); err != nil {
+		return err
+	}
+
+	appCfg, err := loadConfig()
+	if err == nil && appCfg != nil {
+		appCfg.Providers.OpenAI.AuthMethod = "oauth"
+		if err := config.SaveConfig(getConfigPath(), appCfg); err != nil {
+			fmt.Printf("  Warning: could not update config auth_method: %v\n", err)
+		}
+	}
+
+	fmt.Println("  OpenAI login successful!")
+	if cred.AccountID != "" {
+		fmt.Printf("  Account: %s\n", cred.AccountID)
+	}
+	return nil
+}
+
+func runSelfAgentOneShot(message string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, "agent", "-m", message)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
 }
 
 func onboardHelp() {

@@ -105,10 +105,18 @@
   },
   "tools": {
     "web": {
-      "search": {
+      "brave": {
+        "enabled": true,
         "api_key": "YOUR_BRAVE_API_KEY",
         "max_results": 5
+      },
+      "duckduckgo": {
+        "enabled": true,
+        "max_results": 5
       }
+    },
+    "pubmed": {
+      "api_key": "YOUR_NCBI_API_KEY"
     }
   },
   "heartbeat": {
