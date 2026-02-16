@@ -230,6 +230,12 @@ Every IRL command is recorded in `~/sciclaw/irl/commands/` for auditability (wor
 
 Talk to sciClaw through messaging apps by running `sciclaw gateway`.
 
+Recommended setup:
+```bash
+sciclaw channels setup telegram
+sciclaw gateway
+```
+
 | Channel | Setup |
 |---------|-------|
 | **Telegram** | Easy — just a bot token from @BotFather |
@@ -242,8 +248,8 @@ Talk to sciClaw through messaging apps by running `sciclaw gateway`.
 <summary>Telegram setup</summary>
 
 1. Open Telegram, search `@BotFather`, send `/newbot`, copy the token
-2. Get your user ID from `@userinfobot`
-3. Add to `~/.picoclaw/config.json`:
+2. Run `sciclaw channels setup telegram` (pairs your account and writes config)
+3. Manual config (advanced) in `~/.picoclaw/config.json`:
 
 ```json
 {
@@ -251,7 +257,7 @@ Talk to sciClaw through messaging apps by running `sciclaw gateway`.
     "telegram": {
       "enabled": true,
       "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
+      "allow_from": ["YOUR_USER_ID"]
     }
   }
 }
@@ -275,7 +281,7 @@ Talk to sciClaw through messaging apps by running `sciclaw gateway`.
     "discord": {
       "enabled": true,
       "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
+      "allow_from": ["YOUR_USER_ID"]
     }
   }
 }

@@ -1280,20 +1280,25 @@
         <h3>Telegram</h3>
 
         <p><strong>1. Create a bot</strong> &mdash; Open Telegram, search <code>@BotFather</code>, send <code>/newbot</code>, and copy the token.</p>
-        <p><strong>2. Get your user ID</strong> &mdash; Message <code>@userinfobot</code> on Telegram.</p>
-        <p><strong>3. Configure</strong></p>
+        <p><strong>2. Run the setup wizard</strong></p>
+
+        <pre><code><span class="hl-cmd">sciclaw</span> channels setup telegram</code></pre>
+
+        <p>The wizard prompts for your bot token, then pairs your account by asking you to message the bot once. It will add your user to <code>allow_from</code> automatically (recommended).</p>
+
+        <p><strong>Manual config (advanced)</strong></p>
 
         <pre><code>{
   <span class="hl-key">"channels"</span>: {
     <span class="hl-key">"telegram"</span>: {
       <span class="hl-key">"enabled"</span>: true,
       <span class="hl-key">"token"</span>: <span class="hl-string">"YOUR_BOT_TOKEN"</span>,
-      <span class="hl-key">"allowFrom"</span>: [<span class="hl-string">"YOUR_USER_ID"</span>]
+      <span class="hl-key">"allow_from"</span>: [<span class="hl-string">"YOUR_USER_ID"</span>]
     }
   }
 }</code></pre>
 
-        <p><strong>4. Run</strong></p>
+        <p><strong>3. Run</strong></p>
         <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
       </div>
 
@@ -1306,18 +1311,13 @@
           <li>In Bot settings, enable <strong>MESSAGE CONTENT INTENT</strong>.</li>
           <li>Copy the bot token.</li>
           <li>Get your User ID (Developer Mode &rarr; right-click avatar &rarr; Copy User ID).</li>
-          <li>Configure:</li>
+          <li>Run the setup wizard:</li>
         </ol>
 
-        <pre><code>{
-  <span class="hl-key">"channels"</span>: {
-    <span class="hl-key">"discord"</span>: {
-      <span class="hl-key">"enabled"</span>: true,
-      <span class="hl-key">"token"</span>: <span class="hl-string">"YOUR_BOT_TOKEN"</span>,
-      <span class="hl-key">"allowFrom"</span>: [<span class="hl-string">"YOUR_USER_ID"</span>]
-    }
-  }
-}</code></pre>
+        <pre><code><span class="hl-cmd">sciclaw</span> channels setup discord</code></pre>
+
+        <p><strong>Run</strong></p>
+        <pre><code><span class="hl-cmd">sciclaw</span> gateway</code></pre>
 
         <ol start="6">
           <li>Generate an invite URL via OAuth2 (scopes: <code>bot</code>; permissions: Send Messages, Read Message History).</li>
