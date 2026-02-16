@@ -106,7 +106,7 @@ sciclaw agent -m "What pathways are implicated in ALS?"
 sciclaw agent
 
 # Override model for one invocation
-sciclaw agent --model anthropic/claude-opus-4-6 -m "Review this manuscript draft"
+sciclaw agent --model gpt-5.2 -m "Review this manuscript draft"
 
 # Control reasoning effort
 sciclaw agent --effort high -m "Analyze the statistical methods in this paper"
@@ -139,10 +139,11 @@ sciclaw agent --effort high -m "Analyze the statistical methods in this paper"
 ## Providers
 
 sciClaw auto-detects the provider from the model name. Set credentials via `config.json` or `sciclaw auth login`.
+For production use, sciClaw is optimized around OpenAI `gpt-5.2`; other providers remain available for compatibility.
 
 | Provider | Models | Auth |
 |----------|--------|------|
-| **OpenAI** | gpt-5.2, gpt-4o, o3, o4-mini, codex-mini | API key or OAuth |
+| **OpenAI** | gpt-5.2 (primary), gpt-5.2-chat-latest, gpt-5.2-pro | API key or device-code OAuth |
 | **Anthropic** | claude-opus-4-6, claude-sonnet-4-5 | API key or token paste |
 | **Gemini** | gemini-2.5-pro, gemini-2.5-flash | API key |
 | **OpenRouter** | All models via `openrouter/` prefix | API key |
@@ -154,17 +155,16 @@ sciClaw auto-detects the provider from the model name. Set credentials via `conf
 
 ## Reasoning Effort
 
-The `--effort` flag controls how deeply the model thinks before answering. Critical for reasoning models where effort directly affects quality, latency, and cost.
+The `--effort` flag controls how deeply `gpt-5.2` thinks before answering. This directly affects quality, latency, and cost.
 
 | Provider | Valid levels | Default |
 |----------|-------------|---------|
-| OpenAI / Codex | `none` · `minimal` · `low` · `medium` · `high` · `xhigh` | `medium` |
-| Anthropic / Claude | `low` · `medium` · `high` · `max` | Standard (no thinking) |
+| OpenAI (`gpt-5.2`) | `none` · `minimal` · `low` · `medium` · `high` · `xhigh` | provider default (use `medium` as practical baseline) |
 
 ```bash
-sciclaw agent --effort high -m "Complex analysis"
-sciclaw agent --model codex-mini-latest --effort xhigh -m "Debug this"
-sciclaw agent --model anthropic/claude-opus-4-6 --effort max -m "Prove this theorem"
+sciclaw agent --model gpt-5.2 --effort medium -m "Summarize this section"
+sciclaw agent --model gpt-5.2 --effort high -m "Complex analysis"
+sciclaw agent --model gpt-5.2 --effort xhigh -m "Prove this theorem"
 
 # Save a default
 sciclaw models effort high
