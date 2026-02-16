@@ -274,7 +274,7 @@ The Open XML SDK ecosystem:
 
 | Tool | Install | Purpose |
 |------|---------|---------|
-| `pptx-review` | `brew install henrybloomingdale/tools/pptx-review` | PowerPoint read/edit |
-| `xlsx-review` | `brew install henrybloomingdale/tools/xlsx-review` | Excel read/edit |
+| `pptx-review` | `brew install drpedapati/tools/pptx-review` | PowerPoint read/edit |
+| `xlsx-review` | `brew install drpedapati/tools/xlsx-review` | Excel read/edit |
 
 Same architecture: .NET 8, Open XML SDK, single binary, JSON in/out.

@@ -1230,7 +1230,7 @@
 
         <h4>Office &amp; Documents</h4>
         <ul>
-          <li><strong>docx-review</strong> &mdash; Word documents with tracked changes, comments, and semantic diff (<a href="https://github.com/henrybloomingdale/docx-review">CLI tool</a>)</li>
+          <li><strong>docx-review</strong> &mdash; Word documents with tracked changes, comments, and semantic diff (<a href="https://github.com/drpedapati/docx-review">CLI tool</a>)</li>
           <li><strong>pptx</strong> &mdash; PowerPoint creation and editing</li>
           <li><strong>pdf</strong> &mdash; PDF creation, merging, splitting, and extraction</li>
           <li><strong>xlsx</strong> &mdash; Spreadsheet creation, analysis, and conversion</li>
@@ -1241,10 +1241,17 @@
           <li><strong>humanize-text</strong> &mdash; Final-pass language polishing for natural tone</li>
         </ul>
 
+        <h4>Office Tool Repo Migration</h4>
+        <p>Office companion tools were transferred from <code>henrybloomingdale/*</code> to <code>drpedapati/*</code>. If you install those tools directly, use the new tap:</p>
+        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tools
+<span class="hl-cmd">brew</span> install drpedapati/tools/docx-review
+<span class="hl-cmd">brew</span> install drpedapati/tools/pptx-review
+<span class="hl-cmd">brew</span> install drpedapati/tools/xlsx-review</code></pre>
+
         <h4>Companion CLI Tools</h4>
         <p>Two skills are powered by standalone CLI tools that provide native file format support. Install them alongside sciClaw for full functionality:</p>
-        <pre><code><span class="hl-cmd">brew</span> install henrybloomingdale/tools/docx-review   <span class="hl-comment"># Word docs with tracked changes (Open XML SDK)</span>
-<span class="hl-cmd">brew</span> install henrybloomingdale/tools/pubmed-cli     <span class="hl-comment"># PubMed search &amp; citation graphs</span></code></pre>
+        <pre><code><span class="hl-cmd">brew</span> install drpedapati/tools/docx-review   <span class="hl-comment"># Word docs with tracked changes (Open XML SDK)</span>
+<span class="hl-cmd">brew</span> install drpedapati/tools/pubmed-cli     <span class="hl-comment"># PubMed search &amp; citation graphs</span></code></pre>
 
         <h4>Skills Catalog</h4>
         <p>Additional skills are available from the <a href="https://github.com/drpedapati/sciclaw-skills">skills catalog</a>:</p>

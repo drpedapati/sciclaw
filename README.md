@@ -189,7 +189,7 @@ Twelve skills are installed during `sciclaw onboard`:
 - **benchmark-logging** — Benchmark records with acceptance criteria
 
 ### Office & Documents
-- **docx-review** — Word documents with tracked changes, comments, and semantic diff ([CLI tool](https://github.com/henrybloomingdale/docx-review))
+- **docx-review** — Word documents with tracked changes, comments, and semantic diff ([CLI tool](https://github.com/drpedapati/docx-review))
 - **pptx** — PowerPoint creation and editing
 - **pdf** — PDF creation, merging, splitting, and extraction
 - **xlsx** — Spreadsheet creation, analysis, and conversion
@@ -201,6 +201,18 @@ Additional skills are available from the [skills catalog](https://github.com/drp
 
 ```bash
 sciclaw skills install drpedapati/sciclaw-skills/<skill-name>
+```
+
+### Companion Tool Ownership Migration
+
+Office tool repositories moved from `henrybloomingdale/*` to `drpedapati/*`.
+If you install Office tools directly (outside sciClaw's `sciclaw-*` aliases), use:
+
+```bash
+brew tap drpedapati/tools
+brew install drpedapati/tools/docx-review
+brew install drpedapati/tools/pptx-review
+brew install drpedapati/tools/xlsx-review
 ```
 
 ## Skills Installer
