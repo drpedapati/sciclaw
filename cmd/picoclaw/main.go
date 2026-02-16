@@ -330,10 +330,31 @@ func onboard() {
 	fmt.Println(" ", docsLink("#doctor"))
 
 	fmt.Println("\nNext steps:")
-	fmt.Printf("  1. Authenticate (recommended): %s auth login --provider openai\n", invokedCLIName())
-	fmt.Printf("     Or edit: %s\n", configPath)
-	fmt.Printf("  2. Pair a chat app: %s channels setup telegram\n", invokedCLIName())
-	fmt.Printf("  3. Start gateway: %s gateway\n", invokedCLIName())
+	step := 1
+	defaultProvider := strings.ToLower(models.ResolveProvider(cfg.Agents.Defaults.Model, cfg))
+	if method, ok := detectProviderAuth(defaultProvider, cfg); ok {
+		fmt.Printf("  %d. Authentication already configured for %s (%s)\n", step, defaultProvider, method)
+	} else if method != "" {
+		fmt.Printf("  %d. Re-authenticate %s (%s): %s auth login --provider %s\n", step, defaultProvider, method, invokedCLIName(), defaultProvider)
+	} else if defaultProvider == "openai" || defaultProvider == "anthropic" {
+		fmt.Printf("  %d. Authenticate (recommended): %s auth login --provider %s\n", step, invokedCLIName(), defaultProvider)
+		fmt.Printf("     Or edit: %s\n", configPath)
+	} else {
+		fmt.Printf("  %d. Configure provider credentials in: %s\n", step, configPath)
+	}
+	step++
+
+	channelsReady := configuredChatChannels(cfg)
+	if len(channelsReady) == 0 {
+		fmt.Printf("  %d. Pair a chat app: %s channels setup telegram\n", step, invokedCLIName())
+	} else {
+		fmt.Printf("  %d. Chat app already configured: %s\n", step, strings.Join(channelsReady, ", "))
+		if hasAnyWeakAllowlist(cfg) {
+			fmt.Println("     Warning: one or more channels have an empty allow_from list.")
+		}
+	}
+	step++
+	fmt.Printf("  %d. Start gateway: %s gateway\n", step, invokedCLIName())
 	fmt.Println("\nCompanion tools:")
 	if runtime.GOOS == "linux" {
 		fmt.Println("  If you installed via Homebrew, Quarto, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
@@ -496,6 +517,72 @@ func parseOnboardOptions(args []string) (yes bool, force bool, showHelp bool, er
 		}
 	}
 	return yes, force, showHelp, nil
+}
+
+func detectProviderAuth(provider string, cfg *config.Config) (string, bool) {
+	var pc config.ProviderConfig
+	switch provider {
+	case "openai":
+		pc = cfg.Providers.OpenAI
+	case "anthropic":
+		pc = cfg.Providers.Anthropic
+	case "openrouter":
+		pc = cfg.Providers.OpenRouter
+	case "gemini":
+		pc = cfg.Providers.Gemini
+	case "groq":
+		pc = cfg.Providers.Groq
+	case "deepseek":
+		pc = cfg.Providers.DeepSeek
+	case "zhipu":
+		pc = cfg.Providers.Zhipu
+	default:
+		return "", false
+	}
+
+	if strings.TrimSpace(pc.APIKey) != "" {
+		return "api_key", true
+	}
+
+	if provider == "openai" || provider == "anthropic" {
+		if cred, err := auth.GetCredential(provider); err == nil && cred != nil && strings.TrimSpace(cred.AccessToken) != "" {
+			method := strings.TrimSpace(cred.AuthMethod)
+			if method == "" {
+				method = "token"
+			}
+			if cred.IsExpired() {
+				return method + " expired", false
+			}
+			return method, true
+		}
+	}
+
+	if pc.AuthMethod == "oauth" || pc.AuthMethod == "token" {
+		return pc.AuthMethod, true
+	}
+
+	return "", false
+}
+
+func configuredChatChannels(cfg *config.Config) []string {
+	out := make([]string, 0, 2)
+	if cfg.Channels.Telegram.Enabled && strings.TrimSpace(cfg.Channels.Telegram.Token) != "" {
+		out = append(out, "telegram")
+	}
+	if cfg.Channels.Discord.Enabled && strings.TrimSpace(cfg.Channels.Discord.Token) != "" {
+		out = append(out, "discord")
+	}
+	return out
+}
+
+func hasAnyWeakAllowlist(cfg *config.Config) bool {
+	if cfg.Channels.Telegram.Enabled && strings.TrimSpace(cfg.Channels.Telegram.Token) != "" && len(cfg.Channels.Telegram.AllowFrom) == 0 {
+		return true
+	}
+	if cfg.Channels.Discord.Enabled && strings.TrimSpace(cfg.Channels.Discord.Token) != "" && len(cfg.Channels.Discord.AllowFrom) == 0 {
+		return true
+	}
+	return false
 }
 
 func docsLink(anchor string) string {
