@@ -186,19 +186,21 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 	fmt.Println("Discord setup:")
 
 	fmt.Printf("  Help: %s\n", docsLink("#discord"))
-	fmt.Println("  We'll collect your allowlist FIRST, before asking for the bot token.")
-	fmt.Println("  Reason: if you paste a token and forget the allowlist, your bot may be open to anyone in a server.")
+	fmt.Println("  Security: allowlist is required (prevents the bot from responding to everyone).")
 
 	fmt.Println()
 	fmt.Println("Allowlist (required):")
-	fmt.Println("  Add your Discord user ID(s) (comma-separated).")
-	fmt.Println("  How to get it:")
-	fmt.Println("    1. Discord Settings -> Advanced -> Developer Mode (ON)")
-	fmt.Println("    2. Right-click your avatar -> Copy User ID")
+	fmt.Println("  Paste your Discord user ID(s) (comma-separated). Type 'help' for instructions.")
 
 	var allow []string
 	for {
 		raw := strings.TrimSpace(promptLine(r, "User IDs:"))
+		if strings.EqualFold(raw, "help") {
+			fmt.Println("  How to find your User ID:")
+			fmt.Println("    1. Discord Settings -> Advanced -> Developer Mode (ON)")
+			fmt.Println("    2. Right-click your avatar -> Copy User ID")
+			continue
+		}
 		allow = parseCSV(raw)
 		if len(allow) > 0 {
 			break
@@ -211,8 +213,7 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 
 	fmt.Println()
 	fmt.Println("Bot token:")
-	fmt.Println("  Tip: treat your bot token like a password. Do not paste it into chat logs.")
-	fmt.Println("  We'll save it to ~/.picoclaw/config.json and never print it back.")
+	fmt.Println("  Paste your bot token (it will be saved; never printed back).")
 
 	token := strings.TrimSpace(promptLine(r, "Paste bot token:"))
 	if token == "" {
