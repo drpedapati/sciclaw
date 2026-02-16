@@ -185,7 +185,10 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 	fmt.Println()
 	fmt.Println("Discord setup:")
 
-	token := strings.TrimSpace(promptLine(r, "Paste bot token:"))
+	fmt.Printf("  Help: %s\n", docsLink("#discord"))
+	fmt.Println("  Tip: treat your bot token like a password. Do not paste it into chat logs.")
+
+	token := strings.TrimSpace(promptLine(r, "Paste bot token (will be saved to ~/.picoclaw/config.json):"))
 	if token == "" {
 		return fmt.Errorf("token is required")
 	}
@@ -196,6 +199,12 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 	fmt.Println("  Tip: Enable Developer Mode -> right-click your avatar -> Copy User ID.")
 	raw := strings.TrimSpace(promptLine(r, "User IDs:"))
 	allow := parseCSV(raw)
+	if len(allow) == 0 {
+		fmt.Println("  Warning: empty allowlist means ANYONE can talk to your bot (not recommended).")
+		if !promptYesNo(r, "Continue without an allowlist?", false) {
+			return fmt.Errorf("aborted: allowlist is required for safe defaults")
+		}
+	}
 
 	cfg.Channels.Discord.Enabled = true
 	cfg.Channels.Discord.Token = token
@@ -205,10 +214,13 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 	}
 
 	fmt.Println()
-	fmt.Println("Discord checklist:")
-	fmt.Println("  1. In the Developer Portal, enable MESSAGE CONTENT INTENT for the bot.")
+	fmt.Printf("  Saved Discord settings to %s\n", configPath)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  1. In the Discord Developer Portal, enable MESSAGE CONTENT INTENT for the bot.")
 	fmt.Println("  2. Invite the bot to your server with proper scopes/permissions.")
-	fmt.Println("  3. Start sciClaw: sciclaw gateway")
+	fmt.Printf("  3. Start sciClaw: %s gateway\n", invokedCLIName())
+	fmt.Printf("  Help: %s\n", docsLink("#discord"))
 	return nil
 }
 
@@ -291,4 +303,3 @@ func sendTelegramTestMessage(bot *telego.Bot, chatID int64, text string) error {
 	})
 	return err
 }
-
