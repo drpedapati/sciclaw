@@ -141,6 +141,46 @@ jobs:
           echo "sha256=${source_sha256}" >> "${GITHUB_OUTPUT}"
           echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
 
+      - name: Download release binaries artifact
+        if: ${{ steps.tap-token.outputs.available == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: sciclaw-binaries
+          path: sciclaw-binaries
+
+      - name: Compute binary asset URLs and checksums
+        if: ${{ steps.tap-token.outputs.available == 'true' }}
+        id: assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag }}"
+          release_base="https://github.com/${{ github.repository }}/releases/download/${tag}"
+          sha_file="$(find sciclaw-binaries -type f -name 'sha256sums.txt' | head -n1)"
+
+          if [ -z "${sha_file}" ] || [ ! -f "${sha_file}" ]; then
+            echo "Missing checksum file in sciclaw-binaries artifact."
+            exit 1
+          fi
+
+          darwin_arm64_sha="$(awk '/[[:space:]]build\/sciclaw-darwin-arm64$/ {print $1}' "${sha_file}")"
+          linux_amd64_sha="$(awk '/[[:space:]]build\/sciclaw-linux-amd64$/ {print $1}' "${sha_file}")"
+          linux_arm64_sha="$(awk '/[[:space:]]build\/sciclaw-linux-arm64$/ {print $1}' "${sha_file}")"
+
+          for name in darwin_arm64_sha linux_amd64_sha linux_arm64_sha; do
+            if [ -z "${!name}" ]; then
+              echo "Missing checksum for ${name} in ${sha_file}"
+              exit 1
+            fi
+          done
+
+          echo "darwin_arm64_url=${release_base}/sciclaw-darwin-arm64" >> "${GITHUB_OUTPUT}"
+          echo "linux_amd64_url=${release_base}/sciclaw-linux-amd64" >> "${GITHUB_OUTPUT}"
+          echo "linux_arm64_url=${release_base}/sciclaw-linux-arm64" >> "${GITHUB_OUTPUT}"
+          echo "darwin_arm64_sha=${darwin_arm64_sha}" >> "${GITHUB_OUTPUT}"
+          echo "linux_amd64_sha=${linux_amd64_sha}" >> "${GITHUB_OUTPUT}"
+          echo "linux_arm64_sha=${linux_arm64_sha}" >> "${GITHUB_OUTPUT}"
+
       - name: Checkout tap repository
         if: ${{ steps.tap-token.outputs.available == 'true' }}
         uses: actions/checkout@v4
@@ -153,34 +193,83 @@ jobs:
         if: ${{ steps.tap-token.outputs.available == 'true' }}
         shell: bash
         run: |
-          url="${{ steps.source.outputs.url }}"
-          sha256="${{ steps.source.outputs.sha256 }}"
+          source_url="${{ steps.source.outputs.url }}"
+          source_sha256="${{ steps.source.outputs.sha256 }}"
           version="${{ steps.source.outputs.version }}"
+          darwin_arm64_url="${{ steps.assets.outputs.darwin_arm64_url }}"
+          linux_amd64_url="${{ steps.assets.outputs.linux_amd64_url }}"
+          linux_arm64_url="${{ steps.assets.outputs.linux_arm64_url }}"
+          darwin_arm64_sha="${{ steps.assets.outputs.darwin_arm64_sha }}"
+          linux_amd64_sha="${{ steps.assets.outputs.linux_amd64_sha }}"
+          linux_arm64_sha="${{ steps.assets.outputs.linux_arm64_sha }}"
           mkdir -p "tap/Formula"
           cat > "tap/${{ env.FORMULA_RELATIVE_PATH }}" <<EOF
           class Sciclaw < Formula
             desc "Autonomous paired scientist CLI forked from PicoClaw"
             homepage "https://github.com/drpedapati/sciclaw"
-            url "${url}"
-            sha256 "${sha256}"
             license "MIT"
 
-            depends_on "go" => :build
+            source_url = "${source_url}"
+            source_sha256 = "${source_sha256}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${darwin_arm64_url}"
+                sha256 "${darwin_arm64_sha}"
+              else
+                url source_url
+                sha256 source_sha256
+                depends_on "go" => :build
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "${linux_amd64_url}"
+                sha256 "${linux_amd64_sha}"
+              elsif Hardware::CPU.arm?
+                url "${linux_arm64_url}"
+                sha256 "${linux_arm64_sha}"
+              else
+                url source_url
+                sha256 source_sha256
+                depends_on "go" => :build
+                depends_on "gcc" => :build
+              end
+
+              depends_on "sciclaw-quarto"
+            end
+
             depends_on "irl"
             depends_on "ripgrep"
             depends_on "sciclaw-docx-review"
             depends_on "sciclaw-pubmed-cli"
 
-            on_linux do
-              depends_on "sciclaw-quarto"
+            resource "sciclaw-source" do
+              url source_url
+              sha256 source_sha256
             end
 
             def install
-              ldflags = "-s -w -X main.version=#{version}"
-              system "go", "build", *std_go_args(output: bin/"sciclaw", ldflags: ldflags), "./cmd/picoclaw"
+              if (buildpath/"cmd/picoclaw").exist?
+                ldflags = "-s -w -X main.version=#{version}"
+                system "go", "build", *std_go_args(output: bin/"sciclaw", ldflags: ldflags), "./cmd/picoclaw"
+              else
+                binary = Dir["sciclaw-*"].first
+                odie "prebuilt sciclaw binary not found in downloaded artifact" unless binary
+                bin.install binary => "sciclaw"
+              end
               (bin/"picoclaw").make_symlink bin/"sciclaw"
-              pkgshare.install "skills"
-              (pkgshare/"templates"/"workspace").install Dir["pkg/workspacetpl/templates/workspace/*.md"]
+
+              if (buildpath/"skills").exist?
+                pkgshare.install "skills"
+                (pkgshare/"templates"/"workspace").install Dir["pkg/workspacetpl/templates/workspace/*.md"]
+              else
+                resource("sciclaw-source").stage do
+                  pkgshare.install "skills"
+                  (pkgshare/"templates"/"workspace").install Dir["pkg/workspacetpl/templates/workspace/*.md"]
+                end
+              end
             end
 
             test do

@@ -1,4 +1,4 @@
-.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream
+.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch
 
 # Build variables
 PRIMARY_BINARY_NAME=sciclaw
@@ -10,6 +10,10 @@ MAIN_GO=$(CMD_DIR)/main.go
 
 # Version
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+RELEASE_REPO?=drpedapati/sciclaw
+RELEASE_TAG?=
+RELEASE_PRERELEASE?=false
+RELEASE_DRAFT?=false
 BUILD_TIME=$(shell date +%FT%T%z)
 GO_VERSION=$(shell $(GO) version | awk '{print $$3}')
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.goVersion=$(GO_VERSION)"
@@ -185,6 +189,27 @@ sync-upstream:
 	@echo "Merging upstream/main..."
 	@git merge upstream/main --no-edit
 	@echo "Sync complete."
+
+## release-dispatch: Trigger GitHub Create Tag and Release workflow (binaries + Homebrew tap update)
+release-dispatch:
+	@if [ -z "$(RELEASE_TAG)" ]; then \
+		echo "Error: RELEASE_TAG is required."; \
+		echo "Example: make release-dispatch RELEASE_TAG=v0.1.26"; \
+		exit 1; \
+	fi
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "Error: GitHub CLI (gh) is required."; \
+		exit 1; \
+	fi
+	@echo "Triggering release workflow in $(RELEASE_REPO) for tag $(RELEASE_TAG)..."
+	@gh workflow run release.yml \
+		-R $(RELEASE_REPO) \
+		-f tag=$(RELEASE_TAG) \
+		-f prerelease=$(RELEASE_PRERELEASE) \
+		-f draft=$(RELEASE_DRAFT)
+	@echo "Release workflow queued."
+	@echo "Watch with:"
+	@echo "  gh run list -R $(RELEASE_REPO) --workflow release.yml --limit 5"
 
 ## help: Show this help message
 help:
