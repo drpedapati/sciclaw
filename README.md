@@ -86,8 +86,7 @@ sciclaw onboard --yes
 Or authenticate without editing config:
 
 ```bash
-sciclaw auth login --provider openai          # OAuth (browser)
-sciclaw auth login --provider openai --device-code  # OAuth (headless)
+sciclaw auth login --provider openai          # OAuth (device code; works on local + headless)
 sciclaw auth login --provider anthropic       # Token paste
 ```
 

@@ -681,7 +681,7 @@
 }</code></pre>
 
         <h3>3. Authenticate (alternative to API keys)</h3>
-        <pre><code><span class="hl-comment"># OpenAI OAuth (opens browser)</span>
+        <pre><code><span class="hl-comment"># OpenAI OAuth (device code)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
 
 <span class="hl-comment"># Anthropic token paste</span>
@@ -723,7 +723,7 @@
         <ol start="3">
           <li><strong>Connect a provider</strong> (OAuth for ChatGPT subscribers, or API keys)</li>
         </ol>
-        <pre><code><span class="hl-comment"># OpenAI OAuth (opens a browser)</span>
+        <pre><code><span class="hl-comment"># OpenAI OAuth (device code)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
 
 <span class="hl-comment"># Optional: PubMed rate limits (the onboard wizard can save this too)</span>
@@ -838,11 +838,8 @@
         <h3>Authentication</h3>
         <p>Two paths: paste an API key into <code>config.json</code>, or use the auth commands for OAuth/token flows.</p>
 
-        <pre><code><span class="hl-comment"># OpenAI OAuth (browser)</span>
+        <pre><code><span class="hl-comment"># OpenAI OAuth (device code; default)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
-
-<span class="hl-comment"># OpenAI OAuth (headless / device code)</span>
-<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai <span class="hl-flag">--device-code</span>
 
 <span class="hl-comment"># Anthropic token paste</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> anthropic

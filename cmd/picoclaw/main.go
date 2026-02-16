@@ -391,11 +391,10 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 		}
 	}
 
-	// OpenAI OAuth login
+	// OpenAI OAuth login (device code only)
 	fmt.Printf("  Help (auth): %s\n", docsLink("#authentication"))
-	if promptYesNo(r, "Login to OpenAI via browser OAuth now (ChatGPT subscription optional)?", false) {
-		useDeviceCode := promptYesNo(r, "Use device code flow (headless/SSH)?", false)
-		if err := onboardAuthLoginOpenAI(useDeviceCode); err != nil {
+	if promptYesNo(r, "Login to OpenAI now using device code (recommended)?", false) {
+		if err := onboardAuthLoginOpenAI(); err != nil {
 			fmt.Printf("  Login failed: %v\n", err)
 		}
 	}
@@ -443,16 +442,10 @@ func promptLine(r *bufio.Reader, question string) string {
 	return strings.TrimRight(line, "\r\n")
 }
 
-func onboardAuthLoginOpenAI(useDeviceCode bool) error {
+func onboardAuthLoginOpenAI() error {
 	cfg := auth.OpenAIOAuthConfig()
 
-	var cred *auth.AuthCredential
-	var err error
-	if useDeviceCode {
-		cred, err = auth.LoginDeviceCode(cfg)
-	} else {
-		cred, err = auth.LoginBrowser(cfg)
-	}
+	cred, err := auth.LoginDeviceCode(cfg)
 	if err != nil {
 		return err
 	}
@@ -1267,17 +1260,16 @@ func authCmd() {
 func authHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nAuth commands:")
-	fmt.Println("  login       Login via OAuth or paste token")
+	fmt.Println("  login       Login via device code or paste token")
 	fmt.Println("  logout      Remove stored credentials")
 	fmt.Println("  status      Show current auth status")
 	fmt.Println()
 	fmt.Println("Login options:")
 	fmt.Println("  --provider <name>    Provider to login with (openai, anthropic)")
-	fmt.Println("  --device-code        Use device code flow (for headless environments)")
+	fmt.Println("  --device-code        Compatibility flag (OpenAI already uses device code by default)")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Printf("  %s auth login --provider openai\n", commandName)
-	fmt.Printf("  %s auth login --provider openai --device-code\n", commandName)
 	fmt.Printf("  %s auth login --provider anthropic\n", commandName)
 	fmt.Printf("  %s auth logout --provider openai\n", commandName)
 	fmt.Printf("  %s auth status\n", commandName)
@@ -1321,14 +1313,12 @@ func authLoginCmd() {
 func authLoginOpenAI(useDeviceCode bool) {
 	cfg := auth.OpenAIOAuthConfig()
 
-	var cred *auth.AuthCredential
-	var err error
-
-	if useDeviceCode {
-		cred, err = auth.LoginDeviceCode(cfg)
-	} else {
-		cred, err = auth.LoginBrowser(cfg)
+	if !useDeviceCode {
+		fmt.Println("Note: OpenAI login now uses device code flow by default.")
+		fmt.Println("Tip: open https://auth.openai.com/codex/device and enter the code when prompted.")
 	}
+
+	cred, err := auth.LoginDeviceCode(cfg)
 
 	if err != nil {
 		fmt.Printf("Login failed: %v\n", err)
