@@ -1,0 +1,10 @@
+tags
+*.pprof
+*.fasthttp.br
+*.fasthttp.zst
+*.fasthttp.gz
+.idea
+.vscode
+.DS_Store
+vendor/
+testdata/fuzz

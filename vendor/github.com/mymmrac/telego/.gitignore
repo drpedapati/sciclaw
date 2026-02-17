@@ -1,0 +1,14 @@
+# IDE folders
+.idea/
+.vscode/
+.DS_Store/
+
+# Binaries & tmp folders
+bin/
+.task/
+
+# Envierment files
+.env
+
+# Generated files
+*.generated

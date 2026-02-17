@@ -1,0 +1,22 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+*.out
+*.log
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+.idea
+# 用于存储demo中使用的 token，不提交到仓库
+examples/apitest/config.yaml.demo
+config.yaml
+demo
+
+.DS_Store

@@ -1,0 +1,175 @@
+version: "3"
+
+silent: true
+
+tasks:
+  default:
+    desc: "Show available tasks"
+    cmds:
+      - task --list-all
+
+  pre-commit:
+    desc: "Run tests, linter and build examples"
+    cmds:
+      - go mod tidy
+      - task: generate
+      - task: fmt
+      - task: lint
+      - task: test
+      - task: build:lib
+      - task: build:examples
+
+  fmt:
+    desc: "Run formatters"
+    deps: [ install:lint ]
+    cmds:
+      - golangci-lint fmt
+
+  lint:
+    desc: "Run golangci-lint"
+    deps: [ install:lint ]
+    cmds:
+      - golangci-lint run
+
+  lint:list:
+    desc: "Run golangci-lint linters (print enabled & disabled linters)"
+    deps: [ install:lint ]
+    cmds:
+      - golangci-lint linters
+
+  test:
+    desc: "Run tests"
+    cmds:
+      - mkdir -p bin
+      - |
+        go test -coverprofile bin/cover.out \
+          $(go list ./... | grep -v /examples | grep -v /internal | grep -v /mock)
+    sources:
+      - ./**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - bin/cover.out
+
+  test:all-tags:
+    desc: "Run tests for all tags"
+    cmds:
+      - mkdir -p bin
+      - |
+        go test -coverprofile bin/cover.out \
+          $(go list ./... | grep -v /examples | grep -v /internal | grep -v /mock)
+      - |
+        go test -tags sonic -coverprofile bin/cover-sonic.out \
+          $(go list ./... | grep -v /examples | grep -v /internal | grep -v /mock)
+      - |
+        go test -tags stdjson -coverprofile bin/cover-stdjson.out \
+          $(go list ./... | grep -v /examples | grep -v /internal | grep -v /mock)
+    sources:
+      - ./**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - bin/cover.out
+      - bin/cover-sonic.out
+      - bin/cover-stdjson.out
+
+  test:cover:
+    desc: "Run tests & show coverage"
+    deps:
+      - test
+    cmds:
+      - go tool cover -func bin/cover.out
+
+  test:race:
+    desc: "Run tests with a race flag"
+    cmds:
+      - go test -race -count=8 -failfast $(go list ./... | grep -v /examples | grep -v /internal | grep -v /mock)
+
+  test:bench:
+    desc: "Run benchmarks"
+    cmds:
+      - go test -bench=. -benchtime=30s -benchmem
+
+  vulnerability:
+    desc: "Check for vulnerabilities"
+    deps: [ install:govulncheck ]
+    cmds:
+      - govulncheck -show verbose ./...
+
+  build:lib:
+    desc: "Build library"
+    cmds:
+      - go build -o ./bin ./...
+
+  build:examples:
+    desc: "Build examples"
+    dir: ./examples
+    cmds:
+      - go build -o ../bin/ ./...
+
+  update:dependencies:
+    desc: "Update dependencies"
+    cmds:
+      - go mod tidy
+      - go list -f "{{"{{if not (or .Main .Indirect)}}{{.Path}}{{end}}"}}" -m all | xargs go get
+      - go mod tidy
+
+  update:dependencies:examples:
+    desc: "Update dependencies for examples"
+    dir: ./examples
+    cmds:
+      - go mod tidy
+      - go list -f "{{"{{if not (or .Main .Indirect)}}{{.Path}}{{end}}"}}" -m all | xargs go get
+      - go mod tidy
+
+  generate:
+    desc: "Generate (used for mock generation)"
+    deps: [ install:mock ]
+    cmds:
+      - go generate ./...
+
+  generator:
+    desc: "Run specific generation"
+    dir: ./internal/generator
+    cmds:
+      - go run . {{.CLI_ARGS}}
+
+  generator:all:
+    desc: "Run all generators"
+    cmds:
+      - task: generator
+        vars:
+          CLI_ARGS: types types-tests types-setters types-setters-tests methods methods-tests methods-setters methods-setters-tests
+
+  generator:clean-up:
+    desc: "Remove generated files"
+    cmds:
+      - rm *.generated
+
+  install:
+    desc: "Install all tools"
+    deps:
+      - install:lint
+      - install:mock
+      - install:govulncheck
+
+  install:lint:
+    desc: "Install golangci-lint"
+    cmds:
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+    status:
+      - command -v golangci-lint
+
+  install:mock:
+    desc: "Install mockgen"
+    cmds:
+      - go install go.uber.org/mock/mockgen@latest
+    status:
+      - command -v mockgen
+
+  install:govulncheck:
+    desc: "Install govulncheck"
+    cmds:
+      - go install golang.org/x/vuln/cmd/govulncheck@latest
+    status:
+      - command -v govulncheck

@@ -1,0 +1,148 @@
+version: "2"
+
+linters:
+  default: all
+  disable:
+    - containedctx
+    - cyclop
+    - depguard
+    - dupl
+    - dupword
+    - err113
+    - exhaustruct
+    - funcorder
+    - gochecknoglobals
+    - godot
+    - intrange
+    - ireturn
+    - nlreturn
+    - noctx
+    - noinlineerr
+    - nonamedreturns
+    - paralleltest
+    - tagliatelle
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - wsl_v5
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    funlen:
+      lines: 120
+      statements: 40
+    gocognit:
+      min-complexity: 25
+    gocyclo:
+      min-complexity: 20
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    lll:
+      line-length: 120
+      tab-width: 4
+    misspell:
+      locale: US
+    mnd:
+      checks:
+        - argument
+        - assign
+        - case
+        - condition
+        - operation
+        - return
+    nakedret:
+      max-func-lines: 3
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: add-constant
+          disabled: true
+        - name: argument-limit
+          arguments:
+            - 7
+          severity: warning
+        - name: banned-characters
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: comment-spacings
+          arguments:
+            - nolint
+          severity: warning
+        - name: cyclomatic
+          disabled: true
+        - name: file-header
+          disabled: true
+        - name: function-result-limit
+          arguments:
+            - 3
+          severity: warning
+        - name: function-length
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: modifies-value-receiver
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: unused-receiver
+          disabled: true
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - lll
+        source: '^//go:generate '
+      - linters:
+          - funlen
+          - maintidx
+          - revive
+          - gocognit
+          - gocyclo
+        path: _test\.go$
+      - linters:
+          - funlen
+        path: types.go
+      - linters:
+          - lll
+        path: methods.go
+    paths:
+      - mock
+      - internal
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule
+      custom-order: true
+    gofmt:
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+        - pattern: "a[b:len(a)]"
+          replacement: "a[b:]"
+  exclusions:
+    generated: lax
+    paths:
+      - mock
+      - internal
