@@ -108,7 +108,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   update-homebrew-tap:
-    name: Update Homebrew Tap Formula (PR for Bottles)
+    name: Update Homebrew Tap Formula
     needs: [create-tag, build-binaries, create-release]
     if: ${{ !inputs.prerelease && !inputs.draft }}
     runs-on: ubuntu-latest
@@ -186,8 +186,8 @@ jobs:
             end
 
             test do
-              assert_match "Usage:", shell_output("#{bin}/sciclaw --help")
-              assert_match "Usage:", shell_output("#{bin}/picoclaw --help")
+              assert_match "Usage:", shell_output("#{bin}/sciclaw 2>&1", 1)
+              assert_match "Usage:", shell_output("#{bin}/picoclaw 2>&1", 1)
               assert_match "v#{version}", shell_output("#{bin}/sciclaw --version")
               assert_match "ripgrep", shell_output("#{Formula["ripgrep"].opt_bin}/rg --version")
               assert_match "irl", shell_output("#{Formula["irl"].opt_bin}/irl --version 2>&1")
@@ -205,27 +205,17 @@ jobs:
           end
           EOF
 
-      - name: Open pull request in tap
+      - name: Commit and push formula update
         if: ${{ steps.tap-token.outputs.available == 'true' }}
-        id: cpr
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: tap
-          commit-message: "sciclaw ${{ inputs.tag }}"
-          branch: sciclaw/${{ inputs.tag }}
-          delete-branch: true
-          base: main
-          title: "sciclaw ${{ inputs.tag }}"
-          body: |
-            Automated formula bump for `${{ inputs.tag }}` from `drpedapati/sciclaw`.
-
-            Next step after checks pass:
-            - Add label `pr-pull` to this PR to build/publish bottles and update `bottle do` metadata.
-
-      - name: PR summary
-        if: ${{ steps.tap-token.outputs.available == 'true' && steps.cpr.outputs.pull-request-number != '' }}
         shell: bash
         run: |
-          echo "Opened Homebrew tap PR #${{ steps.cpr.outputs.pull-request-number }}"
-          echo "${{ steps.cpr.outputs.pull-request-url }}"
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- "${{ env.FORMULA_RELATIVE_PATH }}"; then
+            echo "No tap formula changes detected."
+            exit 0
+          fi
+          git add "${{ env.FORMULA_RELATIVE_PATH }}"
+          git commit -m "sciclaw ${{ inputs.tag }}"
+          git push origin main
