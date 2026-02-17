@@ -21,14 +21,21 @@ import (
 
 // authHTTPClient returns an HTTP client tuned for auth requests in
 // constrained network environments (VMs, NAT, restrictive firewalls).
-// It uses a shorter TLS handshake timeout and per-request deadline so
-// transient failures surface quickly and can be retried.
+//
+// Key: MaxVersion is capped at TLS 1.2. Go's TLS 1.3 Client Hello is
+// rejected by Cloudflare-fronted endpoints (auth.openai.com) when sent
+// through certain NAT/virtualisation stacks (Multipass, Hyper-V, some
+// Docker networks). TLS 1.2 handshakes are smaller and pass cleanly.
 func authHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			TLSHandshakeTimeout: 10 * time.Second,
-			TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				MaxVersion: tls.VersionTLS12,
+			},
+			ForceAttemptHTTP2: false,
 			DialContext: (&net.Dialer{
 				Timeout:   10 * time.Second,
 				KeepAlive: 30 * time.Second,
