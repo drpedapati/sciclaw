@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demos | sciClaw</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-dot" aria-hidden="true"></span>
+          sciClaw
+        </a>
+        <nav class="nav-links">
+          <a class="util" href="index.html">&larr; Home</a>
+          <a class="util" href="docs.html">Documentation</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section>
+        <h2>See it in action</h2>
+        <p class="subhead">Send a message. Get the work done.</p>
+
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="lit">Literature search</button>
+          <button class="tab-btn" data-tab="draft">Manuscript draft</button>
+          <button class="tab-btn" data-tab="review">Document review</button>
+        </div>
+
+        <div id="tab-lit" class="tab-panel active">
+          <div class="chat-demo">
+            <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#229ED9"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.62 3.72-.53.36-1.01.54-1.44.53-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.74 3.99-1.74 6.66-2.89 8.01-3.44 3.81-1.58 4.6-1.86 5.12-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/></svg>
+              <span style="font-family:var(--mono);font-size:12px;color:#229ED9;font-weight:600;">Telegram</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">&middot; sciClaw Bot</span>
+            </div>
+            <div class="chat-msg user">
+              <div class="chat-label">You</div>
+              <div class="chat-bubble">What pathways are implicated in ALS progression?</div>
+            </div>
+            <div class="chat-msg agent">
+              <div class="chat-label"><span class="chat-avatar"></span> sciClaw</div>
+              <div class="chat-bubble">
+                <strong>Literature search results (PubMed, 2020&ndash;2025):</strong><br><br>
+                1. <strong>TDP-43 proteinopathy</strong> &mdash; Cytoplasmic mislocalization of TDP-43 in &gt;97% of ALS cases. RNA processing disruption leads to downstream neurodegeneration. <em>(Neumann et al., 2023; PMID 37284100)</em><br><br>
+                2. <strong>SOD1 / oxidative stress</strong> &mdash; Gain-of-function SOD1 mutations cause mitochondrial dysfunction and ROS accumulation in motor neurons. <em>(Rosen et al., 2022; PMID 36198432)</em><br><br>
+                3. <strong>C9orf72 repeat expansion</strong> &mdash; Hexanucleotide repeat in C9orf72 accounts for ~40% of familial ALS. Dipeptide repeat proteins impair nucleocytoplasmic transport. <em>(DeJesus-Hernandez et al., 2021; PMID 34892710)</em><br><br>
+                <em style="color:var(--accent);">Found 47 articles. Full citation list saved to ~/sciclaw/sessions/.</em>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-draft" class="tab-panel">
+          <div class="chat-demo">
+            <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+              <span style="font-family:var(--mono);font-size:12px;color:#5865F2;font-weight:600;">Discord</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">&middot; #research</span>
+            </div>
+            <div class="chat-msg user">
+              <div class="chat-label">You</div>
+              <div class="chat-bubble">
+                Draft a methods section for our ERP correlation study. 32 participants, BioSemi 64-channel, Spearman correlations between P300 at Pz and ALSFRS-R decline, BH-corrected at FDR 0.05. Use the attached protocol and our lab style guide.
+                <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
+                  <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;background:#e8edf3;color:#475569;padding:3px 8px;border-radius:6px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    erp-protocol.pdf
+                  </span>
+                  <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;background:#e8edf3;color:#475569;padding:3px 8px;border-radius:6px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    lab-style-guide.md
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="chat-msg agent">
+              <div class="chat-label"><span class="chat-avatar"></span> sciClaw</div>
+              <div class="chat-bubble">
+                <strong>Methods</strong><br><br>
+                <strong>Participants.</strong> Thirty-two right-handed adults (18 female; mean age = 24.3, SD = 3.1) participated after providing written informed consent approved by the institutional review board (Protocol #2024-0187).<br><br>
+                <strong>ERP Recording.</strong> Continuous EEG was recorded from 64 Ag/AgCl electrodes (BioSemi ActiveTwo; 512 Hz). Data were re-referenced to bilateral mastoids and band-pass filtered offline (0.1&ndash;30 Hz, zero-phase Butterworth). Epochs were time-locked to stimulus onset (&minus;100 to 800 ms) and baseline-corrected.<br><br>
+                <strong>Statistical Analysis.</strong> Spearman rank correlations were computed between P300 amplitude at Pz and ALSFRS-R decline rate (points/month). Multiple comparisons were corrected using the Benjamini&ndash;Hochberg procedure (FDR = 0.05). Effect sizes are reported as <em>r<sub>s</sub></em>.<br><br>
+                <em style="color:var(--accent);">Draft written to ~/sciclaw/methods-erp-correlation.docx &middot; Formatted per lab-style-guide.md</em>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-review" class="tab-panel">
+          <div class="chat-demo">
+            <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#229ED9"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.62 3.72-.53.36-1.01.54-1.44.53-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.74 3.99-1.74 6.66-2.89 8.01-3.44 3.81-1.58 4.6-1.86 5.12-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/></svg>
+              <span style="font-family:var(--mono);font-size:12px;color:#229ED9;font-weight:600;">Telegram</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">&middot; sciClaw Bot</span>
+            </div>
+            <div class="chat-msg user">
+              <div class="chat-label">You</div>
+              <div class="chat-bubble">
+                Review the discussion section. Tighten causal claims and check citations.
+                <div style="margin-top:8px;">
+                  <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;background:#e8edf3;color:#475569;padding:3px 8px;border-radius:6px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    manuscript.docx
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="chat-msg agent">
+              <div class="chat-label"><span class="chat-avatar"></span> sciClaw</div>
+              <div class="chat-bubble">
+                <strong>Review complete.</strong> Open in Word to accept or reject:<br><br>
+                <div style="background:#fff;border:1px solid #d1d5db;border-radius:6px;padding:14px 16px;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.8;color:#1a1a1a;position:relative;">
+                  <div style="font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin-bottom:10px;font-family:var(--mono);">
+                    <svg width="14" height="14" viewBox="0 0 512 512" style="vertical-align:-2px;margin-right:4px;"><path fill="#2B7CD3" d="M490.17,19.2H140.9c-12.05,0-21.83,9.72-21.83,21.7v96.7L512,137.6V40.9C512,28.91,502.23,19.2,490.17,19.2z"/><path fill="#185ABD" d="M119.07,256v118.4L512,374.4V256H119.07z"/><path fill="#103F91" d="M140.9,492.8h349.28c12.05,0,21.83-9.72,21.83-21.7v-96.7H119.07v96.7C119.07,483.09,128.84,492.8,140.9,492.8z"/></svg>
+                    manuscript-reviewed.docx &mdash; 7 changes, 3 comments
+                  </div>
+                  <p style="margin:0 0 10px;">
+                    <span style="text-decoration:line-through;color:#c00;background:#fde8e8;">These results demonstrate</span><span style="color:#2563eb;background:#dbeafe;"> These findings suggest</span> that P300 attenuation correlates with disease progression in ALS, consistent with prior reports of cortical hyperexcitability.
+                    <span style="display:inline-block;background:#fff7c2;border:1px solid #f0d000;border-radius:3px;font-size:10px;padding:1px 5px;margin-left:4px;color:#92600a;font-family:var(--mono);vertical-align:middle;cursor:default;" title="sciClaw: Consider acknowledging the sample size limitation (N=32) here">&#128172; SC1</span>
+                  </p>
+                  <p style="margin:0 0 10px;">
+                    The observed effect (<em>r<sub>s</sub></em> = 0.47) <span style="text-decoration:line-through;color:#c00;background:#fde8e8;">confirms</span><span style="color:#2563eb;background:#dbeafe;"> is consistent with</span> the dose&ndash;response relationship reported by Bhatt et al.<span style="color:#2563eb;background:#dbeafe;"> (2023, PMID 38201455)</span>
+                    <span style="display:inline-block;background:#fff7c2;border:1px solid #f0d000;border-radius:3px;font-size:10px;padding:1px 5px;margin-left:4px;color:#92600a;font-family:var(--mono);vertical-align:middle;cursor:default;" title="sciClaw: This effect size is smaller than the meta-analytic estimate (r=0.61) — worth noting in the limitations">&#128172; SC2</span>
+                  </p>
+                  <p style="margin:0;">
+                    <span style="text-decoration:line-through;color:#c00;background:#fde8e8;">This proves that ERP biomarkers can predict clinical decline.</span><span style="color:#2563eb;background:#dbeafe;"> These data provide preliminary evidence that ERP biomarkers may index clinical decline, though replication in larger cohorts is needed.</span>
+                    <span style="display:inline-block;background:#fff7c2;border:1px solid #f0d000;border-radius:3px;font-size:10px;padding:1px 5px;margin-left:4px;color:#92600a;font-family:var(--mono);vertical-align:middle;cursor:default;" title="sciClaw: The original claim is not supported by a cross-sectional design — hedged to match study limitations">&#128172; SC3</span>
+                  </p>
+                </div>
+                <div style="margin-top:8px;font-size:12px;color:var(--muted);">
+                  <span style="display:inline-block;width:10px;height:10px;background:#fde8e8;border:1px solid #c00;border-radius:2px;vertical-align:middle;margin-right:2px;"></span> Deletion
+                  &nbsp;&nbsp;
+                  <span style="display:inline-block;width:10px;height:10px;background:#dbeafe;border:1px solid #2563eb;border-radius:2px;vertical-align:middle;margin-right:2px;"></span> Insertion
+                  &nbsp;&nbsp;
+                  <span style="display:inline-block;width:10px;height:10px;background:#fff7c2;border:1px solid #f0d000;border-radius:2px;vertical-align:middle;margin-right:2px;"></span> Comment
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+          document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+      });
+    </script>
+  </body>
+</html>

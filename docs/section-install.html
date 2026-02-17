@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Install | sciClaw</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-dot" aria-hidden="true"></span>
+          sciClaw
+        </a>
+        <nav class="nav-links">
+          <a class="util" href="index.html">&larr; Home</a>
+          <a class="util" href="docs.html">Documentation</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section id="install">
+        <h2>Get started in four steps</h2>
+        <p class="subhead">Works on macOS and Linux. No coding required.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <h3>Install</h3>
+              <p>One command installs sciClaw and all companion tools (ripgrep, pandoc, Quarto, IRL, docx-review, pubmed-cli). Pre-compiled binaries &mdash; no build step.</p>
+              <div class="step-code">
+                <code>brew tap drpedapati/tap && brew install sciclaw</code>
+                <button class="copy-btn" onclick="copyText(this, 'brew tap drpedapati/tap && brew install sciclaw')">Copy</button>
+              </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                No Homebrew? Download binaries from the <a href="https://github.com/drpedapati/sciclaw/releases" style="color:var(--accent);">releases page</a>. macOS: also install Quarto with <code>brew install --cask quarto</code>.
+              </p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <h3>Set up your workspace</h3>
+              <p>Creates your <code>~/sciclaw</code> folder with skills, templates, and configuration. The interactive wizard walks you through authentication and optional tools.</p>
+              <div class="step-code">
+                <code>sciclaw onboard</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw onboard')">Copy</button>
+              </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                Use <code>sciclaw onboard --yes</code> to skip the wizard and accept defaults.
+              </p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <h3>Log in with your ChatGPT account</h3>
+              <p>Sign in with the same OpenAI account you use for ChatGPT. Opens a device code flow &mdash; no API key needed.</p>
+              <div class="step-code">
+                <code>sciclaw auth login --provider openai</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw auth login --provider openai')">Copy</button>
+              </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                Or use any supported provider: Anthropic, Google Gemini, OpenRouter, Azure, DeepSeek, Groq. See <a href="docs.html#authentication" style="color:var(--accent);">authentication docs</a>.
+              </p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <h3>Connect a chat app</h3>
+              <p>Talk to sciClaw from Telegram or Discord. The setup wizard guides you through creating a bot and linking it.</p>
+              <div class="step-code">
+                <code>sciclaw channels setup telegram</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw channels setup telegram')">Copy</button>
+              </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                Start the gateway: <code>sciclaw service install && sciclaw service start</code> (runs in background via launchd/systemd). Or <code>sciclaw gateway</code> in a terminal. CLI also works: <code>sciclaw agent -m "your question"</code>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Providers ── -->
+      <section>
+        <h2>Works with your preferred AI</h2>
+        <p class="subhead">Switch between providers and models anytime. You bring your own API key.</p>
+        <div class="provider-grid">
+          <span class="provider-chip">OpenAI</span>
+          <span class="provider-chip">Anthropic</span>
+          <span class="provider-chip">Google Gemini</span>
+          <span class="provider-chip">OpenRouter</span>
+          <span class="provider-chip">DeepSeek</span>
+          <span class="provider-chip">Groq</span>
+        </div>
+        <p style="margin:14px 0 0;color:var(--muted);font-size:13px;font-family:var(--mono);">
+          Switch models: sciclaw models set anthropic/claude-opus-4-6
+        </p>
+      </section>
+    </main>
+
+    <script>
+      function copyText(btn, text) {
+        navigator.clipboard.writeText(text).then(function() {
+          var orig = btn.textContent;
+          btn.textContent = 'Copied';
+          setTimeout(function() { btn.textContent = orig; }, 1500);
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workspace | sciClaw</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-dot" aria-hidden="true"></span>
+          sciClaw
+        </a>
+        <nav class="nav-links">
+          <a class="util" href="index.html">&larr; Home</a>
+          <a class="util" href="docs.html">Documentation</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section>
+        <h2>One folder. Everything in it.</h2>
+        <p class="subhead">Drafts, session logs, skills, audit records &mdash; all in <code>~/sciclaw</code>. Open it in Finder, back it up with Git, or hand it to a collaborator.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
+          <pre style="margin:0;padding:16px 18px;border-radius:10px;background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:13px;line-height:1.7;overflow-x:auto;"><code>~/sciclaw/
+├── sessions/       <span style="color:#64748b;"># Every conversation, searchable</span>
+├── memory/         <span style="color:#64748b;"># Long-term notes across sessions</span>
+├── skills/         <span style="color:#64748b;"># 13 built-in + your custom skills</span>
+│   ├── scientific-writing/
+│   ├── pubmed-cli/
+│   ├── docx-review/
+│   └── <span style="color:#64748b;">… 10 more</span>
+├── hooks/          <span style="color:#64748b;"># Event audit log (JSONL)</span>
+├── cron/           <span style="color:#64748b;"># Scheduled jobs</span>
+├── state/          <span style="color:#64748b;"># Runtime state</span>
+├── AGENTS.md       <span style="color:#64748b;"># Agent behavior rules</span>
+├── HOOKS.md        <span style="color:#64748b;"># Lifecycle hook instructions</span>
+├── IDENTITY.md     <span style="color:#64748b;"># Lab identity &amp; voice</span>
+├── MEMORY.md       <span style="color:#64748b;"># Persistent memory template</span>
+├── SOUL.md         <span style="color:#64748b;"># Guardrails &amp; ethics</span>
+├── TOOLS.md        <span style="color:#64748b;"># Tool usage guidelines</span>
+└── USER.md         <span style="color:#64748b;"># Your preferences</span></code></pre>
+          <div>
+            <div class="card" style="margin-bottom:10px;">
+              <h3 style="font-size:14px;">Reproducible by default</h3>
+              <p>Every tool call, every LLM response, every decision is logged with timestamps. Six months from now, you can trace exactly which analysis produced which result.</p>
+            </div>
+            <div class="card" style="margin-bottom:10px;">
+              <h3 style="font-size:14px;">Portable and auditable</h3>
+              <p>The workspace is plain files &mdash; Markdown, JSON, JSONL. No database, no proprietary format. Copy it, <code>git init</code> it, share it with reviewers.</p>
+            </div>
+            <div class="card">
+              <h3 style="font-size:14px;">You control the agent</h3>
+              <p>Edit <code>AGENTS.md</code> to change behavior, <code>SOUL.md</code> to set guardrails, <code>USER.md</code> to teach it your preferences. Plain text, version-controlled.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
