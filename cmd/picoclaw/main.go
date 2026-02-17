@@ -410,6 +410,23 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 		}
 	}
 
+	// TinyTeX for PDF rendering
+	if quartoPath, err := exec.LookPath("quarto"); err == nil {
+		if !isTinyTeXInstalled(quartoPath) {
+			if promptYesNo(r, "Install TinyTeX for PDF rendering (recommended, ~250 MB)?", false) {
+				fmt.Println("  Installing TinyTeX via Quarto...")
+				cmd := exec.Command(quartoPath, "install", "tinytex", "--no-prompt")
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				if err := cmd.Run(); err != nil {
+					fmt.Printf("  TinyTeX install failed: %v\n", err)
+				} else {
+					fmt.Println("  TinyTeX installed.")
+				}
+			}
+		}
+	}
+
 	// Chat channels (messaging apps)
 	fmt.Printf("  Help (channels): %s\n", docsLink("#telegram"))
 	if promptYesNo(r, "Set up messaging apps (Telegram/Discord) now?", false) {
@@ -481,6 +498,20 @@ func runSelfAgentOneShot(message string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
+}
+
+func isTinyTeXInstalled(quartoPath string) bool {
+	out, err := exec.Command(quartoPath, "list", "tools").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "tinytex" && fields[1] != "Not" {
+			return true
+		}
+	}
+	return false
 }
 
 func onboardHelp() {
