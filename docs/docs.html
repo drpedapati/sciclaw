@@ -692,32 +692,18 @@
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
         <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, and installs baseline scientific skills. In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip all prompts.</p>
 
-        <h3>2. Configure a provider</h3>
-        <p>Edit <code>~/.picoclaw/config.json</code> with your LLM provider credentials:</p>
-        <pre><code>{
-  <span class="hl-key">"agents"</span>: {
-    <span class="hl-key">"defaults"</span>: {
-      <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.2"</span>,
-      <span class="hl-key">"max_tokens"</span>: 8192,
-      <span class="hl-key">"temperature"</span>: 0.7
-    }
-  },
-  <span class="hl-key">"providers"</span>: {
-    <span class="hl-key">"openrouter"</span>: {
-      <span class="hl-key">"api_key"</span>: <span class="hl-string">"sk-or-v1-..."</span>
-    }
-  }
+        <h3>2. Connect a provider</h3>
+        <p><strong>Easiest:</strong> If you have a ChatGPT Plus/Team subscription, log in with device code &mdash; no API key needed:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai</code></pre>
+        <p>A link and short code appear. Open the link in any browser, enter the code, and approve. Done.</p>
+
+        <p><strong>Alternative:</strong> Use an API key from any supported provider (OpenRouter, Anthropic, Azure, Groq, etc.) by editing <code>~/.picoclaw/config.json</code>:</p>
+        <pre><code><span class="hl-key">"providers"</span>: {
+  <span class="hl-key">"openrouter"</span>: { <span class="hl-key">"api_key"</span>: <span class="hl-string">"sk-or-v1-..."</span> }
 }</code></pre>
 
-        <h3>3. Authenticate (alternative to API keys)</h3>
-        <pre><code><span class="hl-comment"># OpenAI OAuth (device code)</span>
-<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
-
-<span class="hl-comment"># Anthropic token paste</span>
-<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> anthropic
-
-<span class="hl-comment"># Check status</span>
-<span class="hl-cmd">sciclaw</span> auth status</code></pre>
+        <h3>3. Verify</h3>
+        <pre><code><span class="hl-cmd">sciclaw</span> auth status</code></pre>
 
         <h3>4. Chat</h3>
         <pre><code><span class="hl-comment"># One-shot</span>
@@ -750,9 +736,9 @@
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
 
         <ol start="3">
-          <li><strong>Connect a provider</strong> (OAuth for ChatGPT subscribers, or API keys)</li>
+          <li><strong>Connect a provider</strong> (ChatGPT subscribers: device-code login; or paste an API key)</li>
         </ol>
-        <pre><code><span class="hl-comment"># OpenAI OAuth (device code)</span>
+        <pre><code><span class="hl-comment"># ChatGPT subscribers: device-code login (no API key needed)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
 
 <span class="hl-comment"># Optional: PubMed rate limits (the onboard wizard can save this too)</span>
@@ -855,6 +841,7 @@
             <tr><td><code>openrouter</code></td><td>LLM &mdash; access to all models</td><td>API key</td></tr>
             <tr><td><code>anthropic</code></td><td>Claude direct</td><td>API key or <code>sciclaw auth login</code></td></tr>
             <tr><td><code>openai</code></td><td>GPT direct (primary: <code>gpt-5.2</code>)</td><td>API key or device-code OAuth</td></tr>
+            <tr><td><code>azure</code></td><td>Azure OpenAI Service</td><td>API key (<code>api-key</code> header)</td></tr>
             <tr><td><code>gemini</code></td><td>Gemini direct</td><td>API key</td></tr>
             <tr><td><code>zhipu</code></td><td>GLM models, best for Chinese users</td><td>API key</td></tr>
             <tr><td><code>deepseek</code></td><td>DeepSeek direct</td><td>API key</td></tr>
@@ -866,14 +853,57 @@
           <div class="callout-title">Tip</div>
           <p>Groq provides free voice transcription via Whisper. When configured, Telegram voice messages are automatically transcribed.</p>
         </div>
+
+        <h4>Azure OpenAI Service</h4>
+        <p>To use an Azure-hosted OpenAI deployment, set <code>api_base</code> to the <strong>full deployment endpoint URL</strong> (including the API version). Azure uses a different auth header (<code>api-key</code> instead of <code>Authorization: Bearer</code>) and sends requests to the URL as-is without appending <code>/chat/completions</code>.</p>
+
+        <pre><code><span class="hl-key">"azure"</span>: {
+  <span class="hl-key">"api_key"</span>: <span class="hl-string">"your-azure-api-key"</span>,
+  <span class="hl-key">"api_base"</span>: <span class="hl-string">"https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT/chat/completions?api-version=2024-12-01-preview"</span>
+}</code></pre>
+
+        <p>Then set the model to route through Azure:</p>
+        <pre><code><span class="hl-key">"agents"</span>: {
+  <span class="hl-key">"defaults"</span>: {
+    <span class="hl-key">"model"</span>: <span class="hl-string">"azure/your-deployment-name"</span>,
+    <span class="hl-key">"provider"</span>: <span class="hl-string">"azure"</span>
+  }
+}</code></pre>
       </div>
 
       <!-- ─── Authentication ─── -->
       <div class="section" id="authentication">
         <h3>Authentication</h3>
-        <p>Two paths: paste an API key into <code>config.json</code>, or use the auth commands for OAuth/token flows.</p>
 
-        <pre><code><span class="hl-comment"># OpenAI OAuth (device code; default)</span>
+        <div class="callout">
+          <div class="callout-title">Provider disclaimer</div>
+          <p>sciClaw does not endorse any specific LLM provider. We document multiple options so you can choose what works for your institution, budget, and compliance requirements. A ChatGPT Plus or Team subscription is the easiest way to get started because it requires no API key management &mdash; just log in with your existing OpenAI account. API key workflows (OpenRouter, Anthropic, Azure, etc.) are equally supported for users who prefer them.</p>
+          <p style="margin-top:8px;">Terms around using an Anthropic Claude subscription (claude.ai consumer plan) for programmatic or agent-based access are currently unclear. We are seeking clarification from Anthropic. In the meantime, use Anthropic&rsquo;s API keys if you intend to use Claude with sciClaw.</p>
+        </div>
+
+        <h4>Easy login: ChatGPT subscribers (device code)</h4>
+        <p>If you have a <strong>ChatGPT Plus, Team, or Enterprise</strong> subscription, the fastest path is device-code login. No API key needed &mdash; sciClaw authenticates directly with your OpenAI account:</p>
+
+        <pre><code><span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai</code></pre>
+
+        <p>This opens a link and gives you a short code. Open <code>https://auth.openai.com/codex/device</code> in any browser, enter the code, and approve access. sciClaw receives an OAuth token tied to your subscription &mdash; no keys to copy or rotate.</p>
+
+        <div class="callout">
+          <div class="callout-title">How device-code login works</div>
+          <p>Device-code flow (RFC 8628) is designed for CLI tools and headless environments. sciClaw requests a one-time code from OpenAI, you verify it in your browser, and sciClaw polls until you approve. Tokens refresh automatically. This is the same flow used by the OpenAI Codex CLI.</p>
+        </div>
+
+        <h4>API key authentication</h4>
+        <p>For providers that don&rsquo;t support OAuth, paste an API key directly into <code>config.json</code>:</p>
+
+        <pre><code><span class="hl-key">"providers"</span>: {
+  <span class="hl-key">"openrouter"</span>: { <span class="hl-key">"api_key"</span>: <span class="hl-string">"sk-or-v1-..."</span> },
+  <span class="hl-key">"anthropic"</span>:  { <span class="hl-key">"api_key"</span>: <span class="hl-string">"sk-ant-..."</span> },
+  <span class="hl-key">"groq"</span>:       { <span class="hl-key">"api_key"</span>: <span class="hl-string">"gsk_..."</span> }
+}</code></pre>
+
+        <h4>Auth commands</h4>
+        <pre><code><span class="hl-comment"># OpenAI device-code login (ChatGPT subscribers)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
 
 <span class="hl-comment"># Anthropic token paste</span>
@@ -1208,7 +1238,7 @@
             <tr><td>Workspace</td><td>Scientific templates (AGENTS, IDENTITY, SOUL, TOOLS, USER)</td></tr>
             <tr><td>Traceability</td><td>Required: evidence capture, provenance logging, hook audit trails</td></tr>
             <tr><td>Skills</td><td>12 baseline scientific skills + companion CLI tools</td></tr>
-            <tr><td>Providers</td><td>OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Zhipu</td></tr>
+            <tr><td>Providers</td><td>OpenAI, Azure OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Zhipu</td></tr>
             <tr><td>Reasoning</td><td>Per-invocation <code>--effort</code> control for reasoning models</td></tr>
           </tbody>
         </table>

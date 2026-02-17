@@ -76,7 +76,7 @@ func ListProviders(cfg *config.Config) []ProviderInfo {
 		"claude-opus-4-6", "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001",
 	})
 	add("openai", cfg.Providers.OpenAI, []string{
-		"gpt-5.2", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini", "codex-mini-latest",
+		"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2",
 	})
 	add("openrouter", cfg.Providers.OpenRouter, []string{
 		"openrouter/<model>",

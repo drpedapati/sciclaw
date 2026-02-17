@@ -18,6 +18,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/transport"
 )
 
 type HTTPProvider struct {
@@ -27,16 +28,12 @@ type HTTPProvider struct {
 }
 
 func NewHTTPProvider(apiKey, apiBase, proxy string) *HTTPProvider {
-	client := &http.Client{
-		Timeout: 0,
-	}
+	client := transport.NewClient()
 
 	if proxy != "" {
 		proxyURL, err := url.Parse(proxy)
 		if err == nil {
-			client.Transport = &http.Transport{
-				Proxy: http.ProxyURL(proxyURL),
-			}
+			client.Transport = transport.NewProxyTransport(proxyURL)
 		}
 	}
 

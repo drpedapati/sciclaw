@@ -11,6 +11,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/sipeed/picoclaw/pkg/auth"
+	"github.com/sipeed/picoclaw/pkg/transport"
 )
 
 type CodexProvider struct {
@@ -23,6 +24,7 @@ func NewCodexProvider(token, accountID string) *CodexProvider {
 	opts := []option.RequestOption{
 		option.WithBaseURL("https://chatgpt.com/backend-api/codex"),
 		option.WithAPIKey(token),
+		option.WithHTTPClient(transport.NewCloudflareClient()),
 	}
 	if accountID != "" {
 		opts = append(opts, option.WithHeader("Chatgpt-Account-Id", accountID))
@@ -98,7 +100,7 @@ func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []To
 }
 
 func (p *CodexProvider) GetDefaultModel() string {
-	return "gpt-4o"
+	return "gpt-5.2"
 }
 
 func buildCodexParams(messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) responses.ResponseNewParams {

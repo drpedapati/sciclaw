@@ -17,77 +17,16 @@ import (
 	"strings"
 	"time"
 
-	utls "github.com/refraction-networking/utls"
+	"github.com/sipeed/picoclaw/pkg/transport"
 )
-
-// dialTLSForAuth performs a TLS handshake using uTLS with a Chrome-like
-// ClientHello fingerprint. Go's default crypto/tls produces a JA3 fingerprint
-// that Cloudflare identifies as "Go" and blocks with a managed JS challenge.
-// By mimicking Chrome's TLS fingerprint, auth requests to Cloudflare-fronted
-// endpoints (auth.openai.com) pass bot detection cleanly.
-//
-// HelloChrome_62 is used because:
-//   - It presents a Chrome (not Go) JA3 fingerprint to Cloudflare
-//   - It negotiates TLS 1.2, which passes through NAT/virtualisation stacks
-//     (Multipass, Hyper-V) where TLS 1.3 handshakes are corrupted/rejected
-//   - ALPN is restricted to HTTP/1.1 for net/http compatibility
-func dialTLSForAuth(ctx context.Context, network, addr string) (net.Conn, error) {
-	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	rawConn, err := dialer.DialContext(ctx, network, addr)
-	if err != nil {
-		return nil, err
-	}
-
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		rawConn.Close()
-		return nil, err
-	}
-
-	// Chrome 62 TLS 1.2 fingerprint — avoids both Cloudflare bot detection
-	// (Go's default JA3) and NAT stack TLS 1.3 corruption.
-	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_62)
-	if err != nil {
-		rawConn.Close()
-		return nil, err
-	}
-	for _, ext := range spec.Extensions {
-		if alpn, ok := ext.(*utls.ALPNExtension); ok {
-			alpn.AlpnProtocols = []string{"http/1.1"}
-			break
-		}
-	}
-
-	tlsConn := utls.UClient(rawConn, &utls.Config{ServerName: host}, utls.HelloCustom)
-	if err := tlsConn.ApplyPreset(&spec); err != nil {
-		rawConn.Close()
-		return nil, err
-	}
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		rawConn.Close()
-		return nil, err
-	}
-
-	return tlsConn, nil
-}
 
 // sharedAuthClient is a single HTTP client reused across the entire auth flow.
 // Sharing the client keeps the underlying TCP/TLS connection alive so Cloudflare
 // doesn't rate-limit or challenge every poll as a brand-new connection.
-// TLS is handled by dialTLSForAuth which uses uTLS with a Chrome fingerprint.
+// TLS uses a Chrome fingerprint via the shared transport package.
 var sharedAuthClient = &http.Client{
-	Timeout: 30 * time.Second,
-	Transport: &http.Transport{
-		ForceAttemptHTTP2:  false,
-		MaxIdleConns:       2,
-		IdleConnTimeout:    90 * time.Second,
-		DisableCompression: true,
-		DialTLSContext:     dialTLSForAuth,
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-	},
+	Timeout:   30 * time.Second,
+	Transport: transport.NewTransport(),
 }
 
 // newAuthRequest creates an HTTP request with headers that match what the
