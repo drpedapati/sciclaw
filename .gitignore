@@ -16,7 +16,7 @@ build/
 # PicoClaw
 .picoclaw/
 config.json
-sessions/
+/sessions/
 build/
 
 # Coverage
