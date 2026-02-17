@@ -1,0 +1,34 @@
+#cloud-config
+# Prefer the bridged interface (enp0s2) over Multipass NAT (enp0s1).
+# Required because chatgpt.com/Cloudflare resets connections through
+# the Multipass hypervisor NAT bridge.
+#
+# Usage:
+#   multipass launch --name sciclaw --cpus 4 --memory 8G --disk 80G \
+#     --network en0 --cloud-init deploy/multipass-bridge.yaml 24.04
+runcmd:
+  - |
+    NAT_MAC=$(cat /sys/class/net/enp0s1/address)
+    BRIDGE_MAC=$(cat /sys/class/net/enp0s2/address)
+    cat > /etc/netplan/50-cloud-init.yaml << EOF
+    network:
+      version: 2
+      ethernets:
+        default:
+          match:
+            macaddress: "$NAT_MAC"
+          dhcp-identifier: mac
+          dhcp4: true
+          dhcp4-overrides:
+            route-metric: 400
+        extra0:
+          match:
+            macaddress: "$BRIDGE_MAC"
+          optional: true
+          dhcp-identifier: mac
+          dhcp4: true
+          dhcp4-overrides:
+            route-metric: 100
+    EOF
+    chmod 600 /etc/netplan/50-cloud-init.yaml
+    netplan apply
