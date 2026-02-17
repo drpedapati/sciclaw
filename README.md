@@ -28,8 +28,12 @@ Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrit
 ### Homebrew (recommended)
 
 ```bash
-# One-line bootstrap (installs sciclaw + dependencies, initializes workspace, and verifies)
-brew tap drpedapati/tap && brew install sciclaw && sciclaw onboard --yes && sciclaw doctor
+brew tap drpedapati/tap && brew install sciclaw
+```
+
+Then run the interactive setup wizard:
+```bash
+sciclaw onboard
 ```
 
 macOS only:
