@@ -1,4 +1,4 @@
-.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch
+.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch release-local
 
 # Build variables
 PRIMARY_BINARY_NAME=sciclaw
@@ -191,6 +191,36 @@ sync-upstream:
 	@echo "Merging upstream/main..."
 	@git merge upstream/main --no-edit
 	@echo "Sync complete."
+
+## release-local: Build locally, create GitHub release, and update Homebrew tap (~30s vs ~5min CI)
+release-local:
+	@if [ -z "$(RELEASE_TAG)" ]; then \
+		echo "Error: RELEASE_TAG is required."; \
+		echo "Example: make release-local RELEASE_TAG=v0.1.37"; \
+		exit 1; \
+	fi
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "Error: GitHub CLI (gh) is required."; \
+		exit 1; \
+	fi
+	@echo "==> Building all platforms..."
+	@VERSION=$(RELEASE_TAG) $(MAKE) build-all
+	@echo "==> Generating checksums..."
+	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* > sha256sums.txt
+	@echo "==> Tagging $(RELEASE_TAG)..."
+	@git tag -a "$(RELEASE_TAG)" -m "Release $(RELEASE_TAG)"
+	@git push origin "$(RELEASE_TAG)"
+	@echo "==> Creating GitHub release..."
+	@gh release create "$(RELEASE_TAG)" \
+		$(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* \
+		$(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* \
+		$(BUILD_DIR)/sha256sums.txt \
+		--repo $(RELEASE_REPO) \
+		--title "$(RELEASE_TAG)" \
+		--generate-notes
+	@echo "==> Updating Homebrew tap..."
+	@deploy/update-tap.sh "$(RELEASE_TAG)" "$(RELEASE_REPO)"
+	@echo "==> Release $(RELEASE_TAG) complete."
 
 ## release-dispatch: Trigger GitHub Create Tag and Release workflow (binaries + Homebrew tap update)
 release-dispatch:
