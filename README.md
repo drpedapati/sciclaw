@@ -1,16 +1,19 @@
 <div align="center">
 
-# sciClaw
+<img src="docs/og-image.jpg" alt="sciClaw" width="480" />
 
-**An autonomous paired-scientist CLI for reproducible research workflows.**
+<br />
+
+**A paired-scientist agent for reproducible research workflows.**
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Platforms](https://img.shields.io/badge/Platforms-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-blue)](https://github.com/drpedapati/sciclaw/releases)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-[Documentation](https://drpedapati.github.io/sciclaw/docs.html) ·
+[Website](https://sciclaw.dev) ·
+[Documentation](https://sciclaw.dev/docs.html) ·
 [Releases](https://github.com/drpedapati/sciclaw/releases) ·
-[Issues](https://github.com/drpedapati/sciclaw/issues)
+[Discussions](https://github.com/drpedapati/sciclaw/discussions)
 
 </div>
 
