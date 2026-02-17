@@ -9,8 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/sipeed/picoclaw/pkg/transport"
+	"time"
 )
 
 // AzureProvider implements LLMProvider for Azure OpenAI endpoints.
@@ -24,12 +23,12 @@ type AzureProvider struct {
 }
 
 func NewAzureProvider(apiKey, endpoint, proxy string) *AzureProvider {
-	client := transport.NewClient()
+	client := &http.Client{Timeout: 30 * time.Second}
 
 	if proxy != "" {
 		proxyURL, err := url.Parse(proxy)
 		if err == nil {
-			client.Transport = transport.NewProxyTransport(proxyURL)
+			client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 		}
 	}
 

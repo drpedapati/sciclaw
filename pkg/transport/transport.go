@@ -61,7 +61,10 @@ func dialChromeTLSh1(ctx context.Context, network, addr string) (net.Conn, error
 		}
 	}
 
-	tlsConn := utls.UClient(rawConn, &utls.Config{ServerName: host}, utls.HelloCustom)
+	tlsConn := utls.UClient(rawConn, &utls.Config{
+		ServerName: host,
+		MinVersion: utls.VersionTLS12,
+	}, utls.HelloCustom)
 	if err := tlsConn.ApplyPreset(&spec); err != nil {
 		rawConn.Close()
 		return nil, err
