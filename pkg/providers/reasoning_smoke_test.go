@@ -314,4 +314,3 @@ func TestOptionsMapReasoningExtraction(t *testing.T) {
 		t.Error("should not treat empty string as valid effort")
 	}
 }
-
