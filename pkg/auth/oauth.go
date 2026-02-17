@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +18,62 @@ import (
 	"strings"
 	"time"
 )
+
+// authHTTPClient returns an HTTP client tuned for auth requests in
+// constrained network environments (VMs, NAT, restrictive firewalls).
+// It uses a shorter TLS handshake timeout and per-request deadline so
+// transient failures surface quickly and can be retried.
+func authHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: 10 * time.Second,
+			TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+		},
+	}
+}
+
+// authPost performs an HTTP POST with retries for transient network errors.
+func authPost(url, contentType string, body string) (*http.Response, error) {
+	client := authHTTPClient()
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			wait := time.Duration(attempt) * 2 * time.Second
+			fmt.Printf("  Retrying in %s (attempt %d/3)...\n", wait, attempt+1)
+			time.Sleep(wait)
+		}
+		resp, err := client.Post(url, contentType, strings.NewReader(body))
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+// authPostForm performs an HTTP POST with form encoding and retries.
+func authPostForm(url string, data url.Values) (*http.Response, error) {
+	client := authHTTPClient()
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			wait := time.Duration(attempt) * 2 * time.Second
+			fmt.Printf("  Retrying in %s (attempt %d/3)...\n", wait, attempt+1)
+			time.Sleep(wait)
+		}
+		resp, err := client.PostForm(url, data)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
 
 type OAuthProviderConfig struct {
 	Issuer   string
@@ -174,10 +231,10 @@ func LoginDeviceCode(cfg OAuthProviderConfig) (*AuthCredential, error) {
 		"client_id": cfg.ClientID,
 	})
 
-	resp, err := http.Post(
+	resp, err := authPost(
 		cfg.Issuer+"/api/accounts/deviceauth/usercode",
 		"application/json",
-		strings.NewReader(string(reqBody)),
+		string(reqBody),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("requesting device code: %w", err)
@@ -227,10 +284,10 @@ func pollDeviceCode(cfg OAuthProviderConfig, deviceAuthID, userCode string) (*Au
 		"user_code":      userCode,
 	})
 
-	resp, err := http.Post(
+	resp, err := authPost(
 		cfg.Issuer+"/api/accounts/deviceauth/token",
 		"application/json",
-		strings.NewReader(string(reqBody)),
+		string(reqBody),
 	)
 	if err != nil {
 		return nil, err
@@ -268,7 +325,7 @@ func RefreshAccessToken(cred *AuthCredential, cfg OAuthProviderConfig) (*AuthCre
 		"scope":         {"openid profile email"},
 	}
 
-	resp, err := http.PostForm(cfg.Issuer+"/oauth/token", data)
+	resp, err := authPostForm(cfg.Issuer+"/oauth/token", data)
 	if err != nil {
 		return nil, fmt.Errorf("refreshing token: %w", err)
 	}
@@ -308,7 +365,7 @@ func exchangeCodeForTokens(cfg OAuthProviderConfig, code, codeVerifier, redirect
 		"code_verifier": {codeVerifier},
 	}
 
-	resp, err := http.PostForm(cfg.Issuer+"/oauth/token", data)
+	resp, err := authPostForm(cfg.Issuer+"/oauth/token", data)
 	if err != nil {
 		return nil, fmt.Errorf("exchanging code for tokens: %w", err)
 	}
