@@ -195,6 +195,47 @@
         </p>
       </section>
 
+      <!-- ── Featured tools ── -->
+      <section>
+        <h2>Tools built for how scientists actually work</h2>
+        <p class="subhead">These ship with sciClaw. The agent calls them automatically when your request needs them.</p>
+        <div class="grid">
+          <div class="card" style="border-left:3px solid #2b579a;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <svg width="30" height="30" viewBox="0 0 512 512" style="flex-shrink:0;"><path fill="#41A5EE" d="M490.17,19.2H140.9c-12.05,0-21.83,9.72-21.83,21.7v96.7L512,137.6V40.9C512,28.91,502.23,19.2,490.17,19.2z"/><path fill="#2B7CD3" d="M512,137.6H119.07V256L512,256V137.6z"/><path fill="#185ABD" d="M119.07,256v118.4L512,374.4V256H119.07z"/><path fill="#103F91" d="M140.9,492.8h349.28c12.05,0,21.83-9.72,21.83-21.7v-96.7H119.07v96.7C119.07,483.09,128.84,492.8,140.9,492.8z"/><path fill="#185ABD" d="M21.83,125.76h218.3c12.05,0,21.83,9.72,21.83,21.7v217.08c0,11.99-9.77,21.7-21.83,21.7H21.83C9.77,386.24,0,376.52,0,364.54V147.46C0,135.48,9.77,125.76,21.83,125.76z"/><path fill="#fff" d="M89.56,292.21c.43,3.35.71,6.26.85,8.76h.5c.19-2.37.59-5.22,1.19-8.56.6-3.34,1.15-6.16,1.63-8.47l22.96-98.49h29.68l23.81,97.01c1.38,6.03,2.37,12.15,2.96,18.3h.39c.44-5.97,1.27-11.9,2.48-17.76l18.99-97.6h27.02l-33.36,141.13H157.1l-22.62-93.47c-.65-2.69-1.4-6.2-2.23-10.53s-1.33-7.48-1.54-9.47h-.39c-.26,2.3-.77,5.71-1.54,10.23-.76,4.52-1.37,7.87-1.83,10.04l-21.27,93.17h-32.1L40.04,185.46h27.5l20.68,98.69c.48,2.02.92,4.72,1.34,8.06z"/></svg>
+              <div>
+                <h3 style="margin:0;font-size:16px;">Microsoft Word Review</h3>
+                <span style="font-size:12px;color:var(--muted);">Real tracked changes &amp; comments in .docx</span>
+              </div>
+            </div>
+            <p style="margin:0 0 10px;">Ask sciClaw to review your manuscript and it returns a .docx you open in Word, with tracked changes you can accept or reject and comments anchored to specific paragraphs. Exactly like getting a revision back from a co-author.</p>
+            <ul style="margin:0;padding-left:18px;font-size:14px;color:var(--ink);">
+              <li>Tracked insertions, deletions, and replacements you review in Word</li>
+              <li>Margin comments tied to specific text, not just line numbers</li>
+              <li>Compare two drafts side-by-side with semantic diff</li>
+              <li>NIH-format Word template included for grant applications</li>
+            </ul>
+          </div>
+          <div class="card" style="border-left:3px solid #326599;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="#326599" style="flex-shrink:0;"><path d="M8.23 7.982l.006-1.005C7.846 1.417 5.096 0 5.096 0l.048 2.291C3.73 1.056 2.6 1.444 2.6 1.444l.118 15.307s4.218-1.796 5.428 5.505C10.238 13.535 21.401 24 21.401 24V9S10.52-.18 8.231 7.982zm9.79 9.941l-1.046-5.232-1.904 4.507h-.96l-1.72-4.301-1.046 5.04H9.321l2.093-9.39h.802l2.491 5.543 2.508-5.557h.869l2.075 9.39h-2.138z"/></svg>
+              <div>
+                <h3 style="margin:0;font-size:16px;">PubMed Search</h3>
+                <span style="font-size:12px;color:var(--muted);">Full NCBI E-Utilities access</span>
+              </div>
+            </div>
+            <p style="margin:0 0 10px;">Tell sciClaw what you're looking for and it builds the PubMed query: Boolean operators, MeSH terms, date ranges, publication types. Results export directly to Zotero, EndNote, or Mendeley.</p>
+            <ul style="margin:0;padding-left:18px;font-size:14px;color:var(--ink);">
+              <li>Complex queries with MeSH terms, field tags, and filters</li>
+              <li>Walk citation chains forward (cited-by) and backward (references)</li>
+              <li>Find related articles scored by relevance</li>
+              <li>Export as <strong>RIS</strong> for one-click import into your reference manager</li>
+              <li>Works with your own NCBI API key for faster, higher-volume searches</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <!-- ── FAQ ── -->
       <section>
         <h2>Frequently asked questions</h2>
@@ -277,20 +318,22 @@
         </div>
       </footer>
 
-      <!-- ── Section navigation (dev) ── -->
+      <!-- dev section nav hidden — section files still available at section-*.html -->
+      <!--
       <nav class="dev-nav">
         <h2>Sections</h2>
         <ul>
-          <li><a href="section-agent.html">Not another tool. An agent.<span>Agent pitch: ask, teach, specify, decide</span></a></li>
-          <li><a href="section-workspace.html">One folder. Everything in it.<span>Workspace tree, reproducibility, audit</span></a></li>
-          <li><a href="section-demos.html">See it in action<span>Chat demos: lit search, drafting, review</span></a></li>
-          <li><a href="section-tools.html">Built-in tools<span>Microsoft Word Review, PubMed Search</span></a></li>
-          <li><a href="section-capabilities.html">Just type what you need<span>Example prompts by category</span></a></li>
-          <li><a href="section-install.html">Get started + Providers<span>Install steps, AI provider chips</span></a></li>
-          <li><a href="section-faq.html">FAQ + Footer<span>Questions, CTA, social links</span></a></li>
-          <li><a href="philosophy.html">Philosophy<span>Your paired scientist manifesto</span></a></li>
+          <li><a href="section-agent.html">Not another tool. An agent.</a></li>
+          <li><a href="section-workspace.html">One folder. Everything in it.</a></li>
+          <li><a href="section-demos.html">See it in action</a></li>
+          <li><a href="section-tools.html">Built-in tools</a></li>
+          <li><a href="section-capabilities.html">Just type what you need</a></li>
+          <li><a href="section-install.html">Get started + Providers</a></li>
+          <li><a href="section-faq.html">FAQ + Footer</a></li>
+          <li><a href="philosophy.html">Philosophy</a></li>
         </ul>
       </nav>
+      -->
     </main>
   </body>
 </html>
