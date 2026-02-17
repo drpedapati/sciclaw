@@ -374,46 +374,59 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 	r := bufio.NewReader(os.Stdin)
 
 	fmt.Println()
-	fmt.Println("Optional setup (wizard):")
-	fmt.Printf("  Help: %s\n", docsLink("#scientist-setup"))
+	fmt.Println("Setup wizard:")
 
-	// PubMed key
-	fmt.Printf("  Help (PubMed): %s\n", docsLink("#scientist-setup"))
-	if promptYesNo(r, "Set an NCBI API key for faster PubMed (recommended)?", false) {
-		key := promptLine(r, "Paste NCBI_API_KEY (leave blank to skip):")
-		key = strings.TrimSpace(key)
-		if key != "" {
-			cfg.Tools.PubMed.APIKey = key
-			if err := config.SaveConfig(configPath, cfg); err != nil {
-				fmt.Printf("  Warning: could not save PubMed API key: %v\n", err)
+	// 1. Authentication (most important — nothing works without it)
+	defaultProvider := strings.ToLower(models.ResolveProvider(cfg.Agents.Defaults.Model, cfg))
+	authOK := false
+	if method, ok := detectProviderAuth(defaultProvider, cfg); ok {
+		fmt.Printf("  Authentication already configured for %s (%s).\n", defaultProvider, method)
+		authOK = true
+	} else {
+		fmt.Printf("  Help: %s\n", docsLink("#authentication"))
+		if promptYesNo(r, "Login to OpenAI now using device code (recommended)?", true) {
+			if err := onboardAuthLoginOpenAI(); err != nil {
+				fmt.Printf("  Login failed: %v\n", err)
 			} else {
-				fmt.Println("  Saved PubMed API key to config.")
+				authOK = true
 			}
 		} else {
-			fmt.Println("  Skipped PubMed API key.")
+			fmt.Println("  Skipped. Configure another provider in the docs:")
+			fmt.Printf("    %s\n", docsLink("#authentication"))
 		}
 	}
 
-	// OpenAI OAuth login (device code only)
-	fmt.Printf("  Help (auth): %s\n", docsLink("#authentication"))
-	if promptYesNo(r, "Login to OpenAI now using device code (recommended)?", false) {
-		if err := onboardAuthLoginOpenAI(); err != nil {
-			fmt.Printf("  Login failed: %v\n", err)
-		}
-	}
-
-	// Chat smoke test
-	if promptYesNo(r, "Run a quick chat smoke test now?", false) {
+	// 2. Smoke test (automatic if auth is configured)
+	if authOK {
+		fmt.Println("  Running smoke test...")
 		msg := "Smoke test: reply with ONE short sentence (max 12 words) confirming you're ready as my paired-scientist. No tool calls."
 		if err := runSelfAgentOneShot(msg); err != nil {
-			fmt.Printf("  Chat smoke test failed: %v\n", err)
+			fmt.Printf("  Smoke test failed: %v\n", err)
 		}
 	}
 
-	// TinyTeX for PDF rendering
+	// 3. PubMed API key
+	if strings.TrimSpace(cfg.Tools.PubMed.APIKey) == "" {
+		if promptYesNo(r, "Set an NCBI API key for faster PubMed searches?", false) {
+			key := promptLine(r, "Paste NCBI_API_KEY (leave blank to skip):")
+			key = strings.TrimSpace(key)
+			if key != "" {
+				cfg.Tools.PubMed.APIKey = key
+				if err := config.SaveConfig(configPath, cfg); err != nil {
+					fmt.Printf("  Warning: could not save PubMed API key: %v\n", err)
+				} else {
+					fmt.Println("  Saved PubMed API key to config.")
+				}
+			} else {
+				fmt.Println("  Skipped PubMed API key.")
+			}
+		}
+	}
+
+	// 4. TinyTeX for PDF rendering
 	if quartoPath, err := exec.LookPath("quarto"); err == nil {
 		if !isTinyTeXInstalled(quartoPath) {
-			if promptYesNo(r, "Install TinyTeX for PDF rendering (recommended, ~250 MB)?", false) {
+			if promptYesNo(r, "Install TinyTeX for PDF rendering (recommended, ~250 MB)?", true) {
 				fmt.Println("  Installing TinyTeX via Quarto...")
 				cmd := exec.Command(quartoPath, "install", "tinytex", "--no-prompt")
 				cmd.Stdout = os.Stdout
@@ -427,9 +440,9 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 		}
 	}
 
-	// Chat channels (messaging apps)
-	fmt.Printf("  Help (channels): %s\n", docsLink("#telegram"))
-	if promptYesNo(r, "Set up messaging apps (Telegram/Discord) now?", false) {
+	// 5. Chat channels (messaging apps)
+	fmt.Printf("  Help: %s\n", docsLink("#telegram"))
+	if promptYesNo(r, "Set up messaging apps (Telegram/Discord/Slack) now?", false) {
 		runChannelsWizard(r, cfg, configPath)
 	}
 }
