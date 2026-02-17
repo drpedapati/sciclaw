@@ -1,15 +1,56 @@
 #cloud-config
-# Prefer the bridged interface (enp0s2) over Multipass NAT (enp0s1).
+# Prefer the bridged interface over Multipass NAT.
 # Required because chatgpt.com/Cloudflare resets connections through
 # the Multipass hypervisor NAT bridge.
+#
+# NIC detection is dynamic — works regardless of interface naming
+# scheme (enp*, ens*, eth*, etc.). NAT = current default-route
+# interface; bridge = first other UP interface with a global IPv4.
+# Fails hard if a bridged NIC cannot be detected.
 #
 # Usage:
 #   multipass launch --name sciclaw --cpus 4 --memory 8G --disk 80G \
 #     --network en0 --cloud-init deploy/multipass-bridge.yaml 24.04
 runcmd:
   - |
-    NAT_MAC=$(cat /sys/class/net/enp0s1/address)
-    BRIDGE_MAC=$(cat /sys/class/net/enp0s2/address)
+    set -euo pipefail
+
+    # --- Detect NAT interface (current default route) ---
+    NAT_IFACE=$(ip -4 route show default | awk 'NR==1{print $5}')
+    if [ -z "$NAT_IFACE" ]; then
+      echo "FATAL: cannot detect NAT interface (no default route)" >&2
+      exit 1
+    fi
+
+    # --- Detect bridge interface (first other UP iface with global IPv4) ---
+    BRIDGE_IFACE=""
+    for iface in /sys/class/net/*; do
+      name=$(basename "$iface")
+      [ "$name" = "lo" ] && continue
+      [ "$name" = "$NAT_IFACE" ] && continue
+      # Must be UP
+      state=$(cat "$iface/operstate" 2>/dev/null || echo "down")
+      [ "$state" = "up" ] || continue
+      # Must have a global IPv4 address
+      if ip -4 addr show "$name" scope global | grep -q 'inet '; then
+        BRIDGE_IFACE="$name"
+        break
+      fi
+    done
+
+    if [ -z "$BRIDGE_IFACE" ]; then
+      echo "FATAL: cannot detect bridged interface (no second UP iface with global IPv4)" >&2
+      echo "Ensure VM was launched with --network <host-iface>" >&2
+      exit 1
+    fi
+
+    # --- Resolve MACs ---
+    NAT_MAC=$(cat "/sys/class/net/$NAT_IFACE/address")
+    BRIDGE_MAC=$(cat "/sys/class/net/$BRIDGE_IFACE/address")
+    echo "NAT:    $NAT_IFACE ($NAT_MAC) → metric 400"
+    echo "Bridge: $BRIDGE_IFACE ($BRIDGE_MAC) → metric 100"
+
+    # --- Write netplan (MAC-matched, name-agnostic) ---
     cat > /etc/netplan/50-cloud-init.yaml << EOF
     network:
       version: 2
