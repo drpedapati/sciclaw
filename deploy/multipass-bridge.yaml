@@ -13,7 +13,7 @@
 #     --network en0 --cloud-init deploy/multipass-bridge.yaml 24.04
 runcmd:
   - |
-    set -euo pipefail
+    set -eu
 
     # --- Detect NAT interface (current default route) ---
     NAT_IFACE=$(ip -4 route show default | awk 'NR==1{print $5}')
