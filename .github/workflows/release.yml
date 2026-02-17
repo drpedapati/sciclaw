@@ -164,7 +164,6 @@ jobs:
             url "${source_url}"
             sha256 "${source_sha256}"
             license "MIT"
-            version "${version}"
 
             depends_on "go" => :build
 
