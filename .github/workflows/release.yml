@@ -128,18 +128,30 @@ jobs:
             echo "available=true" >> "${GITHUB_OUTPUT}"
           fi
 
-      - name: Compute source archive checksum
+      - name: Compute checksums for binaries and source
         if: ${{ steps.tap-token.outputs.available == 'true' }}
-        id: source
+        id: checksums
         shell: bash
         run: |
           tag="${{ inputs.tag }}"
+          version="${tag#v}"
+          base="https://github.com/${{ github.repository }}/releases/download/${tag}"
+
+          # Download binaries and compute SHA-256
+          for target in darwin-arm64 linux-arm64 linux-amd64; do
+            curl -fsSL -o "sciclaw-${target}" "${base}/sciclaw-${target}"
+            sha=$(shasum -a 256 "sciclaw-${target}" | awk '{print $1}')
+            # Normalize target name for output keys (dash to underscore)
+            key=$(echo "$target" | tr '-' '_')
+            echo "sha_${key}=${sha}" >> "${GITHUB_OUTPUT}"
+          done
+
+          # Source archive (for skills and workspace templates)
           source_url="https://github.com/${{ github.repository }}/archive/refs/tags/${tag}.tar.gz"
           curl -fsSL -o source.tar.gz "${source_url}"
-          source_sha256="$(shasum -a 256 source.tar.gz | awk '{print $1}')"
-          echo "url=${source_url}" >> "${GITHUB_OUTPUT}"
-          echo "sha256=${source_sha256}" >> "${GITHUB_OUTPUT}"
-          echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+          echo "sha_source=$(shasum -a 256 source.tar.gz | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "source_url=${source_url}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
       - name: Checkout tap repository
         if: ${{ steps.tap-token.outputs.available == 'true' }}
@@ -153,22 +165,46 @@ jobs:
         if: ${{ steps.tap-token.outputs.available == 'true' }}
         shell: bash
         run: |
-          source_url="${{ steps.source.outputs.url }}"
-          source_sha256="${{ steps.source.outputs.sha256 }}"
-          version="${{ steps.source.outputs.version }}"
+          tag="${{ inputs.tag }}"
+          version="${{ steps.checksums.outputs.version }}"
+          source_url="${{ steps.checksums.outputs.source_url }}"
+          sha_source="${{ steps.checksums.outputs.sha_source }}"
+          sha_darwin_arm64="${{ steps.checksums.outputs.sha_darwin_arm64 }}"
+          sha_linux_arm64="${{ steps.checksums.outputs.sha_linux_arm64 }}"
+          sha_linux_amd64="${{ steps.checksums.outputs.sha_linux_amd64 }}"
+          base="https://github.com/${{ github.repository }}/releases/download/${tag}"
+
           mkdir -p "tap/Formula"
-          cat > "tap/${{ env.FORMULA_RELATIVE_PATH }}" <<EOF
+          cat > "tap/${{ env.FORMULA_RELATIVE_PATH }}" <<FORMULA
           class Sciclaw < Formula
             desc "Autonomous paired scientist CLI forked from PicoClaw"
             homepage "https://github.com/drpedapati/sciclaw"
-            url "${source_url}"
-            sha256 "${source_sha256}"
+            version "${version}"
             license "MIT"
 
-            depends_on "go" => :build
+            on_macos do
+              on_arm do
+                url "${base}/sciclaw-darwin-arm64"
+                sha256 "${sha_darwin_arm64}"
+              end
+            end
 
             on_linux do
+              on_arm do
+                url "${base}/sciclaw-linux-arm64"
+                sha256 "${sha_linux_arm64}"
+              end
+              on_intel do
+                url "${base}/sciclaw-linux-amd64"
+                sha256 "${sha_linux_amd64}"
+              end
               depends_on "sciclaw-quarto"
+            end
+
+            # Source archive provides skills and workspace templates
+            resource "source" do
+              url "${source_url}"
+              sha256 "${sha_source}"
             end
 
             depends_on "irl"
@@ -177,12 +213,21 @@ jobs:
             depends_on "sciclaw-pubmed-cli"
 
             def install
-              ENV["CGO_ENABLED"] = "0"
-              ldflags = "-s -w -X main.version=#{version}"
-              system "go", "build", *std_go_args(output: bin/"sciclaw", ldflags: ldflags), "./cmd/picoclaw"
+              # Install pre-compiled binary
+              if OS.mac?
+                bin.install "sciclaw-darwin-arm64" => "sciclaw"
+              elsif OS.linux? && Hardware::CPU.arm?
+                bin.install "sciclaw-linux-arm64" => "sciclaw"
+              else
+                bin.install "sciclaw-linux-amd64" => "sciclaw"
+              end
               (bin/"picoclaw").make_symlink bin/"sciclaw"
-              pkgshare.install "skills"
-              (pkgshare/"templates"/"workspace").install Dir["pkg/workspacetpl/templates/workspace/*.md"]
+
+              # Install skills and workspace templates from source
+              resource("source").stage do
+                pkgshare.install "skills"
+                (pkgshare/"templates"/"workspace").install Dir["pkg/workspacetpl/templates/workspace/*.md"]
+              end
             end
 
             test do
@@ -203,7 +248,7 @@ jobs:
               assert_path_exists testpath/"sciclaw/skills/scientific-writing/SKILL.md"
             end
           end
-          EOF
+          FORMULA
 
       - name: Commit and push formula update
         if: ${{ steps.tap-token.outputs.available == 'true' }}
