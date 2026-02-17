@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -17,36 +16,95 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	utls "github.com/refraction-networking/utls"
 )
 
-// authHTTPClient returns an HTTP client tuned for auth requests in
-// constrained network environments (VMs, NAT, restrictive firewalls).
+// dialTLSForAuth performs a TLS handshake using uTLS with a Chrome-like
+// ClientHello fingerprint. Go's default crypto/tls produces a JA3 fingerprint
+// that Cloudflare identifies as "Go" and blocks with a managed JS challenge.
+// By mimicking Chrome's TLS fingerprint, auth requests to Cloudflare-fronted
+// endpoints (auth.openai.com) pass bot detection cleanly.
 //
-// Key: MaxVersion is capped at TLS 1.2. Go's TLS 1.3 Client Hello is
-// rejected by Cloudflare-fronted endpoints (auth.openai.com) when sent
-// through certain NAT/virtualisation stacks (Multipass, Hyper-V, some
-// Docker networks). TLS 1.2 handshakes are smaller and pass cleanly.
-func authHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSHandshakeTimeout: 10 * time.Second,
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				MaxVersion: tls.VersionTLS12,
-			},
-			ForceAttemptHTTP2: false,
-			DialContext: (&net.Dialer{
-				Timeout:   10 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-		},
+// HelloChrome_62 is used because:
+//   - It presents a Chrome (not Go) JA3 fingerprint to Cloudflare
+//   - It negotiates TLS 1.2, which passes through NAT/virtualisation stacks
+//     (Multipass, Hyper-V) where TLS 1.3 handshakes are corrupted/rejected
+//   - ALPN is restricted to HTTP/1.1 for net/http compatibility
+func dialTLSForAuth(ctx context.Context, network, addr string) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	rawConn, err := dialer.DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
 	}
+
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+
+	// Chrome 62 TLS 1.2 fingerprint — avoids both Cloudflare bot detection
+	// (Go's default JA3) and NAT stack TLS 1.3 corruption.
+	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_62)
+	if err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+	for _, ext := range spec.Extensions {
+		if alpn, ok := ext.(*utls.ALPNExtension); ok {
+			alpn.AlpnProtocols = []string{"http/1.1"}
+			break
+		}
+	}
+
+	tlsConn := utls.UClient(rawConn, &utls.Config{ServerName: host}, utls.HelloCustom)
+	if err := tlsConn.ApplyPreset(&spec); err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+
+	return tlsConn, nil
+}
+
+// sharedAuthClient is a single HTTP client reused across the entire auth flow.
+// Sharing the client keeps the underlying TCP/TLS connection alive so Cloudflare
+// doesn't rate-limit or challenge every poll as a brand-new connection.
+// TLS is handled by dialTLSForAuth which uses uTLS with a Chrome fingerprint.
+var sharedAuthClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		ForceAttemptHTTP2:  false,
+		MaxIdleConns:       2,
+		IdleConnTimeout:    90 * time.Second,
+		DisableCompression: true,
+		DialTLSContext:     dialTLSForAuth,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+	},
+}
+
+// newAuthRequest creates an HTTP request with headers that match what the
+// OpenAI Codex CLI sends (consistent with other OpenAI OAuth clients).
+func newAuthRequest(method, url, contentType string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	return req, nil
 }
 
 // authPost performs an HTTP POST with retries for transient network errors.
 func authPost(url, contentType string, body string) (*http.Response, error) {
-	client := authHTTPClient()
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
@@ -54,7 +112,11 @@ func authPost(url, contentType string, body string) (*http.Response, error) {
 			fmt.Printf("  Retrying in %s (attempt %d/3)...\n", wait, attempt+1)
 			time.Sleep(wait)
 		}
-		resp, err := client.Post(url, contentType, strings.NewReader(body))
+		req, err := newAuthRequest("POST", url, contentType, strings.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		resp, err := sharedAuthClient.Do(req)
 		if err == nil {
 			return resp, nil
 		}
@@ -64,8 +126,7 @@ func authPost(url, contentType string, body string) (*http.Response, error) {
 }
 
 // authPostForm performs an HTTP POST with form encoding and retries.
-func authPostForm(url string, data url.Values) (*http.Response, error) {
-	client := authHTTPClient()
+func authPostForm(reqURL string, data url.Values) (*http.Response, error) {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
@@ -73,7 +134,11 @@ func authPostForm(url string, data url.Values) (*http.Response, error) {
 			fmt.Printf("  Retrying in %s (attempt %d/3)...\n", wait, attempt+1)
 			time.Sleep(wait)
 		}
-		resp, err := client.PostForm(url, data)
+		req, err := newAuthRequest("POST", reqURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+		if err != nil {
+			return nil, err
+		}
+		resp, err := sharedAuthClient.Do(req)
 		if err == nil {
 			return resp, nil
 		}
@@ -266,16 +331,24 @@ func LoginDeviceCode(cfg OAuthProviderConfig) (*AuthCredential, error) {
 		cfg.Issuer, deviceResp.UserCode)
 
 	deadline := time.After(15 * time.Minute)
-	ticker := time.NewTicker(time.Duration(deviceResp.Interval) * time.Second)
-	defer ticker.Stop()
+	pollInterval := time.Duration(deviceResp.Interval) * time.Second
+	if pollInterval < 5*time.Second {
+		pollInterval = 5 * time.Second
+	}
 
 	for {
 		select {
 		case <-deadline:
 			return nil, fmt.Errorf("device code authentication timed out after 15 minutes")
-		case <-ticker.C:
+		case <-time.After(pollInterval):
 			cred, err := pollDeviceCode(cfg, deviceResp.DeviceAuthID, deviceResp.UserCode)
 			if err != nil {
+				if strings.Contains(err.Error(), "rate-limited") {
+					pollInterval = pollInterval * 2
+					if pollInterval > 30*time.Second {
+						pollInterval = 30 * time.Second
+					}
+				}
 				continue
 			}
 			if cred != nil {
@@ -302,6 +375,12 @@ func pollDeviceCode(cfg OAuthProviderConfig, deviceAuthID, userCode string) (*Au
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// Drain body so the connection can be reused by the shared client
+		io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return nil, fmt.Errorf("rate-limited (429), backing off")
+		}
 		return nil, fmt.Errorf("pending")
 	}
 

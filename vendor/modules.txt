@@ -297,6 +297,20 @@ github.com/openai/openai-go/v3/responses
 github.com/openai/openai-go/v3/shared
 github.com/openai/openai-go/v3/shared/constant
 github.com/openai/openai-go/v3/webhooks
+# github.com/refraction-networking/utls v1.8.2
+## explicit; go 1.24
+github.com/refraction-networking/utls
+github.com/refraction-networking/utls/dicttls
+github.com/refraction-networking/utls/internal/boring
+github.com/refraction-networking/utls/internal/byteorder
+github.com/refraction-networking/utls/internal/fips140tls
+github.com/refraction-networking/utls/internal/helper
+github.com/refraction-networking/utls/internal/hkdf
+github.com/refraction-networking/utls/internal/hpke
+github.com/refraction-networking/utls/internal/quicvarint
+github.com/refraction-networking/utls/internal/quicvarint/protocol
+github.com/refraction-networking/utls/internal/tls12
+github.com/refraction-networking/utls/internal/tls13
 # github.com/slack-go/slack v0.17.3
 ## explicit; go 1.22
 github.com/slack-go/slack
@@ -372,10 +386,16 @@ github.com/valyala/fastjson/fastfloat
 golang.org/x/arch/x86/x86asm
 # golang.org/x/crypto v0.48.0
 ## explicit; go 1.24.0
+golang.org/x/crypto/chacha20
+golang.org/x/crypto/chacha20poly1305
+golang.org/x/crypto/cryptobyte
+golang.org/x/crypto/cryptobyte/asn1
+golang.org/x/crypto/hkdf
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/salsa20/salsa
+golang.org/x/crypto/sha3
 # golang.org/x/net v0.50.0
 ## explicit; go 1.24.0
 golang.org/x/net/publicsuffix
