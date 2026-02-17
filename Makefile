@@ -1,4 +1,4 @@
-.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch
+.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch tap-pr-pull
 
 # Build variables
 PRIMARY_BINARY_NAME=sciclaw
@@ -14,6 +14,8 @@ RELEASE_REPO?=drpedapati/sciclaw
 RELEASE_TAG?=
 RELEASE_PRERELEASE?=false
 RELEASE_DRAFT?=false
+TAP_REPO?=drpedapati/homebrew-tap
+TAP_PR?=
 BUILD_TIME=$(shell date +%FT%T%z)
 GO_VERSION=$(shell $(GO) version | awk '{print $$3}')
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.goVersion=$(GO_VERSION)"
@@ -210,6 +212,21 @@ release-dispatch:
 	@echo "Release workflow queued."
 	@echo "Watch with:"
 	@echo "  gh run list -R $(RELEASE_REPO) --workflow release.yml --limit 5"
+
+## tap-pr-pull: Label a Homebrew tap PR with pr-pull to publish bottles
+tap-pr-pull:
+	@if [ -z "$(TAP_PR)" ]; then \
+		echo "Error: TAP_PR is required."; \
+		echo "Example: make tap-pr-pull TAP_PR=123"; \
+		exit 1; \
+	fi
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "Error: GitHub CLI (gh) is required."; \
+		exit 1; \
+	fi
+	@echo "Adding label pr-pull to PR #$(TAP_PR) in $(TAP_REPO)..."
+	@gh pr edit $(TAP_PR) -R $(TAP_REPO) --add-label pr-pull
+	@echo "Label applied. Monitor publish workflow in $(TAP_REPO)."
 
 ## help: Show this help message
 help:
