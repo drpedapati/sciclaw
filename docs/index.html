@@ -4,10 +4,73 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>sciClaw | Paired-Scientist Research Agent</title>
+    <script defer data-domain="sciclaw.dev" src="https://analytics.cincineuro.com/js/script.file-downloads.outbound-links.tagged-events.js"></script>
     <meta
       name="description"
       content="sciClaw is a free, open-source paired-scientist agent that plans research work, runs tools, cites sources, and keeps an auditable evidence trail."
     />
+    <link rel="canonical" href="https://sciclaw.dev/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://sciclaw.dev/" />
+    <meta property="og:title" content="sciClaw — Your Paired Scientist" />
+    <meta property="og:description" content="An AI research agent with built-in skills for literature search, manuscript drafting, document review, and reproducibility tracking. Free and open source." />
+    <meta property="og:site_name" content="sciClaw" />
+    <meta property="og:image" content="https://sciclaw.dev/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="sciClaw — Your AI Research Partner" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@cbrainlab" />
+    <meta name="twitter:creator" content="@cbrainlab" />
+    <meta name="twitter:title" content="sciClaw — Your Paired Scientist" />
+    <meta name="twitter:description" content="An AI research agent with built-in skills for literature search, manuscript drafting, document review, and reproducibility tracking." />
+    <meta name="twitter:image" content="https://sciclaw.dev/og-image.jpg" />
+
+    <!-- Additional SEO -->
+    <meta name="author" content="Ernest Pedapati, MD" />
+    <meta name="robots" content="index, follow" />
+    <meta name="keywords" content="AI research agent, literature search, PubMed, manuscript drafting, document review, tracked changes, reproducibility, biomedical research, open source, sciClaw" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "sciClaw",
+      "alternateName": "PicoClaw",
+      "description": "A lightweight paired-scientist agent for reproducible biomedical research workflows. Built-in skills for PubMed search, manuscript drafting, Word document review with tracked changes, and reproducibility tracking.",
+      "url": "https://sciclaw.dev",
+      "applicationCategory": "ScientificApplication",
+      "operatingSystem": "macOS, Linux, Windows",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Ernest Pedapati, MD",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "Cincinnati Children's Hospital Medical Center"
+        },
+        "sameAs": [
+          "https://github.com/drpedapati",
+          "https://x.com/cbrainlab"
+        ]
+      },
+      "codeRepository": "https://github.com/drpedapati/sciclaw",
+      "softwareHelp": "https://sciclaw.dev/docs.html",
+      "releaseNotes": "https://github.com/drpedapati/sciclaw/releases"
+    }
+    </script>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 
@@ -1029,24 +1092,33 @@
     </main>
 
     <script>
-      // Tab switching
+      // Tab switching with analytics
       document.querySelectorAll('.tab-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
           document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
           btn.classList.add('active');
           document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+          if (window.plausible) plausible('Demo Tab', {props: {tab: btn.dataset.tab}});
         });
       });
 
-      // Copy to clipboard
+      // Copy to clipboard with analytics
       function copyText(btn, text) {
         navigator.clipboard.writeText(text).then(function() {
           var orig = btn.textContent;
           btn.textContent = 'Copied';
           setTimeout(function() { btn.textContent = orig; }, 1500);
+          if (window.plausible) plausible('Copy Brew Command');
         });
       }
+
+      // Track CTA clicks
+      document.querySelectorAll('a.btn-primary').forEach(function(a) {
+        a.addEventListener('click', function() {
+          if (window.plausible) plausible('CTA Click', {props: {label: a.textContent.trim()}});
+        });
+      });
     </script>
   </body>
 </html>

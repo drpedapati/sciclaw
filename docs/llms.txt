@@ -1,0 +1,80 @@
+# sciClaw
+
+> A lightweight paired-scientist agent for reproducible biomedical research workflows.
+
+sciClaw is a free, open-source AI research agent that integrates literature search, manuscript drafting, document review, and reproducibility tracking into a single auditable loop. Scientists interact with it through Telegram, Discord, Slack, or the command line.
+
+## Key Facts
+
+- License: MIT
+- Author: Ernest Pedapati, MD, Cincinnati Children's Hospital Medical Center
+- Repository: https://github.com/drpedapati/sciclaw
+- Documentation: https://sciclaw.dev/docs.html
+- Install: `brew tap drpedapati/tap && brew install sciclaw`
+- Platforms: macOS (Apple Silicon), Linux (amd64, arm64), Windows (amd64)
+
+## Architecture
+
+sciClaw extends PicoClaw, an open-source Go-based AI assistant. It uses a four-layer architecture:
+1. Behavior templates (AGENTS.md, SOUL.md, USER.md) — plain Markdown files that govern agent behavior
+2. Runtime context construction — assembles skills, memory, and session history per turn
+3. Thirteen built-in research skills — PubMed search, scientific writing, document review, bioRxiv surveillance, Quarto authoring, and more
+4. Governance layer — hardwired lifecycle hooks for loop-level traceability (JSONL audit logs)
+
+## Workspace
+
+All outputs live in a single `~/sciclaw` folder:
+- `sessions/` — every conversation, searchable
+- `memory/` — long-term notes across sessions
+- `skills/` — 13 built-in + user custom skills
+- `hooks/` — event audit log (JSONL)
+- `cron/` — scheduled jobs
+- `state/` — runtime state
+- `AGENTS.md` — agent behavior rules
+- `HOOKS.md` — lifecycle hook instructions
+- `IDENTITY.md` — lab identity and voice
+- `MEMORY.md` — persistent memory template
+- `SOUL.md` — guardrails and ethics
+- `TOOLS.md` — tool usage guidelines
+- `USER.md` — user preferences
+
+## Built-in Tools
+
+### docx-review
+Native binary for Microsoft Word document review. Produces real tracked changes (insertions, deletions, replacements) and anchored comments in .docx format. Includes semantic diff between documents and NIH-standard Word template. No Word or .NET runtime required.
+
+### pubmed-cli
+Native PubMed client with full NCBI E-Utilities access. Supports Boolean queries, MeSH term traversal, field tags, publication-type filters, citation chain traversal (cited-by, references, related articles), and export as JSON, CSV, or RIS (for Zotero, EndNote, Mendeley).
+
+## Skills
+
+1. scientific-writing — claim-evidence aligned drafting
+2. pubmed-cli — PubMed search, citation graphs, MeSH lookup
+3. biorxiv-database — bioRxiv/medRxiv preprint surveillance
+4. docx-review — Word document review with tracked changes
+5. pptx — PowerPoint creation and editing
+6. pdf — PDF creation, merge, split, analysis
+7. xlsx — spreadsheet creation and analysis
+8. quarto-authoring — loop-driven .qmd manuscripts
+9. beautiful-mermaid — publication-grade Mermaid diagrams
+10. humanize-text — natural tone refinement
+11. experiment-provenance — metadata capture for every run
+12. benchmark-logging — records with acceptance criteria
+13. phi-cleaner — BERT-based clinical text de-identification
+
+## Messaging Channels
+
+sciClaw connects to Telegram, Discord, and Slack as a bot. Scientists chat in the app they already use — no terminal required. A CLI and API are also available.
+
+## Paper
+
+Pedapati, E. (2025). sciClaw: A Lightweight Paired-Scientist Agent for Reproducible Biomedical Research Workflows. Preprint pending.
+
+## Links
+
+- Landing page: https://sciclaw.dev
+- Documentation: https://sciclaw.dev/docs.html
+- Source code: https://github.com/drpedapati/sciclaw
+- Releases: https://github.com/drpedapati/sciclaw/releases
+- Manuscript PDF: https://sciclaw.dev/sciclaw-open.pdf
+- Homebrew tap: https://github.com/drpedapati/homebrew-tap
