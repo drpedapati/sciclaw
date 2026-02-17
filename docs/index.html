@@ -568,6 +568,7 @@
         .step { flex-direction: column; gap: 8px; }
         .chat-msg { max-width: 95%; }
         .channel-strip { flex-direction: column; align-items: center; }
+        [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
       }
     </style>
   </head>
@@ -597,6 +598,7 @@
           An AI research agent with built-in skills for literature search,
           manuscript drafting, document review, and reproducibility tracking.
           Talk to it from Telegram, Discord, Slack, or the command line.
+          Every output lands in a single <code style="font-size:13px;background:var(--accent-soft);padding:2px 6px;border-radius:4px;">~/sciclaw</code> folder you can open, version, and audit.
         </p>
         <div class="btn-row">
           <a class="btn btn-primary" href="#install">Install sciClaw</a>
@@ -629,6 +631,38 @@
         </p>
       </section>
 
+      <!-- ── Workspace ── -->
+      <section>
+        <h2>One folder. Everything in it.</h2>
+        <p class="subhead">Drafts, session logs, skills, audit records &mdash; all in <code>~/sciclaw</code>. Open it in Finder, back it up with Git, or hand it to a collaborator.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
+          <pre style="margin:0;padding:16px 18px;border-radius:10px;background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:13px;line-height:1.7;overflow-x:auto;"><code>~/sciclaw/
+├── sessions/       <span style="color:#64748b;"># Every conversation, searchable</span>
+├── memory/         <span style="color:#64748b;"># Long-term notes across sessions</span>
+├── skills/         <span style="color:#64748b;"># 13 research skills (customizable)</span>
+├── hooks/          <span style="color:#64748b;"># Event audit log (JSONL)</span>
+├── cron/           <span style="color:#64748b;"># Scheduled jobs</span>
+├── AGENTS.md       <span style="color:#64748b;"># Agent behavior rules</span>
+├── IDENTITY.md     <span style="color:#64748b;"># Lab identity &amp; voice</span>
+├── SOUL.md         <span style="color:#64748b;"># Guardrails &amp; ethics</span>
+└── USER.md         <span style="color:#64748b;"># Your preferences</span></code></pre>
+          <div>
+            <div class="card" style="margin-bottom:10px;">
+              <h3 style="font-size:14px;">Reproducible by default</h3>
+              <p>Every tool call, every LLM response, every decision is logged with timestamps. Six months from now, you can trace exactly which analysis produced which result.</p>
+            </div>
+            <div class="card" style="margin-bottom:10px;">
+              <h3 style="font-size:14px;">Portable and auditable</h3>
+              <p>The workspace is plain files &mdash; Markdown, JSON, JSONL. No database, no proprietary format. Copy it, <code>git init</code> it, share it with reviewers.</p>
+            </div>
+            <div class="card">
+              <h3 style="font-size:14px;">You control the agent</h3>
+              <p>Edit <code>AGENTS.md</code> to change behavior, <code>SOUL.md</code> to set guardrails, <code>USER.md</code> to teach it your preferences. Plain text, version-controlled.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ── Messaging strip ── -->
       <section style="text-align:center;">
         <h2>Chat where you already work</h2>
@@ -656,6 +690,10 @@
 
         <div id="tab-lit" class="tab-panel active">
           <div class="chat-demo">
+            <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+              <span style="font-size:16px;">💬</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">Telegram &middot; sciClaw Bot</span>
+            </div>
             <div class="chat-msg user">
               <div class="chat-label">You</div>
               <div class="chat-bubble">What pathways are implicated in ALS progression?</div>
@@ -667,7 +705,7 @@
                 1. <strong>TDP-43 proteinopathy</strong> &mdash; Cytoplasmic mislocalization of TDP-43 in &gt;97% of ALS cases. RNA processing disruption leads to downstream neurodegeneration. <em>(Neumann et al., 2023; PMID 37284100)</em><br><br>
                 2. <strong>SOD1 / oxidative stress</strong> &mdash; Gain-of-function SOD1 mutations cause mitochondrial dysfunction and ROS accumulation in motor neurons. <em>(Rosen et al., 2022; PMID 36198432)</em><br><br>
                 3. <strong>C9orf72 repeat expansion</strong> &mdash; Hexanucleotide repeat in C9orf72 accounts for ~40% of familial ALS. Dipeptide repeat proteins impair nucleocytoplasmic transport. <em>(DeJesus-Hernandez et al., 2021; PMID 34892710)</em><br><br>
-                <em style="color:var(--accent);">Found 47 articles. Full citation list saved to session.</em>
+                <em style="color:var(--accent);">Found 47 articles. Full citation list saved to ~/sciclaw/sessions/.</em>
               </div>
             </div>
           </div>
@@ -675,6 +713,10 @@
 
         <div id="tab-draft" class="tab-panel">
           <div class="chat-demo">
+            <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+              <span style="font-size:16px;">💬</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">Discord &middot; #research</span>
+            </div>
             <div class="chat-msg user">
               <div class="chat-label">You</div>
               <div class="chat-bubble">Draft a methods section for our ERP correlation analysis</div>
@@ -686,7 +728,7 @@
                 <strong>Participants.</strong> Thirty-two right-handed adults (18 female; mean age = 24.3, SD = 3.1) participated after providing written informed consent. The study was approved by the institutional review board (Protocol #2024-0187).<br><br>
                 <strong>ERP Recording.</strong> Continuous EEG was recorded from 64 Ag/AgCl electrodes using a BioSemi ActiveTwo system (sampling rate: 512 Hz). Data were referenced to the average of bilateral mastoids and filtered offline (0.1&ndash;30 Hz, zero-phase Butterworth).<br><br>
                 <strong>Statistical Analysis.</strong> Spearman rank correlations were computed between P300 amplitude at Pz and ALSFRS-R decline rate (points/month). Multiple comparisons were corrected using the Benjamini-Hochberg procedure (FDR = 0.05).<br><br>
-                <em style="color:var(--accent);">Draft saved. Send another message to continue refining.</em>
+                <em style="color:var(--accent);">Draft written to ~/sciclaw/methods-erp-correlation.md</em>
               </div>
             </div>
           </div>
@@ -694,6 +736,10 @@
 
         <div id="tab-review" class="tab-panel">
           <div class="chat-demo">
+            <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+              <span style="font-size:16px;">💬</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">Slack &middot; #lab-writing</span>
+            </div>
             <div class="chat-msg user">
               <div class="chat-label">You</div>
               <div class="chat-bubble">Review the discussion section in manuscript.docx</div>
@@ -701,7 +747,7 @@
             <div class="chat-msg agent">
               <div class="chat-label"><span class="chat-avatar"></span> sciClaw</div>
               <div class="chat-bubble">
-                <strong>Review complete.</strong> Output: manuscript-reviewed.docx<br><br>
+                <strong>Review complete.</strong> Output: <code style="font-size:12px;background:#f0fdf4;padding:1px 5px;border-radius:3px;">manuscript-reviewed.docx</code><br><br>
                 <strong>Tracked changes (7):</strong><br>
                 &bull; Para 2: Strengthened causal language &rarr; hedged to "these findings suggest"<br>
                 &bull; Para 3: Added missing citation for the Bhatt et al. replication study<br>
@@ -771,45 +817,62 @@
 
       <!-- ── Install steps ── -->
       <section id="install">
-        <h2>Get started in three steps</h2>
-        <p class="subhead">Works on macOS, Linux, and Windows. No coding required.</p>
+        <h2>Get started in four steps</h2>
+        <p class="subhead">Works on macOS and Linux. No coding required.</p>
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
             <div class="step-body">
               <h3>Install</h3>
-              <p>If you have <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a>, it's one command. Binaries are also available for direct download.</p>
+              <p>One command installs sciClaw and all companion tools (ripgrep, pandoc, Quarto, IRL, docx-review, pubmed-cli). Pre-compiled binaries &mdash; no build step.</p>
               <div class="step-code">
-                <code>brew tap drpedapati/tap && brew install sciclaw && sciclaw onboard --yes && sciclaw doctor</code>
-                <button class="copy-btn" onclick="copyText(this, 'brew tap drpedapati/tap && brew install sciclaw && sciclaw onboard --yes && sciclaw doctor')">Copy</button>
+                <code>brew tap drpedapati/tap && brew install sciclaw</code>
+                <button class="copy-btn" onclick="copyText(this, 'brew tap drpedapati/tap && brew install sciclaw')">Copy</button>
               </div>
               <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
-                macOS: install Quarto for manuscript rendering with <code>brew install --cask quarto</code>.
+                No Homebrew? Download binaries from the <a href="https://github.com/drpedapati/sciclaw/releases" style="color:var(--accent);">releases page</a>. macOS: also install Quarto with <code>brew install --cask quarto</code>.
               </p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">2</div>
             <div class="step-body">
-              <h3>Connect your AI provider</h3>
-              <p>sciClaw works with OpenAI, Anthropic, Google Gemini, and more. Authenticate with a single command.</p>
+              <h3>Set up your workspace</h3>
+              <p>Creates your <code>~/sciclaw</code> folder with skills, templates, and configuration. The interactive wizard walks you through authentication and optional tools.</p>
               <div class="step-code">
-                <code>sciclaw auth login --provider openai</code>
-                <button class="copy-btn" onclick="copyText(this, 'sciclaw auth login --provider openai')">Copy</button>
+                <code>sciclaw onboard</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw onboard')">Copy</button>
               </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                Use <code>sciclaw onboard --yes</code> to skip the wizard and accept defaults.
+              </p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">3</div>
             <div class="step-body">
-              <h3>Chat where you already work</h3>
-              <p>Recommended for non-technical users: pair Telegram/Discord and talk to sciClaw from a chat app.</p>
+              <h3>Log in with your ChatGPT account</h3>
+              <p>Sign in with the same OpenAI account you use for ChatGPT. Opens a device code flow &mdash; no API key needed.</p>
+              <div class="step-code">
+                <code>sciclaw auth login --provider openai</code>
+                <button class="copy-btn" onclick="copyText(this, 'sciclaw auth login --provider openai')">Copy</button>
+              </div>
+              <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
+                Or use any supported provider: Anthropic, Google Gemini, OpenRouter, Azure, DeepSeek, Groq. See <a href="docs.html#authentication" style="color:var(--accent);">authentication docs</a>.
+              </p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <h3>Connect a chat app</h3>
+              <p>Talk to sciClaw from Telegram, Discord, or Slack. The setup wizard guides you through creating a bot and linking it.</p>
               <div class="step-code">
                 <code>sciclaw channels setup telegram</code>
                 <button class="copy-btn" onclick="copyText(this, 'sciclaw channels setup telegram')">Copy</button>
               </div>
               <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">
-                Then run <code>sciclaw service install && sciclaw service start</code> for always-on chat, or <code>sciclaw gateway</code> in a terminal. Full guide: <a href="docs.html#scientist-setup">Scientist Setup</a>. CLI works too: <code>sciclaw agent -m "…"</code>.
+                Start the gateway: <code>sciclaw service install && sciclaw service start</code> (runs in background via launchd/systemd). Or <code>sciclaw gateway</code> in a terminal. CLI also works: <code>sciclaw agent -m "your question"</code>.
               </p>
             </div>
           </div>
