@@ -312,6 +312,10 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 					apiBase = "https://router.shengsuanyun.com/api/v1"
 				}
 			}
+		case "azure":
+			if cfg.Providers.Azure.APIBase != "" {
+				return NewAzureProvider(cfg.Providers.Azure.APIKey, cfg.Providers.Azure.APIBase, cfg.Providers.Azure.Proxy), nil
+			}
 		case "claude-cli", "claudecode", "claude-code":
 			workspace := cfg.Agents.Defaults.Workspace
 			if workspace == "" {
