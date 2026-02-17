@@ -16,7 +16,7 @@ RELEASE_PRERELEASE?=false
 RELEASE_DRAFT?=false
 BUILD_TIME=$(shell date +%FT%T%z)
 GO_VERSION=$(shell $(GO) version | awk '{print $$3}')
-LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.goVersion=$(GO_VERSION)"
+LDFLAGS=-trimpath -ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.goVersion=$(GO_VERSION)"
 
 # Go variables
 GO?=go
@@ -82,20 +82,20 @@ build:
 	@ln -sf $(PRIMARY_BINARY_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(LEGACY_BINARY_NAME)
 	@echo "Compatibility alias: $(LEGACY_BINARY_PATH)"
 
-## build-all: Build sciclaw for all platforms and emit picoclaw compatibility aliases
+## build-all: Cross-compile sciclaw for all platforms with picoclaw symlinks
 build-all:
 	@echo "Building for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
-	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-amd64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-amd64
-	GOOS=linux GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
-	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-arm64
-	GOOS=linux GOARCH=riscv64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-riscv64 ./$(CMD_DIR)
-	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-riscv64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-riscv64
-	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
-	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-darwin-arm64
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
-	@cp -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-windows-amd64.exe $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-windows-amd64.exe
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
+	@ln -sf $(PRIMARY_BINARY_NAME)-linux-amd64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-amd64
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
+	@ln -sf $(PRIMARY_BINARY_NAME)-linux-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-arm64
+	CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-linux-riscv64 ./$(CMD_DIR)
+	@ln -sf $(PRIMARY_BINARY_NAME)-linux-riscv64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-riscv64
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
+	@ln -sf $(PRIMARY_BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-darwin-arm64
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
+	@ln -sf $(PRIMARY_BINARY_NAME)-windows-amd64.exe $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-windows-amd64.exe
 	@echo "All builds complete"
 
 ## install: Install sciclaw and picoclaw compatibility alias to system and copy builtin skills
@@ -166,10 +166,12 @@ clean:
 fmt:
 	@$(GO) fmt ./...
 
-## deps: Update dependencies
+## deps: Update dependencies and re-vendor
 deps:
 	@$(GO) get -u ./...
 	@$(GO) mod tidy
+	@$(GO) mod vendor
+	@echo "Dependencies updated and vendored"
 
 ## run: Build and run sciclaw (picoclaw-compatible)
 run: build
