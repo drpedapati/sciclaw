@@ -23,6 +23,29 @@ sciClaw is a paired-scientist agent for rigorous research work. It connects to m
 
 Built on the [PicoClaw](https://github.com/sipeed/picoclaw) runtime (a Go rewrite of [nanobot](https://github.com/HKUDS/nanobot)), sciClaw keeps a single-binary footprint while adding a paired-scientist operating model: plan, evidence, review, iterate.
 
+## How You Talk to sciClaw
+
+The most natural way to use sciClaw is through **Telegram** or **Discord**. You message it like you'd message a colleague. Ask a question, attach a file, get results back. No terminal, no special syntax.
+
+```
+You:      "Find recent papers on TDP-43 proteinopathy in ALS"
+sciClaw:  [searches PubMed, returns 47 papers with citations, saves to workspace]
+
+You:      "Draft a methods section using the attached protocol"
+sciClaw:  [produces a Word doc with tracked changes you review in Microsoft Word]
+```
+
+After install, connect a chat app and start the gateway:
+
+```bash
+sciclaw channels setup telegram    # or: sciclaw channels setup discord
+sciclaw service install && sciclaw service start
+```
+
+That's it. sciClaw runs in the background and responds to your messages. See the [Scientist Setup Guide](https://sciclaw.dev/docs.html#scientist-setup) for a walkthrough.
+
+> A CLI is also available for power users: `sciclaw agent -m "your question"` or `sciclaw agent` for interactive mode.
+
 ## Install
 
 ### Homebrew (recommended)
@@ -43,7 +66,7 @@ brew install --cask quarto
 
 ### Download a binary
 
-Pre-compiled binaries for macOS (arm64), Linux (amd64, arm64, riscv64), and Windows (amd64) are on the [releases page](https://github.com/drpedapati/sciclaw/releases).
+Pre-compiled binaries for macOS (arm64), Linux (amd64, arm64, riscv64), and Windows (amd64/WSL) are on the [releases page](https://github.com/drpedapati/sciclaw/releases).
 
 ### From source
 
@@ -53,101 +76,49 @@ cd sciclaw
 make deps && make install
 ```
 
-### Companion tools
-
-If you install via Homebrew, sciClaw pulls companion tools automatically (IRL, ripgrep, docx-review, pubmed-cli; and on Linux also Quarto).
-If you install via downloaded binary/source, see `sciclaw doctor` for install hints.
+Homebrew pulls companion tools automatically (IRL, ripgrep, docx-review, pubmed-cli). For binary/source installs, run `sciclaw doctor` for hints.
 
 ## Quick Start
 
-**1. Initialize**
+**1. Initialize** — the wizard walks you through everything:
 
 ```bash
 sciclaw onboard
 ```
 
-Non-interactive (CI / scripts):
-```bash
-sciclaw onboard --yes
-```
-
-**2. Configure** (`~/.picoclaw/config.json`)
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": "gpt-5.2",
-      "max_tokens": 8192,
-      "temperature": 0.7
-    }
-  },
-  "providers": {
-    "openai": {
-      "api_key": "sk-..."
-    }
-  }
-}
-```
-
-Or authenticate without editing config:
+**2. Authenticate** with your AI provider:
 
 ```bash
-sciclaw auth login --provider openai          # OAuth (device code; works on local + headless)
-sciclaw auth login --provider anthropic       # Token paste
+sciclaw auth login --provider openai     # OAuth device code — works with your ChatGPT account
+sciclaw auth login --provider anthropic  # Token paste
 ```
 
-Optional: PubMed rate limits
-```bash
-# Either set via the onboard wizard, or set manually:
-export NCBI_API_KEY="your-key"
-```
-
-**3. Chat**
+**3. Connect a chat app** and start messaging:
 
 ```bash
-# One-shot
-sciclaw agent -m "What pathways are implicated in ALS?"
-
-# Interactive
-sciclaw agent
-
-# Override model for one invocation
-sciclaw agent --model gpt-5.2 -m "Review this manuscript draft"
-
-# Control reasoning effort
-sciclaw agent --effort high -m "Analyze the statistical methods in this paper"
+sciclaw channels setup telegram
+sciclaw service install && sciclaw service start
 ```
 
-## CLI Reference
+See [Authentication docs](https://sciclaw.dev/docs.html#authentication) for all providers. See [Chat Channels](#chat-channels) below for Telegram and Discord setup details.
 
-| Command | Description |
-|---------|-------------|
-| `sciclaw onboard` | Initialize config, workspace, and baseline skills |
-| `sciclaw agent -m "..."` | One-shot message |
-| `sciclaw agent` | Interactive chat |
-| `sciclaw agent --model <model>` | Override model for this invocation |
-| `sciclaw agent --effort <level>` | Set reasoning effort level |
-| `sciclaw models list` | Show current model and configured providers |
-| `sciclaw models set <model>` | Persistently change the default model |
-| `sciclaw models effort <level>` | Persistently change reasoning effort |
-| `sciclaw models status` | Show model, provider, auth, and effort |
-| `sciclaw status` | Show system status (config, providers, IRL runtime) |
-| `sciclaw doctor` | Verify deployment: config, tools, skills, auth, gateway, service |
-| `sciclaw doctor --fix` | Auto-fix: sync baseline skills, remove legacy names |
-| `sciclaw gateway` | Start chat channel gateway (Telegram, Discord, etc.) |
-| `sciclaw service <subcommand>` | Manage background gateway service |
-| `sciclaw auth login` | Authenticate with a provider |
-| `sciclaw auth status` | Show stored credentials |
-| `sciclaw skills list` | List installed skills |
-| `sciclaw skills install <source>` | Install a skill from GitHub or local path |
-| `sciclaw cron list` | List scheduled jobs |
-| `sciclaw cron add` | Add a scheduled job |
+## Security
+
+sciClaw's default posture is **local, private, and locked down**. Here's what that means in practice:
+
+- **Runs on your machine.** sciClaw is a program on your computer, not a cloud service. There's no account to create with us, no server to connect to, nothing hosted anywhere.
+- **Your data stays in one folder.** Everything sciClaw produces lives in `~/sciclaw` — a folder on your machine that you own and control. You can open it, back it up, or delete it anytime.
+- **Nothing is exposed to the internet.** sciClaw doesn't open any ports or listen for incoming connections. It reaches out only when you send a message, and only to the AI provider you chose (OpenAI, Anthropic, etc.) and any tools you explicitly enable (like PubMed).
+- **Messages go through your private bot.** When you chat via Telegram or Discord, messages travel through a bot that only you control. Nobody else can talk to it unless you explicitly allow them.
+- **No telemetry, no analytics, no tracking.** sciClaw sends nothing back to us. No usage data, no error reports, no phone-home behavior. We don't know you're running it.
+- **API keys stay local.** Your credentials are stored in a config file on your machine (`~/.picoclaw/config.json`). They're never transmitted to anyone except the provider they belong to.
+- **Skills are validated before install.** Every skill goes through size limits, binary rejection, frontmatter validation, and SHA-256 provenance logging. Catalog fetches use pinned commit refs for supply-chain hardening.
+
+For the full security model, see [Security](https://sciclaw.dev/security.html).
 
 ## Providers
 
-sciClaw auto-detects the provider from the model name. Set credentials via `config.json` or `sciclaw auth login`.
-For production use, sciClaw is optimized around OpenAI `gpt-5.2`; other providers remain available for compatibility.
+sciClaw auto-detects the provider from the model name. Set credentials via the onboard wizard or `sciclaw auth login`.
 
 | Provider | Models | Auth |
 |----------|--------|------|
@@ -160,23 +131,6 @@ For production use, sciClaw is optimized around OpenAI `gpt-5.2`; other provider
 | **Zhipu** | GLM models | API key |
 
 > Groq provides free voice transcription via Whisper. When configured, Telegram voice messages are automatically transcribed.
-
-## Reasoning Effort
-
-The `--effort` flag controls how deeply `gpt-5.2` thinks before answering. This directly affects quality, latency, and cost.
-
-| Provider | Valid levels | Default |
-|----------|-------------|---------|
-| OpenAI (`gpt-5.2`) | `none` · `minimal` · `low` · `medium` · `high` · `xhigh` | provider default (use `medium` as practical baseline) |
-
-```bash
-sciclaw agent --model gpt-5.2 --effort medium -m "Summarize this section"
-sciclaw agent --model gpt-5.2 --effort high -m "Complex analysis"
-sciclaw agent --model gpt-5.2 --effort xhigh -m "Prove this theorem"
-
-# Save a default
-sciclaw models effort high
-```
 
 ## Built-in Skills
 
@@ -204,110 +158,23 @@ Twelve skills are installed during `sciclaw onboard`:
 ### Polish
 - **humanize-text** — Final-pass language polishing for natural tone
 
-### Optional Bundled Skill (Manual Install)
-- **phi-cleaner** — Clinical text de-identification helper for PHI-safe sharing workflows (`phi-clean` CLI).
-- Bundled with sciClaw and available to the agent; install the companion CLI only if needed:
+### Optional
+- **phi-cleaner** — Clinical text de-identification for PHI-safe sharing (`brew install drpedapati/tools/phi-cleaner`)
 
-```bash
-brew tap drpedapati/tools
-brew install drpedapati/tools/phi-cleaner
-```
-
-Additional skills are available from the [skills catalog](https://github.com/drpedapati/sciclaw-skills):
-
-```bash
-sciclaw skills install drpedapati/sciclaw-skills/<skill-name>
-```
-
-### Companion Tool Ownership Migration
-
-Office tool repositories moved from `henrybloomingdale/*` to `drpedapati/*`.
-If you install Office tools directly (outside sciClaw's `sciclaw-*` aliases), use:
-
-```bash
-brew tap drpedapati/tools
-brew install drpedapati/tools/docx-review
-brew install drpedapati/tools/pptx-review
-brew install drpedapati/tools/xlsx-review
-```
-
-## Skills Installer
-
-The skills installer validates all content before writing to disk:
-
-- **Size limits** — 256KB per skill, 1MB for catalog downloads
-- **Binary rejection** — NUL byte detection prevents non-text content
-- **Frontmatter validation** — Skills must have valid YAML frontmatter with a `name` field
-- **Provenance logging** — Every install writes a `.provenance.json` with source URL, SHA-256, timestamp, and size
-- **Pinned catalog ref** — catalog fetch uses an immutable commit ref (not mutable `main`) for supply-chain hardening
-
-### Catalog Pin Rotation
-
-To refresh the skills catalog pin:
-
-1. Verify the target commit in `drpedapati/sciclaw-skills`.
-2. Update `skillsCatalogPinnedRef` in `pkg/skills/installer.go`.
-3. Run tests and release.
-
-## IRL Integration
-
-sciClaw integrates with [IRL](https://github.com/drpedapati/irl-template) (Idempotent Research Loop) for project lifecycle management. IRL is installed automatically as a Homebrew dependency.
-
-The agent mediates IRL operations — creating projects, adopting existing directories, discovering past work — through natural conversation:
-
-```bash
-sciclaw agent -m "Create a new project for ERP correlation analysis"
-sciclaw agent -m "What projects do I have?"
-sciclaw agent -m "Adopt my old als-biomarker folder as a managed project"
-```
-
-Every IRL command is recorded in `~/sciclaw/irl/commands/` for auditability (workspace path is configurable).
+Additional skills: [skills catalog](https://github.com/drpedapati/sciclaw-skills) — install with `sciclaw skills install drpedapati/sciclaw-skills/<name>`
 
 ## Chat Channels
 
-Talk to sciClaw through messaging apps by running `sciclaw gateway`.
-Scientist-friendly walkthrough: [Scientist Setup Guide](https://drpedapati.github.io/sciclaw/docs.html#scientist-setup).
-
-Recommended setup:
-```bash
-sciclaw channels setup telegram
-sciclaw gateway
-```
-
-Background service (recommended for always-on bots):
-```bash
-sciclaw service install
-sciclaw service start
-sciclaw service status
-```
-
-Lifecycle controls:
-```bash
-sciclaw service stop
-sciclaw service restart
-sciclaw service logs --lines 200
-sciclaw service uninstall
-```
-
-Platform notes:
-- **macOS**: uses per-user `launchd` (`~/Library/LaunchAgents/io.sciclaw.gateway.plist`)
-- **Linux**: uses `systemd --user` (`~/.config/systemd/user/sciclaw-gateway.service`)
-- **WSL**: service mode works when systemd is enabled; otherwise run `sciclaw gateway` in a terminal
-
-| Channel | Setup |
-|---------|-------|
-| **Telegram** | Easy — just a bot token from @BotFather |
-| **Discord** | Easy — bot token + MESSAGE CONTENT INTENT |
-| **Slack** | Medium — app + bot token |
-| **QQ** | Easy — AppID + AppSecret |
-| **DingTalk** | Medium — client credentials |
+Telegram and Discord are the recommended way to interact with sciClaw. You message it from the app you already have open.
 
 <details>
-<summary>Telegram setup</summary>
+<summary><strong>Telegram setup</strong> (easiest)</summary>
 
 1. Open Telegram, search `@BotFather`, send `/newbot`, copy the token
 2. Run `sciclaw channels setup telegram` (pairs your account and writes config)
-3. Manual config (advanced) in `~/.picoclaw/config.json`:
+3. Start the gateway: `sciclaw service install && sciclaw service start`
+
+Manual config (advanced) in `~/.picoclaw/config.json`:
 
 ```json
 {
@@ -321,52 +188,44 @@ Platform notes:
 }
 ```
 
-4. Run `sciclaw gateway`
-
 </details>
 
 <details>
-<summary>Discord setup</summary>
+<summary><strong>Discord setup</strong></summary>
 
 1. Create app at [discord.com/developers](https://discord.com/developers/applications)
 2. Enable **MESSAGE CONTENT INTENT** in Bot settings
 3. Copy bot token, get your User ID (Developer Mode → right-click → Copy User ID)
-4. Add to config:
-
-```json
-{
-  "channels": {
-    "discord": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allow_from": ["YOUR_USER_ID"]
-    }
-  }
-}
-```
-
+4. Run `sciclaw channels setup discord` or add to config manually
 5. Generate invite URL (scopes: `bot`; permissions: Send Messages, Read Message History)
-6. Run `sciclaw gateway`
+6. Start the gateway: `sciclaw service install && sciclaw service start`
 
 </details>
 
-## Docker
+**Background service** (recommended — keeps sciClaw running):
+```bash
+sciclaw service install    # register with launchd (macOS) or systemd (Linux)
+sciclaw service start
+sciclaw service status     # check it's running
+```
+
+Platform notes:
+- **macOS**: per-user `launchd` (`~/Library/LaunchAgents/io.sciclaw.gateway.plist`)
+- **Linux**: `systemd --user` (`~/.config/systemd/user/sciclaw-gateway.service`)
+- **WSL**: service mode works when systemd is enabled; otherwise `sciclaw gateway` in a terminal
+
+## IRL Integration
+
+sciClaw integrates with [IRL](https://github.com/drpedapati/irl-template) (Idempotent Research Loop) for project lifecycle management. IRL is installed automatically as a Homebrew dependency.
+
+The agent manages projects through natural conversation:
 
 ```bash
-git clone https://github.com/drpedapati/sciclaw.git
-cd sciclaw
-cp config/config.example.json config/config.json
-# Edit config.json with your credentials
-
-# Gateway mode
-docker compose --profile gateway up -d
-
-# One-shot agent
-docker compose run --rm sciclaw-agent -m "Hello"
-
-# Logs
-docker compose logs -f sciclaw-gateway
+sciclaw agent -m "Create a new project for ERP correlation analysis"
+sciclaw agent -m "What projects do I have?"
 ```
+
+Every IRL command is recorded in `~/sciclaw/irl/commands/` for auditability.
 
 ## Workspace Layout
 
@@ -380,7 +239,6 @@ docker compose logs -f sciclaw-gateway
 ├── hooks/             # Hook audit log (JSONL)
 ├── irl/commands/      # IRL command audit records
 ├── AGENTS.md          # Agent behavior guide
-├── HEARTBEAT.md       # Periodic task prompts
 ├── HOOKS.md           # Hook policy (plain-language)
 ├── IDENTITY.md        # sciClaw identity
 ├── SOUL.md            # Agent values & guardrails
@@ -388,61 +246,76 @@ docker compose logs -f sciclaw-gateway
 └── USER.md            # User preferences
 ```
 
-## Doctor
-
-Run `sciclaw doctor` to verify your deployment — config, workspace, auth credentials, companion tools, baseline skills, gateway health, service health, and Homebrew update status:
+## Docker
 
 ```bash
-sciclaw doctor            # Human-readable report
-sciclaw doctor --json     # Machine-readable output
-sciclaw doctor --fix      # Auto-fix: sync baseline skills, remove legacy skill names
+git clone https://github.com/drpedapati/sciclaw.git && cd sciclaw
+cp config/config.example.json config/config.json   # edit with your credentials
+docker compose --profile gateway up -d              # gateway mode
+docker compose run --rm sciclaw-agent -m "Hello"    # one-shot
 ```
 
-The doctor checks:
-- **Config & workspace** — validates `~/.picoclaw/config.json` and workspace directory exist
-- **Auth credentials** — checks OpenAI OAuth status (authenticated, expired, needs refresh)
-- **Companion tools** — verifies `docx-review`, `pubmed-cli`, `quarto`, `irl`, `pandoc`, `rg`, `python3` are installed, with install hints for missing tools
-- **Baseline skills** — confirms all 12 skills are present, detects legacy skill names (`docx`, `pubmed-database`)
-- **Gateway health** — scans logs for Telegram 409 conflicts (multiple bot instances)
-- **Service health** — checks backend support plus installed/running/enabled status for background mode
-- **Homebrew** — checks if `sciclaw` is outdated
-
-Exit code 0 = all checks pass. Exit code 1 = at least one error.
-
 ## Troubleshooting
+
+Run `sciclaw doctor` to diagnose issues — it checks config, auth, tools, skills, gateway, and service health.
+
+```bash
+sciclaw doctor            # human-readable report
+sciclaw doctor --fix      # auto-fix common issues
+```
+
+<details>
+<summary>Common issues</summary>
 
 **"no credentials for openai/anthropic"**
 ```bash
 sciclaw auth login --provider openai
-sciclaw auth status
 ```
 
-**Web search says "API configuration problem"**
-Get a free key at [brave.com/search/api](https://brave.com/search/api) (2000 free queries/month) and add to config under `tools.web.search.api_key`.
-
-**Telegram "Conflict: terminated by other getUpdates"**
-Only one `sciclaw gateway` instance can run at a time.
-If you use service mode, restart it cleanly:
+**Telegram "Conflict: terminated by other getUpdates"** — only one gateway instance can run at a time:
 ```bash
 sciclaw service restart
 ```
 
+**Web search "API configuration problem"** — get a free key at [brave.com/search/api](https://brave.com/search/api) and add to config under `tools.web.search.api_key`.
+
+</details>
+
 ## Updating
 
 ```bash
-# Homebrew
-brew upgrade sciclaw
-
-# Refresh skills to latest built-in versions
-sciclaw onboard
-
-# Check everything
-sciclaw status
-sciclaw --version
+brew upgrade sciclaw     # update the binary
+sciclaw onboard          # refresh skills to latest
+sciclaw doctor           # verify everything
 ```
+
+<details>
+<summary>CLI reference</summary>
+
+| Command | Description |
+|---------|-------------|
+| `sciclaw onboard` | Initialize config, workspace, and baseline skills |
+| `sciclaw agent -m "..."` | One-shot message |
+| `sciclaw agent` | Interactive chat |
+| `sciclaw agent --model <m>` | Override model |
+| `sciclaw agent --effort <level>` | Set reasoning effort (`none` through `xhigh`) |
+| `sciclaw models list` | Show current model and providers |
+| `sciclaw models set <model>` | Change default model |
+| `sciclaw models effort <level>` | Change default effort |
+| `sciclaw status` | System status |
+| `sciclaw doctor` | Verify deployment |
+| `sciclaw doctor --fix` | Auto-fix common issues |
+| `sciclaw gateway` | Start chat gateway |
+| `sciclaw service install\|start\|stop\|restart\|logs\|uninstall` | Manage background service |
+| `sciclaw channels setup <channel>` | Configure a chat channel |
+| `sciclaw auth login\|status` | Manage credentials |
+| `sciclaw skills list\|install` | Manage skills |
+| `sciclaw cron list\|add` | Manage scheduled jobs |
+
+</details>
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-sciClaw is a fork of [PicoClaw](https://github.com/sipeed/picoclaw) by Sipeed, which is based on [nanobot](https://github.com/HKUDS/nanobot) by HKUDS. The `picoclaw` command remains available as a compatibility alias.
+sciClaw is a fork of [PicoClaw](https://github.com/sipeed/picoclaw) by Sipeed, which is based on [nanobot](https://github.com/HKUDS/nanobot) by HKUDS.

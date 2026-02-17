@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Security | sciClaw</title>
+    <script defer data-domain="sciclaw.dev" src="https://analytics.cincineuro.com/js/script.file-downloads.outbound-links.tagged-events.js"></script>
+    <meta name="description" content="sciClaw runs on your computer, not in someone else's cloud. Here's exactly how your data stays private." />
+    <link rel="canonical" href="https://sciclaw.dev/security.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://sciclaw.dev/security.html" />
+    <meta property="og:title" content="Security | sciClaw" />
+    <meta property="og:description" content="sciClaw runs on your computer, not in someone else's cloud. Here's exactly how your data stays private." />
+    <meta property="og:site_name" content="sciClaw" />
+    <meta property="og:image" content="https://sciclaw.dev/og-image.jpg" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@cbrainlab" />
+    <meta name="twitter:title" content="Security | sciClaw" />
+    <meta name="twitter:description" content="sciClaw runs on your computer, not in someone else's cloud. Here's exactly how your data stays private." />
+    <meta name="twitter:image" content="https://sciclaw.dev/og-image.jpg" />
+
+    <meta name="author" content="Ernest Pedapati, MD" />
+    <meta name="robots" content="index, follow" />
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+      :root {
+        --bg: #f8fafc;
+        --paper: #ffffff;
+        --ink: #0f172a;
+        --muted: #475569;
+        --border: #dbe3ee;
+        --accent: #0f766e;
+        --accent-soft: #ccfbf1;
+        --accent-hover: #0d655b;
+        --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+        --serif: "Fraunces", "Times New Roman", serif;
+        --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background:
+          radial-gradient(circle at 10% 10%, #d9f8f2 0%, transparent 35%),
+          radial-gradient(circle at 95% 0%, #dbeafe 0%, transparent 30%),
+          var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        line-height: 1.7;
+      }
+
+      a { color: var(--accent); }
+      a:hover { color: var(--accent-hover); }
+
+      .wrap {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      /* ── Header ── */
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 24px;
+        max-width: 880px;
+        margin: 0 auto;
+      }
+
+      .brand {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 18px;
+        color: var(--ink);
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .brand-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        display: inline-block;
+      }
+
+      .nav-links { display: flex; align-items: center; gap: 18px; }
+
+      .util {
+        text-decoration: none;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .util:hover { color: var(--accent); }
+
+      /* ── Article ── */
+      article {
+        padding: 40px 0 60px;
+      }
+
+      article h1 {
+        font-family: var(--serif);
+        font-size: 32px;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+
+      article .subtitle {
+        font-size: 17px;
+        color: var(--muted);
+        margin: 0 0 32px;
+        line-height: 1.5;
+      }
+
+      article h2 {
+        font-family: var(--serif);
+        font-size: 20px;
+        margin: 32px 0 10px;
+        color: var(--ink);
+      }
+
+      article p {
+        font-size: 15px;
+        color: var(--ink);
+        margin: 0 0 16px;
+        line-height: 1.75;
+      }
+
+      article code {
+        font-family: var(--mono);
+        font-size: 13px;
+        background: var(--accent-soft);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      article ul {
+        margin: 0 0 16px;
+        padding-left: 22px;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      article ul li {
+        margin-bottom: 6px;
+      }
+
+      /* ── Footer ── */
+      footer {
+        margin-top: 24px;
+        padding: 16px 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+        border-top: 1px solid var(--border);
+      }
+
+      footer a { color: var(--muted); text-decoration: underline; }
+      footer a:hover { color: var(--accent); }
+
+      @media (max-width: 760px) {
+        article h1 { font-size: 26px; }
+        article { padding: 28px 0 40px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="index.html">
+        <span class="brand-dot" aria-hidden="true"></span>
+        sciClaw
+      </a>
+      <nav class="nav-links">
+        <a class="util" href="index.html">Home</a>
+        <a class="util" href="docs.html">Documentation</a>
+        <a class="util" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="wrap">
+      <article>
+        <h1>Security</h1>
+        <p class="subtitle">sciClaw runs on your computer. Not on ours. Not in anyone else's cloud. Here's what that actually means for your data.</p>
+
+        <h2>It's a program, not a service</h2>
+        <p>There's no account to create with us. No login. No server to connect to. sciClaw is software that runs on your Mac or Linux machine, same as any other program you've installed. We don't host anything, and we don't know you're running it.</p>
+        <p>That's a deliberate choice. Research data is sensitive. Institutional review boards exist for a reason. We didn't want to build something that asks you to trust a startup with your participants' information. So we didn't.</p>
+
+        <h2>Your data stays in one folder</h2>
+        <p>Everything sciClaw produces lives in <code>~/sciclaw</code>. Conversations, documents, logs, memory. One folder on your machine that you own and control. You can open it in Finder, back it up to an encrypted drive, version it with git, or delete the whole thing if you want.</p>
+        <p>There's no hidden cache somewhere else on your system. No data stashed in a temp directory. It's all right there.</p>
+
+        <h2>Nothing is exposed to the internet</h2>
+        <p>sciClaw doesn't open any ports. It doesn't listen for incoming connections. It doesn't run a web server. When you send a message, it reaches out to your AI provider (OpenAI, Anthropic, whoever you chose) and to any tools you explicitly told it to use (like PubMed). That's it.</p>
+        <p>If you're behind a hospital firewall or a VPN, sciClaw works fine because it only makes outbound HTTPS requests. Nothing inbound. No one can connect to it from outside your machine.</p>
+
+        <h2>Messages go through your private bot</h2>
+        <p>When you chat via Telegram or Discord, the messages travel through a bot that you created and you control. It's registered to your account, with your token. Nobody else can talk to it unless you explicitly add them to the allow list.</p>
+        <p>The gateway (the part that connects to Telegram or Discord) runs on your machine too. It's not a relay service we operate. Your messages don't pass through our infrastructure at any point.</p>
+
+        <h2>API keys stay local</h2>
+        <p>Your credentials are stored in a config file on your computer (<code>~/.picoclaw/config.json</code>). They're never transmitted to anyone except the provider they belong to. We can't see your keys because we never receive them.</p>
+        <p>If you use the OAuth device-code flow for OpenAI, the token exchange happens directly between your machine and OpenAI's servers. We're not in that loop.</p>
+
+        <h2>No telemetry</h2>
+        <p>sciClaw sends nothing back to us. No usage data. No error reports. No analytics. No phone-home behavior of any kind. We genuinely don't know how many people are using it, what they're doing with it, or where they are. And that's fine by us.</p>
+        <p>The only analytics are on our website (sciclaw.dev), which uses privacy-respecting, cookieless analytics. The software itself is silent.</p>
+
+        <h2>We audited the code we built on</h2>
+        <p>sciClaw is a fork of <a href="https://github.com/sipeed/picoclaw">PicoClaw</a>, which itself is based on <a href="https://github.com/HKUDS/nanobot">nanobot</a>. Both are open-source projects built by people doing good work. But we're shipping software that researchers will use with sensitive data, so "trust the upstream" wasn't good enough.</p>
+        <p>We went through the inherited codebase line by line. We removed telemetry hooks. We replaced external server dependencies with local alternatives. We stripped out update mechanisms that phoned home. Not because we thought anyone had bad intentions, but because we wanted to know exactly what this binary does when it runs on your machine, and we wanted you to be able to verify that too.</p>
+        <p>Prompt injection is a real concern with any agent that takes user input and passes it to an LLM. We can't eliminate that risk entirely (nobody can right now), but we can control the surface area. Keeping the tool local, validating skills before they run, logging every tool call, and not routing traffic through third-party infrastructure all help reduce the places where something could go wrong.</p>
+
+        <h2>Skills are validated before install</h2>
+        <p>When you install a skill (the markdown files that teach sciClaw new capabilities), it goes through validation: size limits, binary rejection, frontmatter checks, and SHA-256 provenance logging. Catalog fetches use pinned commit refs so you get exactly what you asked for, not whatever happens to be on main at that moment.</p>
+        <p>Skills are plain text files you can read. There's no compiled code, no executables, no packages with hidden dependencies. Open any skill file in a text editor and you can see everything it does.</p>
+
+        <h2>What about the AI provider?</h2>
+        <p>This is worth being direct about. When you send a message through sciClaw, that message goes to the AI provider you chose (OpenAI, Anthropic, Google, etc.) using their API. That's how it works. The provider sees whatever you send in that conversation.</p>
+        <p>What you send is up to you. You control what goes in the prompt. If you're working with sensitive data, you can choose a provider whose data handling policies meet your requirements. Some providers offer zero-retention APIs. Some institutions have BAAs in place. sciClaw doesn't make that choice for you because it shouldn't.</p>
+        <p>The important thing is that your data goes directly from your machine to the provider you picked. We're not in the middle. There's no intermediary, no proxy, no aggregation layer.</p>
+
+        <h2>Everything above is the default. You can change all of it.</h2>
+        <p>This is the part we need to be honest about. Everything described on this page is how sciClaw ships out of the box: locked down, local, private. But none of it is hardcoded. sciClaw is fully configurable, and that means you can open it up as wide as you want.</p>
+        <p>The <a href="https://github.com/drpedapati/sciclaw-skills">OpenClaw ecosystem</a> includes skills and integrations that deliberately reach beyond your machine. Connect your Gmail account. Sync files with Dropbox or Google Drive. Stand up a web server. Expose an API to the internet. Hook into Slack workspaces, calendars, databases, whatever your workflow needs. These aren't bugs or workarounds. They're designed capabilities.</p>
+        <p>That flexibility is the whole point. A solo researcher running analyses on deidentified data needs a very different posture than a lab that wants their agent coordinating across five collaborators on three continents. sciClaw lets both of those people use the same tool.</p>
+        <p>But here's the thing: <strong>every integration you enable changes your security surface</strong>. Connect Gmail and now Google has access to whatever flows through that channel. Open a port and now your firewall configuration matters. Share your bot token and now someone else can talk to your agent. None of this is inherently wrong, but you should know you're doing it.</p>
+        <p>We're not going to pretend this tool can't be misconfigured. It absolutely can. If you install a third-party skill without reading it, connect services you don't understand, or share credentials carelessly, you can create real problems for yourself. sciClaw gives you the power to build exactly the setup you need. It also gives you the power to build a security nightmare if you're not paying attention.</p>
+        <p>This is a grown-up tool. It doesn't babysit you. It doesn't block you from making choices that might be unwise. It trusts that you'll think about what you're connecting, why, and what the consequences are. The defaults are conservative because most people should start there. What you do after that is up to you.</p>
+
+        <h2>The short version</h2>
+        <ul>
+          <li>Runs on your machine. Not ours.</li>
+          <li>All data stays in <code>~/sciclaw</code>. One folder, your control.</li>
+          <li>No open ports. No incoming connections. Outbound HTTPS only.</li>
+          <li>Chat goes through your private bot. We don't operate a relay.</li>
+          <li>API keys stored locally. Never sent to us.</li>
+          <li>Zero telemetry. We don't know you're running it.</li>
+          <li>Skills are plain text with validation and provenance logging.</li>
+          <li>AI conversations go directly to your chosen provider. We're not in the middle.</li>
+        </ul>
+
+        <p>If you have questions about security or find something that doesn't match what we've described here, please <a href="https://github.com/drpedapati/sciclaw/issues">open an issue</a> or reach out on <a href="https://github.com/drpedapati/sciclaw/discussions">GitHub Discussions</a>.</p>
+      </article>
+
+      <footer>
+        <a href="index.html">sciClaw</a> is open source (MIT). Built on <a href="https://github.com/sipeed/picoclaw">PicoClaw</a> by Sipeed.
+      </footer>
+    </main>
+  </body>
+</html>
