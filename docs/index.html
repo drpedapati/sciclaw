@@ -415,16 +415,22 @@
       .channel-badge {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 10px 18px;
-        border-radius: 10px;
-        font-family: var(--mono);
-        font-size: 14px;
-        font-weight: 500;
+        gap: 10px;
+        padding: 14px 24px;
+        border-radius: 14px;
+        font-size: 15px;
+        font-weight: 600;
         color: var(--ch-color, var(--accent));
-        background: color-mix(in srgb, var(--ch-color, var(--accent)) 10%, white);
-        border: 1px solid color-mix(in srgb, var(--ch-color, var(--accent)) 25%, transparent);
+        background: color-mix(in srgb, var(--ch-color, var(--accent)) 8%, white);
+        border: 1.5px solid color-mix(in srgb, var(--ch-color, var(--accent)) 20%, transparent);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        cursor: default;
       }
+      .channel-badge:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--ch-color, var(--accent)) 20%, transparent);
+      }
+      .channel-badge svg { flex-shrink: 0; }
 
       /* ── Steps ── */
       .steps { counter-reset: step; }
@@ -600,34 +606,46 @@
           Talk to it from Telegram, Discord, Slack, or the command line.
           Every output lands in a single <code style="font-size:13px;background:var(--accent-soft);padding:2px 6px;border-radius:4px;">~/sciclaw</code> folder you can open, version, and audit.
         </p>
+        <div style="margin:0 auto 14px;max-width:520px;background:#0f172a;border-radius:10px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <code style="color:#e2e8f0;font-size:14px;white-space:nowrap;">brew tap drpedapati/tap && brew install sciclaw</code>
+          <button onclick="navigator.clipboard.writeText('brew tap drpedapati/tap && brew install sciclaw')" style="background:none;border:1px solid #334155;border-radius:6px;padding:4px 8px;cursor:pointer;color:#94a3b8;font-size:12px;white-space:nowrap;" title="Copy to clipboard">Copy</button>
+        </div>
         <div class="btn-row">
-          <a class="btn btn-primary" href="#install">Install sciClaw</a>
+          <a class="btn btn-primary" href="#install">Getting started</a>
           <a class="btn btn-secondary" href="docs.html">Read the docs</a>
-          <a class="btn btn-secondary" href="docs.html#scientist-setup">Scientist setup</a>
         </div>
         <p class="trust">Free and open source. MIT licensed. Works with your existing tools.</p>
+        <p style="margin:12px auto 0;font-size:13px;color:var(--muted);line-height:1.5;">
+          <a href="sciclaw-open.pdf" style="color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--accent) 40%, transparent);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Pedapati, E. (2025). sciClaw: A Lightweight Paired-Scientist Agent for Reproducible Biomedical Research Workflows.</a>
+          <span style="font-style:italic;"> Preprint&mdash;coming soon.</span>
+        </p>
       </section>
 
-      <!-- ── Pain points ── -->
+      <!-- ── What makes this an agent ── -->
       <section>
-        <h2>Sound familiar?</h2>
-        <p class="subhead">Research involves a lot of repetitive work that pulls you away from thinking.</p>
-        <div class="grid-3">
+        <h2>Not another tool. An agent.</h2>
+        <p class="subhead">You describe what you need in plain language. sciClaw plans, executes, and reports back.</p>
+        <div class="grid">
           <div class="pain-card">
-            <h3>Searching takes forever</h3>
-            <p>Hours lost sifting through PubMed results, chasing citation chains, and formatting references by hand.</p>
+            <h3>You ask, it searches</h3>
+            <p>&ldquo;Find recent papers on TDP-43 in ALS.&rdquo; sciClaw queries PubMed, filters by relevance, pulls full citations, and saves everything to your workspace&mdash;no tab-switching, no copy-paste.</p>
           </div>
           <div class="pain-card">
-            <h3>Too many tools, too much pasting</h3>
-            <p>Copy data into Excel, export to Word, fix formatting, remake the figure&hellip; rinse and repeat for every revision.</p>
+            <h3>You teach, it learns</h3>
+            <p>Drop in a style guide, paste a lab protocol URL, or point it at your last three papers. sciClaw turns these into <em>skills</em>&mdash;reusable instructions it follows every time. Your methods, your voice, your standards&mdash;encoded once, applied consistently.</p>
           </div>
           <div class="pain-card">
-            <h3>No trail of what changed</h3>
-            <p>Six months later, you can't reconstruct which analysis produced which result or why a parameter was chosen.</p>
+            <h3>You specify, it drafts</h3>
+            <p>&ldquo;Draft the methods: Spearman correlations between P300 amplitude at Pz and ALSFRS-R decline, BH-corrected at FDR 0.05.&rdquo; sciClaw follows your statistical plan to the letter, produces a Word doc with tracked changes, and waits for your review.</p>
+          </div>
+          <div class="pain-card">
+            <h3>You decide, it records</h3>
+            <p>Every search, draft, and revision is logged with provenance metadata. Six months later you can retrace exactly which analysis produced which result and why.</p>
           </div>
         </div>
         <p style="margin:18px 0 0;color:var(--muted);font-size:15px;text-align:center;">
-          sciClaw handles the tedious parts so you can focus on the science.
+          You stay in the loop. sciClaw does the legwork.
         </p>
       </section>
 
@@ -639,12 +657,20 @@
           <pre style="margin:0;padding:16px 18px;border-radius:10px;background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:13px;line-height:1.7;overflow-x:auto;"><code>~/sciclaw/
 ├── sessions/       <span style="color:#64748b;"># Every conversation, searchable</span>
 ├── memory/         <span style="color:#64748b;"># Long-term notes across sessions</span>
-├── skills/         <span style="color:#64748b;"># 13 research skills (customizable)</span>
+├── skills/         <span style="color:#64748b;"># 13 built-in + your custom skills</span>
+│   ├── scientific-writing/
+│   ├── pubmed-cli/
+│   ├── docx-review/
+│   └── <span style="color:#64748b;">… 10 more</span>
 ├── hooks/          <span style="color:#64748b;"># Event audit log (JSONL)</span>
 ├── cron/           <span style="color:#64748b;"># Scheduled jobs</span>
+├── state/          <span style="color:#64748b;"># Runtime state</span>
 ├── AGENTS.md       <span style="color:#64748b;"># Agent behavior rules</span>
+├── HOOKS.md        <span style="color:#64748b;"># Lifecycle hook instructions</span>
 ├── IDENTITY.md     <span style="color:#64748b;"># Lab identity &amp; voice</span>
+├── MEMORY.md       <span style="color:#64748b;"># Persistent memory template</span>
 ├── SOUL.md         <span style="color:#64748b;"># Guardrails &amp; ethics</span>
+├── TOOLS.md        <span style="color:#64748b;"># Tool usage guidelines</span>
 └── USER.md         <span style="color:#64748b;"># Your preferences</span></code></pre>
           <div>
             <div class="card" style="margin-bottom:10px;">
@@ -668,9 +694,18 @@
         <h2>Chat where you already work</h2>
         <p class="subhead">No terminal needed. Talk to sciClaw from the app you already have open.</p>
         <div class="channel-strip">
-          <div class="channel-badge" style="--ch-color:#229ED9;">💬 Telegram</div>
-          <div class="channel-badge" style="--ch-color:#5865F2;">💬 Discord</div>
-          <div class="channel-badge" style="--ch-color:#611f69;">💬 Slack</div>
+          <div class="channel-badge" style="--ch-color:#229ED9;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#229ED9"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.62 3.72-.53.36-1.01.54-1.44.53-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.74 3.99-1.74 6.66-2.89 8.01-3.44 3.81-1.58 4.6-1.86 5.12-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/></svg>
+            Telegram
+          </div>
+          <div class="channel-badge" style="--ch-color:#5865F2;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+            Discord
+          </div>
+          <div class="channel-badge" style="--ch-color:#611f69;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#611f69"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.124 2.521a2.528 2.528 0 0 1 2.52-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.52V8.834zm-1.271 0a2.528 2.528 0 0 1-2.521 2.521 2.528 2.528 0 0 1-2.521-2.521V2.522A2.528 2.528 0 0 1 15.166 0a2.528 2.528 0 0 1 2.521 2.522v6.312zm-2.521 10.124a2.528 2.528 0 0 1 2.521 2.52A2.528 2.528 0 0 1 15.166 24a2.528 2.528 0 0 1-2.521-2.522v-2.52h2.521zm0-1.271a2.528 2.528 0 0 1-2.521-2.521 2.528 2.528 0 0 1 2.521-2.521h6.312A2.528 2.528 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.521h-6.312z"/></svg>
+            Slack
+          </div>
         </div>
         <p style="margin:14px 0 0;color:var(--muted);font-size:13px;">
           CLI and API also available for power users.
@@ -691,8 +726,9 @@
         <div id="tab-lit" class="tab-panel active">
           <div class="chat-demo">
             <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
-              <span style="font-size:16px;">💬</span>
-              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">Telegram &middot; sciClaw Bot</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#229ED9"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.62 3.72-.53.36-1.01.54-1.44.53-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.74 3.99-1.74 6.66-2.89 8.01-3.44 3.81-1.58 4.6-1.86 5.12-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/></svg>
+              <span style="font-family:var(--mono);font-size:12px;color:#229ED9;font-weight:600;">Telegram</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">&middot; sciClaw Bot</span>
             </div>
             <div class="chat-msg user">
               <div class="chat-label">You</div>
@@ -714,8 +750,9 @@
         <div id="tab-draft" class="tab-panel">
           <div class="chat-demo">
             <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
-              <span style="font-size:16px;">💬</span>
-              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">Discord &middot; #research</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+              <span style="font-family:var(--mono);font-size:12px;color:#5865F2;font-weight:600;">Discord</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">&middot; #research</span>
             </div>
             <div class="chat-msg user">
               <div class="chat-label">You</div>
@@ -737,8 +774,9 @@
         <div id="tab-review" class="tab-panel">
           <div class="chat-demo">
             <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:4px;">
-              <span style="font-size:16px;">💬</span>
-              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">Slack &middot; #lab-writing</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#611f69"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.124 2.521a2.528 2.528 0 0 1 2.52-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.52V8.834zm-1.271 0a2.528 2.528 0 0 1-2.521 2.521 2.528 2.528 0 0 1-2.521-2.521V2.522A2.528 2.528 0 0 1 15.166 0a2.528 2.528 0 0 1 2.521 2.522v6.312zm-2.521 10.124a2.528 2.528 0 0 1 2.521 2.52A2.528 2.528 0 0 1 15.166 24a2.528 2.528 0 0 1-2.521-2.522v-2.52h2.521zm0-1.271a2.528 2.528 0 0 1-2.521-2.521 2.528 2.528 0 0 1 2.521-2.521h6.312A2.528 2.528 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.521h-6.312z"/></svg>
+              <span style="font-family:var(--mono);font-size:12px;color:#611f69;font-weight:600;">Slack</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--muted);">&middot; #lab-writing</span>
             </div>
             <div class="chat-msg user">
               <div class="chat-label">You</div>
@@ -759,6 +797,47 @@
                 <em style="color:var(--accent);">Open manuscript-reviewed.docx in Word to accept or reject changes.</em>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Featured tools ── -->
+      <section>
+        <h2>Tools built for how scientists actually work</h2>
+        <p class="subhead">These ship with sciClaw. The agent calls them automatically when your request needs them.</p>
+        <div class="grid">
+          <div class="card" style="border-left:3px solid #2b579a;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <svg width="30" height="30" viewBox="0 0 512 512" style="flex-shrink:0;"><path fill="#41A5EE" d="M490.17,19.2H140.9c-12.05,0-21.83,9.72-21.83,21.7v96.7L512,137.6V40.9C512,28.91,502.23,19.2,490.17,19.2z"/><path fill="#2B7CD3" d="M512,137.6H119.07V256L512,256V137.6z"/><path fill="#185ABD" d="M119.07,256v118.4L512,374.4V256H119.07z"/><path fill="#103F91" d="M140.9,492.8h349.28c12.05,0,21.83-9.72,21.83-21.7v-96.7H119.07v96.7C119.07,483.09,128.84,492.8,140.9,492.8z"/><path fill="#185ABD" d="M21.83,125.76h218.3c12.05,0,21.83,9.72,21.83,21.7v217.08c0,11.99-9.77,21.7-21.83,21.7H21.83C9.77,386.24,0,376.52,0,364.54V147.46C0,135.48,9.77,125.76,21.83,125.76z"/><path fill="#fff" d="M89.56,292.21c.43,3.35.71,6.26.85,8.76h.5c.19-2.37.59-5.22,1.19-8.56.6-3.34,1.15-6.16,1.63-8.47l22.96-98.49h29.68l23.81,97.01c1.38,6.03,2.37,12.15,2.96,18.3h.39c.44-5.97,1.27-11.9,2.48-17.76l18.99-97.6h27.02l-33.36,141.13H157.1l-22.62-93.47c-.65-2.69-1.4-6.2-2.23-10.53s-1.33-7.48-1.54-9.47h-.39c-.26,2.3-.77,5.71-1.54,10.23-.76,4.52-1.37,7.87-1.83,10.04l-21.27,93.17h-32.1L40.04,185.46h27.5l20.68,98.69c.48,2.02.92,4.72,1.34,8.06z"/></svg>
+              <div>
+                <h3 style="margin:0;font-size:16px;">Microsoft Word Review</h3>
+                <span style="font-size:12px;color:var(--muted);">Real tracked changes &amp; comments in .docx</span>
+              </div>
+            </div>
+            <p style="margin:0 0 10px;">Ask sciClaw to review your manuscript and it returns a .docx you open in Word&mdash;with tracked changes you can accept or reject and comments anchored to specific paragraphs. Exactly like getting a revision back from a co-author.</p>
+            <ul style="margin:0;padding-left:18px;font-size:14px;color:var(--ink);">
+              <li>Tracked insertions, deletions, and replacements you review in Word</li>
+              <li>Margin comments tied to specific text, not just line numbers</li>
+              <li>Compare two drafts side-by-side with semantic diff</li>
+              <li>NIH-format Word template included for grant applications</li>
+            </ul>
+          </div>
+          <div class="card" style="border-left:3px solid #326599;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="#326599" style="flex-shrink:0;"><path d="M8.23 7.982l.006-1.005C7.846 1.417 5.096 0 5.096 0l.048 2.291C3.73 1.056 2.6 1.444 2.6 1.444l.118 15.307s4.218-1.796 5.428 5.505C10.238 13.535 21.401 24 21.401 24V9S10.52-.18 8.231 7.982zm9.79 9.941l-1.046-5.232-1.904 4.507h-.96l-1.72-4.301-1.046 5.04H9.321l2.093-9.39h.802l2.491 5.543 2.508-5.557h.869l2.075 9.39h-2.138z"/></svg>
+              <div>
+                <h3 style="margin:0;font-size:16px;">PubMed Search</h3>
+                <span style="font-size:12px;color:var(--muted);">Full NCBI E-Utilities access</span>
+              </div>
+            </div>
+            <p style="margin:0 0 10px;">Tell sciClaw what you&rsquo;re looking for and it builds the PubMed query&mdash;Boolean operators, MeSH terms, date ranges, publication types. Results export directly to Zotero, EndNote, or Mendeley.</p>
+            <ul style="margin:0;padding-left:18px;font-size:14px;color:var(--ink);">
+              <li>Complex queries with MeSH terms, field tags, and filters</li>
+              <li>Walk citation chains forward (cited-by) and backward (references)</li>
+              <li>Find related articles scored by relevance</li>
+              <li>Export as <strong>RIS</strong> for one-click import into your reference manager</li>
+              <li>Works with your own NCBI API key for faster, higher-volume searches</li>
+            </ul>
           </div>
         </div>
       </section>
@@ -909,7 +988,7 @@
         </div>
         <div class="faq-item">
           <p class="faq-q">Can I trust AI-generated content for research?</p>
-          <p class="faq-a">sciClaw is designed for trust: it captures evidence trails, logs provenance metadata, and always shows its sources. You review and approve everything before it becomes part of your work.</p>
+          <p class="faq-a">You do what you&rsquo;ve always done: read critically, push back, and iterate&mdash;the same loop you&rsquo;d run with a human research assistant. The difference is that sciClaw logs every source, decision, and revision, so you can retrace the reasoning anytime. If something looks off, just ask&mdash;it&rsquo;s a conversation.</p>
         </div>
         <div class="faq-item">
           <p class="faq-q">What operating systems are supported?</p>
@@ -933,7 +1012,19 @@
       </section>
 
       <footer>
-        sciClaw is open source (MIT). Built on <a href="https://github.com/sipeed/picoclaw">PicoClaw</a> by Sipeed.
+        <div style="margin-bottom:8px;">
+          sciClaw is open source (MIT). Built on <a href="https://github.com/sipeed/picoclaw">PicoClaw</a> by Sipeed.
+        </div>
+        <div style="display:flex;gap:14px;justify-content:center;align-items:center;">
+          <a href="https://github.com/drpedapati" target="_blank" rel="noopener noreferrer" style="color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:5px;font-size:13px;" title="GitHub">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            drpedapati
+          </a>
+          <a href="https://x.com/cbrainlab" target="_blank" rel="noopener noreferrer" style="color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:5px;font-size:13px;" title="X (Twitter)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            cbrainlab
+          </a>
+        </div>
       </footer>
     </main>
 
