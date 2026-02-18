@@ -232,6 +232,34 @@ jobs:
               end
             end
 
+            def post_install
+              return unless service_definition_installed?
+
+              unless quiet_system(bin/"sciclaw", "service", "refresh")
+                opoo "sciClaw service refresh could not be applied automatically. Run: sciclaw service refresh"
+              end
+            end
+
+            def service_definition_installed?
+              if OS.mac?
+                (Pathname.new(Dir.home)/"Library"/"LaunchAgents"/"io.sciclaw.gateway.plist").exist?
+              elsif OS.linux?
+                (Pathname.new(Dir.home)/".config"/"systemd"/"user"/"sciclaw-gateway.service").exist?
+              else
+                false
+              end
+            end
+
+            def caveats
+              <<~EOS
+                If you use the sciClaw background gateway service, this formula attempts
+                to refresh the service automatically on upgrade.
+
+                If your environment blocks that step (no user service session), run:
+                  sciclaw service refresh
+              EOS
+            end
+
             test do
               assert_match "Usage:", shell_output("#{bin}/sciclaw 2>&1", 1)
               assert_match "Usage:", shell_output("#{bin}/picoclaw 2>&1", 1)
