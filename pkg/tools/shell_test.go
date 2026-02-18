@@ -220,15 +220,14 @@ func TestShellTool_PubMedFieldTagsNotBlockedByPathGuard(t *testing.T) {
 	}
 }
 
-func TestShellTool_PubMedStillBlocksOutsideWorkspacePath(t *testing.T) {
+func TestShellTool_PubMedAllowsTempPathOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewExecTool(tmpDir, false)
 	tool.SetRestrictToWorkspace(true)
 
 	cmd := `pubmed search "depression[Title/Abstract]" --json > /tmp/pubmed.json`
-	blocked := tool.guardCommand(cmd, tmpDir)
-	if !strings.Contains(blocked, "outside working dir") {
-		t.Fatalf("expected outside-workspace path to be blocked, got: %q", blocked)
+	if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
+		t.Fatalf("expected temp output path to pass guard, got: %q", blocked)
 	}
 }
 
@@ -248,7 +247,7 @@ func TestShellTool_URLWithOutsidePathStillBlocked(t *testing.T) {
 	tool := NewExecTool(tmpDir, false)
 	tool.SetRestrictToWorkspace(true)
 
-	cmd := "python3 - <<'PY'\nurl='https://pubmed.ncbi.nlm.nih.gov/41694131/'\nprint(url)\nPY\ncat /tmp/secrets.txt"
+	cmd := "python3 - <<'PY'\nurl='https://pubmed.ncbi.nlm.nih.gov/41694131/'\nprint(url)\nPY\ncat /etc/secrets.txt"
 	blocked := tool.guardCommand(cmd, tmpDir)
 	if !strings.Contains(blocked, "outside working dir") {
 		t.Fatalf("expected outside-workspace path to remain blocked, got: %q", blocked)
@@ -263,6 +262,17 @@ func TestShellTool_HeredocEscapedURLDataNotBlockedByPathGuard(t *testing.T) {
 	cmd := "cat <<'EOF' > report.json\n{\"doi\":\"https:\\/\\/doi.org\\/10.1000\\/xyz123\"}\nEOF"
 	if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
 		t.Fatalf("expected escaped URL in heredoc data to pass guard, got: %s", blocked)
+	}
+}
+
+func TestShellTool_AllowsDevNullRedirection(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := "echo ok > /dev/null"
+	if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
+		t.Fatalf("expected /dev/null redirection to pass guard, got: %q", blocked)
 	}
 }
 

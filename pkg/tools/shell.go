@@ -264,6 +264,9 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 			}
 
 			if strings.HasPrefix(rel, "..") {
+				if isAllowedOutsideWorkspacePath(p) {
+					continue
+				}
 				return "Command blocked by safety guard (path outside working dir)"
 			}
 		}
@@ -334,6 +337,66 @@ func stripBracketSegments(s string) string {
 
 func stripURLSegments(s string) string {
 	return shellURLPattern.ReplaceAllString(s, " ")
+}
+
+func isAllowedOutsideWorkspacePath(path string) bool {
+	p := absCleanPath(path)
+	if p == "" {
+		return false
+	}
+
+	// Standard null/std streams are safe redirection targets.
+	switch p {
+	case "/dev/null", "/dev/stdout", "/dev/stderr", "/dev/stdin":
+		return true
+	}
+
+	for _, root := range allowedOutsideWorkspaceRoots() {
+		if pathWithinRoot(p, root) {
+			return true
+		}
+	}
+	return false
+}
+
+func allowedOutsideWorkspaceRoots() []string {
+	roots := []string{os.TempDir(), "/tmp", "/var/tmp", "/private/tmp"}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(roots))
+	for _, root := range roots {
+		clean := absCleanPath(root)
+		if clean == "" {
+			continue
+		}
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+		out = append(out, clean)
+	}
+	return out
+}
+
+func pathWithinRoot(path, root string) bool {
+	if path == root {
+		return true
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func absCleanPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return filepath.Clean(p)
 }
 
 func stripHeredocSegments(s string) string {
