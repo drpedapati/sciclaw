@@ -40,6 +40,7 @@ func TestRenderSystemdUnit(t *testing.T) {
 }
 
 func TestBuildSystemdPath(t *testing.T) {
+	t.Setenv("HOME", "/home/tester")
 	sep := string(os.PathListSeparator)
 	inputPath := strings.Join([]string{
 		"/custom/bin",
@@ -63,6 +64,10 @@ func TestBuildSystemdPath(t *testing.T) {
 	mustContainPath(t, parts, "/home/linuxbrew/.linuxbrew/bin")
 	mustContainPath(t, parts, "/home/linuxbrew/.linuxbrew/sbin")
 
+	// Managed venv candidates.
+	mustContainPath(t, parts, "/home/tester/sciclaw/.venv/bin")
+	mustContainPath(t, parts, "/home/tester/.picoclaw/workspace/.venv/bin")
+
 	// Installer PATH is preserved.
 	mustContainPath(t, parts, "/custom/bin")
 
@@ -77,11 +82,13 @@ func TestBuildSystemdPath(t *testing.T) {
 }
 
 func TestBuildSystemdPath_NoBrewPrefix(t *testing.T) {
+	t.Setenv("HOME", "/home/tester")
 	sep := string(os.PathListSeparator)
 	got := buildSystemdPath(strings.Join([]string{"/alpha/bin", "/beta/bin"}, sep), "")
 	parts := strings.Split(got, sep)
 	mustContainPath(t, parts, "/alpha/bin")
 	mustContainPath(t, parts, "/beta/bin")
+	mustContainPath(t, parts, "/home/tester/sciclaw/.venv/bin")
 }
 
 func TestRenderLaunchdPlist(t *testing.T) {

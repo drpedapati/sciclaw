@@ -578,11 +578,11 @@
         <h3>Step 1 &mdash; Install sciClaw</h3>
         <p>Add the sciClaw tap and install the package:</p>
         <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw</code></pre>
-        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>rg</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
+        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>rg</code>, <code>uv</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
 
         <h3>Step 2 &mdash; Onboard</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>The onboard wizard walks you through first-time setup. It starts by creating your config (<code>~/.picoclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. Then it asks four optional questions:</p>
+        <p>The onboard wizard walks you through first-time setup. It starts by creating your config (<code>~/.picoclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. On Linux it also bootstraps a managed workspace Python venv at <code>~/sciclaw/.venv</code> (prefers <code>uv</code>, falls back to <code>python3 -m venv</code>) and installs required packages used by scientific workflows. Then it asks optional questions:</p>
         <ol>
           <li><strong>PubMed API key</strong> &mdash; An <a href="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/" target="_blank" rel="noopener">NCBI API key</a> removes rate limits on literature searches. Recommended but not required; you can add one later.</li>
           <li><strong>OpenAI login</strong> &mdash; Authenticates with OpenAI using a device-code flow (a link opens in your browser). Skip this if you plan to use a different provider.</li>
@@ -721,7 +721,7 @@
 
         <h3>1. Initialize</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, and installs baseline scientific skills. In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip all prompts.</p>
+        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, installs baseline scientific skills, and (on Linux) bootstraps <code>~/sciclaw/.venv</code> for Python-based tooling. In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip prompts.</p>
 
         <h3>2. Connect a provider</h3>
         <p><strong>Easiest:</strong> If you have a ChatGPT Plus/Team subscription, log in with device code &mdash; no API key needed:</p>
@@ -1165,7 +1165,7 @@
       <div class="section" id="service">
         <h3>Service</h3>
         <p>Use <code>service</code> to run the gateway in the background and control lifecycle from one command.</p>
-        <p>On Linux, <code>service install</code> writes an explicit <code>PATH</code> into the systemd user unit so Homebrew tools (for example <code>pubmed</code> and <code>docx-review</code>) are available when the gateway runs in the background.</p>
+        <p>On Linux, <code>service install</code> writes an explicit <code>PATH</code> into the systemd user unit so Homebrew tools (for example <code>pubmed</code> and <code>docx-review</code>) and the managed workspace venv (<code>~/sciclaw/.venv/bin</code>) are available when the gateway runs in the background.</p>
 
         <pre><code><span class="hl-comment"># Install + start background gateway</span>
 <span class="hl-cmd">sciclaw</span> service install
@@ -1227,7 +1227,9 @@
             <tr><td><code>irl</code></td><td>IRL runtime available</td></tr>
             <tr><td><code>pandoc</code></td><td>Document converter installed</td></tr>
             <tr><td><code>rg</code></td><td>ripgrep installed (used by agent tools)</td></tr>
+            <tr><td><code>uv</code></td><td>Python environment manager available (Linux onboarding + fixes)</td></tr>
             <tr><td><code>python3</code></td><td>Python 3 available</td></tr>
+            <tr><td><code>python.venv</code></td><td>Workspace venv exists and required Python packages import cleanly</td></tr>
             <tr><td><code>skills.baseline</code></td><td>All 12 baseline skills present; detects legacy names (<code>docx</code>, <code>pubmed-database</code>)</td></tr>
             <tr><td><code>gateway.telegram</code></td><td>Scans logs for Telegram 409 conflicts (multiple bot instances)</td></tr>
             <tr><td><code>service.backend</code></td><td>Detects service backend (<code>launchd</code>, <code>systemd-user</code>, or unsupported)</td></tr>
@@ -1244,6 +1246,7 @@
           <li>Syncs baseline skills from the bundled Homebrew share directory to your workspace</li>
           <li>Removes legacy skill directories (<code>docx</code>, <code>pubmed-database</code>) that were replaced by <code>docx-review</code> and <code>pubmed-cli</code></li>
           <li>Creates a <code>pubmed-cli</code> symlink if only <code>pubmed</code> is found on PATH</li>
+          <li>Bootstraps or repairs the workspace Python venv (<code>~/sciclaw/.venv</code>) on Linux</li>
         </ul>
 
         <p>Exit code 0 = all checks pass. Exit code 1 = at least one error.</p>

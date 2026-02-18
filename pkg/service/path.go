@@ -37,12 +37,28 @@ func buildSystemdPath(installerPath, brewPrefix string) string {
 		paths = appendUniquePath(paths, filepath.Join(brewPrefix, "sbin"))
 	}
 
+	// Managed workspace virtualenv locations (default + compatibility).
+	for _, p := range managedVenvBinCandidates() {
+		paths = appendUniquePath(paths, p)
+	}
+
 	// Include PATH from the shell running install for custom bins.
 	for _, p := range strings.Split(installerPath, string(os.PathListSeparator)) {
 		paths = appendUniquePath(paths, p)
 	}
 
 	return strings.Join(paths, string(os.PathListSeparator))
+}
+
+func managedVenvBinCandidates() []string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return nil
+	}
+	return []string{
+		filepath.Join(home, "sciclaw", ".venv", "bin"),
+		filepath.Join(home, ".picoclaw", "workspace", ".venv", "bin"),
+	}
 }
 
 func appendUniquePath(paths []string, path string) []string {

@@ -128,6 +128,8 @@ func runDoctor(opts doctorOptions) doctorReport {
 		rep.Checks = append(rep.Checks, c)
 	}
 
+	workspacePath := ""
+
 	// Config + workspace
 	configPath := getConfigPath()
 	configExists := fileExists(configPath)
@@ -152,6 +154,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	if cfgErr == nil && cfg != nil {
 		workspace := cfg.WorkspacePath()
+		workspacePath = workspace
 		if fileExists(workspace) {
 			add(doctorCheck{Name: "workspace", Status: doctorOK, Message: workspace})
 		} else {
@@ -210,6 +213,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 		home, _ := os.UserHomeDir()
 		if home != "" {
 			defaultWorkspace := filepath.Join(home, "sciclaw")
+			workspacePath = defaultWorkspace
 			if fileExists(defaultWorkspace) {
 				add(doctorCheck{Name: "workspace", Status: doctorOK, Message: defaultWorkspace})
 			} else {
@@ -277,7 +281,13 @@ func runDoctor(opts doctorOptions) doctorReport {
 	add(checkBinaryWithHint("irl", []string{"--version"}, 3*time.Second, "brew install irl"))
 	add(checkBinaryWithHint("pandoc", []string{"-v"}, 3*time.Second, "brew install pandoc"))
 	add(checkBinaryWithHint("rg", []string{"--version"}, 3*time.Second, "brew install ripgrep"))
+	if runtime.GOOS == "linux" {
+		add(checkBinaryWithHint("uv", []string{"--version"}, 3*time.Second, "brew install uv"))
+	}
 	add(checkBinaryWithHint("python3", []string{"-V"}, 3*time.Second, "install python3 (e.g. Homebrew, python.org, or system package manager)"))
+	if runtime.GOOS == "linux" && strings.TrimSpace(workspacePath) != "" {
+		add(checkWorkspacePythonVenv(workspacePath, opts))
+	}
 
 	// Skills sanity + sync
 	if cfgErr == nil {
@@ -428,6 +438,52 @@ func truncateOneLine(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+func checkWorkspacePythonVenv(workspace string, opts doctorOptions) doctorCheck {
+	venvPython := workspaceVenvPythonPath(workspace)
+	venvDir := workspaceVenvDir(workspace)
+	data := map[string]string{
+		"workspace": workspace,
+		"venv":      venvDir,
+	}
+
+	validate := func() error {
+		if !fileExists(venvPython) {
+			return fmt.Errorf("missing venv python: %s", venvPython)
+		}
+		code := "import requests, bs4, docx, lxml, yaml"
+		out, err := runCommandWithOutput(8*time.Second, venvPython, "-c", code)
+		if err != nil {
+			return fmt.Errorf("%s", truncateOneLine(out, 220))
+		}
+		return nil
+	}
+
+	if err := validate(); err == nil {
+		return doctorCheck{Name: "python.venv", Status: doctorOK, Message: "workspace venv ready", Data: data}
+	}
+
+	if opts.Fix {
+		venvBin, err := ensureWorkspacePythonEnvironment(workspace)
+		if err == nil {
+			data["venv_bin"] = venvBin
+			if err2 := validate(); err2 == nil {
+				return doctorCheck{Name: "python.venv", Status: doctorOK, Message: "workspace venv bootstrapped", Data: data}
+			}
+		}
+		if err != nil {
+			data["fix_error"] = err.Error()
+		}
+	}
+
+	data["hint"] = fmt.Sprintf("run: %s doctor --fix (or %s onboard)", invokedCLIName(), invokedCLIName())
+	return doctorCheck{
+		Name:    "python.venv",
+		Status:  doctorWarn,
+		Message: "workspace Python venv missing/incomplete",
+		Data:    data,
+	}
 }
 
 func checkGatewayLog() doctorCheck {

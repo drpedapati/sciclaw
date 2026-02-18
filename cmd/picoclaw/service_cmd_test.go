@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -80,5 +81,21 @@ func TestResolveServiceExecutablePath_FallbackToExecutable(t *testing.T) {
 	}
 	if got != "/opt/tools/sciclaw" {
 		t.Fatalf("expected executable fallback, got %q", got)
+	}
+}
+
+func TestPrependPathEnv(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+	prependPathEnv("/custom/bin")
+	if got := os.Getenv("PATH"); got != "/custom/bin:/usr/bin:/bin" {
+		t.Fatalf("unexpected PATH after prepend: %q", got)
+	}
+}
+
+func TestPrependPathEnv_Dedupes(t *testing.T) {
+	t.Setenv("PATH", "/custom/bin:/usr/bin:/bin")
+	prependPathEnv("/custom/bin")
+	if got := os.Getenv("PATH"); got != "/custom/bin:/usr/bin:/bin" {
+		t.Fatalf("unexpected PATH with duplicate prepend: %q", got)
 	}
 }

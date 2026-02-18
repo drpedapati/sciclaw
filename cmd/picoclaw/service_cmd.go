@@ -42,6 +42,7 @@ func serviceCmd() {
 
 	switch sub {
 	case "install":
+		prepareServiceInstallEnvPath()
 		if err := mgr.Install(); err != nil {
 			fmt.Printf("Service install failed: %v\n", err)
 			os.Exit(1)
@@ -101,6 +102,36 @@ func serviceCmd() {
 		serviceHelp()
 		os.Exit(2)
 	}
+}
+
+func prepareServiceInstallEnvPath() {
+	cfg, err := loadConfig()
+	if err != nil || cfg == nil {
+		return
+	}
+	venvBin := strings.TrimSpace(workspaceVenvBinDir(cfg.WorkspacePath()))
+	if venvBin == "" {
+		return
+	}
+	prependPathEnv(venvBin)
+}
+
+func prependPathEnv(pathEntry string) {
+	pathEntry = strings.TrimSpace(pathEntry)
+	if pathEntry == "" {
+		return
+	}
+	sep := string(os.PathListSeparator)
+	current := os.Getenv("PATH")
+	parts := []string{pathEntry}
+	for _, p := range strings.Split(current, sep) {
+		p = strings.TrimSpace(p)
+		if p == "" || p == pathEntry {
+			continue
+		}
+		parts = append(parts, p)
+	}
+	_ = os.Setenv("PATH", strings.Join(parts, sep))
 }
 
 func resolveServiceExecutablePath(

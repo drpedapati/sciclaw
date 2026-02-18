@@ -316,6 +316,16 @@ func onboard() {
 
 	createWorkspaceTemplates(workspace)
 
+	if runtime.GOOS == "linux" {
+		fmt.Println("  Preparing managed Python environment for scientific workflows...")
+		if venvBin, err := ensureWorkspacePythonEnvironment(workspace); err != nil {
+			fmt.Printf("  Python setup warning: %v\n", err)
+			fmt.Printf("  You can retry with: %s doctor --fix\n", invokedCLIName())
+		} else {
+			fmt.Printf("  Python venv ready: %s\n", venvBin)
+		}
+	}
+
 	if !yes {
 		runOnboardWizard(cfg, configPath)
 		// Reload to reflect any wizard edits.

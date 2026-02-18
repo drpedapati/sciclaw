@@ -73,6 +73,7 @@ class Sciclaw < Formula
   depends_on "irl"
   depends_on "pandoc"
   depends_on "ripgrep"
+  depends_on "uv"
   depends_on "sciclaw-docx-review"
   depends_on "sciclaw-pubmed-cli"
 
