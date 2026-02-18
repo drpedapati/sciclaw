@@ -1,6 +1,8 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -30,10 +32,56 @@ func TestDetectWSLWith(t *testing.T) {
 }
 
 func TestRenderSystemdUnit(t *testing.T) {
-	unit := renderSystemdUnit("/usr/local/bin/sciclaw")
+	unit := renderSystemdUnit("/usr/local/bin/sciclaw", "/usr/local/bin:/usr/bin:/bin")
 	mustContain(t, unit, "ExecStart=/usr/local/bin/sciclaw gateway")
 	mustContain(t, unit, "Restart=always")
+	mustContain(t, unit, "Environment=PATH=/usr/local/bin:/usr/bin:/bin")
 	mustContain(t, unit, "WantedBy=default.target")
+}
+
+func TestBuildSystemdPath(t *testing.T) {
+	sep := string(os.PathListSeparator)
+	inputPath := strings.Join([]string{
+		"/custom/bin",
+		"/usr/bin",    // duplicate baseline
+		"",            // empty should be ignored
+		"/custom/bin", // duplicate custom
+	}, sep)
+	got := buildSystemdPath(inputPath, "/home/linuxbrew/.linuxbrew")
+	parts := strings.Split(got, sep)
+
+	if len(parts) == 0 {
+		t.Fatalf("expected non-empty PATH")
+	}
+
+	// Baseline.
+	mustContainPath(t, parts, "/usr/local/bin")
+	mustContainPath(t, parts, "/usr/bin")
+	mustContainPath(t, parts, "/bin")
+
+	// Homebrew known + detected prefix.
+	mustContainPath(t, parts, "/home/linuxbrew/.linuxbrew/bin")
+	mustContainPath(t, parts, "/home/linuxbrew/.linuxbrew/sbin")
+
+	// Installer PATH is preserved.
+	mustContainPath(t, parts, "/custom/bin")
+
+	// No duplicates.
+	seen := map[string]struct{}{}
+	for _, p := range parts {
+		if _, ok := seen[p]; ok {
+			t.Fatalf("duplicate path in PATH output: %s", p)
+		}
+		seen[p] = struct{}{}
+	}
+}
+
+func TestBuildSystemdPath_NoBrewPrefix(t *testing.T) {
+	sep := string(os.PathListSeparator)
+	got := buildSystemdPath(strings.Join([]string{"/alpha/bin", "/beta/bin"}, sep), "")
+	parts := strings.Split(got, sep)
+	mustContainPath(t, parts, "/alpha/bin")
+	mustContainPath(t, parts, "/beta/bin")
 }
 
 func TestRenderLaunchdPlist(t *testing.T) {
@@ -49,4 +97,14 @@ func mustContain(t *testing.T, s, needle string) {
 	if !strings.Contains(s, needle) {
 		t.Fatalf("expected %q to contain %q", s, needle)
 	}
+}
+
+func mustContainPath(t *testing.T, paths []string, needle string) {
+	t.Helper()
+	for _, p := range paths {
+		if filepath.Clean(p) == filepath.Clean(needle) {
+			return
+		}
+	}
+	t.Fatalf("expected PATH to contain %q; got: %v", needle, paths)
 }

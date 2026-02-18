@@ -5,6 +5,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -36,7 +37,8 @@ func (m *systemdUserManager) Install() error {
 	if err := os.MkdirAll(filepath.Dir(m.unitPath), 0755); err != nil {
 		return err
 	}
-	unit := renderSystemdUnit(m.exePath)
+	pathEnv := buildSystemdPath(os.Getenv("PATH"), m.detectBrewPrefix())
+	unit := renderSystemdUnit(m.exePath, pathEnv)
 	if err := writeFileIfChanged(m.unitPath, []byte(unit), 0644); err != nil {
 		return err
 	}
@@ -131,4 +133,15 @@ func (m *systemdUserManager) Logs(lines int) (string, error) {
 		return "", fmt.Errorf("journalctl failed: %s", oneLine(string(out)))
 	}
 	return string(out), nil
+}
+
+func (m *systemdUserManager) detectBrewPrefix() string {
+	if _, err := exec.LookPath("brew"); err != nil {
+		return ""
+	}
+	out, err := runCommand(m.runner, 4*time.Second, "brew", "--prefix")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

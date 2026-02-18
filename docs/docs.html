@@ -1165,6 +1165,7 @@
       <div class="section" id="service">
         <h3>Service</h3>
         <p>Use <code>service</code> to run the gateway in the background and control lifecycle from one command.</p>
+        <p>On Linux, <code>service install</code> writes an explicit <code>PATH</code> into the systemd user unit so Homebrew tools (for example <code>pubmed</code> and <code>docx-review</code>) are available when the gateway runs in the background.</p>
 
         <pre><code><span class="hl-comment"># Install + start background gateway</span>
 <span class="hl-cmd">sciclaw</span> service install
@@ -1176,6 +1177,8 @@
 <span class="hl-cmd">sciclaw</span> service stop
 <span class="hl-cmd">sciclaw</span> service logs <span class="hl-flag">--lines</span> 200
 <span class="hl-cmd">sciclaw</span> service uninstall</code></pre>
+
+        <p>If your shell PATH changes after install, rerun <code>sciclaw service install</code> and <code>sciclaw service restart</code> to refresh the unit environment.</p>
 
         <h4>Backend by platform</h4>
         <ul>

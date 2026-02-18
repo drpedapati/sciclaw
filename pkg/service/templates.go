@@ -2,7 +2,7 @@ package service
 
 import "fmt"
 
-func renderSystemdUnit(exePath string) string {
+func renderSystemdUnit(exePath, pathEnv string) string {
 	return fmt.Sprintf(`[Unit]
 Description=sciClaw Gateway
 After=network-online.target
@@ -14,11 +14,12 @@ ExecStart=%s gateway
 Restart=always
 RestartSec=3
 Environment=HOME=%%h
+Environment=PATH=%s
 WorkingDirectory=%%h
 
 [Install]
 WantedBy=default.target
-`, exePath)
+`, exePath, pathEnv)
 }
 
 func renderLaunchdPlist(label, exePath, stdoutPath, stderrPath string) string {
