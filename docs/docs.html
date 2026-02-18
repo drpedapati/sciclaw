@@ -510,6 +510,7 @@
     <div class="sidebar-section">
       <div class="sidebar-heading">Getting Started</div>
       <a class="sidebar-link active" href="#installation">Installation</a>
+      <a class="sidebar-link nested" href="#pdf-quarto">PDF &amp; Quarto Setup</a>
       <a class="sidebar-link" href="#updating">Updating</a>
       <a class="sidebar-link" href="#quick-start">Quick Start</a>
       <a class="sidebar-link" href="#scientist-setup">Scientist Setup</a>
@@ -601,6 +602,14 @@
         <p>Finally, confirm the installed version:</p>
         <pre><code><span class="hl-cmd">sciclaw</span> <span class="hl-flag">--version</span></code></pre>
         <p>On Linux, the tap also installs Quarto for reproducible manuscript rendering. On macOS, install Quarto via <code>brew install --cask quarto</code>. Stable releases auto-update via the GitHub release workflow.</p>
+
+        <h3 id="pdf-quarto">PDF &amp; Quarto Setup</h3>
+        <p>Quarto handles rendering, but PDF output requires a TeX distribution. The onboard wizard can install TinyTeX automatically where Quarto supports it.</p>
+        <p>If TinyTeX auto-install is unavailable (for example, Linux ARM), install TeX manually:</p>
+        <pre><code><span class="hl-cmd">sudo</span> apt-get update
+<span class="hl-cmd">sudo</span> apt-get install -y texlive-xetex texlive-fonts-recommended texlive-latex-extra</code></pre>
+        <p>Then verify Quarto + PDF toolchain:</p>
+        <pre><code><span class="hl-cmd">quarto</span> check</code></pre>
 
         <h3>Download a binary</h3>
         <p>Pre-compiled binaries for Linux (amd64, arm64, riscv64), macOS (arm64), and Windows (amd64) are available on the <a href="https://github.com/drpedapati/sciclaw/releases">releases page</a>.</p>

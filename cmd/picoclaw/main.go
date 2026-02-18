@@ -426,13 +426,19 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 	// 4. TinyTeX for PDF rendering
 	if quartoPath, err := exec.LookPath("quarto"); err == nil {
 		if !isTinyTeXInstalled(quartoPath) {
-			if promptYesNo(r, "Install TinyTeX for PDF rendering (recommended, ~250 MB)?", true) {
+			pdfHelpLink := docsLink("#pdf-quarto")
+			if !isTinyTeXAutoInstallSupported(runtime.GOOS, runtime.GOARCH) {
+				fmt.Printf("  TinyTeX auto-install isn't supported on %s/%s.\n", runtime.GOOS, runtime.GOARCH)
+				fmt.Printf("  Help: %s\n", pdfHelpLink)
+			} else if promptYesNo(r, "Install TinyTeX for PDF rendering (recommended, ~250 MB)?", true) {
 				fmt.Println("  Installing TinyTeX via Quarto...")
-				cmd := exec.Command(quartoPath, "install", "tinytex", "--no-prompt")
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				if err := cmd.Run(); err != nil {
-					fmt.Printf("  TinyTeX install failed: %v\n", err)
+				unsupported, installErr := tryInstallTinyTeX(quartoPath)
+				if unsupported {
+					fmt.Printf("  TinyTeX auto-install isn't available on %s/%s.\n", runtime.GOOS, runtime.GOARCH)
+					fmt.Printf("  Help: %s\n", pdfHelpLink)
+				} else if installErr != nil {
+					fmt.Printf("  TinyTeX install failed: %v\n", installErr)
+					fmt.Printf("  Help: %s\n", pdfHelpLink)
 				} else {
 					fmt.Println("  TinyTeX installed.")
 				}
@@ -441,7 +447,7 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 	}
 
 	// 5. Chat channels (messaging apps)
-	fmt.Printf("  Help: %s\n", docsLink("#telegram"))
+	fmt.Printf("  Help (messaging apps): %s\n", docsLink("#telegram"))
 	if promptYesNo(r, "Set up messaging apps (Telegram/Discord/Slack) now?", false) {
 		runChannelsWizard(r, cfg, configPath)
 	}
@@ -525,6 +531,57 @@ func isTinyTeXInstalled(quartoPath string) bool {
 		}
 	}
 	return false
+}
+
+func isTinyTeXAutoInstallSupported(goos, goarch string) bool {
+	// Quarto tinytex auto-install is not supported on Linux ARM.
+	if goos == "linux" && (goarch == "arm64" || strings.HasPrefix(goarch, "arm")) {
+		return false
+	}
+	return true
+}
+
+func tryInstallTinyTeX(quartoPath string) (unsupported bool, err error) {
+	cmd := exec.Command(quartoPath, "install", "tinytex", "--no-prompt")
+	out, runErr := cmd.CombinedOutput()
+	if runErr == nil {
+		return false, nil
+	}
+
+	rawOutput := string(out)
+	if isTinyTeXUnsupportedOutput(rawOutput) {
+		return true, nil
+	}
+
+	summary := summarizeTinyTeXInstallOutput(rawOutput)
+	if summary != "" {
+		return false, fmt.Errorf("%s", summary)
+	}
+	return false, runErr
+}
+
+func isTinyTeXUnsupportedOutput(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "doesn't support installation at this time") ||
+		strings.Contains(lower, "does not support installation at this time")
+}
+
+func summarizeTinyTeXInstallOutput(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "stack trace") ||
+			strings.HasPrefix(lower, "at ") ||
+			lower == "installing tinytex" ||
+			strings.Contains(lower, "[non-error-thrown] undefined") {
+			continue
+		}
+		return trimmed
+	}
+	return ""
 }
 
 func onboardHelp() {
