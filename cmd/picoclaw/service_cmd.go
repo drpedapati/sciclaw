@@ -49,6 +49,13 @@ func serviceCmd() {
 		}
 		fmt.Println("✓ Service installed")
 		fmt.Printf("  Start with: %s service start\n", invokedCLIName())
+	case "refresh":
+		if err := runServiceRefresh(mgr); err != nil {
+			fmt.Printf("Service refresh failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✓ Service refreshed")
+		fmt.Printf("  Reinstalled and restarted (run: %s service status)\n", invokedCLIName())
 	case "uninstall", "remove":
 		if err := mgr.Uninstall(); err != nil {
 			fmt.Printf("Service uninstall failed: %v\n", err)
@@ -134,6 +141,17 @@ func prependPathEnv(pathEntry string) {
 	_ = os.Setenv("PATH", strings.Join(parts, sep))
 }
 
+func runServiceRefresh(mgr svcmgr.Manager) error {
+	prepareServiceInstallEnvPath()
+	if err := mgr.Install(); err != nil {
+		return fmt.Errorf("install failed: %w", err)
+	}
+	if err := mgr.Restart(); err != nil {
+		return fmt.Errorf("restart failed: %w", err)
+	}
+	return nil
+}
+
 func resolveServiceExecutablePath(
 	argv0 string,
 	lookPath func(string) (string, error),
@@ -165,6 +183,7 @@ func serviceHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nService commands:")
 	fmt.Println("  install             Install background gateway service")
+	fmt.Println("  refresh             Reinstall + restart service after upgrades")
 	fmt.Println("  uninstall           Remove background gateway service")
 	fmt.Println("  start               Start background gateway service")
 	fmt.Println("  stop                Stop background gateway service")
@@ -177,6 +196,7 @@ func serviceHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Printf("  %s service install\n", commandName)
+	fmt.Printf("  %s service refresh\n", commandName)
 	fmt.Printf("  %s service start\n", commandName)
 	fmt.Printf("  %s service status\n", commandName)
 	fmt.Printf("  %s service logs --lines 200\n", commandName)

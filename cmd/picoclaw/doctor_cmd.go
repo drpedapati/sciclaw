@@ -300,7 +300,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	// Gateway log quick scan: common Telegram 409 conflict from multiple instances.
 	add(checkGatewayLog())
-	for _, c := range checkServiceStatus() {
+	for _, c := range checkServiceStatus(opts) {
 		add(c)
 	}
 
@@ -513,11 +513,11 @@ func checkGatewayLog() doctorCheck {
 	return doctorCheck{Name: "gateway.log", Status: doctorOK, Message: p}
 }
 
-func checkServiceStatus() []doctorCheck {
-	checks := make([]doctorCheck, 0, 4)
+func checkServiceStatus(opts doctorOptions) []doctorCheck {
+	checks := make([]doctorCheck, 0, 5)
 	add := func(c doctorCheck) { checks = append(checks, c) }
 
-	exePath, err := os.Executable()
+	exePath, err := resolveServiceExecutablePath(os.Args[0], exec.LookPath, os.Executable)
 	if err != nil {
 		add(doctorCheck{Name: "service.backend", Status: doctorWarn, Message: "unable to resolve executable path", Data: map[string]string{"error": err.Error()}})
 		return checks
@@ -577,7 +577,179 @@ func checkServiceStatus() []doctorCheck {
 	if strings.TrimSpace(st.Detail) != "" {
 		add(doctorCheck{Name: "service.detail", Status: doctorSkip, Message: st.Detail})
 	}
+
+	if st.Installed {
+		add(checkServiceExecutablePath(st.Backend, exePath, mgr, opts))
+	}
 	return checks
+}
+
+func checkServiceExecutablePath(backend, expectedExePath string, mgr svcmgr.Manager, opts doctorOptions) doctorCheck {
+	configuredPath, serviceDefPath, err := readInstalledServiceExecutablePath(backend)
+	if err != nil {
+		return doctorCheck{
+			Name:    "service.exec_path",
+			Status:  doctorWarn,
+			Message: "unable to inspect service executable path",
+			Data: map[string]string{
+				"error": err.Error(),
+			},
+		}
+	}
+
+	data := map[string]string{
+		"service_file": serviceDefPath,
+		"configured":   configuredPath,
+		"expected":     expectedExePath,
+	}
+	if strings.TrimSpace(configuredPath) == "" {
+		data["hint"] = fmt.Sprintf("run: %s service refresh", invokedCLIName())
+		return doctorCheck{Name: "service.exec_path", Status: doctorWarn, Message: "service executable path not found", Data: data}
+	}
+
+	if !servicePathNeedsRefresh(configuredPath, expectedExePath) {
+		return doctorCheck{Name: "service.exec_path", Status: doctorOK, Message: "service executable path is current", Data: data}
+	}
+
+	data["hint"] = fmt.Sprintf("run: %s service refresh", invokedCLIName())
+	if opts.Fix {
+		if err := runServiceRefresh(mgr); err != nil {
+			data["fix_error"] = err.Error()
+		} else {
+			updatedPath, _, readErr := readInstalledServiceExecutablePath(backend)
+			if readErr == nil && !servicePathNeedsRefresh(updatedPath, expectedExePath) {
+				return doctorCheck{
+					Name:    "service.exec_path",
+					Status:  doctorOK,
+					Message: "service refreshed to current executable path",
+					Data: map[string]string{
+						"service_file": serviceDefPath,
+						"configured":   updatedPath,
+						"expected":     expectedExePath,
+					},
+				}
+			}
+			if readErr != nil {
+				data["fix_read_error"] = readErr.Error()
+			} else {
+				data["configured_after_fix"] = updatedPath
+			}
+		}
+	}
+	return doctorCheck{Name: "service.exec_path", Status: doctorWarn, Message: "service executable path is stale", Data: data}
+}
+
+func readInstalledServiceExecutablePath(backend string) (string, string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", err
+	}
+
+	switch backend {
+	case svcmgr.BackendSystemdUser:
+		unitPath := filepath.Join(home, ".config", "systemd", "user", "sciclaw-gateway.service")
+		content, err := os.ReadFile(unitPath)
+		if err != nil {
+			return "", unitPath, err
+		}
+		return parseSystemdExecStartPath(string(content)), unitPath, nil
+	case svcmgr.BackendLaunchd:
+		plistPath := filepath.Join(home, "Library", "LaunchAgents", "io.sciclaw.gateway.plist")
+		content, err := os.ReadFile(plistPath)
+		if err != nil {
+			return "", plistPath, err
+		}
+		return parseLaunchdProgramArg0(string(content)), plistPath, nil
+	default:
+		return "", "", fmt.Errorf("unsupported service backend: %s", backend)
+	}
+}
+
+func parseSystemdExecStartPath(unit string) string {
+	for _, line := range strings.Split(unit, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ExecStart=") {
+			continue
+		}
+		raw := strings.TrimSpace(strings.TrimPrefix(line, "ExecStart="))
+		if raw == "" {
+			return ""
+		}
+		fields := strings.Fields(raw)
+		if len(fields) == 0 {
+			return ""
+		}
+		return fields[0]
+	}
+	return ""
+}
+
+func parseLaunchdProgramArg0(plist string) string {
+	key := "<key>ProgramArguments</key>"
+	keyIdx := strings.Index(plist, key)
+	if keyIdx < 0 {
+		return ""
+	}
+	rest := plist[keyIdx+len(key):]
+	arrayStart := strings.Index(rest, "<array>")
+	if arrayStart < 0 {
+		return ""
+	}
+	rest = rest[arrayStart+len("<array>"):]
+	stringStart := strings.Index(rest, "<string>")
+	if stringStart < 0 {
+		return ""
+	}
+	rest = rest[stringStart+len("<string>"):]
+	stringEnd := strings.Index(rest, "</string>")
+	if stringEnd < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:stringEnd])
+}
+
+func servicePathNeedsRefresh(configuredPath, expectedPath string) bool {
+	cfg := absCleanPath(configuredPath)
+	exp := absCleanPath(expectedPath)
+	if cfg == "" || exp == "" {
+		return true
+	}
+
+	// Versioned Cellar paths become stale across Homebrew upgrades.
+	if strings.Contains(cfg, string(filepath.Separator)+"Cellar"+string(filepath.Separator)+"sciclaw"+string(filepath.Separator)) {
+		return true
+	}
+
+	return !pathsEquivalent(cfg, exp)
+}
+
+func pathsEquivalent(a, b string) bool {
+	a = absCleanPath(a)
+	b = absCleanPath(b)
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b {
+		return true
+	}
+
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA == nil && errB == nil {
+		return filepath.Clean(ra) == filepath.Clean(rb)
+	}
+	return false
+}
+
+func absCleanPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return filepath.Clean(p)
 }
 
 func readTail(path string, maxBytes int64) (string, error) {

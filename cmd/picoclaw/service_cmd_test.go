@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"testing"
+
+	svcmgr "github.com/sipeed/picoclaw/pkg/service"
 )
 
 func TestParseServiceLogsOptions(t *testing.T) {
@@ -97,5 +99,40 @@ func TestPrependPathEnv_Dedupes(t *testing.T) {
 	prependPathEnv("/custom/bin")
 	if got := os.Getenv("PATH"); got != "/custom/bin:/usr/bin:/bin" {
 		t.Fatalf("unexpected PATH with duplicate prepend: %q", got)
+	}
+}
+
+type fakeServiceManager struct {
+	installed  bool
+	restarted  bool
+	installErr error
+	restartErr error
+}
+
+func (m *fakeServiceManager) Backend() string { return svcmgr.BackendSystemdUser }
+func (m *fakeServiceManager) Install() error {
+	m.installed = true
+	return m.installErr
+}
+func (m *fakeServiceManager) Uninstall() error { return nil }
+func (m *fakeServiceManager) Start() error     { return nil }
+func (m *fakeServiceManager) Stop() error      { return nil }
+func (m *fakeServiceManager) Restart() error {
+	m.restarted = true
+	return m.restartErr
+}
+func (m *fakeServiceManager) Status() (svcmgr.Status, error) { return svcmgr.Status{}, nil }
+func (m *fakeServiceManager) Logs(int) (string, error)       { return "", nil }
+
+func TestRunServiceRefresh(t *testing.T) {
+	mgr := &fakeServiceManager{}
+	if err := runServiceRefresh(mgr); err != nil {
+		t.Fatalf("runServiceRefresh returned error: %v", err)
+	}
+	if !mgr.installed {
+		t.Fatalf("expected Install to be called")
+	}
+	if !mgr.restarted {
+		t.Fatalf("expected Restart to be called")
 	}
 }
