@@ -255,6 +255,17 @@ func TestShellTool_URLWithOutsidePathStillBlocked(t *testing.T) {
 	}
 }
 
+func TestShellTool_HeredocEscapedURLDataNotBlockedByPathGuard(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := "cat <<'EOF' > report.json\n{\"doi\":\"https:\\/\\/doi.org\\/10.1000\\/xyz123\"}\nEOF"
+	if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
+		t.Fatalf("expected escaped URL in heredoc data to pass guard, got: %s", blocked)
+	}
+}
+
 func TestShellTool_BlocksPythonSubprocessWrapperForPubMed(t *testing.T) {
 	tool := NewExecTool("", false)
 	cmd := "python3 - <<'PY'\nimport subprocess\nsubprocess.check_output(['pubmed','search','schizophrenia','--json'], text=True)\nPY"

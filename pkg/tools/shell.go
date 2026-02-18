@@ -229,7 +229,9 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 	}
 
 	if t.restrictToWorkspace {
-		if strings.Contains(cmd, "..\\") || strings.Contains(cmd, "../") {
+		pathGuardInput := stripHeredocSegments(cmd)
+
+		if strings.Contains(pathGuardInput, "..\\") || strings.Contains(pathGuardInput, "../") {
 			return "Command blocked by safety guard (path traversal detected)"
 		}
 
@@ -238,7 +240,7 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 			return ""
 		}
 
-		pathScanInput := cmd
+		pathScanInput := pathGuardInput
 		// PubMed search syntax uses field tags like [Title/Abstract], which can be
 		// misread as absolute paths by the generic scanner. Strip bracketed tags
 		// for path scanning only, while still keeping other safety checks active.
@@ -332,6 +334,74 @@ func stripBracketSegments(s string) string {
 
 func stripURLSegments(s string) string {
 	return shellURLPattern.ReplaceAllString(s, " ")
+}
+
+func stripHeredocSegments(s string) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) == 1 {
+		return s
+	}
+
+	out := make([]string, 0, len(lines))
+	inHeredoc := false
+	endMarker := ""
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if inHeredoc {
+			if trimmed == endMarker {
+				inHeredoc = false
+				endMarker = ""
+				out = append(out, line)
+			} else {
+				out = append(out, "")
+			}
+			continue
+		}
+
+		out = append(out, line)
+		if marker, ok := heredocMarkerFromLine(line); ok {
+			inHeredoc = true
+			endMarker = marker
+		}
+	}
+
+	return strings.Join(out, "\n")
+}
+
+func heredocMarkerFromLine(line string) (string, bool) {
+	idx := strings.Index(line, "<<")
+	if idx < 0 {
+		return "", false
+	}
+	rest := strings.TrimSpace(line[idx+2:])
+	if strings.HasPrefix(rest, "-") {
+		rest = strings.TrimSpace(rest[1:])
+	}
+	if rest == "" {
+		return "", false
+	}
+
+	if rest[0] == '\'' || rest[0] == '"' {
+		quote := rest[0]
+		rest = rest[1:]
+		end := strings.IndexByte(rest, quote)
+		if end <= 0 {
+			return "", false
+		}
+		return rest[:end], true
+	}
+
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return "", false
+	}
+	marker := strings.Trim(fields[0], `"'`)
+	if marker == "" {
+		return "", false
+	}
+	return marker, true
 }
 
 func (t *ExecTool) SetTimeout(timeout time.Duration) {
