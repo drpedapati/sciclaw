@@ -130,7 +130,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	toolsRegistry := createToolRegistry(workspace, restrict, cfg, msgBus)
 
 	// Create subagent manager with its own tool registry
-	subagentManager := tools.NewSubagentManager(provider, cfg.Agents.Defaults.Model, workspace, msgBus)
+	subagentManager := tools.NewSubagentManager(provider, cfg.Agents.Defaults.Model, workspace, msgBus, cfg.Agents.Defaults.MaxToolIterations)
 	subagentTools := createToolRegistry(workspace, restrict, cfg, msgBus)
 	// Subagent doesn't need spawn/subagent tools to avoid recursion
 	subagentManager.SetTools(subagentTools)
@@ -198,6 +198,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		}
 	}
 
+	maxIter := cfg.Agents.Defaults.MaxToolIterations
+	if maxIter < 0 {
+		maxIter = 0
+	}
+
 	return &AgentLoop{
 		bus:             msgBus,
 		provider:        provider,
@@ -205,7 +210,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		model:           cfg.Agents.Defaults.Model,
 		reasoningEffort: cfg.Agents.Defaults.ReasoningEffort,
 		contextWindow:   cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
-		maxIterations:   cfg.Agents.Defaults.MaxToolIterations,
+		maxIterations:   maxIter,
 		sessions:        sessionsManager,
 		state:           stateManager,
 		contextBuilder:  contextBuilder,
@@ -523,13 +528,29 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	iteration := 0
 	var finalContent string
 
-	for iteration < al.maxIterations {
+	for {
+		if al.maxIterations > 0 && iteration >= al.maxIterations {
+			logger.WarnCF("agent", "Iteration limit reached before completion",
+				map[string]interface{}{
+					"iterations": iteration,
+					"max":        al.maxIterations,
+				})
+			if finalContent == "" {
+				finalContent = fmt.Sprintf("Iteration limit reached (%d) before task completion. Increase `agents.defaults.max_tool_iterations` or set it to 0 for no hard cap.", al.maxIterations)
+			}
+			break
+		}
+
 		iteration++
+		maxValue := "unbounded"
+		if al.maxIterations > 0 {
+			maxValue = fmt.Sprintf("%d", al.maxIterations)
+		}
 
 		logger.DebugCF("agent", "LLM iteration",
 			map[string]interface{}{
 				"iteration": iteration,
-				"max":       al.maxIterations,
+				"max":       maxValue,
 			})
 
 		// Build tool definitions

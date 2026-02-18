@@ -221,7 +221,7 @@ func DefaultConfig() *Config {
 				Model:               "gpt-5.2",
 				MaxTokens:           8192,
 				Temperature:         0.7,
-				MaxToolIterations:   20,
+				MaxToolIterations:   0, // 0 = no hard iteration cap
 			},
 		},
 		Channels: ChannelsConfig{
@@ -342,6 +342,9 @@ func LoadConfig(path string) (*Config, error) {
 
 	if err := env.Parse(cfg); err != nil {
 		return nil, err
+	}
+	if cfg.Agents.Defaults.MaxToolIterations < 0 {
+		cfg.Agents.Defaults.MaxToolIterations = 0
 	}
 
 	return cfg, nil

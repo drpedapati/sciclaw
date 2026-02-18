@@ -831,7 +831,7 @@
       <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"high"</span>,
       <span class="hl-key">"max_tokens"</span>: 8192,
       <span class="hl-key">"temperature"</span>: 0.7,
-      <span class="hl-key">"max_tool_iterations"</span>: 20
+      <span class="hl-key">"max_tool_iterations"</span>: 0
     }
   },
   <span class="hl-key">"providers"</span>: { ... },
@@ -857,6 +857,7 @@
     <span class="hl-key">"interval"</span>: 30
   }
 }</code></pre>
+        <p><code>max_tool_iterations: 0</code> means no fixed iteration cap; set a positive number if you want a hard stop.</p>
       </div>
 
       <!-- ─── Providers ─── -->

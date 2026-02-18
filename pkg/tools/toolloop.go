@@ -37,13 +37,29 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 	iteration := 0
 	var finalContent string
 
-	for iteration < config.MaxIterations {
+	for {
+		if config.MaxIterations > 0 && iteration >= config.MaxIterations {
+			logger.WarnCF("toolloop", "Iteration limit reached before completion",
+				map[string]any{
+					"iterations": iteration,
+					"max":        config.MaxIterations,
+				})
+			if finalContent == "" {
+				finalContent = fmt.Sprintf("Iteration limit reached (%d) before task completion.", config.MaxIterations)
+			}
+			break
+		}
+
 		iteration++
+		maxValue := "unbounded"
+		if config.MaxIterations > 0 {
+			maxValue = fmt.Sprintf("%d", config.MaxIterations)
+		}
 
 		logger.DebugCF("toolloop", "LLM iteration",
 			map[string]any{
 				"iteration": iteration,
-				"max":       config.MaxIterations,
+				"max":       maxValue,
 			})
 
 		// 1. Build tool definitions

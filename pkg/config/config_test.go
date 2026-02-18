@@ -45,12 +45,12 @@ func TestDefaultConfig_MaxTokens(t *testing.T) {
 	}
 }
 
-// TestDefaultConfig_MaxToolIterations verifies max tool iterations has default value
+// TestDefaultConfig_MaxToolIterations verifies max tool iterations default is unbounded.
 func TestDefaultConfig_MaxToolIterations(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Agents.Defaults.MaxToolIterations == 0 {
-		t.Error("MaxToolIterations should not be zero")
+	if cfg.Agents.Defaults.MaxToolIterations != 0 {
+		t.Errorf("MaxToolIterations default should be 0 (unbounded), got %d", cfg.Agents.Defaults.MaxToolIterations)
 	}
 }
 
@@ -191,8 +191,8 @@ func TestConfig_Complete(t *testing.T) {
 	if cfg.Agents.Defaults.MaxTokens == 0 {
 		t.Error("MaxTokens should not be zero")
 	}
-	if cfg.Agents.Defaults.MaxToolIterations == 0 {
-		t.Error("MaxToolIterations should not be zero")
+	if cfg.Agents.Defaults.MaxToolIterations < 0 {
+		t.Error("MaxToolIterations should not be negative")
 	}
 	if cfg.Gateway.Host != "0.0.0.0" {
 		t.Error("Gateway host should have default value")

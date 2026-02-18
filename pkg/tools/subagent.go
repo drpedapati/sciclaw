@@ -33,7 +33,14 @@ type SubagentManager struct {
 	nextID        int
 }
 
-func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
+func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus, maxIterations ...int) *SubagentManager {
+	maxIter := 0 // 0 = unbounded
+	if len(maxIterations) > 0 {
+		maxIter = maxIterations[0]
+	}
+	if maxIter < 0 {
+		maxIter = 0
+	}
 	return &SubagentManager{
 		tasks:         make(map[string]*SubagentTask),
 		provider:      provider,
@@ -41,7 +48,7 @@ func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace 
 		bus:           bus,
 		workspace:     workspace,
 		tools:         NewToolRegistry(),
-		maxIterations: 10,
+		maxIterations: maxIter,
 		nextID:        1,
 	}
 }
