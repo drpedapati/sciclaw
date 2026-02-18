@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -23,8 +24,17 @@ type ExecTool struct {
 }
 
 var (
-	shellPathPattern = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
-	shellURLPattern  = regexp.MustCompile("https?://[^\\s\"'`]+")
+	shellPathPattern         = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
+	shellURLPattern          = regexp.MustCompile("https?://[^\\s\"'`]+")
+	pandocBinaryPattern      = regexp.MustCompile(`(?i)(^|[;&|()\s])pandoc([;&|()\s]|$)`)
+	pandocOutputDocxPattern  = regexp.MustCompile(`(?i)(^|[\s;|&])(--output|-o)(=|\s+)[^;\n|&]*\.docx(\s|$)`)
+	pandocToDocxPattern      = regexp.MustCompile(`(?i)(^|[\s;|&])(--to|-t)(=|\s*)docx(\s|$)`)
+	nihTemplateCandidatePath = []string{
+		"/opt/homebrew/opt/sciclaw-docx-review/share/docx-review/templates/nih-standard.docx",
+		"/opt/homebrew/opt/docx-review/share/docx-review/templates/nih-standard.docx",
+		"/home/linuxbrew/.linuxbrew/opt/sciclaw-docx-review/share/docx-review/templates/nih-standard.docx",
+		"/home/linuxbrew/.linuxbrew/opt/docx-review/share/docx-review/templates/nih-standard.docx",
+	}
 )
 
 func NewExecTool(workingDir string, restrict bool) *ExecTool {
@@ -125,8 +135,15 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
-	if len(t.extraEnv) > 0 {
-		cmd.Env = mergeEnv(os.Environ(), t.extraEnv)
+	envOverrides := make(map[string]string)
+	for k, v := range t.extraEnv {
+		envOverrides[k] = v
+	}
+	for k, v := range t.pandocTemplateEnvForCommand(command) {
+		envOverrides[k] = v
+	}
+	if len(envOverrides) > 0 {
+		cmd.Env = mergeEnv(os.Environ(), envOverrides)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -199,6 +216,105 @@ func mergeEnv(base []string, overrides map[string]string) []string {
 		out = append(out, fmt.Sprintf("%s=%s", k, v))
 	}
 	return out
+}
+
+func (t *ExecTool) pandocTemplateEnvForCommand(command string) map[string]string {
+	if !shouldApplyNIHPandocTemplate(command) {
+		return nil
+	}
+
+	templatePath := resolveNIHTemplatePath()
+	if templatePath == "" {
+		return nil
+	}
+
+	defaultsPath, err := ensurePandocDefaultsFile(templatePath)
+	if err != nil {
+		return nil
+	}
+	return map[string]string{
+		"PANDOC_DEFAULTS": defaultsPath,
+	}
+}
+
+func shouldApplyNIHPandocTemplate(command string) bool {
+	cmd := strings.TrimSpace(command)
+	if cmd == "" {
+		return false
+	}
+	lower := strings.ToLower(cmd)
+	if !pandocBinaryPattern.MatchString(lower) {
+		return false
+	}
+	if strings.Contains(lower, "--reference-doc") {
+		return false
+	}
+	if pandocOutputDocxPattern.MatchString(cmd) {
+		return true
+	}
+	if pandocToDocxPattern.MatchString(cmd) {
+		return true
+	}
+	return false
+}
+
+func resolveNIHTemplatePath() string {
+	if p := strings.TrimSpace(os.Getenv("SCICLAW_NIH_REFERENCE_DOC")); p != "" {
+		if isRegularFile(p) {
+			return absCleanPath(p)
+		}
+	}
+
+	var candidates []string
+	if docxBin, err := exec.LookPath("docx-review"); err == nil {
+		resolved := docxBin
+		if symlinkResolved, err := filepath.EvalSymlinks(docxBin); err == nil {
+			resolved = symlinkResolved
+		}
+		binDir := filepath.Dir(resolved)
+		candidates = append(candidates,
+			filepath.Join(binDir, "..", "share", "docx-review", "templates", "nih-standard.docx"),
+			filepath.Join(binDir, "..", "..", "share", "docx-review", "templates", "nih-standard.docx"),
+		)
+	}
+	candidates = append(candidates, nihTemplateCandidatePath...)
+
+	for _, p := range candidates {
+		if isRegularFile(p) {
+			return absCleanPath(p)
+		}
+	}
+	return ""
+}
+
+func ensurePandocDefaultsFile(templatePath string) (string, error) {
+	defaultsPath := strings.TrimSpace(os.Getenv("SCICLAW_PANDOC_DEFAULTS_PATH"))
+	if defaultsPath == "" {
+		defaultsPath = filepath.Join(os.TempDir(), "sciclaw-pandoc-defaults.yaml")
+	}
+	if err := os.MkdirAll(filepath.Dir(defaultsPath), 0o755); err != nil {
+		return "", err
+	}
+
+	content := []byte("reference-doc: " + strconv.Quote(templatePath) + "\n")
+	if existing, err := os.ReadFile(defaultsPath); err == nil {
+		if bytes.Equal(existing, content) {
+			return defaultsPath, nil
+		}
+	}
+
+	if err := os.WriteFile(defaultsPath, content, 0o600); err != nil {
+		return "", err
+	}
+	return defaultsPath, nil
+}
+
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
 
 func (t *ExecTool) guardCommand(command, cwd string) string {

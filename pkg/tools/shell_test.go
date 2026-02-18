@@ -292,3 +292,78 @@ func TestShellTool_AllowsDirectPubMedCLI(t *testing.T) {
 		t.Fatalf("expected direct pubmed CLI call to pass guard, got: %q", blocked)
 	}
 }
+
+func TestShouldApplyNIHPandocTemplate(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  string
+		want bool
+	}{
+		{
+			name: "pandoc output docx",
+			cmd:  "pandoc manuscript.md -o manuscript.docx",
+			want: true,
+		},
+		{
+			name: "pandoc to docx",
+			cmd:  "pandoc manuscript.md --to docx --output out.docx",
+			want: true,
+		},
+		{
+			name: "explicit reference doc no override",
+			cmd:  "pandoc manuscript.md -o out.docx --reference-doc custom.docx",
+			want: false,
+		},
+		{
+			name: "non-pandoc command",
+			cmd:  "echo hello",
+			want: false,
+		},
+		{
+			name: "pandoc non-docx output",
+			cmd:  "pandoc manuscript.md -o manuscript.pdf",
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldApplyNIHPandocTemplate(tc.cmd); got != tc.want {
+				t.Fatalf("shouldApplyNIHPandocTemplate(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPandocTemplateEnvForCommand_UsesConfiguredTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	templatePath := filepath.Join(tmpDir, "nih-standard.docx")
+	if err := os.WriteFile(templatePath, []byte("template"), 0o644); err != nil {
+		t.Fatalf("write template: %v", err)
+	}
+	defaultsPath := filepath.Join(tmpDir, "pandoc-defaults.yaml")
+
+	t.Setenv("SCICLAW_NIH_REFERENCE_DOC", templatePath)
+	t.Setenv("SCICLAW_PANDOC_DEFAULTS_PATH", defaultsPath)
+
+	tool := NewExecTool("", false)
+	env := tool.pandocTemplateEnvForCommand("pandoc input.md -o output.docx")
+	gotDefaults := env["PANDOC_DEFAULTS"]
+	if gotDefaults == "" {
+		t.Fatalf("expected PANDOC_DEFAULTS to be set")
+	}
+	if gotDefaults != defaultsPath {
+		t.Fatalf("expected defaults path %q, got %q", defaultsPath, gotDefaults)
+	}
+
+	content, err := os.ReadFile(defaultsPath)
+	if err != nil {
+		t.Fatalf("read defaults file: %v", err)
+	}
+	if !strings.Contains(string(content), "reference-doc:") {
+		t.Fatalf("defaults file missing reference-doc key: %s", string(content))
+	}
+	if !strings.Contains(string(content), templatePath) {
+		t.Fatalf("defaults file missing template path: %s", string(content))
+	}
+}

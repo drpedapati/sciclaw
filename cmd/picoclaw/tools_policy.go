@@ -16,6 +16,7 @@ const toolsCLIFirstPolicySection = `
 - Do not scrape ` + "`pubmed.ncbi.nlm.nih.gov`" + ` with ` + "`web_fetch`" + ` when ` + "`pubmed`" + ` CLI is available.
 - Do not wrap CLI tools in Python subprocess calls when direct CLI calls are sufficient.
 - For Word edits, use ` + "`docx-review`" + ` directly for read/edit/diff workflows.
+- For ` + "`pandoc`" + ` DOCX generation, sciClaw auto-applies the NIH reference template from ` + "`docx-review`" + ` unless you explicitly pass ` + "`--reference-doc`" + `.
 
 ### PubMed Examples (Preferred)
 
