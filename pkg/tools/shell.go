@@ -237,6 +237,9 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		if isPubMedCommand(cmd) {
 			pathScanInput = stripBracketSegments(cmd)
 		}
+		// URL literals are not filesystem paths and should not trigger
+		// workspace path checks.
+		pathScanInput = stripURLSegments(pathScanInput)
 		matches := pathPattern.FindAllString(pathScanInput, -1)
 
 		for _, raw := range matches {
@@ -297,6 +300,11 @@ func stripBracketSegments(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func stripURLSegments(s string) string {
+	urlPattern := regexp.MustCompile(`https?://[^\s"'` + "`" + `]+`)
+	return urlPattern.ReplaceAllString(s, " ")
 }
 
 func (t *ExecTool) SetTimeout(timeout time.Duration) {

@@ -50,6 +50,14 @@ func TestCreateWorkspaceTemplatesCreatesExpectedStructure(t *testing.T) {
 	if !strings.Contains(string(agentsContent), "Baseline Scientific Skills") {
 		t.Fatalf("AGENTS.md missing baseline skill manifest")
 	}
+
+	toolsContent, err := os.ReadFile(filepath.Join(workspace, "TOOLS.md"))
+	if err != nil {
+		t.Fatalf("read TOOLS.md: %v", err)
+	}
+	if !strings.Contains(string(toolsContent), "Critical CLI-First Rules") {
+		t.Fatalf("TOOLS.md missing CLI-first policy section")
+	}
 }
 
 func TestCreateWorkspaceTemplatesDoesNotOverwriteExistingFiles(t *testing.T) {

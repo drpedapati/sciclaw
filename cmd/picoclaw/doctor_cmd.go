@@ -294,6 +294,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 		if cfg != nil {
 			workspaceSkillsDir := filepath.Join(cfg.WorkspacePath(), "skills")
 			add(checkBaselineSkills(workspaceSkillsDir, opts))
+			add(checkToolsPolicy(cfg.WorkspacePath(), opts))
 		}
 	}
 
@@ -707,6 +708,51 @@ func checkBaselineSkills(workspaceSkillsDir string, opts doctorOptions) doctorCh
 		data["hint"] = "run: sciclaw doctor --fix"
 	}
 	return doctorCheck{Name: "skills.baseline", Status: st, Message: strings.Join(msgParts, "; "), Data: data}
+}
+
+func checkToolsPolicy(workspace string, opts doctorOptions) doctorCheck {
+	toolsPath := filepath.Join(workspace, "TOOLS.md")
+	if !fileExists(toolsPath) {
+		return doctorCheck{
+			Name:    "tools.policy",
+			Status:  doctorWarn,
+			Message: "TOOLS.md missing",
+			Data: map[string]string{
+				"hint": fmt.Sprintf("run: %s onboard", invokedCLIName()),
+			},
+		}
+	}
+
+	content, err := os.ReadFile(toolsPath)
+	if err != nil {
+		return doctorCheck{
+			Name:    "tools.policy",
+			Status:  doctorWarn,
+			Message: "unable to read TOOLS.md",
+			Data: map[string]string{
+				"path":  toolsPath,
+				"error": err.Error(),
+			},
+		}
+	}
+
+	if strings.Contains(string(content), toolsCLIFirstPolicyHeading) {
+		return doctorCheck{Name: "tools.policy", Status: doctorOK, Message: "CLI-first policy present", Data: map[string]string{"path": toolsPath}}
+	}
+
+	data := map[string]string{
+		"path": toolsPath,
+		"hint": fmt.Sprintf("run: %s doctor --fix (or %s onboard)", invokedCLIName(), invokedCLIName()),
+	}
+	if opts.Fix {
+		if err := ensureToolsCLIFirstPolicy(workspace); err != nil {
+			data["fix_error"] = err.Error()
+		} else {
+			return doctorCheck{Name: "tools.policy", Status: doctorOK, Message: "CLI-first policy injected", Data: map[string]string{"path": toolsPath}}
+		}
+	}
+
+	return doctorCheck{Name: "tools.policy", Status: doctorWarn, Message: "CLI-first policy missing", Data: data}
 }
 
 func resolveBundledSkillsDir() string {

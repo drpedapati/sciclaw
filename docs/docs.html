@@ -721,7 +721,7 @@
 
         <h3>1. Initialize</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, installs baseline scientific skills, and (on Linux) bootstraps <code>~/sciclaw/.venv</code> for Python-based tooling. In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip prompts.</p>
+        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, installs baseline scientific skills, and (on Linux) bootstraps <code>~/sciclaw/.venv</code> for Python-based tooling. It also seeds <code>TOOLS.md</code> with CLI-first guardrails (for example: use <code>pubmed</code>/<code>docx-review</code> directly, avoid scraping PubMed HTML, and avoid unnecessary Python subprocess wrappers). In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip prompts.</p>
 
         <h3>2. Connect a provider</h3>
         <p><strong>Easiest:</strong> If you have a ChatGPT Plus/Team subscription, log in with device code &mdash; no API key needed:</p>
@@ -1355,6 +1355,7 @@
         <p>Two skills are powered by standalone CLI tools that provide native file format support. Install them alongside sciClaw for full functionality:</p>
         <pre><code><span class="hl-cmd">brew</span> install drpedapati/tools/docx-review   <span class="hl-comment"># Word docs with tracked changes (Open XML SDK)</span>
 <span class="hl-cmd">brew</span> install drpedapati/tools/pubmed-cli     <span class="hl-comment"># PubMed search &amp; citation graphs</span></code></pre>
+        <p>When these CLIs are installed, use them directly in commands. Avoid wrapping them in Python subprocess calls unless a transformation is genuinely required.</p>
 
         <h4>Skills Catalog</h4>
         <p>Additional skills are available from the <a href="https://github.com/drpedapati/sciclaw-skills">skills catalog</a>:</p>

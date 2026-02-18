@@ -744,6 +744,10 @@ func createWorkspaceTemplates(workspace string) {
 		)
 	}
 
+	if err := ensureToolsCLIFirstPolicy(workspace); err != nil {
+		fmt.Printf("  Failed to apply TOOLS.md CLI-first policy: %v\n", err)
+	}
+
 	ensureBaselineScienceSkills(workspace)
 }
 

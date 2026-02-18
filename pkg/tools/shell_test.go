@@ -231,3 +231,26 @@ func TestShellTool_PubMedStillBlocksOutsideWorkspacePath(t *testing.T) {
 		t.Fatalf("expected outside-workspace path to be blocked, got: %q", blocked)
 	}
 }
+
+func TestShellTool_HeredocURLNotBlockedByPathGuard(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := "python3 - <<'PY'\nimport requests\nurl = 'https://pubmed.ncbi.nlm.nih.gov/41694131/'\nprint(requests.get(url, timeout=5).status_code)\nPY"
+	if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
+		t.Fatalf("expected heredoc URL to pass guard, got: %s", blocked)
+	}
+}
+
+func TestShellTool_URLWithOutsidePathStillBlocked(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := "python3 - <<'PY'\nurl='https://pubmed.ncbi.nlm.nih.gov/41694131/'\nprint(url)\nPY\ncat /tmp/secrets.txt"
+	blocked := tool.guardCommand(cmd, tmpDir)
+	if !strings.Contains(blocked, "outside working dir") {
+		t.Fatalf("expected outside-workspace path to remain blocked, got: %q", blocked)
+	}
+}
