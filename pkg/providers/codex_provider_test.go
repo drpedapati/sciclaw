@@ -306,8 +306,8 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 
 func TestCodexProvider_GetDefaultModel(t *testing.T) {
 	p := NewCodexProvider("test-token", "")
-	if got := p.GetDefaultModel(); got != "gpt-4o" {
-		t.Errorf("GetDefaultModel() = %q, want %q", got, "gpt-4o")
+	if got := p.GetDefaultModel(); got != "gpt-5.2" {
+		t.Errorf("GetDefaultModel() = %q, want %q", got, "gpt-5.2")
 	}
 }
 

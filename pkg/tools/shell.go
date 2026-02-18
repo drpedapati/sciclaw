@@ -22,6 +22,11 @@ type ExecTool struct {
 	extraEnv            map[string]string
 }
 
+var (
+	shellPathPattern = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
+	shellURLPattern  = regexp.MustCompile("https?://[^\\s\"'`]+")
+)
+
 func NewExecTool(workingDir string, restrict bool) *ExecTool {
 	denyPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`\brm\s+-[rf]{1,2}\b`),
@@ -233,7 +238,6 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 			return ""
 		}
 
-		pathPattern := regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
 		pathScanInput := cmd
 		// PubMed search syntax uses field tags like [Title/Abstract], which can be
 		// misread as absolute paths by the generic scanner. Strip bracketed tags
@@ -244,7 +248,7 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		// URL literals are not filesystem paths and should not trigger
 		// workspace path checks.
 		pathScanInput = stripURLSegments(pathScanInput)
-		matches := pathPattern.FindAllString(pathScanInput, -1)
+		matches := shellPathPattern.FindAllString(pathScanInput, -1)
 
 		for _, raw := range matches {
 			p, err := filepath.Abs(raw)
@@ -327,8 +331,7 @@ func stripBracketSegments(s string) string {
 }
 
 func stripURLSegments(s string) string {
-	urlPattern := regexp.MustCompile(`https?://[^\s"'` + "`" + `]+`)
-	return urlPattern.ReplaceAllString(s, " ")
+	return shellURLPattern.ReplaceAllString(s, " ")
 }
 
 func (t *ExecTool) SetTimeout(timeout time.Duration) {
