@@ -503,10 +503,6 @@ func splitDiscordMessage(content string, maxRunes int) []string {
 }
 
 func sendDiscordAttachment(session *discordgo.Session, channelID, content string, attachment bus.OutboundAttachment) error {
-	if session == nil {
-		return fmt.Errorf("discord session is nil")
-	}
-
 	path := strings.TrimSpace(attachment.Path)
 	if path == "" {
 		return fmt.Errorf("attachment path is required")
@@ -521,6 +517,9 @@ func sendDiscordAttachment(session *discordgo.Session, channelID, content string
 	}
 	if stat.Size() > discordMaxFileBytes {
 		return fmt.Errorf("attachment %q exceeds Discord limit (%d bytes)", path, discordMaxFileBytes)
+	}
+	if session == nil {
+		return fmt.Errorf("discord session is nil")
 	}
 
 	file, err := os.Open(path)

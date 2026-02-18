@@ -135,10 +135,8 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	if err != nil {
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
-	content := strings.TrimSpace(msg.Content)
-	if content == "" {
-		content = "[empty message]"
-	}
+	rawContent := strings.TrimSpace(msg.Content)
+	content := rawContent
 
 	// Stop thinking animation
 	if stop, ok := c.stopThinking.Load(msg.ChatID); ok {
@@ -159,18 +157,18 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	}
 
 	if len(msg.Attachments) > 0 {
-		if strings.TrimSpace(content) != "" {
+		if rawContent != "" {
 			if runeCount(htmlContent) <= telegramMaxMessageRunes {
 				if err = sendOrEditTelegramMessage(ctx, c.bot, chatID, placeholderID, htmlContent, telego.ModeHTML); err != nil {
 					logger.ErrorCF("telegram", "HTML send failed before attachment upload, falling back to plain text chunks", map[string]interface{}{
 						"error": err.Error(),
 					})
-					if err = sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, content); err != nil {
+					if err = sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, rawContent); err != nil {
 						return err
 					}
 				}
 			} else {
-				if err = sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, content); err != nil {
+				if err = sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, rawContent); err != nil {
 					return err
 				}
 			}
@@ -184,6 +182,10 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 			}
 		}
 		return nil
+	}
+
+	if content == "" {
+		content = "[empty message]"
 	}
 
 	if runeCount(htmlContent) <= telegramMaxMessageRunes {
@@ -383,10 +385,6 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 }
 
 func sendTelegramAttachment(ctx context.Context, bot *telego.Bot, chatID int64, attachment bus.OutboundAttachment) error {
-	if bot == nil {
-		return fmt.Errorf("telegram bot is nil")
-	}
-
 	path := strings.TrimSpace(attachment.Path)
 	if path == "" {
 		return fmt.Errorf("attachment path is required")
@@ -402,6 +400,9 @@ func sendTelegramAttachment(ctx context.Context, bot *telego.Bot, chatID int64, 
 	if stat.Size() > telegramMaxFileBytes {
 		return fmt.Errorf("attachment %q exceeds Telegram limit (%d bytes)", path, telegramMaxFileBytes)
 	}
+	if bot == nil {
+		return fmt.Errorf("telegram bot is nil")
+	}
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -414,11 +415,45 @@ func sendTelegramAttachment(ctx context.Context, bot *telego.Bot, chatID int64, 
 		name = filepath.Base(path)
 	}
 
-	document := tu.Document(tu.ID(chatID), tu.FileFromReader(file, name))
-	if _, err := bot.SendDocument(ctx, document); err != nil {
-		return fmt.Errorf("send attachment %q: %w", name, err)
+	inputFile := tu.FileFromReader(file, name)
+	switch telegramAttachmentMethod(name) {
+	case "photo":
+		photo := tu.Photo(tu.ID(chatID), inputFile)
+		if _, err := bot.SendPhoto(ctx, photo); err != nil {
+			return fmt.Errorf("send photo attachment %q: %w", name, err)
+		}
+	case "video":
+		video := tu.Video(tu.ID(chatID), inputFile)
+		if _, err := bot.SendVideo(ctx, video); err != nil {
+			return fmt.Errorf("send video attachment %q: %w", name, err)
+		}
+	case "audio":
+		audio := tu.Audio(tu.ID(chatID), inputFile)
+		if _, err := bot.SendAudio(ctx, audio); err != nil {
+			return fmt.Errorf("send audio attachment %q: %w", name, err)
+		}
+	default:
+		document := tu.Document(tu.ID(chatID), inputFile)
+		if _, err := bot.SendDocument(ctx, document); err != nil {
+			return fmt.Errorf("send document attachment %q: %w", name, err)
+		}
 	}
 	return nil
+}
+
+func telegramAttachmentMethod(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+		return "photo"
+	case ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi":
+		return "video"
+	default:
+		if utils.IsAudioFile(filename, "") {
+			return "audio"
+		}
+		return "document"
+	}
 }
 
 func (c *TelegramChannel) downloadPhoto(ctx context.Context, fileID string) string {

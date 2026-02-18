@@ -2,6 +2,8 @@ package channels
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -186,5 +188,113 @@ func TestDiscordSend_SendsChunkedMessages(t *testing.T) {
 		if n := len([]rune(chunk)); n > discordMaxRunes {
 			t.Fatalf("chunk %d exceeds limit: %d", i, n)
 		}
+	}
+}
+
+func TestDiscordSend_WithAttachments_RoutesCaptionsAndRemainingText(t *testing.T) {
+	ch := newTestDiscordChannel()
+	var mu sync.Mutex
+	var sentFiles []struct {
+		Content    string
+		Attachment bus.OutboundAttachment
+	}
+	var sentMessages []string
+
+	ch.sendFileFn = func(channelID, content string, attachment bus.OutboundAttachment) error {
+		mu.Lock()
+		sentFiles = append(sentFiles, struct {
+			Content    string
+			Attachment bus.OutboundAttachment
+		}{
+			Content:    content,
+			Attachment: attachment,
+		})
+		mu.Unlock()
+		return nil
+	}
+	ch.sendMessageFn = func(channelID, content string) error {
+		mu.Lock()
+		sentMessages = append(sentMessages, content)
+		mu.Unlock()
+		return nil
+	}
+
+	content := strings.Repeat("x", discordMaxRunes+35)
+	chunks := splitDiscordMessage(content, discordMaxRunes)
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 chunks for setup, got %d", len(chunks))
+	}
+
+	err := ch.Send(context.Background(), bus.OutboundMessage{
+		Channel: "discord",
+		ChatID:  "chan-attach",
+		Content: content,
+		Attachments: []bus.OutboundAttachment{
+			{Path: "/tmp/a.docx", Filename: "a.docx"},
+			{Path: "/tmp/b.pdf", Filename: "b.pdf"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected send error: %v", err)
+	}
+
+	mu.Lock()
+	gotFiles := append([]struct {
+		Content    string
+		Attachment bus.OutboundAttachment
+	}(nil), sentFiles...)
+	gotMessages := append([]string(nil), sentMessages...)
+	mu.Unlock()
+
+	if len(gotFiles) != 2 {
+		t.Fatalf("expected 2 file sends, got %d", len(gotFiles))
+	}
+	if gotFiles[0].Content != chunks[0] {
+		t.Fatalf("expected first attachment caption to equal first chunk")
+	}
+	if gotFiles[1].Content != "" {
+		t.Fatalf("expected second attachment without caption, got %q", gotFiles[1].Content)
+	}
+	if len(gotMessages) != 1 {
+		t.Fatalf("expected 1 trailing text message, got %d", len(gotMessages))
+	}
+	if gotMessages[0] != chunks[1] {
+		t.Fatalf("expected trailing message to equal second chunk")
+	}
+}
+
+func TestSendDiscordAttachment_ValidatesPathsAndSize(t *testing.T) {
+	tmp := t.TempDir()
+	dirPath := filepath.Join(tmp, "dir")
+	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	if err := sendDiscordAttachment(nil, "chan", "", bus.OutboundAttachment{Path: dirPath}); err == nil || !strings.Contains(err.Error(), "is a directory") {
+		t.Fatalf("expected directory error, got %v", err)
+	}
+
+	largePath := filepath.Join(tmp, "large.bin")
+	f, err := os.Create(largePath)
+	if err != nil {
+		t.Fatalf("create large file: %v", err)
+	}
+	if err := f.Truncate(discordMaxFileBytes + 1); err != nil {
+		_ = f.Close()
+		t.Fatalf("truncate large file: %v", err)
+	}
+	_ = f.Close()
+
+	if err := sendDiscordAttachment(nil, "chan", "", bus.OutboundAttachment{Path: largePath}); err == nil || !strings.Contains(err.Error(), "exceeds Discord limit") {
+		t.Fatalf("expected size limit error, got %v", err)
+	}
+
+	okPath := filepath.Join(tmp, "ok.txt")
+	if err := os.WriteFile(okPath, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("write small file: %v", err)
+	}
+
+	if err := sendDiscordAttachment(nil, "chan", "", bus.OutboundAttachment{Path: okPath}); err == nil || !strings.Contains(err.Error(), "session is nil") {
+		t.Fatalf("expected session nil error for valid file, got %v", err)
 	}
 }
