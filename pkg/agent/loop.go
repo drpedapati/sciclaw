@@ -106,12 +106,13 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 
 	// Message tool - available to both agent and subagent
 	// Subagent uses it to communicate directly with user
-	messageTool := tools.NewMessageTool()
-	messageTool.SetSendCallback(func(channel, chatID, content string) error {
+	messageTool := tools.NewMessageTool(workspace, restrict)
+	messageTool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
 		msgBus.PublishOutbound(bus.OutboundMessage{
-			Channel: channel,
-			ChatID:  chatID,
-			Content: content,
+			Channel:     channel,
+			ChatID:      chatID,
+			Content:     content,
+			Attachments: attachments,
 		})
 		return nil
 	})

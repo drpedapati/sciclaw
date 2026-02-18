@@ -3,18 +3,26 @@ package tools
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/sipeed/picoclaw/pkg/bus"
 )
 
 func TestMessageTool_Execute_Success(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 
 	var sentChannel, sentChatID, sentContent string
-	tool.SetSendCallback(func(channel, chatID, content string) error {
+	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
 		sentChannel = channel
 		sentChatID = chatID
 		sentContent = content
+		if len(attachments) != 0 {
+			t.Fatalf("expected no attachments, got %d", len(attachments))
+		}
 		return nil
 	})
 
@@ -59,11 +67,11 @@ func TestMessageTool_Execute_Success(t *testing.T) {
 }
 
 func TestMessageTool_Execute_WithCustomChannel(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("default-channel", "default-chat-id")
 
 	var sentChannel, sentChatID string
-	tool.SetSendCallback(func(channel, chatID, content string) error {
+	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
 		sentChannel = channel
 		sentChatID = chatID
 		return nil
@@ -95,11 +103,11 @@ func TestMessageTool_Execute_WithCustomChannel(t *testing.T) {
 }
 
 func TestMessageTool_Execute_SendFailure(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 
 	sendErr := errors.New("network error")
-	tool.SetSendCallback(func(channel, chatID, content string) error {
+	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
 		return sendErr
 	})
 
@@ -132,7 +140,7 @@ func TestMessageTool_Execute_SendFailure(t *testing.T) {
 }
 
 func TestMessageTool_Execute_MissingContent(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 
 	ctx := context.Background()
@@ -150,10 +158,10 @@ func TestMessageTool_Execute_MissingContent(t *testing.T) {
 }
 
 func TestMessageTool_Execute_NoTargetChannel(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	// No SetContext called, so defaultChannel and defaultChatID are empty
 
-	tool.SetSendCallback(func(channel, chatID, content string) error {
+	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
 		return nil
 	})
 
@@ -174,7 +182,7 @@ func TestMessageTool_Execute_NoTargetChannel(t *testing.T) {
 }
 
 func TestMessageTool_Execute_NotConfigured(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 	// No SetSendCallback called
 
@@ -194,15 +202,118 @@ func TestMessageTool_Execute_NotConfigured(t *testing.T) {
 	}
 }
 
+func TestMessageTool_Execute_WithAttachments(t *testing.T) {
+	workspace := t.TempDir()
+	filePath := filepath.Join(workspace, "report.docx")
+	if err := os.WriteFile(filePath, []byte("dummy"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	tool := NewMessageTool(workspace, true)
+	tool.SetContext("discord", "chan-1")
+
+	var got []bus.OutboundAttachment
+	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+		got = append([]bus.OutboundAttachment(nil), attachments...)
+		return nil
+	})
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content": "see file",
+		"attachments": []interface{}{
+			map[string]interface{}{
+				"path":     "report.docx",
+				"filename": "final-report.docx",
+			},
+		},
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.ForLLM)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(got))
+	}
+	if got[0].Path != filePath {
+		t.Fatalf("expected resolved path %q, got %q", filePath, got[0].Path)
+	}
+	if got[0].Filename != "final-report.docx" {
+		t.Fatalf("expected filename override, got %q", got[0].Filename)
+	}
+	if !strings.Contains(result.ForLLM, "with 1 attachment(s)") {
+		t.Fatalf("expected attachment status in ForLLM, got %q", result.ForLLM)
+	}
+}
+
+func TestMessageTool_Execute_AttachmentOutsideWorkspaceBlocked(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+
+	outsideFile := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+
+	tool := NewMessageTool(workspace, true)
+	tool.SetContext("discord", "chan-1")
+	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+		return nil
+	})
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content": "leak",
+		"attachments": []interface{}{
+			map[string]interface{}{"path": outsideFile},
+		},
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for outside-workspace attachment")
+	}
+	if !strings.Contains(result.ForLLM, "outside the workspace") {
+		t.Fatalf("expected workspace denial, got %q", result.ForLLM)
+	}
+}
+
+func TestMessageTool_Execute_AttachmentsUnsupportedChannel(t *testing.T) {
+	workspace := t.TempDir()
+	filePath := filepath.Join(workspace, "report.docx")
+	if err := os.WriteFile(filePath, []byte("dummy"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	tool := NewMessageTool(workspace, true)
+	tool.SetContext("slack", "chan-1")
+	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+		return nil
+	})
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content": "see file",
+		"attachments": []interface{}{
+			map[string]interface{}{"path": "report.docx"},
+		},
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for unsupported channel")
+	}
+	if !strings.Contains(result.ForLLM, "only on discord/telegram") {
+		t.Fatalf("unexpected error message: %q", result.ForLLM)
+	}
+}
+
 func TestMessageTool_Name(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	if tool.Name() != "message" {
 		t.Errorf("Expected name 'message', got '%s'", tool.Name())
 	}
 }
 
 func TestMessageTool_Description(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	desc := tool.Description()
 	if desc == "" {
 		t.Error("Description should not be empty")
@@ -210,7 +321,7 @@ func TestMessageTool_Description(t *testing.T) {
 }
 
 func TestMessageTool_Parameters(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	params := tool.Parameters()
 
 	// Verify parameters structure
@@ -255,5 +366,13 @@ func TestMessageTool_Parameters(t *testing.T) {
 	}
 	if chatIDProp["type"] != "string" {
 		t.Error("Expected chat_id type to be 'string'")
+	}
+
+	attachmentsProp, ok := props["attachments"].(map[string]interface{})
+	if !ok {
+		t.Error("Expected 'attachments' property")
+	}
+	if attachmentsProp["type"] != "array" {
+		t.Error("Expected attachments type to be 'array'")
 	}
 }

@@ -166,6 +166,7 @@ Additional skills: [skills catalog](https://github.com/drpedapati/sciclaw-skills
 ## Chat Channels
 
 Telegram and Discord are the recommended way to interact with sciClaw. You message it from the app you already have open.
+When the agent generates deliverables (for example `.docx`), it can now send real file attachments back through Discord/Telegram via the `message` tool.
 
 <details>
 <summary><strong>Telegram setup</strong> (easiest)</summary>

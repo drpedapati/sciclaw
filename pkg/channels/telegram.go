@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -21,6 +22,8 @@ import (
 	"github.com/sipeed/picoclaw/pkg/voice"
 )
 
+const telegramMaxFileBytes = 50 * 1024 * 1024
+
 type TelegramChannel struct {
 	*BaseChannel
 	bot          *telego.Bot
@@ -29,6 +32,7 @@ type TelegramChannel struct {
 	transcriber  *voice.GroqTranscriber
 	placeholders sync.Map // chatID -> messageID
 	stopThinking sync.Map // chatID -> thinkingCancel
+	sendFileFn   func(ctx context.Context, chatID int64, attachment bus.OutboundAttachment) error
 }
 
 type thinkingCancel struct {
@@ -41,7 +45,7 @@ func (c *thinkingCancel) Cancel() {
 	}
 }
 
-func NewTelegramChannel(cfg config.TelegramConfig, bus *bus.MessageBus) (*TelegramChannel, error) {
+func NewTelegramChannel(cfg config.TelegramConfig, messageBus *bus.MessageBus) (*TelegramChannel, error) {
 	var opts []telego.BotOption
 
 	if cfg.Proxy != "" {
@@ -61,7 +65,7 @@ func NewTelegramChannel(cfg config.TelegramConfig, bus *bus.MessageBus) (*Telegr
 		return nil, fmt.Errorf("failed to create telegram bot: %w", err)
 	}
 
-	base := NewBaseChannel("telegram", cfg, bus, cfg.AllowFrom)
+	base := NewBaseChannel("telegram", cfg, messageBus, cfg.AllowFrom)
 
 	return &TelegramChannel{
 		BaseChannel:  base,
@@ -71,6 +75,9 @@ func NewTelegramChannel(cfg config.TelegramConfig, bus *bus.MessageBus) (*Telegr
 		transcriber:  nil,
 		placeholders: sync.Map{},
 		stopThinking: sync.Map{},
+		sendFileFn: func(ctx context.Context, chatID int64, attachment bus.OutboundAttachment) error {
+			return sendTelegramAttachment(ctx, bot, chatID, attachment)
+		},
 	}, nil
 }
 
@@ -151,6 +158,34 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		}
 	}
 
+	if len(msg.Attachments) > 0 {
+		if strings.TrimSpace(content) != "" {
+			if runeCount(htmlContent) <= telegramMaxMessageRunes {
+				if err = sendOrEditTelegramMessage(ctx, c.bot, chatID, placeholderID, htmlContent, telego.ModeHTML); err != nil {
+					logger.ErrorCF("telegram", "HTML send failed before attachment upload, falling back to plain text chunks", map[string]interface{}{
+						"error": err.Error(),
+					})
+					if err = sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, content); err != nil {
+						return err
+					}
+				}
+			} else {
+				if err = sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, content); err != nil {
+					return err
+				}
+			}
+		} else if placeholderID != nil {
+			_ = sendOrEditTelegramMessage(ctx, c.bot, chatID, placeholderID, "Uploading attachment(s)...", "")
+		}
+
+		for _, attachment := range msg.Attachments {
+			if err := c.sendFile(ctx, chatID, attachment); err != nil {
+				return fmt.Errorf("failed to send telegram attachment: %w", err)
+			}
+		}
+		return nil
+	}
+
 	if runeCount(htmlContent) <= telegramMaxMessageRunes {
 		if err = sendOrEditTelegramMessage(ctx, c.bot, chatID, placeholderID, htmlContent, telego.ModeHTML); err == nil {
 			return nil
@@ -165,6 +200,13 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	}
 
 	return sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, content)
+}
+
+func (c *TelegramChannel) sendFile(ctx context.Context, chatID int64, attachment bus.OutboundAttachment) error {
+	if c.sendFileFn != nil {
+		return c.sendFileFn(ctx, chatID, attachment)
+	}
+	return sendTelegramAttachment(ctx, c.bot, chatID, attachment)
 }
 
 func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Update) {
@@ -338,6 +380,45 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 	}
 
 	c.HandleMessage(fmt.Sprintf("%d", user.ID), fmt.Sprintf("%d", chatID), content, mediaPaths, metadata)
+}
+
+func sendTelegramAttachment(ctx context.Context, bot *telego.Bot, chatID int64, attachment bus.OutboundAttachment) error {
+	if bot == nil {
+		return fmt.Errorf("telegram bot is nil")
+	}
+
+	path := strings.TrimSpace(attachment.Path)
+	if path == "" {
+		return fmt.Errorf("attachment path is required")
+	}
+
+	stat, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat attachment %q: %w", path, err)
+	}
+	if stat.IsDir() {
+		return fmt.Errorf("attachment %q is a directory", path)
+	}
+	if stat.Size() > telegramMaxFileBytes {
+		return fmt.Errorf("attachment %q exceeds Telegram limit (%d bytes)", path, telegramMaxFileBytes)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open attachment %q: %w", path, err)
+	}
+	defer file.Close()
+
+	name := strings.TrimSpace(attachment.Filename)
+	if name == "" {
+		name = filepath.Base(path)
+	}
+
+	document := tu.Document(tu.ID(chatID), tu.FileFromReader(file, name))
+	if _, err := bot.SendDocument(ctx, document); err != nil {
+		return fmt.Errorf("send attachment %q: %w", name, err)
+	}
+	return nil
 }
 
 func (c *TelegramChannel) downloadPhoto(ctx context.Context, fileID string) string {

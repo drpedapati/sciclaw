@@ -1649,6 +1649,7 @@
 - Check email and report important messages</code></pre>
 
         <p>For long-running work, the agent uses the <strong>spawn</strong> tool to create async subagents that run independently and communicate results via the message tool.</p>
+        <p>The message tool also supports outbound file attachments on Discord/Telegram (for example sending generated <code>.docx</code> and <code>.pdf</code> files back to the user).</p>
 
         <pre><code>{
   <span class="hl-key">"heartbeat"</span>: {

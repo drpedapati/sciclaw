@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ const (
 	sendTimeout          = 10 * time.Second
 	typingInterval       = 8 * time.Second
 	discordMaxRunes      = 2000
+	discordMaxFileBytes  = 25 * 1024 * 1024
 )
 
 type typingState struct {
@@ -39,16 +41,17 @@ type DiscordChannel struct {
 	typing        map[string]*typingState
 	typingEvery   time.Duration
 	sendMessageFn func(channelID, content string) error
+	sendFileFn    func(channelID, content string, attachment bus.OutboundAttachment) error
 	sendTypingFn  func(channelID string) error
 }
 
-func NewDiscordChannel(cfg config.DiscordConfig, bus *bus.MessageBus) (*DiscordChannel, error) {
+func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
 	session, err := discordgo.New("Bot " + cfg.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
 
-	base := NewBaseChannel("discord", cfg, bus, cfg.AllowFrom)
+	base := NewBaseChannel("discord", cfg, messageBus, cfg.AllowFrom)
 
 	return &DiscordChannel{
 		BaseChannel: base,
@@ -61,6 +64,9 @@ func NewDiscordChannel(cfg config.DiscordConfig, bus *bus.MessageBus) (*DiscordC
 		sendMessageFn: func(channelID, content string) error {
 			_, err := session.ChannelMessageSend(channelID, content)
 			return err
+		},
+		sendFileFn: func(channelID, content string, attachment bus.OutboundAttachment) error {
+			return sendDiscordAttachment(session, channelID, content, attachment)
 		},
 		sendTypingFn: func(channelID string) error {
 			return session.ChannelTyping(channelID)
@@ -142,6 +148,10 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 
 	done := make(chan error, 1)
 	go func() {
+		if len(msg.Attachments) > 0 {
+			done <- c.sendMessageWithAttachments(channelID, chunks, msg.Attachments)
+			return
+		}
 		for _, chunk := range chunks {
 			if err := c.sendMessage(channelID, chunk); err != nil {
 				done <- err
@@ -160,6 +170,30 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 	case <-sendCtx.Done():
 		return fmt.Errorf("send message timeout: %w", sendCtx.Err())
 	}
+}
+
+func (c *DiscordChannel) sendMessageWithAttachments(channelID string, chunks []string, attachments []bus.OutboundAttachment) error {
+	remainingChunks := append([]string(nil), chunks...)
+
+	for i, attachment := range attachments {
+		caption := ""
+		if i == 0 && len(remainingChunks) > 0 {
+			caption = remainingChunks[0]
+			remainingChunks = remainingChunks[1:]
+		}
+
+		if err := c.sendFile(channelID, caption, attachment); err != nil {
+			return err
+		}
+	}
+
+	for _, chunk := range remainingChunks {
+		if err := c.sendMessage(channelID, chunk); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // appendContent 安全地追加内容到现有文本
@@ -296,6 +330,16 @@ func (c *DiscordChannel) sendMessage(channelID, content string) error {
 	}
 	_, err := c.session.ChannelMessageSend(channelID, content)
 	return err
+}
+
+func (c *DiscordChannel) sendFile(channelID, content string, attachment bus.OutboundAttachment) error {
+	if c.sendFileFn != nil {
+		return c.sendFileFn(channelID, content, attachment)
+	}
+	if c.session == nil {
+		return fmt.Errorf("discord session is nil")
+	}
+	return sendDiscordAttachment(c.session, channelID, content, attachment)
 }
 
 func (c *DiscordChannel) sendTyping(channelID string) error {
@@ -456,4 +500,51 @@ func splitDiscordMessage(content string, maxRunes int) []string {
 		return []string{"[empty message]"}
 	}
 	return chunks
+}
+
+func sendDiscordAttachment(session *discordgo.Session, channelID, content string, attachment bus.OutboundAttachment) error {
+	if session == nil {
+		return fmt.Errorf("discord session is nil")
+	}
+
+	path := strings.TrimSpace(attachment.Path)
+	if path == "" {
+		return fmt.Errorf("attachment path is required")
+	}
+
+	stat, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat attachment %q: %w", path, err)
+	}
+	if stat.IsDir() {
+		return fmt.Errorf("attachment %q is a directory", path)
+	}
+	if stat.Size() > discordMaxFileBytes {
+		return fmt.Errorf("attachment %q exceeds Discord limit (%d bytes)", path, discordMaxFileBytes)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open attachment %q: %w", path, err)
+	}
+	defer file.Close()
+
+	name := strings.TrimSpace(attachment.Filename)
+	if name == "" {
+		name = filepath.Base(path)
+	}
+
+	_, err = session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content: content,
+		Files: []*discordgo.File{
+			{
+				Name:   name,
+				Reader: file,
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("send attachment %q: %w", name, err)
+	}
+	return nil
 }
