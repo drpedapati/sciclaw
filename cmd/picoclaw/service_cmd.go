@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -26,7 +28,7 @@ func serviceCmd() {
 		return
 	}
 
-	exePath, err := os.Executable()
+	exePath, err := resolveServiceExecutablePath(os.Args[0], exec.LookPath, os.Executable)
 	if err != nil {
 		fmt.Printf("Error resolving executable path: %v\n", err)
 		os.Exit(1)
@@ -99,6 +101,33 @@ func serviceCmd() {
 		serviceHelp()
 		os.Exit(2)
 	}
+}
+
+func resolveServiceExecutablePath(
+	argv0 string,
+	lookPath func(string) (string, error),
+	executable func() (string, error),
+) (string, error) {
+	arg0 := strings.TrimSpace(argv0)
+	base := strings.TrimSpace(filepath.Base(arg0))
+	if base != "" {
+		if resolved, err := lookPath(base); err == nil && strings.TrimSpace(resolved) != "" {
+			if abs, err := filepath.Abs(resolved); err == nil {
+				return abs, nil
+			}
+			return resolved, nil
+		}
+	}
+
+	// If argv0 is an explicit path, keep using it as a fallback.
+	if arg0 != "" && (strings.Contains(arg0, "/") || strings.Contains(arg0, `\`)) {
+		if abs, err := filepath.Abs(arg0); err == nil {
+			return abs, nil
+		}
+		return arg0, nil
+	}
+
+	return executable()
 }
 
 func serviceHelp() {
