@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ import (
 const (
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
+var webLookPath = exec.LookPath
 
 type SearchProvider interface {
 	Search(ctx context.Context, query string, count int) (string, error)
@@ -323,6 +326,10 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult("missing domain in URL")
 	}
 
+	if isPubMedHost(parsedURL.Hostname()) && hasPubMedCLI() {
+		return ErrorResult("Use the installed PubMed CLI instead of web_fetch for PubMed pages (e.g., `pubmed search ... --json` or `pubmed fetch <PMID> --json`).")
+	}
+
 	maxChars := t.maxChars
 	if mc, ok := args["maxChars"].(float64); ok {
 		if int(mc) > 100 {
@@ -407,6 +414,21 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 		ForLLM:  fmt.Sprintf("Fetched %d bytes from %s (extractor: %s, truncated: %v)", len(text), urlStr, extractor, truncated),
 		ForUser: string(resultJSON),
 	}
+}
+
+func isPubMedHost(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	return h == "pubmed.ncbi.nlm.nih.gov" || strings.HasSuffix(h, ".pubmed.ncbi.nlm.nih.gov")
+}
+
+func hasPubMedCLI() bool {
+	if _, err := webLookPath("pubmed-cli"); err == nil {
+		return true
+	}
+	if _, err := webLookPath("pubmed"); err == nil {
+		return true
+	}
+	return false
 }
 
 func (t *WebFetchTool) extractText(htmlContent string) string {

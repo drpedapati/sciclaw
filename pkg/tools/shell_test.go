@@ -254,3 +254,20 @@ func TestShellTool_URLWithOutsidePathStillBlocked(t *testing.T) {
 		t.Fatalf("expected outside-workspace path to remain blocked, got: %q", blocked)
 	}
 }
+
+func TestShellTool_BlocksPythonSubprocessWrapperForPubMed(t *testing.T) {
+	tool := NewExecTool("", false)
+	cmd := "python3 - <<'PY'\nimport subprocess\nsubprocess.check_output(['pubmed','search','schizophrenia','--json'], text=True)\nPY"
+	blocked := tool.guardCommand(cmd, "")
+	if !strings.Contains(blocked, "avoid Python subprocess wrappers") {
+		t.Fatalf("expected wrapper block message, got: %q", blocked)
+	}
+}
+
+func TestShellTool_AllowsDirectPubMedCLI(t *testing.T) {
+	tool := NewExecTool("", false)
+	cmd := `pubmed search "schizophrenia" --json --limit 5`
+	if blocked := tool.guardCommand(cmd, ""); blocked != "" {
+		t.Fatalf("expected direct pubmed CLI call to pass guard, got: %q", blocked)
+	}
+}

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -248,5 +249,48 @@ func TestWebTool_WebFetch_MissingDomain(t *testing.T) {
 	// Should mention missing domain
 	if !strings.Contains(result.ForLLM, "domain") && !strings.Contains(result.ForUser, "domain") {
 		t.Errorf("Expected domain error message, got ForLLM: %s", result.ForLLM)
+	}
+}
+
+func TestIsPubMedHost(t *testing.T) {
+	cases := []struct {
+		host string
+		want bool
+	}{
+		{host: "pubmed.ncbi.nlm.nih.gov", want: true},
+		{host: "PUBMED.NCBI.NLM.NIH.GOV", want: true},
+		{host: "foo.pubmed.ncbi.nlm.nih.gov", want: true},
+		{host: "ncbi.nlm.nih.gov", want: false},
+		{host: "example.org", want: false},
+	}
+	for _, tc := range cases {
+		if got := isPubMedHost(tc.host); got != tc.want {
+			t.Fatalf("isPubMedHost(%q) = %v, want %v", tc.host, got, tc.want)
+		}
+	}
+}
+
+func TestWebFetch_BlocksPubMedWhenCLIAvailable(t *testing.T) {
+	orig := webLookPath
+	t.Cleanup(func() { webLookPath = orig })
+	webLookPath = func(file string) (string, error) {
+		if file == "pubmed" {
+			return "/usr/local/bin/pubmed", nil
+		}
+		return "", errors.New("not found")
+	}
+
+	tool := NewWebFetchTool(50000)
+	ctx := context.Background()
+	args := map[string]interface{}{
+		"url": "https://pubmed.ncbi.nlm.nih.gov/41694131/",
+	}
+
+	result := tool.Execute(ctx, args)
+	if !result.IsError {
+		t.Fatalf("expected pubmed URL to be blocked when CLI exists")
+	}
+	if !strings.Contains(result.ForLLM, "PubMed CLI") {
+		t.Fatalf("expected PubMed CLI guidance, got: %s", result.ForLLM)
 	}
 }

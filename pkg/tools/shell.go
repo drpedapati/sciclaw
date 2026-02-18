@@ -219,6 +219,10 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		}
 	}
 
+	if isPythonSubprocessWrapperForInstalledCLI(cmd) {
+		return "Command blocked by safety guard (avoid Python subprocess wrappers for pubmed/docx-review; call the CLI directly)"
+	}
+
 	if t.restrictToWorkspace {
 		if strings.Contains(cmd, "..\\") || strings.Contains(cmd, "../") {
 			return "Command blocked by safety guard (path traversal detected)"
@@ -273,6 +277,26 @@ func isPubMedCommand(command string) bool {
 	default:
 		return false
 	}
+}
+
+func isPythonSubprocessWrapperForInstalledCLI(command string) bool {
+	lower := strings.ToLower(strings.TrimSpace(command))
+	if lower == "" {
+		return false
+	}
+	if !strings.Contains(lower, "python") {
+		return false
+	}
+	if !strings.Contains(lower, "subprocess") {
+		return false
+	}
+	if !(strings.Contains(lower, "check_output") || strings.Contains(lower, "subprocess.run") || strings.Contains(lower, "popen(")) {
+		return false
+	}
+	if strings.Contains(lower, "pubmed") || strings.Contains(lower, "docx-review") {
+		return true
+	}
+	return false
 }
 
 func stripBracketSegments(s string) string {
