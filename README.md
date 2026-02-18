@@ -150,7 +150,7 @@ Twelve skills are installed during `sciclaw onboard`:
 - **benchmark-logging** — Benchmark records with acceptance criteria
 
 ### Office & Documents
-- **docx-review** — Word documents with tracked changes, comments, and semantic diff ([CLI tool](https://github.com/drpedapati/docx-review))
+- **docx-review** — Word documents with tracked changes, comments, semantic diff, and document creation (`--create`, v1.3.0+) ([CLI tool](https://github.com/drpedapati/docx-review))
 - **pptx** — PowerPoint creation and editing
 - **pdf** — PDF creation, merging, splitting, and extraction
 - **xlsx** — Spreadsheet creation, analysis, and conversion
