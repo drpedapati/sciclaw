@@ -71,6 +71,7 @@ class Sciclaw < Formula
   end
 
   depends_on "irl"
+  depends_on "imagemagick"
   depends_on "pandoc"
   depends_on "ripgrep"
   depends_on "uv"
@@ -128,6 +129,7 @@ class Sciclaw < Formula
     assert_match "Usage:", shell_output("#{bin}/picoclaw 2>&1", 1)
     assert_match "v#{version}", shell_output("#{bin}/sciclaw --version")
     assert_match "ripgrep", shell_output("#{Formula["ripgrep"].opt_bin}/rg --version")
+    assert_match "ImageMagick", shell_output("#{Formula["imagemagick"].opt_bin}/magick -version")
     assert_match "irl", shell_output("#{Formula["irl"].opt_bin}/irl --version 2>&1")
     if OS.linux?
       assert_match(/\d+\.\d+\.\d+/, shell_output("#{Formula["sciclaw-quarto"].opt_bin}/quarto --version").strip)

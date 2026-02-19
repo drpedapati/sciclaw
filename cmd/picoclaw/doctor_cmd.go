@@ -83,7 +83,7 @@ func doctorCmd() {
 func doctorHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nDoctor:")
-	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, service health, and key external tools (docx-review, quarto, irl, pandoc, PubMed CLI).\n", commandName)
+	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, service health, and key external tools (docx-review, quarto, ImageMagick, irl, pandoc, PubMed CLI).\n", commandName)
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --json        Machine-readable output")
@@ -281,6 +281,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	add(checkBinaryWithHint("irl", []string{"--version"}, 3*time.Second, "brew install irl"))
 	add(checkBinaryWithHint("pandoc", []string{"-v"}, 3*time.Second, "brew install pandoc"))
+	add(checkBinaryWithHint("magick", []string{"-version"}, 3*time.Second, "brew install imagemagick"))
 	add(checkPandocNIHTemplate())
 	add(checkBinaryWithHint("rg", []string{"--version"}, 3*time.Second, "brew install ripgrep"))
 	if runtime.GOOS == "linux" {

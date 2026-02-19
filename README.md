@@ -76,7 +76,7 @@ cd sciclaw
 make deps && make install
 ```
 
-Homebrew pulls companion tools automatically (IRL, ripgrep, docx-review, pubmed-cli). For binary/source installs, run `sciclaw doctor` for hints.
+Homebrew pulls companion tools automatically (ImageMagick, IRL, ripgrep, docx-review, pubmed-cli). For binary/source installs, run `sciclaw doctor` for hints.
 
 ## Quick Start
 
@@ -134,7 +134,7 @@ sciClaw auto-detects the provider from the model name. Set credentials via the o
 
 ## Built-in Skills
 
-Fourteen skills are installed during `sciclaw onboard`:
+Fifteen skills are installed during `sciclaw onboard`:
 
 ### Research & Literature
 - **scientific-writing** — Manuscript drafting with claim-evidence alignment
@@ -144,8 +144,9 @@ Fourteen skills are installed during `sciclaw onboard`:
 ### Authoring & Visualization
 - **quarto-authoring** — Loop-driven `.qmd` authoring and rendering
 - **pandoc-docx** — Clean `.docx` manuscript generation from Markdown with NIH template auto-apply
+- **imagemagick** — Reproducible image preprocessing (resize, crop, convert, DPI normalization) via `magick`
 - **beautiful-mermaid** — Publication-grade Mermaid diagrams
-- **explainer-site** — Technical, single-page “How X Works” explainer site generation
+- **explainer-site** — Technical, single-page "How X Works" explainer site generation
 
 ### Evidence & Provenance
 - **experiment-provenance** — Reproducible experiment metadata capture

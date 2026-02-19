@@ -25,6 +25,7 @@ Treat the following as required default capabilities in `workspace/skills/`:
 - `biorxiv-database`: preprint retrieval from bioRxiv
 - `quarto-authoring`: reproducible manuscript rendering
 - `pandoc-docx`: clean first-draft Word generation from Markdown (bundled NIH template auto-applied)
+- `imagemagick`: reproducible image preprocessing (resize/crop/convert/DPI normalization)
 - `beautiful-mermaid`: diagram quality and export consistency
 - `explainer-site`: deep-dive, educational single-page explainer site creation
 - `experiment-provenance`: claim-to-artifact traceability
