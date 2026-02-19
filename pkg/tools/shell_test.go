@@ -400,3 +400,72 @@ func TestPandocTemplateEnvForCommand_UsesSciclawCanonicalTemplate(t *testing.T) 
 		t.Fatalf("defaults file missing canonical template path: %s", string(content))
 	}
 }
+
+func TestShellTool_ExecuteInjectsPandocDefaultsForDocx(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+	binDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+
+	pandocScript := filepath.Join(binDir, "pandoc")
+	script := "#!/bin/sh\nprintf '%s' \"$PANDOC_DEFAULTS\"\n"
+	if err := os.WriteFile(pandocScript, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake pandoc: %v", err)
+	}
+
+	defaultsPath := filepath.Join(tmpDir, "pandoc-defaults.yaml")
+	t.Setenv("PICOCLAW_HOME", homeDir)
+	t.Setenv("SCICLAW_PANDOC_DEFAULTS_PATH", defaultsPath)
+	t.Setenv("SCICLAW_NIH_REFERENCE_DOC", "")
+
+	pathEnv := binDir + string(os.PathListSeparator) + os.Getenv("PATH")
+	tool := NewExecTool("", false)
+	tool.SetExtraEnv(map[string]string{"PATH": pathEnv})
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "pandoc input.md -o output.docx",
+	})
+	if result.IsError {
+		t.Fatalf("expected successful fake pandoc execution, got error: %s", result.ForLLM)
+	}
+
+	out := strings.TrimSpace(result.ForLLM)
+	if out != defaultsPath {
+		t.Fatalf("expected injected PANDOC_DEFAULTS=%q, got %q", defaultsPath, out)
+	}
+
+	expectedTemplate := filepath.Join(homeDir, "templates", "nih-standard.docx")
+	if _, err := os.Stat(expectedTemplate); err != nil {
+		t.Fatalf("expected NIH template materialized at %q: %v", expectedTemplate, err)
+	}
+}
+
+func TestShellTool_ExecuteDoesNotInjectPandocDefaultsForNonDocx(t *testing.T) {
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+
+	pandocScript := filepath.Join(binDir, "pandoc")
+	script := "#!/bin/sh\nif [ -z \"$PANDOC_DEFAULTS\" ]; then printf 'unset'; else printf '%s' \"$PANDOC_DEFAULTS\"; fi\n"
+	if err := os.WriteFile(pandocScript, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake pandoc: %v", err)
+	}
+
+	tool := NewExecTool("", false)
+	tool.SetExtraEnv(map[string]string{
+		"PATH": binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+	})
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "pandoc input.md -o output.pdf",
+	})
+	if result.IsError {
+		t.Fatalf("expected successful fake pandoc execution, got error: %s", result.ForLLM)
+	}
+	if strings.TrimSpace(result.ForLLM) != "unset" {
+		t.Fatalf("expected PANDOC_DEFAULTS to remain unset for non-docx command, got %q", strings.TrimSpace(result.ForLLM))
+	}
+}
