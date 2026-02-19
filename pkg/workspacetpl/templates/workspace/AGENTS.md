@@ -26,6 +26,7 @@ Treat the following as required default capabilities in `workspace/skills/`:
 - `quarto-authoring`: reproducible manuscript rendering
 - `pandoc-docx`: clean first-draft Word generation from Markdown (bundled NIH template auto-applied)
 - `beautiful-mermaid`: diagram quality and export consistency
+- `explainer-site`: deep-dive, educational single-page explainer site creation
 - `experiment-provenance`: claim-to-artifact traceability
 - `benchmark-logging`: benchmark protocol and result logging
 - `humanize-text`: final prose polish after evidence-grounded drafting

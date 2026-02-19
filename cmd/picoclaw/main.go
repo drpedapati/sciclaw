@@ -58,6 +58,7 @@ var baselineScienceSkillNames = []string{
 	"quarto-authoring",
 	"pandoc-docx",
 	"beautiful-mermaid",
+	"explainer-site",
 	"experiment-provenance",
 	"benchmark-logging",
 	"humanize-text",

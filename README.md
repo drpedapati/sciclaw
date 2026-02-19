@@ -134,7 +134,7 @@ sciClaw auto-detects the provider from the model name. Set credentials via the o
 
 ## Built-in Skills
 
-Thirteen skills are installed during `sciclaw onboard`:
+Fourteen skills are installed during `sciclaw onboard`:
 
 ### Research & Literature
 - **scientific-writing** — Manuscript drafting with claim-evidence alignment
@@ -145,6 +145,7 @@ Thirteen skills are installed during `sciclaw onboard`:
 - **quarto-authoring** — Loop-driven `.qmd` authoring and rendering
 - **pandoc-docx** — Clean `.docx` manuscript generation from Markdown with NIH template auto-apply
 - **beautiful-mermaid** — Publication-grade Mermaid diagrams
+- **explainer-site** — Technical, single-page “How X Works” explainer site generation
 
 ### Evidence & Provenance
 - **experiment-provenance** — Reproducible experiment metadata capture
