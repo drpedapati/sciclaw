@@ -18,6 +18,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
 	svcmgr "github.com/sipeed/picoclaw/pkg/service"
+	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
 type doctorOptions struct {
@@ -280,6 +281,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	add(checkBinaryWithHint("irl", []string{"--version"}, 3*time.Second, "brew install irl"))
 	add(checkBinaryWithHint("pandoc", []string{"-v"}, 3*time.Second, "brew install pandoc"))
+	add(checkPandocNIHTemplate())
 	add(checkBinaryWithHint("rg", []string{"--version"}, 3*time.Second, "brew install ripgrep"))
 	if runtime.GOOS == "linux" {
 		add(checkBinaryWithHint("uv", []string{"--version"}, 3*time.Second, "brew install uv"))
@@ -419,6 +421,21 @@ func checkBinary(name string, args []string, timeout time.Duration) doctorCheck 
 		c.Data["output"] = truncateOneLine(out, 180)
 	}
 	return c
+}
+
+func checkPandocNIHTemplate() doctorCheck {
+	path := strings.TrimSpace(tools.ResolvePandocNIHTemplatePath())
+	if path == "" {
+		return doctorCheck{
+			Name:    "pandoc.nih_template",
+			Status:  doctorWarn,
+			Message: "not resolved",
+			Data: map[string]string{
+				"hint": "run: sciclaw onboard (or set SCICLAW_NIH_REFERENCE_DOC)",
+			},
+		}
+	}
+	return doctorCheck{Name: "pandoc.nih_template", Status: doctorOK, Message: path}
 }
 
 func firstNonEmptyLine(s string) string {

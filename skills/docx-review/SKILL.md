@@ -1,6 +1,6 @@
 ---
 name: docx-review
-description: "Read, edit, and diff Word documents (.docx) with tracked changes and comments using the docx-review CLI — a .NET 8 tool built on Microsoft's Open XML SDK. Ships as a single 12MB native binary (no runtime). Use when: (1) Adding tracked changes (replace, delete, insert) to a .docx, (2) Adding anchored comments to a .docx, (3) Reading/extracting text, tracked changes, comments, and metadata from a .docx, (4) Diffing two .docx files semantically, (5) Responding to peer reviewer comments with tracked revisions, (6) Proofreading or revising manuscripts with reviewable output, (7) Creating new documents from the NIH template, (8) Any task requiring valid .docx output with proper w:del/w:ins markup that renders natively in Word."
+description: "Read, edit, and diff Word documents (.docx) with tracked changes and comments using the docx-review CLI — a .NET 8 tool built on Microsoft's Open XML SDK. Ships as a single 12MB native binary (no runtime). Use when: (1) Adding tracked changes (replace, delete, insert) to a .docx, (2) Adding anchored comments to a .docx, (3) Reading/extracting text, tracked changes, comments, and metadata from a .docx, (4) Diffing two .docx files semantically, (5) Responding to peer reviewer comments with tracked revisions, (6) Proofreading or revising manuscripts with reviewable output, (7) Any task requiring valid tracked-change .docx output with proper w:del/w:ins markup that renders natively in Word."
 metadata: {"nanobot":{"emoji":"📝","requires":{"bins":["docx-review"]},"install":[{"id":"brew","kind":"brew","formula":"sciclaw-docx-review","bins":["docx-review"],"label":"Install docx-review (brew)"}]}}
 ---
 
@@ -19,66 +19,29 @@ Binary: `/opt/homebrew/bin/docx-review` (12MB, self-contained, no runtime)
 
 Verify: `docx-review --version`
 
-## Template
+## Workflow Choice (Critical)
 
-A NIH-standard Word template is included at `templates/nih-standard.docx`:
+### Creating a NEW manuscript/docx with clean output
 
-- **Font:** Arial 11pt body, Arial Bold 14pt/12pt/11pt for Heading 1/2/3
-- **Margins:** 0.75" all sides
-- **Colors:** Black only — no color headings, no shading
-- **Spacing:** 1.15 line spacing, 6pt after paragraphs
-- **Page numbers:** Bottom center, Arial 10pt
-- **Sections:** Specific Aims, Significance, Innovation, Approach, Preliminary Data, References
-
-### Creating a new document from template
+Use `pandoc` from Markdown, not docx-review edit manifests:
 
 ```bash
-# 1. Copy the template
-cp "$(brew --prefix docx-review)/share/docx-review/templates/nih-standard.docx" manuscript.docx
-
-# 2. Read the template structure
-docx-review manuscript.docx --read --json
-
-# 3. Build an edit manifest to populate sections
-cat > populate.json << 'EOF'
-{
-  "author": "Dr. Smith",
-  "changes": [
-    {
-      "type": "replace",
-      "find": "Document Title",
-      "replace": "Neural Mechanisms of Auditory Processing in ALS"
-    },
-    {
-      "type": "replace",
-      "find": "Author Name, Degree(s)",
-      "replace": "Jane Smith, MD, PhD"
-    },
-    {
-      "type": "replace",
-      "find": "Department, Institution",
-      "replace": "Department of Neurology, University Medical Center"
-    },
-    {
-      "type": "replace",
-      "find": "State the objectives of the proposed research and describe the specific aims.",
-      "replace": "The long-term goal of this project is to..."
-    }
-  ]
-}
-EOF
-
-# 4. Apply edits (tracked changes visible in Word)
-docx-review manuscript.docx populate.json -o manuscript.docx --json
+pandoc manuscript.md -o manuscript.docx
 ```
 
-### Template location after Homebrew install
+sciClaw auto-applies its bundled NIH reference template for DOCX output unless `--reference-doc` is provided.
 
-The template installs to `$(brew --prefix docx-review)/share/docx-review/templates/`. To find it:
+### Editing an EXISTING document with visible review markup
+
+Use `docx-review` when tracked changes/comments are explicitly desired:
 
 ```bash
-ls "$(brew --prefix docx-review)/share/docx-review/templates/"
+docx-review input.docx edits.json -o reviewed.docx --json
 ```
+
+### Anti-pattern to avoid
+
+Do **not** use docx-review placeholder replacement manifests to create first-draft manuscripts. That workflow intentionally produces tracked changes and can make a fresh document appear as a markup-heavy revision file.
 
 ## Modes
 
@@ -245,17 +208,17 @@ For addressing reviewer comments on a manuscript:
 3. Validate + apply
 4. Author opens in Word, accepts/rejects each change individually
 
-## Workflow: New Document from Template
+## Workflow: Template Population with Explicit Revision Trail (Advanced)
 
-For creating a fresh manuscript from the NIH template:
+Only use this workflow when the user explicitly wants visible tracked changes during template population (for audit/review history):
 
-1. Copy `templates/nih-standard.docx` to your workspace
-2. Read it with `--read --json` to see placeholder text
-3. Build a manifest that replaces each placeholder with real content
-4. Apply with `docx-review` — the new content appears as tracked changes
-5. Accept all changes in Word to finalize
+1. Start from a template-backed `.docx`
+2. Read it with `--read --json` to identify exact placeholders
+3. Build a manifest that replaces placeholders with real content
+4. Apply with `docx-review` (tracked insertions/deletions are expected)
+5. Review and accept/reject changes in Word
 
-This preserves the template's formatting (Arial, margins, page numbers, heading styles) while giving you a complete revision trail of how the document was populated.
+For normal first-draft generation, use `pandoc manuscript.md -o manuscript.docx` instead.
 
 ## Key behaviors
 

@@ -347,7 +347,10 @@ func TestPandocTemplateEnvForCommand_UsesConfiguredTemplate(t *testing.T) {
 	t.Setenv("SCICLAW_PANDOC_DEFAULTS_PATH", defaultsPath)
 
 	tool := NewExecTool("", false)
-	env := tool.pandocTemplateEnvForCommand("pandoc input.md -o output.docx")
+	env, err := tool.pandocTemplateEnvForCommand("pandoc input.md -o output.docx")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 	gotDefaults := env["PANDOC_DEFAULTS"]
 	if gotDefaults == "" {
 		t.Fatalf("expected PANDOC_DEFAULTS to be set")
@@ -365,5 +368,35 @@ func TestPandocTemplateEnvForCommand_UsesConfiguredTemplate(t *testing.T) {
 	}
 	if !strings.Contains(string(content), templatePath) {
 		t.Fatalf("defaults file missing template path: %s", string(content))
+	}
+}
+
+func TestPandocTemplateEnvForCommand_UsesSciclawCanonicalTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("PICOCLAW_HOME", tmpDir)
+	defaultsPath := filepath.Join(tmpDir, "pandoc-defaults.yaml")
+	t.Setenv("SCICLAW_PANDOC_DEFAULTS_PATH", defaultsPath)
+	t.Setenv("SCICLAW_NIH_REFERENCE_DOC", "")
+
+	tool := NewExecTool("", false)
+	env, err := tool.pandocTemplateEnvForCommand("pandoc input.md -o output.docx")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if got := env["PANDOC_DEFAULTS"]; got != defaultsPath {
+		t.Fatalf("expected PANDOC_DEFAULTS=%q, got %q", defaultsPath, got)
+	}
+
+	expectedTemplate := filepath.Join(tmpDir, "templates", "nih-standard.docx")
+	if _, err := os.Stat(expectedTemplate); err != nil {
+		t.Fatalf("expected canonical NIH template to be materialized at %q: %v", expectedTemplate, err)
+	}
+
+	content, err := os.ReadFile(defaultsPath)
+	if err != nil {
+		t.Fatalf("read defaults file: %v", err)
+	}
+	if !strings.Contains(string(content), expectedTemplate) {
+		t.Fatalf("defaults file missing canonical template path: %s", string(content))
 	}
 }

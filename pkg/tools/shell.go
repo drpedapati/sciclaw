@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,18 +25,20 @@ type ExecTool struct {
 }
 
 var (
-	shellPathPattern         = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
-	shellURLPattern          = regexp.MustCompile("https?://[^\\s\"'`]+")
-	pandocBinaryPattern      = regexp.MustCompile(`(?i)(^|[;&|()\s])pandoc([;&|()\s]|$)`)
-	pandocOutputDocxPattern  = regexp.MustCompile(`(?i)(^|[\s;|&])(--output|-o)(=|\s+)[^;\n|&]*\.docx(\s|$)`)
-	pandocToDocxPattern      = regexp.MustCompile(`(?i)(^|[\s;|&])(--to|-t)(=|\s*)docx(\s|$)`)
-	nihTemplateCandidatePath = []string{
-		"/opt/homebrew/opt/sciclaw-docx-review/share/docx-review/templates/nih-standard.docx",
-		"/opt/homebrew/opt/docx-review/share/docx-review/templates/nih-standard.docx",
-		"/home/linuxbrew/.linuxbrew/opt/sciclaw-docx-review/share/docx-review/templates/nih-standard.docx",
-		"/home/linuxbrew/.linuxbrew/opt/docx-review/share/docx-review/templates/nih-standard.docx",
+	shellPathPattern             = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
+	shellURLPattern              = regexp.MustCompile("https?://[^\\s\"'`]+")
+	pandocBinaryPattern          = regexp.MustCompile(`(?i)(^|[;&|()\s])pandoc([;&|()\s]|$)`)
+	pandocOutputDocxPattern      = regexp.MustCompile(`(?i)(^|[\s;|&])(--output|-o)(=|\s+)[^;\n|&]*\.docx(\s|$)`)
+	pandocToDocxPattern          = regexp.MustCompile(`(?i)(^|[\s;|&])(--to|-t)(=|\s*)docx(\s|$)`)
+	sciclawNIHTemplateCandidates = []string{
+		"/opt/homebrew/opt/sciclaw/share/sciclaw/templates/nih-standard.docx",
+		"/home/linuxbrew/.linuxbrew/opt/sciclaw/share/sciclaw/templates/nih-standard.docx",
+		"/usr/local/opt/sciclaw/share/sciclaw/templates/nih-standard.docx",
 	}
 )
+
+//go:embed assets/nih-standard.docx
+var embeddedNIHTemplate []byte
 
 func NewExecTool(workingDir string, restrict bool) *ExecTool {
 	denyPatterns := []*regexp.Regexp{
@@ -139,7 +142,11 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	for k, v := range t.extraEnv {
 		envOverrides[k] = v
 	}
-	for k, v := range t.pandocTemplateEnvForCommand(command) {
+	pandocEnv, pandocErr := t.pandocTemplateEnvForCommand(command)
+	if pandocErr != nil {
+		return ErrorResult(pandocErr.Error())
+	}
+	for k, v := range pandocEnv {
 		envOverrides[k] = v
 	}
 	if len(envOverrides) > 0 {
@@ -218,23 +225,23 @@ func mergeEnv(base []string, overrides map[string]string) []string {
 	return out
 }
 
-func (t *ExecTool) pandocTemplateEnvForCommand(command string) map[string]string {
+func (t *ExecTool) pandocTemplateEnvForCommand(command string) (map[string]string, error) {
 	if !shouldApplyNIHPandocTemplate(command) {
-		return nil
+		return nil, nil
 	}
 
 	templatePath := resolveNIHTemplatePath()
 	if templatePath == "" {
-		return nil
+		return nil, fmt.Errorf("pandoc DOCX generation requires sciClaw's NIH template; run `sciclaw onboard` or set SCICLAW_NIH_REFERENCE_DOC")
 	}
 
 	defaultsPath, err := ensurePandocDefaultsFile(templatePath)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("prepare pandoc defaults: %w", err)
 	}
 	return map[string]string{
 		"PANDOC_DEFAULTS": defaultsPath,
-	}
+	}, nil
 }
 
 func shouldApplyNIHPandocTemplate(command string) bool {
@@ -265,26 +272,93 @@ func resolveNIHTemplatePath() string {
 		}
 	}
 
-	var candidates []string
-	if docxBin, err := exec.LookPath("docx-review"); err == nil {
-		resolved := docxBin
-		if symlinkResolved, err := filepath.EvalSymlinks(docxBin); err == nil {
+	canonicalPath := defaultNIHTemplatePath()
+	if canonicalPath != "" && isRegularFile(canonicalPath) {
+		return absCleanPath(canonicalPath)
+	}
+
+	candidates := sciclawTemplateCandidatePaths()
+	for _, p := range candidates {
+		if isRegularFile(p) {
+			if canonicalPath == "" {
+				return absCleanPath(p)
+			}
+			if err := copyFileContents(p, canonicalPath, 0o644); err == nil {
+				return absCleanPath(canonicalPath)
+			}
+			return absCleanPath(p)
+		}
+	}
+
+	if canonicalPath != "" && ensureEmbeddedNIHTemplate(canonicalPath) == nil && isRegularFile(canonicalPath) {
+		return absCleanPath(canonicalPath)
+	}
+	return ""
+}
+
+// ResolvePandocNIHTemplatePath returns the effective NIH reference-doc path
+// that sciClaw will use for pandoc DOCX generation.
+func ResolvePandocNIHTemplatePath() string {
+	return resolveNIHTemplatePath()
+}
+
+func sciclawTemplateCandidatePaths() []string {
+	candidates := make([]string, 0, len(sciclawNIHTemplateCandidates)+2)
+	if exePath, err := os.Executable(); err == nil {
+		resolved := exePath
+		if symlinkResolved, err := filepath.EvalSymlinks(exePath); err == nil {
 			resolved = symlinkResolved
 		}
 		binDir := filepath.Dir(resolved)
 		candidates = append(candidates,
-			filepath.Join(binDir, "..", "share", "docx-review", "templates", "nih-standard.docx"),
-			filepath.Join(binDir, "..", "..", "share", "docx-review", "templates", "nih-standard.docx"),
+			filepath.Join(binDir, "..", "share", "sciclaw", "templates", "nih-standard.docx"),
+			filepath.Join(binDir, "..", "..", "share", "sciclaw", "templates", "nih-standard.docx"),
 		)
 	}
-	candidates = append(candidates, nihTemplateCandidatePath...)
+	candidates = append(candidates, sciclawNIHTemplateCandidates...)
+	return candidates
+}
 
-	for _, p := range candidates {
-		if isRegularFile(p) {
-			return absCleanPath(p)
+func defaultNIHTemplatePath() string {
+	home := strings.TrimSpace(os.Getenv("PICOCLAW_HOME"))
+	if home == "" {
+		userHome, err := os.UserHomeDir()
+		if err != nil || strings.TrimSpace(userHome) == "" {
+			return ""
 		}
+		home = filepath.Join(userHome, ".picoclaw")
 	}
-	return ""
+	return filepath.Join(home, "templates", "nih-standard.docx")
+}
+
+func ensureEmbeddedNIHTemplate(destPath string) error {
+	if strings.TrimSpace(destPath) == "" {
+		return fmt.Errorf("empty NIH template destination")
+	}
+	if len(embeddedNIHTemplate) == 0 {
+		return fmt.Errorf("embedded NIH template is missing")
+	}
+	if isRegularFile(destPath) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(destPath, embeddedNIHTemplate, 0o644)
+}
+
+func copyFileContents(srcPath, dstPath string, mode os.FileMode) error {
+	content, err := os.ReadFile(srcPath)
+	if err != nil {
+		return err
+	}
+	if len(content) == 0 {
+		return fmt.Errorf("source file is empty: %s", srcPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dstPath, content, mode)
 }
 
 func ensurePandocDefaultsFile(templatePath string) (string, error) {
