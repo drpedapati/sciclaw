@@ -579,7 +579,7 @@
         <h3>Step 1 &mdash; Install sciClaw</h3>
         <p>Add the sciClaw tap and install the package:</p>
         <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw</code></pre>
-        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>rg</code>, <code>uv</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
+        <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>pandoc</code>, <code>rg</code>, <code>uv</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
 
         <h3>Step 2 &mdash; Onboard</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
@@ -1232,7 +1232,7 @@
             <tr><td><code>uv</code></td><td>Python environment manager available (Linux onboarding + fixes)</td></tr>
             <tr><td><code>python3</code></td><td>Python 3 available</td></tr>
             <tr><td><code>python.venv</code></td><td>Workspace venv exists and required Python packages import cleanly</td></tr>
-            <tr><td><code>skills.baseline</code></td><td>All 12 baseline skills present; detects legacy names (<code>docx</code>, <code>pubmed-database</code>)</td></tr>
+            <tr><td><code>skills.baseline</code></td><td>All 13 baseline skills present; detects legacy names (<code>docx</code>, <code>pubmed-database</code>)</td></tr>
             <tr><td><code>gateway.telegram</code></td><td>Scans logs for Telegram 409 conflicts (multiple bot instances)</td></tr>
             <tr><td><code>service.backend</code></td><td>Detects service backend (<code>launchd</code>, <code>systemd-user</code>, or unsupported)</td></tr>
             <tr><td><code>service.installed</code></td><td>Checks whether the background service unit/plist is installed</td></tr>
@@ -1276,7 +1276,7 @@
             <tr><td>Framing</td><td>Paired-scientist for hypothesis-driven research loops</td></tr>
             <tr><td>Workspace</td><td>Scientific templates (AGENTS, IDENTITY, SOUL, TOOLS, USER)</td></tr>
             <tr><td>Traceability</td><td>Required: evidence capture, provenance logging, hook audit trails</td></tr>
-            <tr><td>Skills</td><td>12 baseline scientific skills + companion CLI tools</td></tr>
+            <tr><td>Skills</td><td>13 baseline scientific skills + companion CLI tools</td></tr>
             <tr><td>Providers</td><td>OpenAI, Azure OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Zhipu</td></tr>
             <tr><td>Reasoning</td><td>Per-invocation <code>--effort</code> control for reasoning models</td></tr>
           </tbody>
@@ -1304,7 +1304,7 @@
       <!-- ─── Skills ─── -->
       <div class="section" id="skills">
         <h3>Baseline Scientific Skills</h3>
-        <p>During <code>sciclaw onboard</code>, twelve skills are installed into <code>~/sciclaw/skills/</code> by default:</p>
+        <p>During <code>sciclaw onboard</code>, thirteen skills are installed into <code>~/sciclaw/skills/</code> by default:</p>
 
         <h4>Research &amp; Literature</h4>
         <ul>
@@ -1316,6 +1316,7 @@
         <h4>Authoring &amp; Visualization</h4>
         <ul>
           <li><strong>quarto-authoring</strong> &mdash; Loop-driven <code>.qmd</code> authoring and rendering</li>
+          <li><strong>pandoc-docx</strong> &mdash; Clean Word draft generation from Markdown (bundled NIH template auto-applied)</li>
           <li><strong>beautiful-mermaid</strong> &mdash; Publication-grade diagram workflows</li>
         </ul>
 

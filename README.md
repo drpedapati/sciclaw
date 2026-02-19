@@ -134,7 +134,7 @@ sciClaw auto-detects the provider from the model name. Set credentials via the o
 
 ## Built-in Skills
 
-Twelve skills are installed during `sciclaw onboard`:
+Thirteen skills are installed during `sciclaw onboard`:
 
 ### Research & Literature
 - **scientific-writing** — Manuscript drafting with claim-evidence alignment
@@ -143,6 +143,7 @@ Twelve skills are installed during `sciclaw onboard`:
 
 ### Authoring & Visualization
 - **quarto-authoring** — Loop-driven `.qmd` authoring and rendering
+- **pandoc-docx** — Clean `.docx` manuscript generation from Markdown with NIH template auto-apply
 - **beautiful-mermaid** — Publication-grade Mermaid diagrams
 
 ### Evidence & Provenance
@@ -150,7 +151,7 @@ Twelve skills are installed during `sciclaw onboard`:
 - **benchmark-logging** — Benchmark records with acceptance criteria
 
 ### Office & Documents
-- **docx-review** — Word documents with tracked changes, comments, semantic diff, and document creation (`--create`, v1.3.0+) ([CLI tool](https://github.com/drpedapati/docx-review))
+- **docx-review** — Word tracked-change review, comments, semantic diff, and template population (`--create`, v1.3.0+) ([CLI tool](https://github.com/drpedapati/docx-review))
 - For clean first-draft Word output, use `pandoc ... -o file.docx`; sciClaw injects a bundled NIH reference template at runtime (no global `~/.pandoc/defaults.yaml` required).
 - **pptx** — PowerPoint creation and editing
 - **pdf** — PDF creation, merging, splitting, and extraction

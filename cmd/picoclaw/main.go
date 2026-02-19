@@ -56,6 +56,7 @@ var baselineScienceSkillNames = []string{
 	"pubmed-cli",
 	"biorxiv-database",
 	"quarto-authoring",
+	"pandoc-docx",
 	"beautiful-mermaid",
 	"experiment-provenance",
 	"benchmark-logging",

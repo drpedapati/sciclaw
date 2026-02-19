@@ -24,11 +24,12 @@ Treat the following as required default capabilities in `workspace/skills/`:
 - `pubmed-cli`: literature retrieval from PubMed
 - `biorxiv-database`: preprint retrieval from bioRxiv
 - `quarto-authoring`: reproducible manuscript rendering
+- `pandoc-docx`: clean first-draft Word generation from Markdown (bundled NIH template auto-applied)
 - `beautiful-mermaid`: diagram quality and export consistency
 - `experiment-provenance`: claim-to-artifact traceability
 - `benchmark-logging`: benchmark protocol and result logging
 - `humanize-text`: final prose polish after evidence-grounded drafting
-- `docx-review`: Word document creation/editing workflows with tracked changes
+- `docx-review`: tracked-review editing/diff workflows for existing Word documents
 - `pptx`: slide deck creation/editing workflows (Anthropic official office skill)
 - `pdf`: PDF extraction/transformation workflows (Anthropic official office skill)
 - `xlsx`: spreadsheet creation/editing workflows (Anthropic official office skill)
