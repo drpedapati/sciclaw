@@ -152,7 +152,7 @@ Thirteen skills are installed during `sciclaw onboard`:
 
 ### Office & Documents
 - **docx-review** — Word tracked-change review, comments, semantic diff, and template population (`--create`, v1.3.0+) ([CLI tool](https://github.com/drpedapati/docx-review))
-- For clean first-draft Word output, use `pandoc ... -o file.docx`; sciClaw injects a bundled NIH reference template at runtime (no global `~/.pandoc/defaults.yaml` required).
+- For clean first-draft Word output, use `pandoc ... -o file.docx`; sciClaw injects `--defaults <generated-file>` at runtime to apply a bundled NIH reference template (no global `~/.pandoc/defaults.yaml` required).
 - **pptx** — PowerPoint creation and editing
 - **pdf** — PDF creation, merging, splitting, and extraction
 - **xlsx** — Spreadsheet creation, analysis, and conversion

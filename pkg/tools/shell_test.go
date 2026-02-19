@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -315,6 +316,11 @@ func TestShouldApplyNIHPandocTemplate(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "explicit defaults file no override",
+			cmd:  "pandoc manuscript.md -o out.docx --defaults custom.yaml",
+			want: false,
+		},
+		{
 			name: "non-pandoc command",
 			cmd:  "echo hello",
 			want: false,
@@ -335,7 +341,7 @@ func TestShouldApplyNIHPandocTemplate(t *testing.T) {
 	}
 }
 
-func TestPandocTemplateEnvForCommand_UsesConfiguredTemplate(t *testing.T) {
+func TestCommandWithPandocDefaults_UsesConfiguredTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	templatePath := filepath.Join(tmpDir, "nih-standard.docx")
 	if err := os.WriteFile(templatePath, []byte("template"), 0o644); err != nil {
@@ -347,16 +353,12 @@ func TestPandocTemplateEnvForCommand_UsesConfiguredTemplate(t *testing.T) {
 	t.Setenv("SCICLAW_PANDOC_DEFAULTS_PATH", defaultsPath)
 
 	tool := NewExecTool("", false)
-	env, err := tool.pandocTemplateEnvForCommand("pandoc input.md -o output.docx")
+	rewritten, err := tool.commandWithPandocDefaults("pandoc input.md -o output.docx")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	gotDefaults := env["PANDOC_DEFAULTS"]
-	if gotDefaults == "" {
-		t.Fatalf("expected PANDOC_DEFAULTS to be set")
-	}
-	if gotDefaults != defaultsPath {
-		t.Fatalf("expected defaults path %q, got %q", defaultsPath, gotDefaults)
+	if !strings.Contains(rewritten, "--defaults "+strconv.Quote(defaultsPath)) {
+		t.Fatalf("expected rewritten command to include defaults path %q, got: %s", defaultsPath, rewritten)
 	}
 
 	content, err := os.ReadFile(defaultsPath)
@@ -371,7 +373,7 @@ func TestPandocTemplateEnvForCommand_UsesConfiguredTemplate(t *testing.T) {
 	}
 }
 
-func TestPandocTemplateEnvForCommand_UsesSciclawCanonicalTemplate(t *testing.T) {
+func TestCommandWithPandocDefaults_UsesSciclawCanonicalTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("PICOCLAW_HOME", tmpDir)
 	defaultsPath := filepath.Join(tmpDir, "pandoc-defaults.yaml")
@@ -379,12 +381,12 @@ func TestPandocTemplateEnvForCommand_UsesSciclawCanonicalTemplate(t *testing.T) 
 	t.Setenv("SCICLAW_NIH_REFERENCE_DOC", "")
 
 	tool := NewExecTool("", false)
-	env, err := tool.pandocTemplateEnvForCommand("pandoc input.md -o output.docx")
+	rewritten, err := tool.commandWithPandocDefaults("pandoc input.md -o output.docx")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if got := env["PANDOC_DEFAULTS"]; got != defaultsPath {
-		t.Fatalf("expected PANDOC_DEFAULTS=%q, got %q", defaultsPath, got)
+	if !strings.Contains(rewritten, "--defaults "+strconv.Quote(defaultsPath)) {
+		t.Fatalf("expected rewritten command to include defaults path %q, got: %s", defaultsPath, rewritten)
 	}
 
 	expectedTemplate := filepath.Join(tmpDir, "templates", "nih-standard.docx")
@@ -410,7 +412,7 @@ func TestShellTool_ExecuteInjectsPandocDefaultsForDocx(t *testing.T) {
 	}
 
 	pandocScript := filepath.Join(binDir, "pandoc")
-	script := "#!/bin/sh\nprintf '%s' \"$PANDOC_DEFAULTS\"\n"
+	script := "#!/bin/sh\nprintf '%s' \"$*\"\n"
 	if err := os.WriteFile(pandocScript, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake pandoc: %v", err)
 	}
@@ -432,8 +434,8 @@ func TestShellTool_ExecuteInjectsPandocDefaultsForDocx(t *testing.T) {
 	}
 
 	out := strings.TrimSpace(result.ForLLM)
-	if out != defaultsPath {
-		t.Fatalf("expected injected PANDOC_DEFAULTS=%q, got %q", defaultsPath, out)
+	if !strings.Contains(out, "--defaults "+defaultsPath) {
+		t.Fatalf("expected injected --defaults arg with path %q, got %q", defaultsPath, out)
 	}
 
 	expectedTemplate := filepath.Join(homeDir, "templates", "nih-standard.docx")
@@ -450,7 +452,7 @@ func TestShellTool_ExecuteDoesNotInjectPandocDefaultsForNonDocx(t *testing.T) {
 	}
 
 	pandocScript := filepath.Join(binDir, "pandoc")
-	script := "#!/bin/sh\nif [ -z \"$PANDOC_DEFAULTS\" ]; then printf 'unset'; else printf '%s' \"$PANDOC_DEFAULTS\"; fi\n"
+	script := "#!/bin/sh\nprintf '%s' \"$*\"\n"
 	if err := os.WriteFile(pandocScript, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake pandoc: %v", err)
 	}
@@ -465,7 +467,7 @@ func TestShellTool_ExecuteDoesNotInjectPandocDefaultsForNonDocx(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("expected successful fake pandoc execution, got error: %s", result.ForLLM)
 	}
-	if strings.TrimSpace(result.ForLLM) != "unset" {
-		t.Fatalf("expected PANDOC_DEFAULTS to remain unset for non-docx command, got %q", strings.TrimSpace(result.ForLLM))
+	if strings.Contains(strings.TrimSpace(result.ForLLM), "--defaults ") {
+		t.Fatalf("expected no --defaults injection for non-docx command, got %q", strings.TrimSpace(result.ForLLM))
 	}
 }

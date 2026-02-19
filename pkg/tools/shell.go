@@ -28,6 +28,7 @@ var (
 	shellPathPattern             = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
 	shellURLPattern              = regexp.MustCompile("https?://[^\\s\"'`]+")
 	pandocBinaryPattern          = regexp.MustCompile(`(?i)(^|[;&|()\s])pandoc([;&|()\s]|$)`)
+	pandocDefaultsPattern        = regexp.MustCompile(`(?i)(^|[\s;|&])(--defaults|-d)(=|\s+)[^;\n|&]+`)
 	pandocOutputDocxPattern      = regexp.MustCompile(`(?i)(^|[\s;|&])(--output|-o)(=|\s+)[^;\n|&]*\.docx(\s|$)`)
 	pandocToDocxPattern          = regexp.MustCompile(`(?i)(^|[\s;|&])(--to|-t)(=|\s*)docx(\s|$)`)
 	sciclawNIHTemplateCandidates = []string{
@@ -125,6 +126,11 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	if guardError := t.guardCommand(command, cwd); guardError != "" {
 		return ErrorResult(guardError)
 	}
+	withPandocDefaults, pandocErr := t.commandWithPandocDefaults(command)
+	if pandocErr != nil {
+		return ErrorResult(pandocErr.Error())
+	}
+	command = withPandocDefaults
 
 	cmdCtx, cancel := context.WithTimeout(ctx, t.timeout)
 	defer cancel()
@@ -140,13 +146,6 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	}
 	envOverrides := make(map[string]string)
 	for k, v := range t.extraEnv {
-		envOverrides[k] = v
-	}
-	pandocEnv, pandocErr := t.pandocTemplateEnvForCommand(command)
-	if pandocErr != nil {
-		return ErrorResult(pandocErr.Error())
-	}
-	for k, v := range pandocEnv {
 		envOverrides[k] = v
 	}
 	if len(envOverrides) > 0 {
@@ -225,23 +224,23 @@ func mergeEnv(base []string, overrides map[string]string) []string {
 	return out
 }
 
-func (t *ExecTool) pandocTemplateEnvForCommand(command string) (map[string]string, error) {
+func (t *ExecTool) commandWithPandocDefaults(command string) (string, error) {
 	if !shouldApplyNIHPandocTemplate(command) {
-		return nil, nil
+		return command, nil
 	}
 
 	templatePath := resolveNIHTemplatePath()
 	if templatePath == "" {
-		return nil, fmt.Errorf("pandoc DOCX generation requires sciClaw's NIH template; run `sciclaw onboard` or set SCICLAW_NIH_REFERENCE_DOC")
+		return "", fmt.Errorf("pandoc DOCX generation requires sciClaw's NIH template; run `sciclaw onboard` or set SCICLAW_NIH_REFERENCE_DOC")
 	}
 
 	defaultsPath, err := ensurePandocDefaultsFile(templatePath)
 	if err != nil {
-		return nil, fmt.Errorf("prepare pandoc defaults: %w", err)
+		return "", fmt.Errorf("prepare pandoc defaults: %w", err)
 	}
-	return map[string]string{
-		"PANDOC_DEFAULTS": defaultsPath,
-	}, nil
+	quotedDefaults := strconv.Quote(defaultsPath)
+	replacement := "${1}pandoc --defaults " + quotedDefaults + "${2}"
+	return pandocBinaryPattern.ReplaceAllString(command, replacement), nil
 }
 
 func shouldApplyNIHPandocTemplate(command string) bool {
@@ -251,6 +250,9 @@ func shouldApplyNIHPandocTemplate(command string) bool {
 	}
 	lower := strings.ToLower(cmd)
 	if !pandocBinaryPattern.MatchString(lower) {
+		return false
+	}
+	if pandocDefaultsPattern.MatchString(cmd) {
 		return false
 	}
 	if strings.Contains(lower, "--reference-doc") {
