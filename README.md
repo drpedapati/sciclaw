@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/og-image.jpg" alt="sciClaw" width="480" />
+<img src="docs/philosophy-hero.png" alt="sciClaw: A Partnership, Not a Platform" width="760" />
 
 <br />
 
@@ -12,6 +12,7 @@
 
 [Website](https://sciclaw.dev) ·
 [Documentation](https://sciclaw.dev/docs.html) ·
+[YouTube Tutorial](https://www.youtube.com/watch?v=P3pDulPnCzU) ·
 [Releases](https://github.com/drpedapati/sciclaw/releases) ·
 [Discussions](https://github.com/drpedapati/sciclaw/discussions)
 
@@ -293,6 +294,98 @@ brew upgrade sciclaw     # update the binary
 sciclaw onboard          # refresh skills to latest
 sciclaw doctor           # verify everything
 ```
+
+## sciClaw Fork Patch Changelog (Curated)
+
+This is a curated, code-grounded changelog of sciClaw-specific patches on top of upstream PicoClaw.
+
+Source of truth:
+- `git log --oneline upstream/main..main`
+
+Last refreshed:
+- `2026-02-19`
+
+### Identity, Workspace, and Baseline Skilling
+
+- `1028a75` Dual-binary rebrand (`sciclaw` primary, `picoclaw` alias) (`cmd/picoclaw/main.go`, `Makefile`).
+- `116dba4` Rebranded CLI display surfaces while preserving picoclaw compatibility (`cmd/picoclaw/main.go`).
+- `411ec69` Added git commit hash to runtime version output (`cmd/picoclaw/main.go`, `Makefile`).
+- `d4b4d2f` Switched default workspace to visible `~/sciclaw` and updated migration behavior (`pkg/config/config.go`, `pkg/migrate/config.go`).
+- `f7db953` Externalized workspace bootstrap templates via embed for predictable onboarding (`pkg/workspacetpl/templates.go`, `pkg/workspacetpl/templates/workspace/`).
+- `d577877` Added baseline science-skill policy and auto-install on onboard (`cmd/picoclaw/main.go`, `pkg/workspacetpl/templates/workspace/AGENTS.md`).
+- `70dc430` Replaced old `docx` / `pubmed-database` skills with CLI-powered `docx-review` / `pubmed-cli` flows (`skills/docx-review/SKILL.md`, `skills/pubmed-cli/SKILL.md`).
+- `3f64ec6` Added baseline `pandoc-docx` skill for NIH-templated Word drafting (`skills/pandoc-docx/SKILL.md`, `cmd/picoclaw/main.go`).
+- `c3f8f90` Added `explainer-site` as baseline onboard skill (`skills/explainer-site/SKILL.md`, `cmd/picoclaw/main.go`).
+- `8c19e46` Added `imagemagick` as baseline skill plus runtime/packaging dependency checks (`skills/imagemagick/SKILL.md`, `cmd/picoclaw/doctor_cmd.go`, `deploy/update-tap.sh`).
+- `c49ede1` Added optional `phi-cleaner` skill for PHI de-identification workflows (`skills/phi-cleaner/SKILL.md`, `README.md`).
+
+### Providers, OAuth, and Cloudflare/NAT Resilience
+
+- `349af96` Added `--model` and `--effort`, plus `sciclaw models` subcommands and reasoning-effort wiring (`cmd/picoclaw/main.go`, `pkg/models/models.go`).
+- `fee0fc5` Changed default model lineage to GPT-5.2 (`pkg/models/models.go`, `config/config.example.json`).
+- `2f0f059` Added Azure OpenAI endpoint/provider support (`pkg/providers/azure_provider.go`, `pkg/config/config.go`).
+- `f9819bf` Made OpenAI auth login device-code-first and reduced browser-flow friction (`cmd/picoclaw/main.go`).
+- `6d6d23c` Added OAuth retries and TLS tuning for VM/NAT stability (`pkg/auth/oauth.go`).
+- `36511b2` Capped OAuth auth transport at TLS 1.2 during Cloudflare-reset mitigation (`pkg/auth/oauth.go`).
+- `ad5970f` Added Chrome-like uTLS client fingerprinting for OAuth reliability behind restrictive networks (`pkg/auth/oauth.go`).
+- `b19da1e` Added Cloudflare-focused transport path (uTLS + compression) for Codex/API access hard cases (`pkg/auth/oauth.go`, `pkg/providers/codex_provider.go`, `pkg/providers/http_provider.go`).
+- `f4cb049` Restored TLS 1.2 floor and scoped custom transport to Cloudflare-only paths to avoid broader regression (`pkg/transport/transport.go`, `pkg/providers/http_provider.go`).
+
+### Tool Execution, Guardrails, and Document Pipeline
+
+- `2f57030` Hardened skill installer with size limits, text validation, and provenance checks (`pkg/skills/installer.go`, `pkg/skills/installer_test.go`).
+- `65be47a` Enforced CLI-first workspace policy and reduced guard false positives (`cmd/picoclaw/tools_policy.go`, `pkg/tools/shell.go`).
+- `39baacd` Fixed heredoc URL payload false positives in shell safety guard (`pkg/tools/shell.go`).
+- `eeb3928` Allowed PubMed field-tag query forms through path guard (`pkg/tools/shell.go`).
+- `7ef63f0` Relaxed path guard for safe temp outputs and `/dev/null` workflows (`pkg/tools/shell.go`).
+- `6b7ad2e` Removed default hard task-iteration cap (`0 = unbounded`) for long scientific jobs (`pkg/agent/loop.go`, `pkg/tools/toolloop.go`).
+- `155b861` Added automatic NIH template application for pandoc DOCX generation (`pkg/tools/shell.go`, `cmd/picoclaw/tools_policy.go`).
+- `eb45a38` Decoupled NIH pandoc template from docx-review and aligned docs/policy (`pkg/tools/assets/nih-standard.docx`, `pkg/tools/shell.go`, `pkg/workspacetpl/templates/workspace/TOOLS.md`).
+- `f7aeb98` Switched to `pandoc --defaults` injection for robust template application (`pkg/tools/shell.go`, `pkg/tools/shell_test.go`).
+
+### Channels and Agent Output UX
+
+- `cb566d5` Added first-class channel setup wizard for Telegram/Discord (`cmd/picoclaw/channels_cmd.go`).
+- `1f313e2` Enforced Discord allowlist-first onboarding and confirmation before save (`cmd/picoclaw/channels_cmd.go`).
+- `73711b2` Added Discord typing indicator support (`pkg/channels/discord.go`).
+- `2ba9543` Added Discord long-response chunking and scientific export/count tools (`pkg/channels/discord.go`, `pkg/tools/pubmed_export.go`, `pkg/tools/word_count.go`).
+- `87f8b67` Added message-tool attachment support over Discord/Telegram channels (`pkg/tools/message.go`, `pkg/channels/discord.go`, `pkg/channels/telegram.go`).
+- `b800cac` Improved Telegram attachment routing and expanded adapter attachment tests (`pkg/channels/telegram.go`, `pkg/channels/telegram_test.go`).
+- `d33e77e` Made onboard reruns idempotent and added docs-linked guidance (`cmd/picoclaw/main.go`).
+- `b8c456a` Made onboard next-step messaging dynamic from real setup state (`cmd/picoclaw/main.go`).
+
+### Service Lifecycle, Doctor, and Homebrew Delivery
+
+- `4f1bf53` Introduced `sciclaw doctor` for deployment verification (`cmd/picoclaw/doctor_cmd.go`).
+- `774fb96` Added doctor install hints for missing dependencies (`cmd/picoclaw/doctor_cmd.go`).
+- `452aba0` Reduced false Telegram 409 conflict reports in doctor checks (`cmd/picoclaw/doctor_cmd.go`).
+- `63ca0ef` Added service lifecycle command (`install/start/stop/restart/logs`) with launchd/systemd support (`cmd/picoclaw/service_cmd.go`, `pkg/service/`).
+- `3b8eac2` Added `service refresh` and doctor stale executable-path auto-fix logic (`cmd/picoclaw/service_cmd.go`, `cmd/picoclaw/doctor_service_path_test.go`).
+- `81e0073` Added Homebrew post-upgrade service auto-refresh with caveat fallback (`deploy/update-tap.sh`, `.github/workflows/release.yml`).
+- `df478a6` Fixed systemd user service PATH handling for Homebrew-installed tools (`pkg/service/systemd_linux.go`, `pkg/service/path.go`).
+- `7060db0` Bound service install to stable PATH-resolved binary to survive upgrades (`cmd/picoclaw/service_cmd.go`).
+- `0310233` Bootstrapped Linux workspace Python environment with `uv` and service PATH wiring (`cmd/picoclaw/python_setup.go`, `cmd/picoclaw/service_cmd.go`).
+- `b37030f` Added local release pipeline target for faster binary + tap publishing (`Makefile`, `deploy/update-tap.sh`).
+- `a1192fc` Switched Homebrew formula generation to pre-compiled binary distribution path (`.github/workflows/release.yml`).
+
+### Security and IRL Integration
+
+- `61b15cd` Blocked symlink-based workspace escape paths in filesystem tooling (`pkg/tools/filesystem.go`, `pkg/tools/filesystem_test.go`).
+- `ce7d05b` Tightened file permissions and enforced Slack ACL checks (`pkg/channels/slack.go`, `pkg/config/config.go`, `cmd/picoclaw/main.go`).
+- `f19420b` Tightened config/channel state handling and disabled heartbeat default for safer baseline posture (`pkg/config/config.go`, `pkg/channels/base.go`).
+- `4095251` Pinned skills catalog ref and hardened QQ dedup cache handling (`pkg/skills/installer.go`, `pkg/channels/qq.go`).
+- `449ed15` Added external IRL adapter with command-store auditing (`pkg/irl/client.go`, `pkg/irl/store.go`).
+- `d3b7078` Added internal `irl_project` tool for agent-mediated IRL workflows (`pkg/tools/irl_project.go`, `pkg/agent/loop.go`).
+- `d691b11` Added cross-platform IRL binary fallback resolution (`pkg/irl/client.go`).
+- `be9cd3d` Added IRL project-list fallback behavior when JSON/list commands fail (`pkg/irl/client.go`).
+- `e6e8ff3` Made runtime IRL status detection independent of PATH assumptions (`cmd/picoclaw/main.go`, `pkg/irl/client.go`).
+
+### Docs and Scientist UX Surfaces
+
+- `65f032e` Overhauled landing page for non-technical academic/scientist audience (`docs/index.html`).
+- `ed9ca89` Shifted docs/landing to messaging-first setup framing (`docs/index.html`).
+- `6a8e442` Added dedicated security page and restructured README around messaging-first operations (`docs/security.html`, `README.md`).
+- `af32c3d` Unified top navigation across docs surfaces for consistency (`docs/index.html`, `docs/docs.html`, `docs/philosophy.html`, `docs/biography.html`).
 
 <details>
 <summary>CLI reference</summary>
