@@ -12,6 +12,7 @@
 
 [Website](https://sciclaw.dev) ·
 [Documentation](https://sciclaw.dev/docs.html) ·
+[Manuscript (pending arXiv submission #7284050)](docs/assets/sciclaw-arxiv.pdf) ·
 [YouTube Tutorial](https://www.youtube.com/watch?v=P3pDulPnCzU) ·
 [Releases](https://github.com/drpedapati/sciclaw/releases) ·
 [Discussions](https://github.com/drpedapati/sciclaw/discussions)
