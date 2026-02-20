@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/philosophy-hero.png" alt="sciClaw: A Partnership, Not a Platform" width="760" />
+<img src="docs/philosophy-hero.jpg" alt="sciClaw: A Partnership, Not a Platform" width="760" />
 
 <br />
 
