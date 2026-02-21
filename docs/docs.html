@@ -1702,7 +1702,7 @@
 <span class="hl-comment"># Stop</span>
 <span class="hl-cmd">docker</span> compose <span class="hl-flag">--profile</span> gateway down</code></pre>
 
-        <p>The Docker image uses a multi-stage build (Go builder &rarr; Alpine) and ships with all baseline skills pre-installed.</p>
+        <p>The Docker image uses a multi-stage build (Go builder &rarr; Debian slim) and ships with baseline skills plus core scientific tooling pre-installed (<code>python3</code>, <code>uv</code>, <code>rg</code>, <code>magick</code>, <code>pandoc</code>, <code>quarto</code>, <code>docx-review</code>, <code>pubmed-cli</code>, <code>irl</code>).</p>
       </div>
 
       <!-- ━━━━━ PREV / NEXT ━━━━━ -->

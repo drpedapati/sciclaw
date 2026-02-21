@@ -1,9 +1,14 @@
 # ============================================================
 # Stage 1: Build the sciclaw binary
 # ============================================================
-FROM golang:1.25-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
 
-RUN apk add --no-cache git make
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates git make && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 
@@ -13,24 +18,87 @@ RUN go mod download
 
 # Copy source and build
 COPY . .
-RUN make build
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
+    -trimpath \
+    -ldflags "-s -w" \
+    -o /out/sciclaw \
+    ./cmd/picoclaw
 
 # ============================================================
-# Stage 2: Minimal runtime image
+# Stage 2: Full runtime image
 # ============================================================
-FROM alpine:3.21
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache ca-certificates tzdata
+ARG TARGETARCH
+ARG UV_VERSION=0.10.4
+ARG QUARTO_VERSION=1.8.27
+ARG IRL_VERSION=0.5.17
+ARG DOCX_REVIEW_VERSION=1.3.0
+ARG PUBMED_CLI_VERSION=0.5.4
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      imagemagick \
+      pandoc \
+      python3 \
+      python3-pip \
+      python3-venv \
+      ripgrep \
+      tar \
+      tzdata && \
+    rm -rf /var/lib/apt/lists/*
+
+# Debian's ImageMagick 6 provides `convert` but not the `magick` frontend.
+RUN if [ ! -x /usr/bin/magick ] && [ -x /usr/bin/convert ]; then \
+      ln -sf /usr/bin/convert /usr/local/bin/magick; \
+    fi
+
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) \
+        ARCH=amd64; \
+        UV_ARCH=x86_64-unknown-linux-gnu; \
+        QUARTO_ARCH=amd64; \
+        ;; \
+      arm64) \
+        ARCH=arm64; \
+        UV_ARCH=aarch64-unknown-linux-gnu; \
+        QUARTO_ARCH=arm64; \
+        ;; \
+      *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/uv.tgz \
+      "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ARCH}.tar.gz"; \
+    tar -xzf /tmp/uv.tgz -C /tmp; \
+    install -m 0755 "/tmp/uv-${UV_ARCH}/uv" /usr/local/bin/uv; \
+    install -m 0755 "/tmp/uv-${UV_ARCH}/uvx" /usr/local/bin/uvx; \
+    curl -fsSL -o /tmp/quarto.tgz \
+      "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${QUARTO_ARCH}.tar.gz"; \
+    tar -xzf /tmp/quarto.tgz -C /opt; \
+    ln -sf "/opt/quarto-${QUARTO_VERSION}/bin/quarto" /usr/local/bin/quarto; \
+    curl -fsSL -o /usr/local/bin/irl \
+      "https://github.com/drpedapati/irl-template/releases/download/v${IRL_VERSION}/irl-linux-${ARCH}"; \
+    chmod +x /usr/local/bin/irl; \
+    curl -fsSL -o /usr/local/bin/docx-review \
+      "https://github.com/drpedapati/docx-review/releases/download/v${DOCX_REVIEW_VERSION}/docx-review-linux-${ARCH}"; \
+    chmod +x /usr/local/bin/docx-review; \
+    curl -fsSL -o /usr/local/bin/pubmed \
+      "https://github.com/drpedapati/pubmed-cli/releases/download/v${PUBMED_CLI_VERSION}/pubmed-linux-${ARCH}"; \
+    chmod +x /usr/local/bin/pubmed; \
+    ln -sf /usr/local/bin/pubmed /usr/local/bin/pubmed-cli; \
+    rm -rf /tmp/uv* /tmp/quarto.tgz
 
 # Copy binary
-COPY --from=builder /src/build/sciclaw /usr/local/bin/sciclaw
+COPY --from=builder /out/sciclaw /usr/local/bin/sciclaw
 RUN ln -sf sciclaw /usr/local/bin/picoclaw
 
 # Copy builtin skills
 COPY --from=builder /src/skills /opt/sciclaw/skills
 
-# Create picoclaw-compatible home directory
-RUN mkdir -p /root/sciclaw/skills && \
+# Create default workspace with baseline skills
+RUN mkdir -p /root/sciclaw/skills /root/.picoclaw && \
     cp -r /opt/sciclaw/skills/* /root/sciclaw/skills/ 2>/dev/null || true
 
 ENTRYPOINT ["sciclaw"]

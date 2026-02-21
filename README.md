@@ -262,6 +262,9 @@ docker compose --profile gateway up -d              # gateway mode
 docker compose run --rm sciclaw-agent -m "Hello"    # one-shot
 ```
 
+The Docker image is a full runtime and includes:
+`python3`, `uv`, `ripgrep`, `imagemagick`, `pandoc`, `quarto`, `docx-review`, `pubmed-cli`, and `irl`.
+
 ## Troubleshooting
 
 Run `sciclaw doctor` to diagnose issues — it checks config, auth, tools, skills, gateway, and service health.
