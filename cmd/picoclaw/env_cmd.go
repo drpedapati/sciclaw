@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sipeed/picoclaw/cmd/picoclaw/vmtui"
 )
 
 const defaultGHCRImage = "ghcr.io/drpedapati/sciclaw"
@@ -23,6 +25,12 @@ type vmHelperFiles struct {
 }
 
 func vmCmd() {
+	// Intercept the TUI subcommand — runs pure Go, no bash delegation.
+	if len(os.Args) > 2 && os.Args[2] == "tui" {
+		vmtui.Run()
+		return
+	}
+
 	helper, err := resolveVMHelperFiles()
 	if err != nil {
 		fmt.Printf("Error: VM helper setup failed: %v\n", err)
