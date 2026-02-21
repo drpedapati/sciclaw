@@ -256,7 +256,6 @@ release-dev-local:
 	@echo "==> Updating Homebrew tap dev formula..."
 	@FORMULA_NAME=$(RELEASE_DEV_FORMULA_NAME) \
 	 FORMULA_CLASS=$(RELEASE_DEV_FORMULA_CLASS) \
-	 FORMULA_CONFLICTS_WITH=sciclaw \
 	 deploy/update-tap.sh "$(RELEASE_DEV_TAG)" "$(RELEASE_REPO)"
 	@echo "==> Dev release $(RELEASE_DEV_TAG) complete."
 

@@ -14,14 +14,7 @@ tap_repo="${TAP_REPO:-drpedapati/homebrew-tap}"
 formula_name="${FORMULA_NAME:-sciclaw}"
 formula_class="${FORMULA_CLASS:-Sciclaw}"
 formula_desc="${FORMULA_DESC:-Autonomous paired scientist CLI forked from PicoClaw}"
-formula_conflicts_with="${FORMULA_CONFLICTS_WITH:-}"
-formula_conflicts_reason="${FORMULA_CONFLICTS_REASON:-both install the sciclaw and picoclaw commands}"
 formula_path="${FORMULA_PATH:-Formula/${formula_name}.rb}"
-
-conflicts_block=""
-if [[ -n "${formula_conflicts_with}" ]]; then
-  conflicts_block="  conflicts_with \"${formula_conflicts_with}\", because: \"${formula_conflicts_reason}\""
-fi
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
@@ -55,6 +48,14 @@ class ${formula_class} < Formula
   version "${version}"
   license "MIT"
 
+  depends_on "imagemagick"
+  depends_on "irl"
+  depends_on "pandoc"
+  depends_on "ripgrep"
+  depends_on "sciclaw-docx-review"
+  depends_on "sciclaw-pubmed-cli"
+  depends_on "uv"
+
   on_macos do
     on_arm do
       url "${base}/sciclaw-darwin-arm64"
@@ -79,15 +80,6 @@ class ${formula_class} < Formula
     url "${source_url}"
     sha256 "${sha_source}"
   end
-
-  depends_on "irl"
-  depends_on "imagemagick"
-  depends_on "pandoc"
-  depends_on "ripgrep"
-  depends_on "uv"
-  depends_on "sciclaw-docx-review"
-  depends_on "sciclaw-pubmed-cli"
-${conflicts_block}
 
   def install
     # Install pre-compiled binary

@@ -62,7 +62,7 @@ brew tap drpedapati/tap && brew install sciclaw
 brew tap drpedapati/tap && brew install sciclaw-dev
 ```
 
-`sciclaw-dev` tracks development branch releases and conflicts with stable `sciclaw` (both install the same `sciclaw`/`picoclaw` commands).
+`sciclaw-dev` tracks development branch releases. If stable `sciclaw` is already installed, uninstall it first to avoid binary name collisions.
 
 Then run the interactive setup wizard:
 ```bash
