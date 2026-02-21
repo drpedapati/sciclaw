@@ -270,21 +270,23 @@ cmd_status() {
 }
 
 cmd_destroy() {
-  local state
+  local state force="${1:-}"
   state=$(vm_state)
   if [ "$state" = "NotFound" ]; then
     info "No VM to destroy."
     return
   fi
-  echo "This will permanently delete the sciClaw VM and all data inside it."
-  read -rp "Are you sure? [y/N] " confirm
-  if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    multipass delete "$VM_NAME" && multipass purge
-    rm -f "$STATE_PROJECT_FILE"
-    info "VM destroyed."
-  else
-    info "Cancelled."
+  if [ "$force" != "--force" ]; then
+    echo "This will permanently delete the sciClaw VM and all data inside it."
+    read -rp "Are you sure? [y/N] " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      info "Cancelled."
+      return
+    fi
   fi
+  multipass delete "$VM_NAME" && multipass purge
+  rm -f "$STATE_PROJECT_FILE"
+  info "VM destroyed."
 }
 
 cmd_shell() {
@@ -344,49 +346,268 @@ pause_screen() {
   read -r -p "Press Enter to continue..." _
 }
 
+prompt_yes_no_default() {
+  local prompt="$1"
+  local def="${2:-y}"
+  local ans
+  if [ "$def" = "y" ]; then
+    read -r -p "$prompt [Y/n]: " ans
+    ans="${ans:-y}"
+  else
+    read -r -p "$prompt [y/N]: " ans
+    ans="${ans:-n}"
+  fi
+  [[ "$ans" =~ ^[Yy]$ ]]
+}
+
 get_vm_info_field() {
   local field="$1"
   multipass info "$VM_NAME" 2>/dev/null | awk -F': *' -v key="$field" '$1==key {print $2; exit}'
 }
 
 get_vm_version_line() {
-  multipass exec "$VM_NAME" -- sciclaw --version 2>/dev/null | head -n 1 | sed 's/^ *//'
+  multipass exec "$VM_NAME" -- sciclaw --version </dev/null 2>/dev/null | head -n 1 | sed 's/^ *//'
+}
+
+get_vm_runtime_snapshot() {
+  multipass exec "$VM_NAME" -- bash -lc '
+python3 - <<"PY"
+import json
+import os
+import subprocess
+
+home = os.path.expanduser("~")
+cfg_path = os.path.join(home, ".picoclaw", "config.json")
+auth_path = os.path.join(home, ".picoclaw", "auth.json")
+svc_path = os.path.join(home, ".config", "systemd", "user", "sciclaw-gateway.service")
+
+def load_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+cfg = load_json(cfg_path)
+auth = load_json(auth_path)
+providers = cfg.get("providers", {}) or {}
+channels = cfg.get("channels", {}) or {}
+creds = auth.get("credentials", {}) or {}
+
+def provider_state(name):
+    p = providers.get(name, {}) or {}
+    c = creds.get(name, {}) or {}
+    api_key = str(p.get("api_key", "") or "").strip()
+    access = str(c.get("access_token", "") or "").strip()
+    token = str(c.get("token", "") or "").strip()
+    key2 = str(c.get("api_key", "") or "").strip()
+    if api_key or access or token or key2:
+        return "ready"
+    return "missing"
+
+def channel_state(name):
+    c = channels.get(name, {}) or {}
+    enabled = bool(c.get("enabled"))
+    token = bool(str(c.get("token", "") or "").strip())
+    allow = len(c.get("allow_from") or [])
+    if enabled and token and allow > 0:
+        status = "ready"
+    elif enabled and token and allow == 0:
+        status = "open"
+    elif enabled and not token:
+        status = "broken"
+    else:
+        status = "off"
+    return status, enabled, token, allow
+
+def service_running():
+    if not os.path.exists(svc_path):
+        return "no"
+    try:
+        rc = subprocess.run(
+            ["systemctl", "--user", "is-active", "sciclaw-gateway"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        return "yes" if rc == 0 else "no"
+    except Exception:
+        return "unknown"
+
+workspace = str(cfg.get("agents", {}).get("defaults", {}).get("workspace", "") or "").strip()
+if workspace.startswith("~/"):
+    workspace = os.path.join(home, workspace[2:])
+
+discord = channel_state("discord")
+telegram = channel_state("telegram")
+
+def yn(v):
+    return "yes" if v else "no"
+
+print("openai=" + provider_state("openai"))
+print("anthropic=" + provider_state("anthropic"))
+print("discord_status=" + str(discord[0]))
+print("discord_enabled=" + yn(discord[1]))
+print("discord_token=" + yn(discord[2]))
+print("discord_allow=" + str(discord[3]))
+print("telegram_status=" + str(telegram[0]))
+print("telegram_enabled=" + yn(telegram[1]))
+print("telegram_token=" + yn(telegram[2]))
+print("telegram_allow=" + str(telegram[3]))
+print("service_installed=" + yn(os.path.exists(svc_path)))
+print("service_running=" + service_running())
+print("workspace_path=" + workspace)
+print("workspace_exists=" + yn(workspace and os.path.isdir(workspace)))
+print("auth_store_exists=" + yn(os.path.exists(auth_path)))
+print("config_exists=" + yn(os.path.exists(cfg_path)))
+PY
+' </dev/null 2>/dev/null || true
+}
+
+kv_get() {
+  local blob="$1" key="$2"
+  printf '%s\n' "$blob" | awk -F= -v k="$key" '$1==k {sub(/^[^=]*=/, "", $0); print $0; exit}'
+}
+
+status_icon() {
+  case "${1:-}" in
+    ready|yes) echo "✓" ;;
+    open|partial|unknown) echo "!" ;;
+    *) echo "•" ;;
+  esac
+}
+
+recommended_action() {
+  local state="$1" openai="$2" anth="$3" discord="$4" telegram="$5" svc_installed="$6" svc_running="$7"
+  if [ "$state" = "NotFound" ]; then
+    echo "[1] Start/Sync VM"
+    return
+  fi
+  if [ "$state" != "Running" ]; then
+    echo "[1] Start/Sync VM"
+    return
+  fi
+  if [ "$openai" != "ready" ] && [ "$anth" != "ready" ]; then
+    echo "[5] Auth OpenAI (or [6] Auth Anthropic)"
+    return
+  fi
+  if [ "$discord" != "ready" ] && [ "$telegram" != "ready" ]; then
+    echo "[7] Discord setup or [8] Telegram setup"
+    return
+  fi
+  if [ "$svc_installed" != "yes" ]; then
+    echo "[10] Service install"
+    return
+  fi
+  if [ "$svc_running" != "yes" ]; then
+    echo "[11] Service start"
+    return
+  fi
+  echo "[13] Service logs or [3] Shell"
+}
+
+run_guided_setup() {
+  require_running
+  echo ""
+  echo "Guided setup (VM-first):"
+  echo "This keeps all settings inside the VM."
+  echo ""
+
+  if prompt_yes_no_default "Run onboard now?" y; then
+    cmd_sciclaw_passthrough onboard
+  fi
+  echo ""
+  if prompt_yes_no_default "Login OpenAI now?" y; then
+    cmd_sciclaw_passthrough auth login --provider openai
+  elif prompt_yes_no_default "Login Anthropic now?" n; then
+    cmd_sciclaw_passthrough auth login --provider anthropic
+  fi
+  echo ""
+  if prompt_yes_no_default "Configure Discord now?" n; then
+    cmd_sciclaw_passthrough channels setup discord
+  fi
+  if prompt_yes_no_default "Configure Telegram now?" n; then
+    cmd_sciclaw_passthrough channels setup telegram
+  fi
+  echo ""
+  if prompt_yes_no_default "Install background service now?" y; then
+    cmd_sciclaw_passthrough service install
+  fi
+  if prompt_yes_no_default "Start background service now?" y; then
+    cmd_sciclaw_passthrough service start
+  fi
+  echo ""
+  if prompt_yes_no_default "Run doctor check now?" y; then
+    cmd_doctor
+  fi
+}
+
+confirm_destroy_vm() {
+  local typed
+  echo "This permanently deletes VM '$VM_NAME' and all VM-local data."
+  read -r -p "Type '$VM_NAME' to confirm: " typed
+  [ "$typed" = "$VM_NAME" ]
 }
 
 get_vm_channel_lines() {
-  multipass exec "$VM_NAME" -- bash -lc '
-python3 - <<PY
-import json, os
-p = os.path.expanduser("~/.picoclaw/config.json")
-try:
-    cfg = json.load(open(p))
-except Exception:
-    print("discord: unavailable")
-    print("telegram: unavailable")
-    raise SystemExit(0)
+  local snapshot="$1"
+  local ds de dt da ts te tt ta
+  ds="$(kv_get "$snapshot" discord_status)"
+  de="$(kv_get "$snapshot" discord_enabled)"
+  dt="$(kv_get "$snapshot" discord_token)"
+  da="$(kv_get "$snapshot" discord_allow)"
+  ts="$(kv_get "$snapshot" telegram_status)"
+  te="$(kv_get "$snapshot" telegram_enabled)"
+  tt="$(kv_get "$snapshot" telegram_token)"
+  ta="$(kv_get "$snapshot" telegram_allow)"
+  printf "discord: status=%s enabled=%s token=%s allow=%s\n" "${ds:-off}" "${de:-no}" "${dt:-no}" "${da:-0}"
+  printf "telegram: status=%s enabled=%s token=%s allow=%s\n" "${ts:-off}" "${te:-no}" "${tt:-no}" "${ta:-0}"
+}
 
-def line(name, token_key):
-    c = cfg.get("channels", {}).get(name, {})
-    enabled = bool(c.get("enabled"))
-    token = bool(str(c.get(token_key, "")).strip())
-    allow = len(c.get("allow_from") or [])
-    return f"{name}: enabled={enabled} token={token} allow={allow}"
+get_vm_readiness_lines() {
+  local snapshot="$1"
+  local openai anthropic discord telegram svc_i svc_r ws cfg auths
+  openai="$(kv_get "$snapshot" openai)"
+  anthropic="$(kv_get "$snapshot" anthropic)"
+  discord="$(kv_get "$snapshot" discord_status)"
+  telegram="$(kv_get "$snapshot" telegram_status)"
+  svc_i="$(kv_get "$snapshot" service_installed)"
+  svc_r="$(kv_get "$snapshot" service_running)"
+  ws="$(kv_get "$snapshot" workspace_exists)"
+  cfg="$(kv_get "$snapshot" config_exists)"
+  auths="$(kv_get "$snapshot" auth_store_exists)"
 
-print(line("discord", "token"))
-print(line("telegram", "token"))
-PY
-' 2>/dev/null || true
+  printf "%s Config file\n" "$(status_icon "$cfg")"
+  printf "%s Workspace initialized\n" "$(status_icon "$ws")"
+  printf "%s Auth store\n" "$(status_icon "$auths")"
+  if [ "$openai" = "ready" ] || [ "$anthropic" = "ready" ]; then
+    printf "%s Provider auth (openai=%s anthropic=%s)\n" "$(status_icon ready)" "${openai:-missing}" "${anthropic:-missing}"
+  else
+    printf "%s Provider auth (openai=%s anthropic=%s)\n" "$(status_icon missing)" "${openai:-missing}" "${anthropic:-missing}"
+  fi
+  if [ "$discord" = "ready" ] || [ "$telegram" = "ready" ]; then
+    printf "%s Channel setup (discord=%s telegram=%s)\n" "$(status_icon ready)" "${discord:-off}" "${telegram:-off}"
+  else
+    printf "%s Channel setup (discord=%s telegram=%s)\n" "$(status_icon missing)" "${discord:-off}" "${telegram:-off}"
+  fi
+  printf "%s Service installed\n" "$(status_icon "$svc_i")"
+  printf "%s Service running\n" "$(status_icon "$svc_r")"
 }
 
 draw_tui() {
-  local state project ip load mem version channels
+  local state project ip load mem version snapshot channels checklist rec
+  local openai anthropic discord telegram svc_i svc_r
+
   state="$(vm_state)"
   project="$(default_project_dir)"
   ip="-"
   load="-"
   mem="-"
   version="-"
+  snapshot=""
   channels=$'discord: unavailable\ntelegram: unavailable'
+  checklist=$'• VM not running yet'
+  rec="[1] Start/Sync VM"
 
   if [ "$state" != "NotFound" ]; then
     ip="$(get_vm_info_field "IPv4" | xargs || true)"
@@ -396,7 +617,16 @@ draw_tui() {
 
   if [ "$state" = "Running" ]; then
     version="$(get_vm_version_line)"
-    channels="$(get_vm_channel_lines)"
+    snapshot="$(get_vm_runtime_snapshot)"
+    channels="$(get_vm_channel_lines "$snapshot")"
+    checklist="$(get_vm_readiness_lines "$snapshot")"
+    openai="$(kv_get "$snapshot" openai)"
+    anthropic="$(kv_get "$snapshot" anthropic)"
+    discord="$(kv_get "$snapshot" discord_status)"
+    telegram="$(kv_get "$snapshot" telegram_status)"
+    svc_i="$(kv_get "$snapshot" service_installed)"
+    svc_r="$(kv_get "$snapshot" service_running)"
+    rec="$(recommended_action "$state" "$openai" "$anthropic" "$discord" "$telegram" "$svc_i" "$svc_r")"
   fi
 
   if [ -n "${TERM:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
@@ -404,6 +634,7 @@ draw_tui() {
   else
     printf '\033[2J\033[H'
   fi
+
   cat <<EOF
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ 🔬 sciClaw VM Control Center                                                 │
@@ -416,16 +647,20 @@ draw_tui() {
  Project: $project
  Agent:   ${version:--}
 
+ Readiness:
+   $(printf '%s' "$checklist" | sed 's/^/ /')
+
  Channels:
    $(printf '%s' "$channels" | sed 's/^/ /')
 
+ Recommended next step: $rec
+
  Actions:
-   [1] Start/Sync VM        [2] Status           [3] Shell
-   [4] Onboard              [5] Auth OpenAI      [6] Auth Anthropic
-   [7] Discord setup        [8] Telegram setup   [9] Gateway run (foreground)
-   [10] Service install     [11] Service start   [12] Service restart
-   [13] Service logs        [14] Doctor          [15] Push sync
-   [16] Pull sync           [17] Stop VM         [18] Destroy VM
+   Setup: [1] Start/Sync  [4] Onboard  [5] Auth OpenAI  [6] Auth Anthropic  [g] Guided setup
+   Chat:  [7] Discord     [8] Telegram [9] Gateway
+   Ops:   [10] Install svc [11] Start svc [12] Restart svc [13] Logs [14] Doctor [3] Shell
+   Sync:  [15] Push       [16] Pull
+   VM:    [2] Status      [17] Stop    [18] Destroy
    [q] Quit
 EOF
 }
@@ -448,33 +683,41 @@ cmd_tui() {
     local choice project_dir
     read -r -p "Select action: " choice
     case "${choice:-}" in
-      1)
+      1|start|sync)
         project_dir="$(prompt_project_dir)"
         run_tui_action cmd_start "$project_dir"
         ;;
-      2)  run_tui_action cmd_status ;;
-      3)  run_tui_action cmd_shell ;;
-      4)  run_tui_action cmd_sciclaw_passthrough onboard ;;
-      5)  run_tui_action cmd_sciclaw_passthrough auth login --provider openai ;;
-      6)  run_tui_action cmd_sciclaw_passthrough auth login --provider anthropic ;;
-      7)  run_tui_action cmd_sciclaw_passthrough channels setup discord ;;
-      8)  run_tui_action cmd_sciclaw_passthrough channels setup telegram ;;
-      9)  run_tui_action cmd_sciclaw_passthrough gateway ;;
-      10) run_tui_action cmd_sciclaw_passthrough service install ;;
-      11) run_tui_action cmd_sciclaw_passthrough service start ;;
-      12) run_tui_action cmd_sciclaw_passthrough service restart ;;
-      13) run_tui_action cmd_sciclaw_passthrough service logs ;;
-      14) run_tui_action cmd_doctor ;;
-      15)
+      2|status) run_tui_action cmd_status ;;
+      3|shell) run_tui_action cmd_shell ;;
+      4|onboard) run_tui_action cmd_sciclaw_passthrough onboard ;;
+      5|auth-openai) run_tui_action cmd_sciclaw_passthrough auth login --provider openai ;;
+      6|auth-anthropic) run_tui_action cmd_sciclaw_passthrough auth login --provider anthropic ;;
+      7|discord) run_tui_action cmd_sciclaw_passthrough channels setup discord ;;
+      8|telegram) run_tui_action cmd_sciclaw_passthrough channels setup telegram ;;
+      9|gateway) run_tui_action cmd_sciclaw_passthrough gateway ;;
+      10|service-install) run_tui_action cmd_sciclaw_passthrough service install ;;
+      11|service-start) run_tui_action cmd_sciclaw_passthrough service start ;;
+      12|service-restart) run_tui_action cmd_sciclaw_passthrough service restart ;;
+      13|logs) run_tui_action cmd_sciclaw_passthrough service logs ;;
+      14|doctor) run_tui_action cmd_doctor ;;
+      15|push)
         project_dir="$(prompt_project_dir)"
         run_tui_action cmd_push "$project_dir"
         ;;
-      16)
+      16|pull)
         project_dir="$(prompt_project_dir)"
         run_tui_action cmd_pull "$project_dir"
         ;;
-      17) run_tui_action cmd_stop ;;
-      18) run_tui_action cmd_destroy ;;
+      17|stop) run_tui_action cmd_stop ;;
+      18|destroy)
+        if confirm_destroy_vm; then
+          run_tui_action cmd_destroy --force
+        else
+          echo "Destroy cancelled."
+          pause_screen
+        fi
+        ;;
+      g|G|guide|guided) run_tui_action run_guided_setup ;;
       q|Q|quit|exit) break ;;
       *)
         echo "Unknown selection: ${choice:-<empty>}"
