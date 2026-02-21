@@ -208,6 +208,7 @@ release-local:
 		exit 1; \
 	fi
 	@echo "==> Building all platforms..."
+	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt
 	@VERSION=$(RELEASE_TAG) $(MAKE) build-all
 	@echo "==> Generating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* > sha256sums.txt
@@ -238,6 +239,7 @@ release-dev-local:
 		exit 1; \
 	fi
 	@echo "==> Building all platforms..."
+	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt
 	@VERSION=$(RELEASE_DEV_TAG) $(MAKE) build-all
 	@echo "==> Generating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* > sha256sums.txt
