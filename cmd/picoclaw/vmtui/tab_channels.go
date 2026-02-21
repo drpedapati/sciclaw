@@ -34,9 +34,9 @@ type ChannelsModel struct {
 	selectedRow int // selected row in the focused channel's user table
 
 	// Add user flow
-	addInput    textinput.Model
-	addChannel  string // "discord" or "telegram"
-	addStep     int    // 0 = ID, 1 = optional name
+	addInput   textinput.Model
+	addChannel string // "discord" or "telegram"
+	addStep    int    // 0 = ID, 1 = optional name
 
 	// Remove user confirmation
 	removeUser ApprovedUser
@@ -146,6 +146,10 @@ func (m ChannelsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ChannelsModel, 
 		}
 	case "s":
 		return m.startSetup(snap)
+	case "i":
+		if cmd := m.importFocusedFromHost(snap); cmd != nil {
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -176,26 +180,41 @@ func (m ChannelsModel) View(snap *VMSnapshot, width int) string {
 
 func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focused bool, w int, snap *VMSnapshot) string {
 	var lines []string
+	hostCh := hostChannelForName(name, snap)
 
 	// Status line
 	var badge string
-	switch ch.Status {
-	case "ready":
-		badge = badgeReady()
-	case "open":
+	switch {
+	case canImportFromHost(ch, hostCh):
 		badge = badgeWarning()
-	case "off":
+	case ch.Status == "ready":
+		badge = badgeReady()
+	case ch.Status == "open":
+		badge = badgeWarning()
+	case ch.Status == "off":
 		badge = styleDim.Render("[Not Configured]")
 	default:
 		badge = badgeNotReady()
 	}
 
-	statusText := channelStatusText(ch)
+	statusText := channelStatusText(ch, hostCh)
 	lines = append(lines, fmt.Sprintf(" %s %s  %s", styleLabel.Render("Status:"), statusText, badge))
+
+	if canImportFromHost(ch, hostCh) {
+		lines = append(lines, styleHint.Render("  Host has this channel configured. Press [i] to import settings into VM."))
+	}
 
 	if ch.Status == "off" {
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  %s Set up %s", styleKey.Render("[s]"), name))
+		if canImportFromHost(ch, hostCh) {
+			lines = append(lines, fmt.Sprintf("  %s Import host settings   %s Set up %s",
+				styleKey.Render("[i]"),
+				styleKey.Render("[s]"),
+				name,
+			))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s Set up %s", styleKey.Render("[s]"), name))
+		}
 	} else {
 		// Approved users table
 		lines = append(lines, "")
@@ -236,6 +255,9 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 			styleKey.Render("[d]"),
 			styleKey.Render("[s]"),
 		)
+		if canImportFromHost(ch, hostCh) {
+			actions += "   " + styleKey.Render("[i]") + " Import host settings"
+		}
 		lines = append(lines, actions)
 	}
 
@@ -268,6 +290,115 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 	return placePanelTitle(panel, title)
 }
 
+func hostChannelForName(name string, snap *VMSnapshot) ChannelSnapshot {
+	if snap == nil {
+		return ChannelSnapshot{}
+	}
+	if strings.EqualFold(name, "discord") {
+		return snap.HostDiscord
+	}
+	return snap.HostTelegram
+}
+
+func canImportFromHost(vmCh, hostCh ChannelSnapshot) bool {
+	if !hostCh.HasToken {
+		return false
+	}
+	return !vmCh.HasToken
+}
+
+func channelStatusText(vmCh, hostCh ChannelSnapshot) string {
+	switch {
+	case canImportFromHost(vmCh, hostCh):
+		return styleWarn.Render("Configured on host only")
+	case vmCh.Status == "ready":
+		return styleOK.Render("Connected")
+	case vmCh.Status == "open":
+		return styleWarn.Render("Connected, no approved users")
+	case vmCh.Status == "broken":
+		return styleErr.Render("Missing bot token")
+	default:
+		return styleDim.Render("Not configured")
+	}
+}
+
+func (m ChannelsModel) importFocusedFromHost(snap *VMSnapshot) tea.Cmd {
+	if snap == nil {
+		return nil
+	}
+	channel := "discord"
+	vmCh := snap.Discord
+	hostCh := snap.HostDiscord
+	if m.focus == focusTelegram {
+		channel = "telegram"
+		vmCh = snap.Telegram
+		hostCh = snap.HostTelegram
+	}
+	if !canImportFromHost(vmCh, hostCh) {
+		return nil
+	}
+	return importChannelFromHostToVM(channel)
+}
+
+func importChannelFromHostToVM(channel string) tea.Cmd {
+	return func() tea.Msg {
+		raw, err := hostConfigRaw()
+		if err != nil {
+			return actionDoneMsg{output: "Import failed: host config not found."}
+		}
+		var hostCfg configJSON
+		if err := json.Unmarshal([]byte(raw), &hostCfg); err != nil {
+			return actionDoneMsg{output: "Import failed: host config is invalid JSON."}
+		}
+
+		var src channelJSON
+		if channel == "telegram" {
+			src = hostCfg.Channels.Telegram
+		} else {
+			src = hostCfg.Channels.Discord
+		}
+		if strings.TrimSpace(src.Token) == "" {
+			return actionDoneMsg{output: "Import skipped: host channel has no bot token."}
+		}
+
+		enabled := src.Enabled || strings.TrimSpace(src.Token) != ""
+		enabledPy := "False"
+		if enabled {
+			enabledPy = "True"
+		}
+		tokenJSON, _ := json.Marshal(src.Token)
+		proxyJSON, _ := json.Marshal(src.Proxy)
+		allow := make([]string, 0, len(src.AllowFrom))
+		for _, entry := range src.AllowFrom {
+			entry = strings.TrimSpace(entry)
+			if entry != "" {
+				allow = append(allow, entry)
+			}
+		}
+		allowJSON, _ := json.Marshal(allow)
+
+		script := fmt.Sprintf(`
+import json
+with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
+    cfg = json.load(f)
+ch = cfg.setdefault('channels', {}).setdefault('%s', {})
+ch['enabled'] = %s
+ch['token'] = %s
+ch['allow_from'] = %s
+if '%s' == 'telegram':
+    ch['proxy'] = %s
+with open('/home/ubuntu/.picoclaw/config.json', 'w') as f:
+    json.dump(cfg, f, indent=2)
+print('ok')
+`, channel, enabledPy, string(tokenJSON), string(allowJSON), channel, string(proxyJSON))
+
+		if _, err := VMExecShell(5*time.Second, "python3 -c "+shellEscape(script)); err != nil {
+			return actionDoneMsg{output: fmt.Sprintf("Import failed: %v", err)}
+		}
+		return actionDoneMsg{output: capitalizeFirst(channel) + " settings imported from host."}
+	}
+}
+
 func renderAddUserOverlay(m ChannelsModel, channelName string) string {
 	var lines []string
 	if m.addStep == 0 {
@@ -283,19 +414,6 @@ func renderAddUserOverlay(m ChannelsModel, channelName string) string {
 		lines = append(lines, styleHint.Render("    Press Enter to skip, or type a name and press Enter"))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func channelStatusText(ch ChannelSnapshot) string {
-	switch ch.Status {
-	case "ready":
-		return styleOK.Render("Connected")
-	case "open":
-		return styleWarn.Render("Connected, no approved users")
-	case "broken":
-		return styleErr.Render("Missing bot token")
-	default:
-		return styleDim.Render("Not configured")
-	}
 }
 
 func (m ChannelsModel) focusedUsers(snap *VMSnapshot) []ApprovedUser {
@@ -488,8 +606,8 @@ with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
     cfg = json.load(f)
 ch = cfg.setdefault('channels', {}).setdefault('%s', {})
 ch['enabled'] = True
-ch['token'] = json.loads(%s)
-user = json.loads(%s)
+ch['token'] = %s
+user = %s
 if user:
     af = ch.setdefault('allow_from', [])
     if user not in af:
@@ -514,7 +632,7 @@ with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
     cfg = json.load(f)
 ch = cfg.setdefault('channels', {}).setdefault('%s', {})
 af = ch.setdefault('allow_from', [])
-entry = json.loads(%s)
+entry = %s
 if entry not in af:
     af.append(entry)
 with open('/home/ubuntu/.picoclaw/config.json', 'w') as f:

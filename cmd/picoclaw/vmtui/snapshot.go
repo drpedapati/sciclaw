@@ -2,6 +2,8 @@ package vmtui
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,10 @@ type VMSnapshot struct {
 	// Channel state
 	Discord  ChannelSnapshot
 	Telegram ChannelSnapshot
+	// Host-side channel state (outside VM), used to explain VM/host drift.
+	HostConfigExists bool
+	HostDiscord      ChannelSnapshot
+	HostTelegram     ChannelSnapshot
 
 	// Service state
 	ServiceInstalled bool
@@ -73,6 +79,7 @@ type providerJSON struct {
 type channelJSON struct {
 	Enabled   bool            `json:"enabled"`
 	Token     string          `json:"token"`
+	Proxy     string          `json:"proxy,omitempty"`
 	AllowFrom flexStringSlice `json:"allow_from"`
 }
 
@@ -113,13 +120,14 @@ func CollectSnapshot() VMSnapshot {
 	// Fetch VM info and in-VM data in parallel.
 	var wg sync.WaitGroup
 	var vmInfo VMInfo
-	var cfgRaw, authRaw string
-	var cfgErr, authErr error
+	var cfgRaw, authRaw, hostCfgRaw string
+	var cfgErr, authErr, hostCfgErr error
 
-	wg.Add(4)
+	wg.Add(5)
 	go func() { defer wg.Done(); vmInfo = GetVMInfo() }()
 	go func() { defer wg.Done(); cfgRaw, cfgErr = VMCatFile("/home/ubuntu/.picoclaw/config.json") }()
 	go func() { defer wg.Done(); authRaw, authErr = VMCatFile("/home/ubuntu/.picoclaw/auth.json") }()
+	go func() { defer wg.Done(); hostCfgRaw, hostCfgErr = hostConfigRaw() }()
 	go func() { defer wg.Done(); snap.AgentVersion = VMAgentVersion() }()
 	wg.Wait()
 
@@ -144,6 +152,15 @@ func CollectSnapshot() VMSnapshot {
 	var auth authJSON
 	if snap.AuthStoreExists {
 		_ = json.Unmarshal([]byte(authRaw), &auth)
+	}
+
+	// Parse host config (outside VM) to surface drift in the UI.
+	snap.HostConfigExists = hostCfgErr == nil && strings.TrimSpace(hostCfgRaw) != ""
+	var hostCfg configJSON
+	if snap.HostConfigExists {
+		_ = json.Unmarshal([]byte(hostCfgRaw), &hostCfg)
+		snap.HostDiscord = channelState(hostCfg.Channels.Discord)
+		snap.HostTelegram = channelState(hostCfg.Channels.Telegram)
 	}
 
 	// Workspace.
@@ -216,6 +233,19 @@ func expandHome(path string) string {
 
 func shellEscape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func hostConfigRaw() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(home, ".picoclaw", "config.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // SuggestedStep returns a plain-English suggestion and the tab index to navigate to.
