@@ -3,8 +3,6 @@ package vmtui
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -26,6 +24,7 @@ const (
 	modeNormal channelMode = iota
 	modeAddUser
 	modeConfirmRemove
+	modeSetup // inline channel setup wizard
 )
 
 // ChannelsModel handles the Messaging Apps tab.
@@ -45,6 +44,12 @@ type ChannelsModel struct {
 
 	// Temporary add state
 	pendingID string
+
+	// Setup wizard state
+	setupChannel string // "discord" or "telegram"
+	setupStep    int    // 0=token, 1=userID, 2=userName(optional), 3=confirm
+	setupToken   string
+	setupUserID  string
 }
 
 func NewChannelsModel() ChannelsModel {
@@ -78,6 +83,26 @@ func (m ChannelsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ChannelsModel, 
 			m.addInput, cmd = m.addInput.Update(msg)
 			return m, cmd
 		}
+	}
+
+	// Handle setup wizard mode.
+	if m.mode == modeSetup {
+		switch key {
+		case "esc":
+			m.mode = modeNormal
+			m.addInput.Blur()
+			m.addInput.EchoMode = textinput.EchoNormal
+			return m, nil
+		case "enter":
+			return m.handleSetupSubmit(snap)
+		default:
+			if m.setupStep < 3 {
+				var cmd tea.Cmd
+				m.addInput, cmd = m.addInput.Update(msg)
+				return m, cmd
+			}
+		}
+		return m, nil
 	}
 
 	// Handle remove confirmation.
@@ -120,18 +145,7 @@ func (m ChannelsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ChannelsModel, 
 			m.mode = modeConfirmRemove
 		}
 	case "s":
-		// Full setup — suspend TUI and run sciclaw channels setup.
-		ch := "discord"
-		if m.focus == focusTelegram {
-			ch = "telegram"
-		}
-		c := exec.Command("multipass", "exec", vmName, "--", "env", "HOME=/home/ubuntu", "sciclaw", "channels", "setup", ch)
-		c.Stdin = os.Stdin
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		return m, tea.ExecProcess(c, func(err error) tea.Msg {
-			return actionDoneMsg{output: "Channel setup completed."}
-		})
+		return m.startSetup(snap)
 	}
 	return m, nil
 }
@@ -217,7 +231,7 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 
 		// Actions
 		lines = append(lines, "")
-		actions := fmt.Sprintf("  %s Add a user   %s Remove selected   %s Full setup",
+		actions := fmt.Sprintf("  %s Add a user   %s Remove selected   %s Reconfigure",
 			styleKey.Render("[a]"),
 			styleKey.Render("[d]"),
 			styleKey.Render("[s]"),
@@ -238,6 +252,10 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 			styleKey.Render("[y]es"),
 			styleKey.Render("[n]o"),
 		))
+	}
+	if isFocused && m.mode == modeSetup {
+		lines = append(lines, "")
+		lines = append(lines, m.renderSetupOverlay(name))
 	}
 
 	content := strings.Join(lines, "\n")
@@ -338,6 +356,151 @@ func (m ChannelsModel) executeRemove(snap *VMSnapshot) (ChannelsModel, tea.Cmd) 
 		ch = "telegram"
 	}
 	return m, removeUserFromVMConfig(ch, m.removeIdx)
+}
+
+func (m ChannelsModel) startSetup(snap *VMSnapshot) (ChannelsModel, tea.Cmd) {
+	m.mode = modeSetup
+	m.setupStep = 0
+	m.setupToken = ""
+	m.setupUserID = ""
+	if m.focus == focusDiscord {
+		m.setupChannel = "discord"
+	} else {
+		m.setupChannel = "telegram"
+	}
+	m.addInput.SetValue("")
+	m.addInput.Placeholder = "paste bot token here"
+	m.addInput.CharLimit = 256
+	m.addInput.EchoMode = textinput.EchoPassword
+	m.addInput.Focus()
+	return m, nil
+}
+
+func (m ChannelsModel) handleSetupSubmit(snap *VMSnapshot) (ChannelsModel, tea.Cmd) {
+	val := strings.TrimSpace(m.addInput.Value())
+
+	switch m.setupStep {
+	case 0: // Token submitted
+		if val == "" {
+			m.mode = modeNormal
+			m.addInput.Blur()
+			m.addInput.EchoMode = textinput.EchoNormal
+			return m, nil
+		}
+		m.setupToken = val
+
+		// Check if channel already has approved users — skip user ID step if so.
+		ch := snap.Discord
+		if m.setupChannel == "telegram" {
+			ch = snap.Telegram
+		}
+		if len(ch.ApprovedUsers) > 0 {
+			// Skip to confirm step.
+			m.setupStep = 3
+			m.addInput.Blur()
+			m.addInput.EchoMode = textinput.EchoNormal
+			return m, nil
+		}
+
+		m.setupStep = 1
+		m.addInput.SetValue("")
+		m.addInput.Placeholder = "e.g. 123456789012345678"
+		m.addInput.EchoMode = textinput.EchoNormal
+		m.addInput.CharLimit = 64
+		return m, nil
+
+	case 1: // User ID submitted
+		if val == "" {
+			m.mode = modeNormal
+			m.addInput.Blur()
+			m.addInput.EchoMode = textinput.EchoNormal
+			return m, nil
+		}
+		m.setupUserID = val
+		m.setupStep = 2
+		m.addInput.SetValue("")
+		m.addInput.Placeholder = "(optional display name)"
+		return m, nil
+
+	case 2: // Optional display name submitted
+		if m.setupUserID != "" && val != "" {
+			m.setupUserID = FormatEntry(m.setupUserID, val)
+		}
+		m.setupStep = 3
+		m.addInput.Blur()
+		return m, nil
+
+	case 3: // Confirm — Enter means yes
+		m.mode = modeNormal
+		m.addInput.EchoMode = textinput.EchoNormal
+		m.addInput.CharLimit = 64
+		return m, saveChannelSetup(m.setupChannel, m.setupToken, m.setupUserID)
+	}
+
+	return m, nil
+}
+
+func (m ChannelsModel) renderSetupOverlay(channelName string) string {
+	var lines []string
+	header := styleBold.Render(fmt.Sprintf("  Set up %s", channelName))
+	lines = append(lines, header)
+
+	switch m.setupStep {
+	case 0:
+		lines = append(lines, fmt.Sprintf("  Paste your %s bot token: %s", channelName, m.addInput.View()))
+		if channelName == "Discord" {
+			lines = append(lines, styleHint.Render("    Get this from Discord Developer Portal → Bot → Token"))
+		} else {
+			lines = append(lines, styleHint.Render("    Get this from @BotFather on Telegram"))
+		}
+	case 1:
+		lines = append(lines, fmt.Sprintf("  Enter your %s User ID: %s", channelName, m.addInput.View()))
+		if channelName == "Discord" {
+			lines = append(lines, styleHint.Render("    Discord Settings → Advanced → Developer Mode → Right-click avatar → Copy User ID"))
+		} else {
+			lines = append(lines, styleHint.Render("    Message @userinfobot on Telegram to get your ID"))
+		}
+	case 2:
+		lines = append(lines, fmt.Sprintf("  Add a display name (optional): %s", m.addInput.View()))
+		lines = append(lines, styleHint.Render("    Press Enter to skip"))
+	case 3:
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  %s  Enabled: %s", styleDim.Render("Review:"), styleOK.Render("true")))
+		lines = append(lines, fmt.Sprintf("           Token: %s", styleOK.Render("set")))
+		if m.setupUserID != "" {
+			lines = append(lines, fmt.Sprintf("           User:  %s", styleValue.Render(m.setupUserID)))
+		}
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  Save these settings? Press %s to save, %s to cancel",
+			styleKey.Render("Enter"), styleKey.Render("Esc")))
+	}
+	lines = append(lines, styleDim.Render("    Esc to cancel"))
+	return strings.Join(lines, "\n")
+}
+
+func saveChannelSetup(channel, token, userEntry string) tea.Cmd {
+	return func() tea.Msg {
+		tokenJSON, _ := json.Marshal(token)
+		userJSON, _ := json.Marshal(userEntry)
+		script := fmt.Sprintf(`
+import json
+with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
+    cfg = json.load(f)
+ch = cfg.setdefault('channels', {}).setdefault('%s', {})
+ch['enabled'] = True
+ch['token'] = json.loads(%s)
+user = json.loads(%s)
+if user:
+    af = ch.setdefault('allow_from', [])
+    if user not in af:
+        af.append(user)
+with open('/home/ubuntu/.picoclaw/config.json', 'w') as f:
+    json.dump(cfg, f, indent=2)
+print('ok')
+`, channel, string(tokenJSON), string(userJSON))
+		_, _ = VMExecShell(5*time.Second, "python3 -c "+shellEscape(script))
+		return actionDoneMsg{output: channel + " setup saved."}
+	}
 }
 
 // addUserToVMConfig appends a user to the channel's allow_from in the VM config.
