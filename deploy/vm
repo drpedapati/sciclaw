@@ -8,6 +8,9 @@
 #   deploy/vm destroy               Delete the VM entirely
 #   deploy/vm shell                 Open a terminal in the VM
 #   deploy/vm doctor                Run sciclaw doctor inside the VM
+#   deploy/vm onboard [args...]     Run sciclaw onboard inside the VM
+#   deploy/vm auth [args...]        Run sciclaw auth ... inside the VM
+#   deploy/vm channels [args...]    Run sciclaw channels ... inside the VM
 #   deploy/vm push [project-dir]    Sync host → VM
 #   deploy/vm pull [project-dir]    Sync VM → host
 #
@@ -303,6 +306,19 @@ cmd_doctor() {
   multipass exec "$VM_NAME" -- sciclaw doctor
 }
 
+require_running() {
+  local state
+  state=$(vm_state)
+  if [ "$state" != "Running" ]; then
+    die "VM is not running. Run '$VM_CMD_LABEL start' first."
+  fi
+}
+
+cmd_sciclaw_passthrough() {
+  require_running
+  multipass exec "$VM_NAME" -- env HOME=/home/ubuntu sciclaw "$@"
+}
+
 # ── Main ─────────────────────────────────────────────────────────
 
 check_multipass
@@ -314,6 +330,9 @@ case "${1:-help}" in
   destroy) cmd_destroy ;;
   shell)   cmd_shell ;;
   doctor)  cmd_doctor ;;
+  onboard) cmd_sciclaw_passthrough onboard "${@:2}" ;;
+  auth)    cmd_sciclaw_passthrough auth "${@:2}" ;;
+  channels) cmd_sciclaw_passthrough channels "${@:2}" ;;
   push)    cmd_push "${2:-}" ;;
   pull)    cmd_pull "${2:-}" ;;
   help|--help|-h)
@@ -326,6 +345,9 @@ case "${1:-help}" in
     echo "  destroy       Delete the VM"
     echo "  shell         Open a terminal in the VM (drops you into project dir)"
     echo "  doctor        Check all tools are installed"
+    echo "  onboard [...] Run sciclaw onboard inside VM (interactive/idempotent)"
+    echo "  auth [...]    Run sciclaw auth ... inside VM"
+    echo "  channels [...] Run sciclaw channels ... inside VM"
     echo "  push [dir]    Sync local changes → VM"
     echo "  pull [dir]    Sync VM changes → local"
     ;;
