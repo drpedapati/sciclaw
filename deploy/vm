@@ -175,10 +175,20 @@ cmd_start() {
       rm -f "$rendered_cloud_init"
       echo ""
       info "VM created. Waiting for tools to install..."
-      if ! multipass exec "$VM_NAME" -- cloud-init status --wait; then
-        echo "cloud-init failed. Recent cloud-init output follows:" >&2
-        multipass exec "$VM_NAME" -- bash -lc "sudo tail -n 120 /var/log/cloud-init-output.log" || true
-        die "cloud-init did not finish successfully"
+      local cloud_init_output cloud_init_rc
+      set +e
+      cloud_init_output="$(multipass exec "$VM_NAME" -- cloud-init status --wait 2>&1)"
+      cloud_init_rc=$?
+      set -e
+      printf '%s\n' "$cloud_init_output"
+      if [ "$cloud_init_rc" -ne 0 ]; then
+        if printf '%s\n' "$cloud_init_output" | grep -q '^status:[[:space:]]*done$'; then
+          info "cloud-init reported non-zero status but provisioning reached 'done'; continuing."
+        else
+          echo "cloud-init failed. Recent cloud-init output follows:" >&2
+          multipass exec "$VM_NAME" -- bash -lc "sudo tail -n 120 /var/log/cloud-init-output.log" || true
+          die "cloud-init did not finish successfully"
+        fi
       fi
       info "VM ready."
       ;;

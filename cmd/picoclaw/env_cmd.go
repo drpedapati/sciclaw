@@ -211,8 +211,11 @@ func helperFromRoot(root string) (vmHelperFiles, bool) {
 
 func helperGitRef() string {
 	v := strings.TrimSpace(version)
-	if v == "" || v == "dev" || strings.Contains(strings.ToLower(v), "dev") {
+	if v == "" || v == "dev" {
 		return "main"
+	}
+	if strings.Contains(strings.ToLower(v), "dev") {
+		return "development"
 	}
 	if strings.HasPrefix(v, "v") {
 		return v
