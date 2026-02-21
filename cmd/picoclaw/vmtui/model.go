@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var tabNames = []string{"Home", "Messaging Apps", "Login", "Health Check", "Agent Service", "Your Files"}
+var tabNames = []string{"Home", "Messaging Apps", "Users", "Login", "Health Check", "Agent Service", "Your Files"}
 
 // Messages.
 type snapshotMsg struct {
@@ -36,6 +36,7 @@ type Model struct {
 	// Sub-models for each tab
 	home     HomeModel
 	channels ChannelsModel
+	users    UsersModel
 	login    LoginModel
 	doctor   DoctorModel
 	agent    AgentModel
@@ -53,6 +54,7 @@ func NewModel() Model {
 		loading:   true,
 		home:      NewHomeModel(),
 		channels:  NewChannelsModel(),
+		users:     NewUsersModel(),
 		login:     NewLoginModel(),
 		doctor:    NewDoctorModel(),
 		agent:     NewAgentModel(),
@@ -68,15 +70,16 @@ func (m Model) Init() tea.Cmd {
 	)
 }
 
-// channelsCapturingInput returns true when the channels tab is in a mode
+// subTabCapturingInput returns true when a sub-tab is in a mode
 // that captures all keyboard input (text entry, confirmation dialogs).
-func (m Model) channelsCapturingInput() bool {
-	return m.activeTab == 1 && m.channels.mode != modeNormal
+func (m Model) subTabCapturingInput() bool {
+	return (m.activeTab == 1 && m.channels.mode != modeNormal) ||
+		(m.activeTab == 2 && m.users.mode != usersNormal)
 }
 
 // maybeAutoRunDoctor triggers doctor auto-run when the Health Check tab is first visited.
 func (m *Model) maybeAutoRunDoctor() tea.Cmd {
-	if m.activeTab == 3 {
+	if m.activeTab == 4 {
 		return m.doctor.AutoRun()
 	}
 	return nil
@@ -95,12 +98,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		// When a sub-tab is capturing input, only ctrl+c escapes globally.
-		if m.channelsCapturingInput() {
+		if m.subTabCapturingInput() {
 			if msg.String() == "ctrl+c" {
 				return m, tea.Quit
 			}
 			var cmd tea.Cmd
-			m.channels, cmd = m.channels.Update(msg, m.snapshot)
+			switch m.activeTab {
+			case 1:
+				m.channels, cmd = m.channels.Update(msg, m.snapshot)
+			case 2:
+				m.users, cmd = m.users.Update(msg, m.snapshot)
+			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -127,12 +135,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 1:
 			m.channels, cmd = m.channels.Update(msg, m.snapshot)
 		case 2:
-			m.login, cmd = m.login.Update(msg, m.snapshot)
+			m.users, cmd = m.users.Update(msg, m.snapshot)
 		case 3:
-			m.doctor, cmd = m.doctor.Update(msg, m.snapshot)
+			m.login, cmd = m.login.Update(msg, m.snapshot)
 		case 4:
-			m.agent, cmd = m.agent.Update(msg, m.snapshot)
+			m.doctor, cmd = m.doctor.Update(msg, m.snapshot)
 		case 5:
+			m.agent, cmd = m.agent.Update(msg, m.snapshot)
+		case 6:
 			m.files, cmd = m.files.Update(msg, m.snapshot)
 		}
 		if cmd != nil {
@@ -211,12 +221,14 @@ func (m Model) View() string {
 		case 1:
 			content = m.channels.View(m.snapshot, contentWidth)
 		case 2:
-			content = m.login.View(m.snapshot, contentWidth)
+			content = m.users.View(m.snapshot, contentWidth)
 		case 3:
-			content = m.doctor.View(m.snapshot, contentWidth)
+			content = m.login.View(m.snapshot, contentWidth)
 		case 4:
-			content = m.agent.View(m.snapshot, contentWidth)
+			content = m.doctor.View(m.snapshot, contentWidth)
 		case 5:
+			content = m.agent.View(m.snapshot, contentWidth)
+		case 6:
 			content = m.files.View(m.snapshot, contentWidth)
 		}
 		b.WriteString(content)
