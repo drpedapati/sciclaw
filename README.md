@@ -56,6 +56,14 @@ That's it. sciClaw runs in the background and responds to your messages. See the
 brew tap drpedapati/tap && brew install sciclaw
 ```
 
+### Homebrew (development channel)
+
+```bash
+brew tap drpedapati/tap && brew install sciclaw-dev
+```
+
+`sciclaw-dev` tracks development branch releases and conflicts with stable `sciclaw` (both install the same `sciclaw`/`picoclaw` commands).
+
 Then run the interactive setup wizard:
 ```bash
 sciclaw onboard
