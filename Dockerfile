@@ -30,21 +30,6 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
 FROM debian:bookworm-slim
 
 ARG TARGETARCH
-ARG UV_VERSION=0.10.4
-ARG QUARTO_VERSION=1.8.27
-ARG IRL_VERSION=0.5.17
-ARG DOCX_REVIEW_VERSION=1.3.0
-ARG PUBMED_CLI_VERSION=0.5.4
-ARG UV_SHA256_AMD64=6b52a47358deea1c5e173278bf46b2b489747a59ae31f2a4362ed5c6c1c269f7
-ARG UV_SHA256_ARM64=c84a6e6405715caa6e2f5ef8e5f29a5d0bc558a954e9f1b5c082b9d4708c222e
-ARG QUARTO_SHA256_AMD64=bdf689b5589789a1f21d89c3b83d78ed02a97914dd702e617294f2cc1ea7387d
-ARG QUARTO_SHA256_ARM64=1f2082e82e971c5b2b78424cac93a0921c0050455ec5eaa32533b0230682883e
-ARG IRL_SHA256_AMD64=3cd4ceda734027d77ba8bde1d8413848f498cf41ca3d59ee4b491eade5dcd98a
-ARG IRL_SHA256_ARM64=7706a2262c1de343b4808ca995c463850c3470673f005d7337eef82fea542de9
-ARG DOCX_REVIEW_SHA256_AMD64=2f088bcdfb0d152988960a8a08fb513fc7912a522c8c7afa6d8b0c7c2e4d063f
-ARG DOCX_REVIEW_SHA256_ARM64=3f49741164a040bcb5b8e09e062a4d7f6088ef7b611d31754f751314e6db3aca
-ARG PUBMED_CLI_SHA256_AMD64=e2c539e4c9a268f06aa3bbf1387dff923e1fdc148a0edb8f1449eadc8e63e828
-ARG PUBMED_CLI_SHA256_ARM64=8360f26c33a6c5b5e12acdc6f7d55899dff15d5f0fc766b0632b69347b61c638
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -65,7 +50,11 @@ RUN if [ ! -x /usr/bin/magick ] && [ -x /usr/bin/convert ]; then \
       ln -sf /usr/bin/convert /usr/local/bin/magick; \
     fi
 
+# Shared runtime tool versions/checksums used by both Docker and Multipass cloud-init.
+COPY deploy/toolchain.env /tmp/sciclaw-toolchain.env
+
 RUN set -eux; \
+    . /tmp/sciclaw-toolchain.env; \
     case "${TARGETARCH}" in \
       amd64) \
         ARCH=amd64; \
@@ -113,7 +102,7 @@ RUN set -eux; \
     printf '%s  %s\n' "${PUBMED_CLI_SHA256}" "/tmp/pubmed" | sha256sum -c -; \
     install -m 0755 /tmp/pubmed /usr/local/bin/pubmed; \
     ln -sf /usr/local/bin/pubmed /usr/local/bin/pubmed-cli; \
-    rm -rf /tmp/uv* /tmp/quarto.tgz /tmp/irl /tmp/docx-review /tmp/pubmed
+    rm -rf /tmp/uv* /tmp/quarto.tgz /tmp/irl /tmp/docx-review /tmp/pubmed /tmp/sciclaw-toolchain.env
 
 # Copy binary
 COPY --from=builder /out/sciclaw /usr/local/bin/sciclaw

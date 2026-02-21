@@ -1,0 +1,122 @@
+#cloud-config
+# sciClaw Multipass provisioning
+#
+# This file is treated as a template by deploy/vm:
+# - __TOOLCHAIN_ENV_CONTENT__ is replaced at launch time using deploy/toolchain.env
+# - the rendered config is passed to `multipass launch --cloud-init ...`
+#
+# This keeps Docker and VM provisioning on one shared tool/version/checksum config.
+
+write_files:
+  - path: /etc/sciclaw/toolchain.env
+    owner: root:root
+    permissions: "0644"
+    content: |
+      __TOOLCHAIN_ENV_CONTENT__
+
+packages:
+  - ca-certificates
+  - curl
+  - imagemagick
+  - pandoc
+  - python3
+  - python3-pip
+  - python3-venv
+  - ripgrep
+  - tar
+  - tzdata
+
+runcmd:
+  - |
+    set -eux
+
+    . /etc/sciclaw/toolchain.env
+
+    ARCH="$(dpkg --print-architecture)"   # amd64 or arm64
+    case "$ARCH" in
+      amd64)
+        UV_ARCH="x86_64-unknown-linux-gnu"
+        QUARTO_ARCH="amd64"
+        UV_SHA256="$UV_SHA256_AMD64"
+        QUARTO_SHA256="$QUARTO_SHA256_AMD64"
+        IRL_SHA256="$IRL_SHA256_AMD64"
+        DOCX_REVIEW_SHA256="$DOCX_REVIEW_SHA256_AMD64"
+        PUBMED_CLI_SHA256="$PUBMED_CLI_SHA256_AMD64"
+        SCICLAW_SHA256="$SCICLAW_SHA256_AMD64"
+        ;;
+      arm64)
+        UV_ARCH="aarch64-unknown-linux-gnu"
+        QUARTO_ARCH="arm64"
+        UV_SHA256="$UV_SHA256_ARM64"
+        QUARTO_SHA256="$QUARTO_SHA256_ARM64"
+        IRL_SHA256="$IRL_SHA256_ARM64"
+        DOCX_REVIEW_SHA256="$DOCX_REVIEW_SHA256_ARM64"
+        PUBMED_CLI_SHA256="$PUBMED_CLI_SHA256_ARM64"
+        SCICLAW_SHA256="$SCICLAW_SHA256_ARM64"
+        ;;
+      *)
+        echo "Unsupported architecture: $ARCH" >&2
+        exit 1
+        ;;
+    esac
+
+    # Debian's ImageMagick 6 provides `convert` but not `magick`.
+    if [ ! -x /usr/bin/magick ] && [ -x /usr/bin/convert ]; then
+      ln -sf /usr/bin/convert /usr/local/bin/magick
+    fi
+
+    # uv
+    curl -fsSL -o /tmp/uv.tgz \
+      "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ARCH}.tar.gz"
+    printf '%s  %s\n' "$UV_SHA256" "/tmp/uv.tgz" | sha256sum -c -
+    tar -xzf /tmp/uv.tgz -C /tmp
+    install -m 0755 "/tmp/uv-${UV_ARCH}/uv" /usr/local/bin/uv
+    install -m 0755 "/tmp/uv-${UV_ARCH}/uvx" /usr/local/bin/uvx
+
+    # Quarto
+    curl -fsSL -o /tmp/quarto.tgz \
+      "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${QUARTO_ARCH}.tar.gz"
+    printf '%s  %s\n' "$QUARTO_SHA256" "/tmp/quarto.tgz" | sha256sum -c -
+    tar -xzf /tmp/quarto.tgz -C /opt
+    ln -sf "/opt/quarto-${QUARTO_VERSION}/bin/quarto" /usr/local/bin/quarto
+
+    # irl
+    curl -fsSL -o /tmp/irl \
+      "https://github.com/drpedapati/irl-template/releases/download/v${IRL_VERSION}/irl-linux-${ARCH}"
+    printf '%s  %s\n' "$IRL_SHA256" "/tmp/irl" | sha256sum -c -
+    install -m 0755 /tmp/irl /usr/local/bin/irl
+
+    # docx-review
+    curl -fsSL -o /tmp/docx-review \
+      "https://github.com/drpedapati/docx-review/releases/download/v${DOCX_REVIEW_VERSION}/docx-review-linux-${ARCH}"
+    printf '%s  %s\n' "$DOCX_REVIEW_SHA256" "/tmp/docx-review" | sha256sum -c -
+    install -m 0755 /tmp/docx-review /usr/local/bin/docx-review
+
+    # pubmed-cli
+    curl -fsSL -o /tmp/pubmed \
+      "https://github.com/drpedapati/pubmed-cli/releases/download/v${PUBMED_CLI_VERSION}/pubmed-linux-${ARCH}"
+    printf '%s  %s\n' "$PUBMED_CLI_SHA256" "/tmp/pubmed" | sha256sum -c -
+    install -m 0755 /tmp/pubmed /usr/local/bin/pubmed
+    ln -sf /usr/local/bin/pubmed /usr/local/bin/pubmed-cli
+
+    # sciclaw binary + matching skills from same release tag
+    curl -fsSL -o /tmp/sciclaw \
+      "https://github.com/drpedapati/sciclaw/releases/download/v${SCICLAW_VERSION}/sciclaw-linux-${ARCH}"
+    printf '%s  %s\n' "$SCICLAW_SHA256" "/tmp/sciclaw" | sha256sum -c -
+    install -m 0755 /tmp/sciclaw /usr/local/bin/sciclaw
+    ln -sf /usr/local/bin/sciclaw /usr/local/bin/picoclaw
+
+    curl -fsSL -o /tmp/sciclaw-source.tgz \
+      "https://github.com/drpedapati/sciclaw/archive/refs/tags/v${SCICLAW_VERSION}.tar.gz"
+    printf '%s  %s\n' "$SCICLAW_SOURCE_SHA256" "/tmp/sciclaw-source.tgz" | sha256sum -c -
+    tar -xzf /tmp/sciclaw-source.tgz -C /tmp
+    mkdir -p /usr/local/share/sciclaw
+    cp -r "/tmp/sciclaw-${SCICLAW_VERSION}/skills" /usr/local/share/sciclaw/skills
+
+    # Bootstrap config/workspace/skills via the installed CLI.
+    su - ubuntu -c 'HOME=/home/ubuntu /usr/local/bin/sciclaw onboard --yes'
+
+    rm -rf /tmp/uv* /tmp/quarto.tgz /tmp/irl /tmp/docx-review /tmp/pubmed \
+           /tmp/sciclaw /tmp/sciclaw-source.tgz "/tmp/sciclaw-${SCICLAW_VERSION}"
+
+    echo "✓ sciClaw environment ready"

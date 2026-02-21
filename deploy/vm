@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+# sciClaw VM manager — one-command setup via Multipass.
+#
+# Usage:
+#   deploy/vm start [project-dir]   Create/start VM, sync project directory
+#   deploy/vm stop                  Pause the VM (frees RAM, keeps state)
+#   deploy/vm status                Show VM state
+#   deploy/vm destroy               Delete the VM entirely
+#   deploy/vm shell                 Open a terminal in the VM
+#   deploy/vm doctor                Run sciclaw doctor inside the VM
+#   deploy/vm push [project-dir]    Sync host → VM
+#   deploy/vm pull [project-dir]    Sync VM → host
+#
+# The first argument to "start" is the host directory to sync into the VM.
+# Defaults to the current working directory.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VM_NAME="sciclaw"
+VM_CPUS=4
+VM_MEM="8G"
+VM_DISK="80G"
+VM_IMAGE="24.04"
+CLOUD_INIT_TEMPLATE="${SCICLAW_VM_CLOUD_INIT_TEMPLATE:-$SCRIPT_DIR/multipass-cloud-init.yaml}"
+TOOLCHAIN_ENV="${SCICLAW_VM_TOOLCHAIN_ENV:-$SCRIPT_DIR/toolchain.env}"
+VM_PROJECT="/home/ubuntu/project"
+STATE_DIR="${SCICLAW_VM_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/sciclaw}"
+STATE_PROJECT_FILE="$STATE_DIR/vm-project-path"
+VM_CMD_LABEL="${SCICLAW_VM_CMD_LABEL:-deploy/vm}"
+
+# ── Helpers ──────────────────────────────────────────────────────
+
+die()  { echo "error: $*" >&2; exit 1; }
+info() { echo "  $*"; }
+
+check_multipass() {
+  if ! command -v multipass &>/dev/null; then
+    echo "Multipass is not installed."
+    echo ""
+    echo "Install it (free) from: https://multipass.run"
+    echo ""
+    echo "  macOS:   brew install multipass"
+    echo "  Linux:   sudo snap install multipass"
+    echo "  Windows: download from https://multipass.run/install"
+    exit 1
+  fi
+}
+
+vm_state() {
+  local state
+  state="$(multipass info "$VM_NAME" 2>/dev/null | awk -F': *' '/^State:/{print $2; exit}')" || state=""
+  if [ -z "$state" ]; then
+    echo "NotFound"
+  else
+    echo "$state"
+  fi
+}
+
+resolve_project() {
+  local dir="${1:-$(pwd)}"
+  cd "$dir" && pwd
+}
+
+render_cloud_init() {
+  [ -f "$CLOUD_INIT_TEMPLATE" ] || die "cloud-init template not found: $CLOUD_INIT_TEMPLATE"
+  [ -f "$TOOLCHAIN_ENV" ] || die "toolchain config not found: $TOOLCHAIN_ENV"
+
+  local rendered
+  rendered="$(mktemp /tmp/sciclaw-cloud-init.XXXXXX.yaml)"
+
+  awk -v toolchain="$TOOLCHAIN_ENV" '
+    /^[[:space:]]*__TOOLCHAIN_ENV_CONTENT__[[:space:]]*$/ {
+      found = 1
+      while ((getline line < toolchain) > 0) {
+        print "      " line
+      }
+      close(toolchain)
+      next
+    }
+    { print }
+    END {
+      if (!found) {
+        exit 97
+      }
+    }
+  ' "$CLOUD_INIT_TEMPLATE" > "$rendered" || {
+    rm -f "$rendered"
+    die "failed to render cloud-init template"
+  }
+
+  echo "$rendered"
+}
+
+# Sync files host → VM via tarball + multipass transfer (fast, cross-platform)
+sync_to_vm() {
+  local project_dir="$1"
+  local project_name
+  project_name=$(basename "$project_dir")
+  local tmp_tar="/tmp/.sciclaw-sync.tar.gz"
+
+  info "Syncing $project_name → VM..."
+
+  # Create compressed tarball on host (exclude heavy build artifacts)
+  tar czf "$tmp_tar" \
+    --exclude='.git' \
+    --exclude='.worktrees' \
+    --exclude='build' \
+    --exclude='vendor' \
+    --exclude='node_modules' \
+    --exclude='__pycache__' \
+    --exclude='.venv' \
+    -C "$project_dir" . 2>/dev/null
+
+  # Transfer and extract inside VM
+  multipass transfer "$tmp_tar" "$VM_NAME:/tmp/.sciclaw-sync.tar.gz"
+  multipass exec "$VM_NAME" -- bash -c \
+    "mkdir -p \"$VM_PROJECT\" && tar xzf /tmp/.sciclaw-sync.tar.gz -C \"$VM_PROJECT\" 2>/dev/null; rm -f /tmp/.sciclaw-sync.tar.gz"
+
+  rm -f "$tmp_tar"
+  info "Synced to VM:$VM_PROJECT"
+}
+
+# Sync files VM → host via tarball + multipass transfer
+sync_from_vm() {
+  local project_dir="$1"
+  local tmp_tar="/tmp/.sciclaw-sync.tar.gz"
+
+  info "Syncing VM → $project_dir..."
+
+  multipass exec "$VM_NAME" -- bash -c \
+    "tar czf /tmp/.sciclaw-sync.tar.gz -C \"$VM_PROJECT\" . 2>/dev/null"
+  multipass transfer "$VM_NAME:/tmp/.sciclaw-sync.tar.gz" "$tmp_tar"
+  tar xzf "$tmp_tar" -C "$project_dir" 2>/dev/null
+  multipass exec "$VM_NAME" -- rm -f /tmp/.sciclaw-sync.tar.gz
+
+  rm -f "$tmp_tar"
+  info "Synced from VM:$VM_PROJECT"
+}
+
+# ── Commands ─────────────────────────────────────────────────────
+
+cmd_start() {
+  local project_dir
+  project_dir=$(resolve_project "${1:-}")
+
+  if [ ! -d "$project_dir" ]; then
+    die "directory not found: $project_dir"
+  fi
+
+  local state
+  state=$(vm_state)
+
+  case "$state" in
+    Running)
+      info "VM already running."
+      ;;
+    Stopped|Suspended)
+      echo "Starting VM..."
+      multipass start "$VM_NAME"
+      info "VM started."
+      ;;
+    NotFound)
+      local rendered_cloud_init
+      rendered_cloud_init="$(render_cloud_init)"
+      echo "Creating sciClaw VM (this takes a few minutes on first run)..."
+      echo ""
+      multipass launch \
+        --name "$VM_NAME" \
+        --cpus "$VM_CPUS" \
+        --memory "$VM_MEM" \
+        --disk "$VM_DISK" \
+        --cloud-init "$rendered_cloud_init" \
+        "$VM_IMAGE"
+      rm -f "$rendered_cloud_init"
+      echo ""
+      info "VM created. Waiting for tools to install..."
+      if ! multipass exec "$VM_NAME" -- cloud-init status --wait; then
+        echo "cloud-init failed. Recent cloud-init output follows:" >&2
+        multipass exec "$VM_NAME" -- bash -lc "sudo tail -n 120 /var/log/cloud-init-output.log" || true
+        die "cloud-init did not finish successfully"
+      fi
+      info "VM ready."
+      ;;
+    *)
+      die "unexpected VM state: $state"
+      ;;
+  esac
+
+  # Sync project files into the VM
+  sync_to_vm "$project_dir"
+
+  # Save project path so push/pull know where to sync
+  mkdir -p "$STATE_DIR"
+  echo "$project_dir" > "$STATE_PROJECT_FILE"
+
+  echo ""
+  echo "Ready. Your project is at $VM_PROJECT inside the VM."
+  echo ""
+  echo "  $VM_CMD_LABEL shell     Open a terminal in the VM"
+  echo "  $VM_CMD_LABEL push      Sync your local changes → VM"
+  echo "  $VM_CMD_LABEL pull      Sync VM changes → local"
+  echo "  $VM_CMD_LABEL doctor    Check that all tools are installed"
+  echo "  $VM_CMD_LABEL stop      Pause the VM"
+}
+
+cmd_push() {
+  local project_dir
+  if [ -n "${1:-}" ]; then
+    project_dir=$(resolve_project "$1")
+  elif [ -f "$STATE_PROJECT_FILE" ]; then
+    project_dir=$(cat "$STATE_PROJECT_FILE")
+  else
+    project_dir=$(pwd)
+  fi
+  sync_to_vm "$project_dir"
+}
+
+cmd_pull() {
+  local project_dir
+  if [ -n "${1:-}" ]; then
+    project_dir=$(resolve_project "$1")
+  elif [ -f "$STATE_PROJECT_FILE" ]; then
+    project_dir=$(cat "$STATE_PROJECT_FILE")
+  else
+    project_dir=$(pwd)
+  fi
+  sync_from_vm "$project_dir"
+}
+
+cmd_stop() {
+  local state
+  state=$(vm_state)
+  if [ "$state" = "Running" ]; then
+    multipass stop "$VM_NAME"
+    info "VM stopped."
+  elif [ "$state" = "NotFound" ]; then
+    die "no VM found. Run '$VM_CMD_LABEL start' first."
+  else
+    info "VM is already $state."
+  fi
+}
+
+cmd_status() {
+  local state
+  state=$(vm_state)
+  if [ "$state" = "NotFound" ]; then
+    echo "No sciClaw VM found. Run '$VM_CMD_LABEL start' to create one."
+    return
+  fi
+  multipass info "$VM_NAME"
+  if [ -f "$STATE_PROJECT_FILE" ]; then
+    echo ""
+    echo "Project: $(cat "$STATE_PROJECT_FILE") ↔ VM:$VM_PROJECT"
+  fi
+}
+
+cmd_destroy() {
+  local state
+  state=$(vm_state)
+  if [ "$state" = "NotFound" ]; then
+    info "No VM to destroy."
+    return
+  fi
+  echo "This will permanently delete the sciClaw VM and all data inside it."
+  read -rp "Are you sure? [y/N] " confirm
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    multipass delete "$VM_NAME" && multipass purge
+    rm -f "$STATE_PROJECT_FILE"
+    info "VM destroyed."
+  else
+    info "Cancelled."
+  fi
+}
+
+cmd_shell() {
+  local state
+  state=$(vm_state)
+  if [ "$state" != "Running" ]; then
+    die "VM is not running. Run '$VM_CMD_LABEL start' first."
+  fi
+  echo "Entering VM. Your project is at: $VM_PROJECT"
+  echo ""
+  multipass exec "$VM_NAME" -- bash --login -c "cd \"$VM_PROJECT\" && exec bash"
+}
+
+cmd_doctor() {
+  local state
+  state=$(vm_state)
+  if [ "$state" != "Running" ]; then
+    die "VM is not running. Run '$VM_CMD_LABEL start' first."
+  fi
+  multipass exec "$VM_NAME" -- sciclaw doctor
+}
+
+# ── Main ─────────────────────────────────────────────────────────
+
+check_multipass
+
+case "${1:-help}" in
+  start)   cmd_start "${2:-}" ;;
+  stop)    cmd_stop ;;
+  status)  cmd_status ;;
+  destroy) cmd_destroy ;;
+  shell)   cmd_shell ;;
+  doctor)  cmd_doctor ;;
+  push)    cmd_push "${2:-}" ;;
+  pull)    cmd_pull "${2:-}" ;;
+  help|--help|-h)
+    echo "Usage: $VM_CMD_LABEL <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  start [dir]   Create/start VM and sync project directory (default: cwd)"
+    echo "  stop          Pause the VM"
+    echo "  status        Show VM info"
+    echo "  destroy       Delete the VM"
+    echo "  shell         Open a terminal in the VM (drops you into project dir)"
+    echo "  doctor        Check all tools are installed"
+    echo "  push [dir]    Sync local changes → VM"
+    echo "  pull [dir]    Sync VM changes → local"
+    ;;
+  *)
+    die "unknown command: $1 (try '$VM_CMD_LABEL help')"
+    ;;
+esac

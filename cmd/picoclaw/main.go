@@ -148,6 +148,10 @@ func main() {
 		gatewayCmd()
 	case "service":
 		serviceCmd()
+	case "vm":
+		vmCmd()
+	case "docker":
+		dockerCmd()
 	case "channels":
 		channelsCmd()
 	case "status":
@@ -236,6 +240,8 @@ func printHelp() {
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start sciClaw gateway")
 	fmt.Println("  service     Manage background gateway service (launchd/systemd)")
+	fmt.Println("  vm          Manage a Multipass sciClaw VM (no repo checkout required)")
+	fmt.Println("  docker      Convenience wrapper for sciClaw container workflows")
 	fmt.Println("  channels    Setup and manage chat channels (Telegram, Discord, etc.)")
 	fmt.Println("  status      Show sciClaw status")
 	fmt.Println("  doctor      Check deployment health and dependencies")
