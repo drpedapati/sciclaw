@@ -30,15 +30,6 @@ func (m FilesModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (FilesModel, tea.Cm
 	case "g":
 		// Pull: suspend TUI, run the bash vm pull.
 		return m, m.runVMScript("pull", m.projectDir)
-	case "d":
-		// Doctor
-		c := exec.Command("multipass", "exec", vmName, "--", "sciclaw", "doctor")
-		c.Stdin = os.Stdin
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		return m, tea.ExecProcess(c, func(err error) tea.Msg {
-			return actionDoneMsg{output: "Doctor completed."}
-		})
 	case "h":
 		// Shell
 		c := exec.Command("multipass", "exec", vmName, "--", "bash", "--login", "-c", "cd /home/ubuntu/project && exec bash")
@@ -117,7 +108,6 @@ func (m FilesModel) renderSyncPanel(snap *VMSnapshot, w int) string {
 
 func (m FilesModel) renderActionsPanel(w int) string {
 	var lines []string
-	lines = append(lines, fmt.Sprintf("  %s Run health check (doctor)", styleKey.Render("[d]")))
 	lines = append(lines, fmt.Sprintf("  %s Open VM terminal (shell)", styleKey.Render("[h]")))
 	lines = append(lines, fmt.Sprintf("  %s Run initial setup (onboard)", styleKey.Render("[o]")))
 	lines = append(lines, fmt.Sprintf("  %s Guided setup wizard", styleKey.Render("[w]")))

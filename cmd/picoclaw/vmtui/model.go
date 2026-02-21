@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var tabNames = []string{"Home", "Messaging Apps", "Login", "Agent Service", "Your Files"}
+var tabNames = []string{"Home", "Messaging Apps", "Login", "Health Check", "Agent Service", "Your Files"}
 
 // Messages.
 type snapshotMsg struct {
@@ -37,6 +37,7 @@ type Model struct {
 	home     HomeModel
 	channels ChannelsModel
 	login    LoginModel
+	doctor   DoctorModel
 	agent    AgentModel
 	files    FilesModel
 }
@@ -53,6 +54,7 @@ func NewModel() Model {
 		home:      NewHomeModel(),
 		channels:  NewChannelsModel(),
 		login:     NewLoginModel(),
+		doctor:    NewDoctorModel(),
 		agent:     NewAgentModel(),
 		files:     NewFilesModel(),
 	}
@@ -72,6 +74,14 @@ func (m Model) channelsCapturingInput() bool {
 	return m.activeTab == 1 && m.channels.mode != modeNormal
 }
 
+// maybeAutoRunDoctor triggers doctor auto-run when the Health Check tab is first visited.
+func (m *Model) maybeAutoRunDoctor() tea.Cmd {
+	if m.activeTab == 3 {
+		return m.doctor.AutoRun()
+	}
+	return nil
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -79,6 +89,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.doctor.HandleResize(m.width, m.height)
 		m.agent.HandleResize(m.width, m.height)
 		return m, nil
 
@@ -102,10 +113,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "tab":
 			m.activeTab = (m.activeTab + 1) % len(tabNames)
-			return m, nil
+			return m, m.maybeAutoRunDoctor()
 		case "shift+tab":
 			m.activeTab = (m.activeTab - 1 + len(tabNames)) % len(tabNames)
-			return m, nil
+			return m, m.maybeAutoRunDoctor()
 		}
 
 		// Delegate to active tab.
@@ -118,8 +129,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 2:
 			m.login, cmd = m.login.Update(msg, m.snapshot)
 		case 3:
-			m.agent, cmd = m.agent.Update(msg, m.snapshot)
+			m.doctor, cmd = m.doctor.Update(msg, m.snapshot)
 		case 4:
+			m.agent, cmd = m.agent.Update(msg, m.snapshot)
+		case 5:
 			m.files, cmd = m.files.Update(msg, m.snapshot)
 		}
 		if cmd != nil {
@@ -152,6 +165,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actionDoneMsg:
 		m.loading = true
 		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd())
+
+	case doctorDoneMsg:
+		m.doctor.HandleResult(msg)
+		return m, nil
 
 	case logsMsg:
 		m.agent.HandleLogsMsg(msg)
@@ -196,8 +213,10 @@ func (m Model) View() string {
 		case 2:
 			content = m.login.View(m.snapshot, contentWidth)
 		case 3:
-			content = m.agent.View(m.snapshot, contentWidth)
+			content = m.doctor.View(m.snapshot, contentWidth)
 		case 4:
+			content = m.agent.View(m.snapshot, contentWidth)
+		case 5:
 			content = m.files.View(m.snapshot, contentWidth)
 		}
 		b.WriteString(content)
