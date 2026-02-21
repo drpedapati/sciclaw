@@ -11,6 +11,7 @@
 #   deploy/vm onboard [args...]     Run sciclaw onboard inside the VM
 #   deploy/vm auth [args...]        Run sciclaw auth ... inside the VM
 #   deploy/vm channels [args...]    Run sciclaw channels ... inside the VM
+#   deploy/vm tui                   Open interactive VM control center
 #   deploy/vm push [project-dir]    Sync host → VM
 #   deploy/vm pull [project-dir]    Sync VM → host
 #
@@ -319,6 +320,166 @@ cmd_sciclaw_passthrough() {
   multipass exec "$VM_NAME" -- env HOME=/home/ubuntu sciclaw "$@"
 }
 
+default_project_dir() {
+  if [ -f "$STATE_PROJECT_FILE" ]; then
+    cat "$STATE_PROJECT_FILE"
+  else
+    pwd
+  fi
+}
+
+prompt_project_dir() {
+  local def input
+  def="$(default_project_dir)"
+  read -r -p "Project dir [$def]: " input
+  if [ -n "${input:-}" ]; then
+    echo "$input"
+  else
+    echo "$def"
+  fi
+}
+
+pause_screen() {
+  echo ""
+  read -r -p "Press Enter to continue..." _
+}
+
+get_vm_info_field() {
+  local field="$1"
+  multipass info "$VM_NAME" 2>/dev/null | awk -F': *' -v key="$field" '$1==key {print $2; exit}'
+}
+
+get_vm_version_line() {
+  multipass exec "$VM_NAME" -- sciclaw --version 2>/dev/null | head -n 1 | sed 's/^ *//'
+}
+
+get_vm_channel_lines() {
+  multipass exec "$VM_NAME" -- bash -lc '
+python3 - <<PY
+import json, os
+p = os.path.expanduser("~/.picoclaw/config.json")
+try:
+    cfg = json.load(open(p))
+except Exception:
+    print("discord: unavailable")
+    print("telegram: unavailable")
+    raise SystemExit(0)
+
+def line(name, token_key):
+    c = cfg.get("channels", {}).get(name, {})
+    enabled = bool(c.get("enabled"))
+    token = bool(str(c.get(token_key, "")).strip())
+    allow = len(c.get("allow_from") or [])
+    return f"{name}: enabled={enabled} token={token} allow={allow}"
+
+print(line("discord", "token"))
+print(line("telegram", "token"))
+PY
+' 2>/dev/null || true
+}
+
+draw_tui() {
+  local state project ip load mem version channels
+  state="$(vm_state)"
+  project="$(default_project_dir)"
+  ip="-"
+  load="-"
+  mem="-"
+  version="-"
+  channels=$'discord: unavailable\ntelegram: unavailable'
+
+  if [ "$state" != "NotFound" ]; then
+    ip="$(get_vm_info_field "IPv4" | xargs || true)"
+    load="$(get_vm_info_field "Load" | xargs || true)"
+    mem="$(get_vm_info_field "Memory usage" | xargs || true)"
+  fi
+
+  if [ "$state" = "Running" ]; then
+    version="$(get_vm_version_line)"
+    channels="$(get_vm_channel_lines)"
+  fi
+
+  clear
+  cat <<EOF
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ 🔬 sciClaw VM Control Center                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ VM:      $VM_NAME
+ State:   $state
+ IP:      ${ip:--}
+ Load:    ${load:--}
+ Memory:  ${mem:--}
+ Project: $project
+ Agent:   ${version:--}
+
+ Channels:
+   $(printf '%s' "$channels" | sed 's/^/ /')
+
+ Actions:
+   [1] Start/Sync VM        [2] Status           [3] Shell
+   [4] Onboard              [5] Auth OpenAI      [6] Auth Anthropic
+   [7] Discord setup        [8] Telegram setup   [9] Gateway run (foreground)
+   [10] Service install     [11] Service start   [12] Service restart
+   [13] Service logs        [14] Doctor          [15] Push sync
+   [16] Pull sync           [17] Stop VM         [18] Destroy VM
+   [q] Quit
+EOF
+}
+
+run_tui_action() {
+  set +e
+  "$@"
+  local rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo ""
+    echo "Action failed (exit $rc)."
+  fi
+  pause_screen
+}
+
+cmd_tui() {
+  while true; do
+    draw_tui
+    local choice project_dir
+    read -r -p "Select action: " choice
+    case "${choice:-}" in
+      1)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_start "$project_dir"
+        ;;
+      2)  run_tui_action cmd_status ;;
+      3)  run_tui_action cmd_shell ;;
+      4)  run_tui_action cmd_sciclaw_passthrough onboard ;;
+      5)  run_tui_action cmd_sciclaw_passthrough auth login --provider openai ;;
+      6)  run_tui_action cmd_sciclaw_passthrough auth login --provider anthropic ;;
+      7)  run_tui_action cmd_sciclaw_passthrough channels setup discord ;;
+      8)  run_tui_action cmd_sciclaw_passthrough channels setup telegram ;;
+      9)  run_tui_action cmd_sciclaw_passthrough gateway ;;
+      10) run_tui_action cmd_sciclaw_passthrough service install ;;
+      11) run_tui_action cmd_sciclaw_passthrough service start ;;
+      12) run_tui_action cmd_sciclaw_passthrough service restart ;;
+      13) run_tui_action cmd_sciclaw_passthrough service logs ;;
+      14) run_tui_action cmd_doctor ;;
+      15)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_push "$project_dir"
+        ;;
+      16)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_pull "$project_dir"
+        ;;
+      17) run_tui_action cmd_stop ;;
+      18) run_tui_action cmd_destroy ;;
+      q|Q|quit|exit) break ;;
+      *)
+        echo "Unknown selection: ${choice:-<empty>}"
+        pause_screen
+        ;;
+    esac
+  done
+}
+
 # ── Main ─────────────────────────────────────────────────────────
 
 check_multipass
@@ -333,6 +494,7 @@ case "${1:-help}" in
   onboard) cmd_sciclaw_passthrough onboard "${@:2}" ;;
   auth)    cmd_sciclaw_passthrough auth "${@:2}" ;;
   channels) cmd_sciclaw_passthrough channels "${@:2}" ;;
+  tui)     cmd_tui ;;
   push)    cmd_push "${2:-}" ;;
   pull)    cmd_pull "${2:-}" ;;
   help|--help|-h)
@@ -348,6 +510,7 @@ case "${1:-help}" in
     echo "  onboard [...] Run sciclaw onboard inside VM (interactive/idempotent)"
     echo "  auth [...]    Run sciclaw auth ... inside VM"
     echo "  channels [...] Run sciclaw channels ... inside VM"
+    echo "  tui           Open interactive VM control center"
     echo "  push [dir]    Sync local changes → VM"
     echo "  pull [dir]    Sync VM changes → local"
     ;;
