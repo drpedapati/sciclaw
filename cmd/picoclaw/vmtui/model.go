@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var tabNames = []string{"Home", "Messaging Apps", "Users", "Login", "Health Check", "Agent Service", "Your Files"}
+var tabNames = []string{"Home", "Chat", "Messaging Apps", "Users", "Login", "Health Check", "Agent Service", "Your Files"}
 
 // Messages.
 type snapshotMsg struct {
@@ -35,6 +35,7 @@ type Model struct {
 
 	// Sub-models for each tab
 	home     HomeModel
+	chat     ChatModel
 	channels ChannelsModel
 	users    UsersModel
 	login    LoginModel
@@ -53,6 +54,7 @@ func NewModel() Model {
 		spinner:   s,
 		loading:   true,
 		home:      NewHomeModel(),
+		chat:      NewChatModel(),
 		channels:  NewChannelsModel(),
 		users:     NewUsersModel(),
 		login:     NewLoginModel(),
@@ -73,13 +75,14 @@ func (m Model) Init() tea.Cmd {
 // subTabCapturingInput returns true when a sub-tab is in a mode
 // that captures all keyboard input (text entry, confirmation dialogs).
 func (m Model) subTabCapturingInput() bool {
-	return (m.activeTab == 1 && m.channels.mode != modeNormal) ||
-		(m.activeTab == 2 && m.users.mode != usersNormal)
+	return m.activeTab == 1 || // Chat always captures
+		(m.activeTab == 2 && m.channels.mode != modeNormal) ||
+		(m.activeTab == 3 && m.users.mode != usersNormal)
 }
 
 // maybeAutoRunDoctor triggers doctor auto-run when the Health Check tab is first visited.
 func (m *Model) maybeAutoRunDoctor() tea.Cmd {
-	if m.activeTab == 4 {
+	if m.activeTab == 5 {
 		return m.doctor.AutoRun()
 	}
 	return nil
@@ -92,21 +95,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.chat.HandleResize(m.width, m.height)
 		m.doctor.HandleResize(m.width, m.height)
 		m.agent.HandleResize(m.width, m.height)
 		return m, nil
 
 	case tea.KeyMsg:
-		// When a sub-tab is capturing input, only ctrl+c escapes globally.
+		// When a sub-tab is capturing input, allow ctrl+c and tab navigation,
+		// then delegate everything else to the active sub-tab.
 		if m.subTabCapturingInput() {
-			if msg.String() == "ctrl+c" {
+			switch msg.String() {
+			case "ctrl+c":
 				return m, tea.Quit
+			case "tab":
+				m.activeTab = (m.activeTab + 1) % len(tabNames)
+				return m, m.maybeAutoRunDoctor()
+			case "shift+tab":
+				m.activeTab = (m.activeTab - 1 + len(tabNames)) % len(tabNames)
+				return m, m.maybeAutoRunDoctor()
 			}
 			var cmd tea.Cmd
 			switch m.activeTab {
 			case 1:
-				m.channels, cmd = m.channels.Update(msg, m.snapshot)
+				m.chat, cmd = m.chat.Update(msg, m.snapshot)
 			case 2:
+				m.channels, cmd = m.channels.Update(msg, m.snapshot)
+			case 3:
 				m.users, cmd = m.users.Update(msg, m.snapshot)
 			}
 			if cmd != nil {
@@ -133,16 +147,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 0:
 			m.home, cmd = m.home.Update(msg, m.snapshot)
 		case 1:
-			m.channels, cmd = m.channels.Update(msg, m.snapshot)
+			m.chat, cmd = m.chat.Update(msg, m.snapshot)
 		case 2:
-			m.users, cmd = m.users.Update(msg, m.snapshot)
+			m.channels, cmd = m.channels.Update(msg, m.snapshot)
 		case 3:
-			m.login, cmd = m.login.Update(msg, m.snapshot)
+			m.users, cmd = m.users.Update(msg, m.snapshot)
 		case 4:
-			m.doctor, cmd = m.doctor.Update(msg, m.snapshot)
+			m.login, cmd = m.login.Update(msg, m.snapshot)
 		case 5:
-			m.agent, cmd = m.agent.Update(msg, m.snapshot)
+			m.doctor, cmd = m.doctor.Update(msg, m.snapshot)
 		case 6:
+			m.agent, cmd = m.agent.Update(msg, m.snapshot)
+		case 7:
 			m.files, cmd = m.files.Update(msg, m.snapshot)
 		}
 		if cmd != nil {
@@ -175,6 +191,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actionDoneMsg:
 		m.loading = true
 		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd())
+
+	case chatResponseMsg:
+		m.chat.HandleResponse(msg)
+		return m, nil
 
 	case doctorDoneMsg:
 		m.doctor.HandleResult(msg)
@@ -219,16 +239,18 @@ func (m Model) View() string {
 		case 0:
 			content = m.home.View(m.snapshot, contentWidth)
 		case 1:
-			content = m.channels.View(m.snapshot, contentWidth)
+			content = m.chat.View(m.snapshot, contentWidth)
 		case 2:
-			content = m.users.View(m.snapshot, contentWidth)
+			content = m.channels.View(m.snapshot, contentWidth)
 		case 3:
-			content = m.login.View(m.snapshot, contentWidth)
+			content = m.users.View(m.snapshot, contentWidth)
 		case 4:
-			content = m.doctor.View(m.snapshot, contentWidth)
+			content = m.login.View(m.snapshot, contentWidth)
 		case 5:
-			content = m.agent.View(m.snapshot, contentWidth)
+			content = m.doctor.View(m.snapshot, contentWidth)
 		case 6:
+			content = m.agent.View(m.snapshot, contentWidth)
+		case 7:
 			content = m.files.View(m.snapshot, contentWidth)
 		}
 		b.WriteString(content)
