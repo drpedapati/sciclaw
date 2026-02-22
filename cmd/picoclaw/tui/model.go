@@ -447,16 +447,29 @@ func (m Model) View() string {
 }
 
 func (m Model) renderTabBar() string {
-	var tabs []string
-	for i, t := range m.tabs {
-		if i == m.activeTab {
-			tabs = append(tabs, styleTabActive.Render(t.name))
-		} else {
-			tabs = append(tabs, styleTabInactive.Render(t.name))
-		}
+	// Split tabs into two rows to fit narrow terminals.
+	// Row 1: primary workflow tabs, Row 2: admin/config tabs.
+	mid := len(m.tabs) / 2
+	if mid < 1 {
+		mid = len(m.tabs)
 	}
-	row := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-	return styleTabBar.Width(m.width).Render(row)
+
+	renderRow := func(entries []tabEntry, startIdx int) string {
+		var cells []string
+		for i, t := range entries {
+			if startIdx+i == m.activeTab {
+				cells = append(cells, styleTabActive.Render(t.name))
+			} else {
+				cells = append(cells, styleTabInactive.Render(t.name))
+			}
+		}
+		return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	}
+
+	row1 := renderRow(m.tabs[:mid], 0)
+	row2 := renderRow(m.tabs[mid:], mid)
+	both := lipgloss.JoinVertical(lipgloss.Left, row1, row2)
+	return styleTabBar.Width(m.width).Render(both)
 }
 
 func (m Model) renderStatusBar() string {
