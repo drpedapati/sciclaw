@@ -3,6 +3,7 @@ package routing
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/constants"
@@ -13,6 +14,7 @@ type Dispatcher struct {
 	bus      *bus.MessageBus
 	resolver *Resolver
 	pool     *AgentLoopPool
+	mu       sync.RWMutex
 }
 
 func NewDispatcher(messageBus *bus.MessageBus, resolver *Resolver, pool *AgentLoopPool) *Dispatcher {
@@ -30,7 +32,8 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			return nil
 		}
 
-		decision := d.resolver.Resolve(msg)
+		resolver := d.getResolver()
+		decision := resolver.Resolve(msg)
 		d.logDecision(decision)
 
 		if !decision.Allowed {
@@ -51,6 +54,21 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			d.sendOperationalError(msg)
 		}
 	}
+}
+
+func (d *Dispatcher) ReplaceResolver(resolver *Resolver) {
+	if resolver == nil {
+		return
+	}
+	d.mu.Lock()
+	d.resolver = resolver
+	d.mu.Unlock()
+}
+
+func (d *Dispatcher) getResolver() *Resolver {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.resolver
 }
 
 func (d *Dispatcher) logDecision(decision Decision) {
