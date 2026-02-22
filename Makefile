@@ -1,4 +1,4 @@
-.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch release-local
+.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch release-local release-dev-local
 
 # Build variables
 PRIMARY_BINARY_NAME=sciclaw
@@ -14,6 +14,10 @@ RELEASE_REPO?=drpedapati/sciclaw
 RELEASE_TAG?=
 RELEASE_PRERELEASE?=false
 RELEASE_DRAFT?=false
+RELEASE_DEV_TAG?=
+RELEASE_DEV_FORMULA_NAME?=sciclaw-dev
+RELEASE_DEV_FORMULA_CLASS?=SciclawDev
+RELEASE_DEV_PRERELEASE?=true
 BUILD_TIME=$(shell date +%FT%T%z)
 GO_VERSION=$(shell $(GO) version | awk '{print $$3}')
 LDFLAGS=-trimpath -ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.goVersion=$(GO_VERSION)"
@@ -94,6 +98,7 @@ build-all:
 	@ln -sf $(PRIMARY_BINARY_NAME)-linux-riscv64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-riscv64
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
 	@ln -sf $(PRIMARY_BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-darwin-arm64
+	@if command -v codesign >/dev/null 2>&1; then codesign -s - $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64; fi
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
 	@ln -sf $(PRIMARY_BINARY_NAME)-windows-amd64.exe $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-windows-amd64.exe
 	@echo "All builds complete"
@@ -204,6 +209,7 @@ release-local:
 		exit 1; \
 	fi
 	@echo "==> Building all platforms..."
+	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt
 	@VERSION=$(RELEASE_TAG) $(MAKE) build-all
 	@echo "==> Generating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* > sha256sums.txt
@@ -221,6 +227,40 @@ release-local:
 	@echo "==> Updating Homebrew tap..."
 	@deploy/update-tap.sh "$(RELEASE_TAG)" "$(RELEASE_REPO)"
 	@echo "==> Release $(RELEASE_TAG) complete."
+
+## release-dev-local: Build locally, create pre-release, and update Homebrew tap dev formula only
+release-dev-local:
+	@if [ -z "$(RELEASE_DEV_TAG)" ]; then \
+		echo "Error: RELEASE_DEV_TAG is required."; \
+		echo "Example: make release-dev-local RELEASE_DEV_TAG=v0.1.53-dev.1"; \
+		exit 1; \
+	fi
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "Error: GitHub CLI (gh) is required."; \
+		exit 1; \
+	fi
+	@echo "==> Building all platforms..."
+	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt
+	@VERSION=$(RELEASE_DEV_TAG) $(MAKE) build-all
+	@echo "==> Generating checksums..."
+	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* > sha256sums.txt
+	@echo "==> Tagging $(RELEASE_DEV_TAG)..."
+	@git tag -a "$(RELEASE_DEV_TAG)" -m "Release $(RELEASE_DEV_TAG)"
+	@git push origin "$(RELEASE_DEV_TAG)"
+	@echo "==> Creating GitHub release..."
+	@gh release create "$(RELEASE_DEV_TAG)" \
+		$(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* \
+		$(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* \
+		$(BUILD_DIR)/sha256sums.txt \
+		--repo $(RELEASE_REPO) \
+		--title "$(RELEASE_DEV_TAG)" \
+		--generate-notes \
+		$(if $(filter true,$(RELEASE_DEV_PRERELEASE)),--prerelease,)
+	@echo "==> Updating Homebrew tap dev formula..."
+	@FORMULA_NAME=$(RELEASE_DEV_FORMULA_NAME) \
+	 FORMULA_CLASS=$(RELEASE_DEV_FORMULA_CLASS) \
+	 deploy/update-tap.sh "$(RELEASE_DEV_TAG)" "$(RELEASE_REPO)"
+	@echo "==> Dev release $(RELEASE_DEV_TAG) complete."
 
 ## release-dispatch: Trigger GitHub Create Tag and Release workflow (binaries + Homebrew tap update)
 release-dispatch:

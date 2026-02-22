@@ -1,0 +1,1025 @@
+#!/usr/bin/env bash
+# sciClaw VM manager — one-command setup via Multipass.
+#
+# Usage:
+#   deploy/vm start [project-dir] [--live-mount] [--mount-type classic|native]
+#                                    Create/start VM and sync project directory
+#                                    (or mount it live)
+#   deploy/vm stop                  Pause the VM (frees RAM, keeps state)
+#   deploy/vm status                Show VM state
+#   deploy/vm destroy               Delete the VM entirely
+#   deploy/vm shell                 Open a terminal in the VM
+#   deploy/vm doctor                Run sciclaw doctor inside the VM
+#   deploy/vm onboard [args...]     Run sciclaw onboard inside the VM
+#   deploy/vm auth [args...]        Run sciclaw auth ... inside the VM
+#   deploy/vm channels [args...]    Run sciclaw channels ... inside the VM
+#   deploy/vm tui                   Open interactive VM control center
+#   deploy/vm mount [project-dir] [--type classic|native]
+#                                    Live-mount host project into VM
+#   deploy/vm umount                Remove live mount for /home/ubuntu/project
+#   deploy/vm push [project-dir]    Sync host → VM
+#   deploy/vm pull [project-dir]    Sync VM → host
+#
+# The first argument to "start" is the host directory to sync into the VM.
+# Defaults to the current working directory.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VM_NAME="sciclaw"
+VM_CPUS=4
+VM_MEM="8G"
+VM_DISK="80G"
+VM_IMAGE="24.04"
+CLOUD_INIT_TEMPLATE="${SCICLAW_VM_CLOUD_INIT_TEMPLATE:-$SCRIPT_DIR/multipass-cloud-init.yaml}"
+TOOLCHAIN_ENV="${SCICLAW_VM_TOOLCHAIN_ENV:-$SCRIPT_DIR/toolchain.env}"
+VM_PROJECT="/home/ubuntu/project"
+STATE_DIR="${SCICLAW_VM_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/sciclaw}"
+STATE_PROJECT_FILE="$STATE_DIR/vm-project-path"
+STATE_SYNC_MODE_FILE="$STATE_DIR/vm-sync-mode"
+VM_CMD_LABEL="${SCICLAW_VM_CMD_LABEL:-deploy/vm}"
+
+# ── Helpers ──────────────────────────────────────────────────────
+
+die()  { echo "error: $*" >&2; exit 1; }
+info() { echo "  $*"; }
+
+check_multipass() {
+  if ! command -v multipass &>/dev/null; then
+    echo "Multipass is not installed."
+    echo ""
+    echo "Install it (free) from: https://multipass.run"
+    echo ""
+    echo "  macOS:   brew install multipass"
+    echo "  Linux:   sudo snap install multipass"
+    echo "  Windows: download from https://multipass.run/install"
+    exit 1
+  fi
+}
+
+vm_state() {
+  local state
+  state="$(multipass info "$VM_NAME" 2>/dev/null | awk -F': *' '/^State:/{print $2; exit}')" || state=""
+  if [ -z "$state" ]; then
+    echo "NotFound"
+  else
+    echo "$state"
+  fi
+}
+
+resolve_project() {
+  local dir="${1:-$(pwd)}"
+  cd "$dir" && pwd
+}
+
+wait_for_vm_state() {
+  local want="$1"
+  local tries="${2:-20}"
+  local i state
+  for ((i=0; i<tries; i++)); do
+    state="$(vm_state)"
+    if [ "$state" = "$want" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+sync_mode_get() {
+  if [ -f "$STATE_SYNC_MODE_FILE" ]; then
+    cat "$STATE_SYNC_MODE_FILE"
+  else
+    echo "sync"
+  fi
+}
+
+sync_mode_set() {
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$1" > "$STATE_SYNC_MODE_FILE"
+}
+
+vm_project_is_mounted() {
+  local state
+  state="$(vm_state)"
+  if [ "$state" = "NotFound" ]; then
+    return 1
+  fi
+  multipass info "$VM_NAME" 2>/dev/null | grep -F "$VM_PROJECT" >/dev/null
+}
+
+render_cloud_init() {
+  [ -f "$CLOUD_INIT_TEMPLATE" ] || die "cloud-init template not found: $CLOUD_INIT_TEMPLATE"
+  [ -f "$TOOLCHAIN_ENV" ] || die "toolchain config not found: $TOOLCHAIN_ENV"
+
+  local rendered
+  rendered="$(mktemp /tmp/sciclaw-cloud-init.XXXXXX.yaml)"
+
+  awk -v toolchain="$TOOLCHAIN_ENV" '
+    /^[[:space:]]*__TOOLCHAIN_ENV_CONTENT__[[:space:]]*$/ {
+      found = 1
+      while ((getline line < toolchain) > 0) {
+        print "      " line
+      }
+      close(toolchain)
+      next
+    }
+    { print }
+    END {
+      if (!found) {
+        exit 97
+      }
+    }
+  ' "$CLOUD_INIT_TEMPLATE" > "$rendered" || {
+    rm -f "$rendered"
+    die "failed to render cloud-init template"
+  }
+
+  echo "$rendered"
+}
+
+# Sync files host → VM via tarball + multipass transfer (fast, cross-platform)
+sync_to_vm() {
+  local project_dir="$1"
+  local project_name
+  project_name=$(basename "$project_dir")
+  local tmp_tar="/tmp/.sciclaw-sync.tar.gz"
+
+  info "Syncing $project_name → VM..."
+
+  # Create compressed tarball on host (exclude heavy build artifacts)
+  tar czf "$tmp_tar" \
+    --exclude='.git' \
+    --exclude='.worktrees' \
+    --exclude='build' \
+    --exclude='vendor' \
+    --exclude='node_modules' \
+    --exclude='__pycache__' \
+    --exclude='.venv' \
+    -C "$project_dir" . 2>/dev/null
+
+  # Transfer and extract inside VM
+  multipass transfer "$tmp_tar" "$VM_NAME:/tmp/.sciclaw-sync.tar.gz"
+  multipass exec "$VM_NAME" -- bash -c \
+    "mkdir -p \"$VM_PROJECT\" && tar xzf /tmp/.sciclaw-sync.tar.gz -C \"$VM_PROJECT\" 2>/dev/null; rm -f /tmp/.sciclaw-sync.tar.gz"
+
+  rm -f "$tmp_tar"
+  info "Synced to VM:$VM_PROJECT"
+}
+
+# Sync files VM → host via tarball + multipass transfer
+sync_from_vm() {
+  local project_dir="$1"
+  local tmp_tar="/tmp/.sciclaw-sync.tar.gz"
+
+  info "Syncing VM → $project_dir..."
+
+  multipass exec "$VM_NAME" -- bash -c \
+    "tar czf /tmp/.sciclaw-sync.tar.gz -C \"$VM_PROJECT\" . 2>/dev/null"
+  multipass transfer "$VM_NAME:/tmp/.sciclaw-sync.tar.gz" "$tmp_tar"
+  tar xzf "$tmp_tar" -C "$project_dir" 2>/dev/null
+  multipass exec "$VM_NAME" -- rm -f /tmp/.sciclaw-sync.tar.gz
+
+  rm -f "$tmp_tar"
+  info "Synced from VM:$VM_PROJECT"
+}
+
+# ── Commands ─────────────────────────────────────────────────────
+
+cmd_start() {
+  local project_arg=""
+  local live_mount="no"
+  local mount_type="${SCICLAW_VM_MOUNT_TYPE:-classic}"
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --live-mount|--mount)
+        live_mount="yes"
+        ;;
+      --mount-type)
+        shift
+        [ $# -gt 0 ] || die "--mount-type requires a value (classic|native)"
+        mount_type="$1"
+        ;;
+      --sync)
+        live_mount="no"
+        ;;
+      -*)
+        die "unknown start option: $1"
+        ;;
+      *)
+        if [ -n "$project_arg" ]; then
+          die "unexpected extra argument: $1"
+        fi
+        project_arg="$1"
+        ;;
+    esac
+    shift
+  done
+
+  local project_dir
+  project_dir=$(resolve_project "${project_arg:-}")
+
+  if [ ! -d "$project_dir" ]; then
+    die "directory not found: $project_dir"
+  fi
+
+  local state
+  state=$(vm_state)
+
+  case "$state" in
+    Running)
+      info "VM already running."
+      ;;
+    Stopped|Suspended)
+      echo "Starting VM..."
+      multipass start "$VM_NAME"
+      info "VM started."
+      ;;
+    NotFound)
+      local rendered_cloud_init
+      rendered_cloud_init="$(render_cloud_init)"
+      echo "Creating sciClaw VM (this takes a few minutes on first run)..."
+      echo ""
+      multipass launch \
+        --name "$VM_NAME" \
+        --cpus "$VM_CPUS" \
+        --memory "$VM_MEM" \
+        --disk "$VM_DISK" \
+        --cloud-init "$rendered_cloud_init" \
+        "$VM_IMAGE"
+      rm -f "$rendered_cloud_init"
+      echo ""
+      info "VM created. Waiting for tools to install..."
+      local cloud_init_output cloud_init_rc
+      set +e
+      cloud_init_output="$(multipass exec "$VM_NAME" -- cloud-init status --wait 2>&1)"
+      cloud_init_rc=$?
+      set -e
+      printf '%s\n' "$cloud_init_output"
+      if [ "$cloud_init_rc" -ne 0 ]; then
+        if printf '%s\n' "$cloud_init_output" | grep -q '^status:[[:space:]]*done$'; then
+          info "cloud-init reported non-zero status but provisioning reached 'done'; continuing."
+        else
+          echo "cloud-init failed. Recent cloud-init output follows:" >&2
+          multipass exec "$VM_NAME" -- bash -lc "sudo tail -n 120 /var/log/cloud-init-output.log" || true
+          die "cloud-init did not finish successfully"
+        fi
+      fi
+      info "VM ready."
+      ;;
+    *)
+      die "unexpected VM state: $state"
+      ;;
+  esac
+
+  # Sync project files into the VM (or mount live).
+  if [ "$live_mount" = "yes" ]; then
+    cmd_mount_internal "$project_dir" "$mount_type"
+  else
+    sync_to_vm "$project_dir"
+    sync_mode_set "sync"
+  fi
+
+  # Save project path so push/pull know where to sync
+  mkdir -p "$STATE_DIR"
+  echo "$project_dir" > "$STATE_PROJECT_FILE"
+
+  # One-time migration for legacy VM configs to VM-first defaults.
+  cmd_apply_vm_defaults
+
+  echo ""
+  echo "Ready. Your project is at $VM_PROJECT inside the VM."
+  echo ""
+  echo "  $VM_CMD_LABEL shell     Open a terminal in the VM"
+  if [ "$live_mount" = "yes" ]; then
+    echo "  Live mount: enabled ($mount_type)"
+    echo "  $VM_CMD_LABEL umount    Disable live mount"
+  else
+    echo "  $VM_CMD_LABEL push      Sync your local changes → VM"
+    echo "  $VM_CMD_LABEL pull      Sync VM changes → local"
+    echo "  Tip: use '$VM_CMD_LABEL mount $project_dir' for live mount mode"
+  fi
+  echo "  $VM_CMD_LABEL doctor    Check that all tools are installed"
+  echo "  $VM_CMD_LABEL stop      Pause the VM"
+}
+
+cmd_mount_internal() {
+  local project_dir="$1"
+  local mount_type="${2:-classic}"
+  local state was_running
+
+  [ -d "$project_dir" ] || die "directory not found: $project_dir"
+
+  state="$(vm_state)"
+  if [ "$state" = "NotFound" ]; then
+    die "no VM found. Run '$VM_CMD_LABEL start' first."
+  fi
+
+  case "$mount_type" in
+    classic|native) ;;
+    *) die "invalid mount type: $mount_type (expected classic|native)" ;;
+  esac
+
+  was_running="no"
+  if [ "$mount_type" = "native" ]; then
+    case "$state" in
+      Running|Starting)
+        was_running="yes"
+        info "Stopping VM for native mount..."
+        multipass stop "$VM_NAME"
+        wait_for_vm_state "Stopped" 30 || die "VM did not stop in time for native mount"
+        ;;
+    esac
+  fi
+
+  # Replace existing mount at the project target if present.
+  multipass umount "$VM_NAME:$VM_PROJECT" >/dev/null 2>&1 || true
+  multipass mount -t "$mount_type" "$project_dir" "$VM_NAME:$VM_PROJECT"
+
+  if [ "$mount_type" = "native" ] && [ "$was_running" = "yes" ]; then
+    multipass start "$VM_NAME"
+  fi
+
+  mkdir -p "$STATE_DIR"
+  echo "$project_dir" > "$STATE_PROJECT_FILE"
+  sync_mode_set "mount:$mount_type"
+  info "Live mount active: $project_dir ↔ $VM_NAME:$VM_PROJECT ($mount_type)"
+}
+
+cmd_mount() {
+  local project_dir=""
+  local mount_type="${SCICLAW_VM_MOUNT_TYPE:-classic}"
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --type)
+        shift
+        [ $# -gt 0 ] || die "--type requires a value (classic|native)"
+        mount_type="$1"
+        ;;
+      -*)
+        die "unknown mount option: $1"
+        ;;
+      *)
+        if [ -n "$project_dir" ]; then
+          die "unexpected extra argument: $1"
+        fi
+        project_dir="$1"
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$project_dir" ]; then
+    project_dir="$(default_project_dir)"
+  fi
+  project_dir="$(resolve_project "$project_dir")"
+  cmd_mount_internal "$project_dir" "$mount_type"
+}
+
+cmd_umount() {
+  local state
+  state="$(vm_state)"
+  if [ "$state" = "NotFound" ]; then
+    die "no VM found. Run '$VM_CMD_LABEL start' first."
+  fi
+  multipass umount "$VM_NAME:$VM_PROJECT" >/dev/null 2>&1 || true
+  sync_mode_set "sync"
+  info "Live mount removed for $VM_NAME:$VM_PROJECT"
+}
+
+cmd_push() {
+  local project_dir
+  if vm_project_is_mounted; then
+    info "Live mount is active at $VM_PROJECT; push is unnecessary."
+    return
+  fi
+  if [ -n "${1:-}" ]; then
+    project_dir=$(resolve_project "$1")
+  elif [ -f "$STATE_PROJECT_FILE" ]; then
+    project_dir=$(cat "$STATE_PROJECT_FILE")
+  else
+    project_dir=$(pwd)
+  fi
+  sync_to_vm "$project_dir"
+}
+
+cmd_pull() {
+  local project_dir
+  if vm_project_is_mounted; then
+    info "Live mount is active at $VM_PROJECT; pull is unnecessary."
+    return
+  fi
+  if [ -n "${1:-}" ]; then
+    project_dir=$(resolve_project "$1")
+  elif [ -f "$STATE_PROJECT_FILE" ]; then
+    project_dir=$(cat "$STATE_PROJECT_FILE")
+  else
+    project_dir=$(pwd)
+  fi
+  sync_from_vm "$project_dir"
+}
+
+cmd_stop() {
+  local state
+  state=$(vm_state)
+  if [ "$state" = "Running" ]; then
+    multipass stop "$VM_NAME"
+    info "VM stopped."
+  elif [ "$state" = "NotFound" ]; then
+    die "no VM found. Run '$VM_CMD_LABEL start' first."
+  else
+    info "VM is already $state."
+  fi
+}
+
+cmd_status() {
+  local state
+  state=$(vm_state)
+  if [ "$state" = "NotFound" ]; then
+    echo "No sciClaw VM found. Run '$VM_CMD_LABEL start' to create one."
+    return
+  fi
+  multipass info "$VM_NAME"
+  echo ""
+  if vm_project_is_mounted; then
+    echo "Sync mode: live mount ($(sync_mode_get))"
+  else
+    echo "Sync mode: tar sync ($(sync_mode_get))"
+  fi
+  if [ -f "$STATE_PROJECT_FILE" ]; then
+    echo ""
+    echo "Project: $(cat "$STATE_PROJECT_FILE") ↔ VM:$VM_PROJECT"
+  fi
+}
+
+cmd_destroy() {
+  local state force="${1:-}"
+  state=$(vm_state)
+  if [ "$state" = "NotFound" ]; then
+    info "No VM to destroy."
+    return
+  fi
+  if [ "$force" != "--force" ]; then
+    echo "This will permanently delete the sciClaw VM and all data inside it."
+    read -rp "Are you sure? [y/N] " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      info "Cancelled."
+      return
+    fi
+  fi
+  multipass delete "$VM_NAME" && multipass purge
+  rm -f "$STATE_PROJECT_FILE"
+  info "VM destroyed."
+}
+
+cmd_shell() {
+  local state
+  state=$(vm_state)
+  if [ "$state" != "Running" ]; then
+    die "VM is not running. Run '$VM_CMD_LABEL start' first."
+  fi
+  echo "Entering VM. Your project is at: $VM_PROJECT"
+  echo ""
+  multipass exec "$VM_NAME" -- bash --login -c "cd \"$VM_PROJECT\" && exec bash"
+}
+
+cmd_doctor() {
+  local state
+  state=$(vm_state)
+  if [ "$state" != "Running" ]; then
+    die "VM is not running. Run '$VM_CMD_LABEL start' first."
+  fi
+  multipass exec "$VM_NAME" -- sciclaw doctor
+}
+
+# Migrate legacy VM defaults to VM-first behavior:
+# - workspace: /home/ubuntu/project
+# - restrict_to_workspace: false
+# This runs only when config still looks like legacy defaults.
+cmd_apply_vm_defaults() {
+  require_running
+  local out
+  out="$(multipass exec "$VM_NAME" -- bash -lc '
+python3 - <<"PY"
+import json
+import os
+
+cfg_path = os.path.expanduser("~/.picoclaw/config.json")
+if not os.path.exists(cfg_path):
+    print("skipped:no-config")
+    raise SystemExit(0)
+
+with open(cfg_path, "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+
+d = cfg.setdefault("agents", {}).setdefault("defaults", {})
+workspace = str(d.get("workspace", "") or "").strip()
+restrict = d.get("restrict_to_workspace", True)
+
+legacy_workspaces = {"", "~/sciclaw", "/home/ubuntu/sciclaw"}
+changed = False
+
+if workspace in legacy_workspaces:
+    d["workspace"] = "/home/ubuntu/project"
+    changed = True
+
+if restrict is True and workspace in legacy_workspaces:
+    d["restrict_to_workspace"] = False
+    changed = True
+
+if changed:
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    print("updated")
+else:
+    print("unchanged")
+PY
+' 2>/dev/null || true)"
+
+  case "$(printf '%s' "$out" | tail -n 1)" in
+    updated)
+      info "VM defaults migrated: workspace=/home/ubuntu/project, restrict_to_workspace=false"
+      ;;
+    skipped:no-config)
+      ;;
+    *)
+      ;;
+  esac
+}
+
+require_running() {
+  local state
+  state=$(vm_state)
+  if [ "$state" != "Running" ]; then
+    die "VM is not running. Run '$VM_CMD_LABEL start' first."
+  fi
+}
+
+cmd_sciclaw_passthrough() {
+  require_running
+  multipass exec "$VM_NAME" -- env HOME=/home/ubuntu sciclaw "$@"
+}
+
+cmd_vm_onboard() {
+  cmd_sciclaw_passthrough onboard "$@"
+  cmd_apply_vm_defaults
+}
+
+default_project_dir() {
+  if [ -f "$STATE_PROJECT_FILE" ]; then
+    cat "$STATE_PROJECT_FILE"
+  else
+    pwd
+  fi
+}
+
+prompt_project_dir() {
+  local def input
+  def="$(default_project_dir)"
+  read -r -p "Project dir [$def]: " input
+  if [ -n "${input:-}" ]; then
+    echo "$input"
+  else
+    echo "$def"
+  fi
+}
+
+pause_screen() {
+  echo ""
+  read -r -p "Press Enter to continue..." _
+}
+
+prompt_yes_no_default() {
+  local prompt="$1"
+  local def="${2:-y}"
+  local ans
+  if [ "$def" = "y" ]; then
+    read -r -p "$prompt [Y/n]: " ans
+    ans="${ans:-y}"
+  else
+    read -r -p "$prompt [y/N]: " ans
+    ans="${ans:-n}"
+  fi
+  [[ "$ans" =~ ^[Yy]$ ]]
+}
+
+get_vm_info_field() {
+  local field="$1"
+  multipass info "$VM_NAME" 2>/dev/null | awk -F': *' -v key="$field" '$1==key {print $2; exit}'
+}
+
+get_vm_version_line() {
+  multipass exec "$VM_NAME" -- sciclaw --version </dev/null 2>/dev/null | head -n 1 | sed 's/^ *//'
+}
+
+get_vm_runtime_snapshot() {
+  multipass exec "$VM_NAME" -- bash -lc '
+python3 - <<"PY"
+import json
+import os
+import subprocess
+
+home = os.path.expanduser("~")
+cfg_path = os.path.join(home, ".picoclaw", "config.json")
+auth_path = os.path.join(home, ".picoclaw", "auth.json")
+svc_path = os.path.join(home, ".config", "systemd", "user", "sciclaw-gateway.service")
+
+def load_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+cfg = load_json(cfg_path)
+auth = load_json(auth_path)
+providers = cfg.get("providers", {}) or {}
+channels = cfg.get("channels", {}) or {}
+creds = auth.get("credentials", {}) or {}
+
+def provider_state(name):
+    p = providers.get(name, {}) or {}
+    c = creds.get(name, {}) or {}
+    api_key = str(p.get("api_key", "") or "").strip()
+    access = str(c.get("access_token", "") or "").strip()
+    token = str(c.get("token", "") or "").strip()
+    key2 = str(c.get("api_key", "") or "").strip()
+    if api_key or access or token or key2:
+        return "ready"
+    return "missing"
+
+def channel_state(name):
+    c = channels.get(name, {}) or {}
+    enabled = bool(c.get("enabled"))
+    token = bool(str(c.get("token", "") or "").strip())
+    allow = len(c.get("allow_from") or [])
+    if enabled and token and allow > 0:
+        status = "ready"
+    elif enabled and token and allow == 0:
+        status = "open"
+    elif enabled and not token:
+        status = "broken"
+    else:
+        status = "off"
+    return status, enabled, token, allow
+
+def service_running():
+    if not os.path.exists(svc_path):
+        return "no"
+    try:
+        rc = subprocess.run(
+            ["systemctl", "--user", "is-active", "sciclaw-gateway"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        return "yes" if rc == 0 else "no"
+    except Exception:
+        return "unknown"
+
+workspace = str(cfg.get("agents", {}).get("defaults", {}).get("workspace", "") or "").strip()
+if workspace.startswith("~/"):
+    workspace = os.path.join(home, workspace[2:])
+
+discord = channel_state("discord")
+telegram = channel_state("telegram")
+
+def yn(v):
+    return "yes" if v else "no"
+
+print("openai=" + provider_state("openai"))
+print("anthropic=" + provider_state("anthropic"))
+print("discord_status=" + str(discord[0]))
+print("discord_enabled=" + yn(discord[1]))
+print("discord_token=" + yn(discord[2]))
+print("discord_allow=" + str(discord[3]))
+print("telegram_status=" + str(telegram[0]))
+print("telegram_enabled=" + yn(telegram[1]))
+print("telegram_token=" + yn(telegram[2]))
+print("telegram_allow=" + str(telegram[3]))
+print("service_installed=" + yn(os.path.exists(svc_path)))
+print("service_running=" + service_running())
+print("workspace_path=" + workspace)
+print("workspace_exists=" + yn(workspace and os.path.isdir(workspace)))
+print("auth_store_exists=" + yn(os.path.exists(auth_path)))
+print("config_exists=" + yn(os.path.exists(cfg_path)))
+PY
+' </dev/null 2>/dev/null || true
+}
+
+kv_get() {
+  local blob="$1" key="$2"
+  printf '%s\n' "$blob" | awk -F= -v k="$key" '$1==k {sub(/^[^=]*=/, "", $0); print $0; exit}'
+}
+
+status_icon() {
+  case "${1:-}" in
+    ready|yes) echo "✓" ;;
+    open|partial|unknown) echo "!" ;;
+    *) echo "•" ;;
+  esac
+}
+
+recommended_action() {
+  local state="$1" openai="$2" anth="$3" discord="$4" telegram="$5" svc_installed="$6" svc_running="$7"
+  if [ "$state" = "NotFound" ]; then
+    echo "[1] Start/Sync VM"
+    return
+  fi
+  if [ "$state" != "Running" ]; then
+    echo "[1] Start/Sync VM"
+    return
+  fi
+  if [ "$openai" != "ready" ] && [ "$anth" != "ready" ]; then
+    echo "[5] Auth OpenAI (or [6] Auth Anthropic)"
+    return
+  fi
+  if [ "$discord" != "ready" ] && [ "$telegram" != "ready" ]; then
+    echo "[7] Discord setup or [8] Telegram setup"
+    return
+  fi
+  if [ "$svc_installed" != "yes" ]; then
+    echo "[10] Service install"
+    return
+  fi
+  if [ "$svc_running" != "yes" ]; then
+    echo "[11] Service start"
+    return
+  fi
+  echo "[13] Service logs or [3] Shell"
+}
+
+run_guided_setup() {
+  require_running
+  echo ""
+  echo "Guided setup (VM-first):"
+  echo "This keeps all settings inside the VM."
+  echo ""
+
+  if prompt_yes_no_default "Run onboard now?" y; then
+    cmd_sciclaw_passthrough onboard
+  fi
+  echo ""
+  if prompt_yes_no_default "Login OpenAI now?" y; then
+    cmd_sciclaw_passthrough auth login --provider openai
+  elif prompt_yes_no_default "Login Anthropic now?" n; then
+    cmd_sciclaw_passthrough auth login --provider anthropic
+  fi
+  echo ""
+  if prompt_yes_no_default "Configure Discord now?" n; then
+    cmd_sciclaw_passthrough channels setup discord
+  fi
+  if prompt_yes_no_default "Configure Telegram now?" n; then
+    cmd_sciclaw_passthrough channels setup telegram
+  fi
+  echo ""
+  if prompt_yes_no_default "Install background service now?" y; then
+    cmd_sciclaw_passthrough service install
+  fi
+  if prompt_yes_no_default "Start background service now?" y; then
+    cmd_sciclaw_passthrough service start
+  fi
+  echo ""
+  if prompt_yes_no_default "Run doctor check now?" y; then
+    cmd_doctor
+  fi
+}
+
+confirm_destroy_vm() {
+  local typed
+  echo "This permanently deletes VM '$VM_NAME' and all VM-local data."
+  read -r -p "Type '$VM_NAME' to confirm: " typed
+  [ "$typed" = "$VM_NAME" ]
+}
+
+get_vm_channel_lines() {
+  local snapshot="$1"
+  local ds de dt da ts te tt ta
+  ds="$(kv_get "$snapshot" discord_status)"
+  de="$(kv_get "$snapshot" discord_enabled)"
+  dt="$(kv_get "$snapshot" discord_token)"
+  da="$(kv_get "$snapshot" discord_allow)"
+  ts="$(kv_get "$snapshot" telegram_status)"
+  te="$(kv_get "$snapshot" telegram_enabled)"
+  tt="$(kv_get "$snapshot" telegram_token)"
+  ta="$(kv_get "$snapshot" telegram_allow)"
+  printf "discord: status=%s enabled=%s token=%s allow=%s\n" "${ds:-off}" "${de:-no}" "${dt:-no}" "${da:-0}"
+  printf "telegram: status=%s enabled=%s token=%s allow=%s\n" "${ts:-off}" "${te:-no}" "${tt:-no}" "${ta:-0}"
+}
+
+get_vm_readiness_lines() {
+  local snapshot="$1"
+  local openai anthropic discord telegram svc_i svc_r ws cfg auths
+  openai="$(kv_get "$snapshot" openai)"
+  anthropic="$(kv_get "$snapshot" anthropic)"
+  discord="$(kv_get "$snapshot" discord_status)"
+  telegram="$(kv_get "$snapshot" telegram_status)"
+  svc_i="$(kv_get "$snapshot" service_installed)"
+  svc_r="$(kv_get "$snapshot" service_running)"
+  ws="$(kv_get "$snapshot" workspace_exists)"
+  cfg="$(kv_get "$snapshot" config_exists)"
+  auths="$(kv_get "$snapshot" auth_store_exists)"
+
+  printf "%s Config file\n" "$(status_icon "$cfg")"
+  printf "%s Workspace initialized\n" "$(status_icon "$ws")"
+  printf "%s Auth store\n" "$(status_icon "$auths")"
+  if [ "$openai" = "ready" ] || [ "$anthropic" = "ready" ]; then
+    printf "%s Provider auth (openai=%s anthropic=%s)\n" "$(status_icon ready)" "${openai:-missing}" "${anthropic:-missing}"
+  else
+    printf "%s Provider auth (openai=%s anthropic=%s)\n" "$(status_icon missing)" "${openai:-missing}" "${anthropic:-missing}"
+  fi
+  if [ "$discord" = "ready" ] || [ "$telegram" = "ready" ]; then
+    printf "%s Channel setup (discord=%s telegram=%s)\n" "$(status_icon ready)" "${discord:-off}" "${telegram:-off}"
+  else
+    printf "%s Channel setup (discord=%s telegram=%s)\n" "$(status_icon missing)" "${discord:-off}" "${telegram:-off}"
+  fi
+  printf "%s Service installed\n" "$(status_icon "$svc_i")"
+  printf "%s Service running\n" "$(status_icon "$svc_r")"
+}
+
+draw_tui() {
+  local state project ip load mem version snapshot channels checklist rec
+  local openai anthropic discord telegram svc_i svc_r
+
+  state="$(vm_state)"
+  project="$(default_project_dir)"
+  ip="-"
+  load="-"
+  mem="-"
+  version="-"
+  snapshot=""
+  channels=$'discord: unavailable\ntelegram: unavailable'
+  checklist=$'• VM not running yet'
+  rec="[1] Start/Sync VM"
+
+  if [ "$state" != "NotFound" ]; then
+    ip="$(get_vm_info_field "IPv4" | xargs || true)"
+    load="$(get_vm_info_field "Load" | xargs || true)"
+    mem="$(get_vm_info_field "Memory usage" | xargs || true)"
+  fi
+
+  if [ "$state" = "Running" ]; then
+    version="$(get_vm_version_line)"
+    snapshot="$(get_vm_runtime_snapshot)"
+    channels="$(get_vm_channel_lines "$snapshot")"
+    checklist="$(get_vm_readiness_lines "$snapshot")"
+    openai="$(kv_get "$snapshot" openai)"
+    anthropic="$(kv_get "$snapshot" anthropic)"
+    discord="$(kv_get "$snapshot" discord_status)"
+    telegram="$(kv_get "$snapshot" telegram_status)"
+    svc_i="$(kv_get "$snapshot" service_installed)"
+    svc_r="$(kv_get "$snapshot" service_running)"
+    rec="$(recommended_action "$state" "$openai" "$anthropic" "$discord" "$telegram" "$svc_i" "$svc_r")"
+  fi
+
+  if [ -n "${TERM:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+    clear
+  else
+    printf '\033[2J\033[H'
+  fi
+
+  cat <<EOF
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ 🔬 sciClaw VM Control Center                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ VM:      $VM_NAME
+ State:   $state
+ IP:      ${ip:--}
+ Load:    ${load:--}
+ Memory:  ${mem:--}
+ Project: $project
+ Agent:   ${version:--}
+
+ Readiness:
+   $(printf '%s' "$checklist" | sed 's/^/ /')
+
+ Channels:
+   $(printf '%s' "$channels" | sed 's/^/ /')
+
+ Recommended next step: $rec
+
+ Actions:
+   Setup: [1] Start/Sync  [4] Onboard  [5] Auth OpenAI  [6] Auth Anthropic  [g] Guided setup
+   Chat:  [7] Discord     [8] Telegram [9] Gateway
+   Ops:   [10] Install svc [11] Start svc [12] Restart svc [13] Logs [14] Doctor [3] Shell
+   Sync:  [15] Push       [16] Pull
+   VM:    [2] Status      [17] Stop    [18] Destroy
+   [q] Quit
+EOF
+}
+
+run_tui_action() {
+  set +e
+  "$@"
+  local rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo ""
+    echo "Action failed (exit $rc)."
+  fi
+  pause_screen
+}
+
+cmd_tui() {
+  while true; do
+    draw_tui
+    local choice project_dir
+    read -r -p "Select action: " choice
+    case "${choice:-}" in
+      1|start|sync)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_start "$project_dir"
+        ;;
+      m|mount)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_mount "$project_dir"
+        ;;
+      u|umount|unmount)
+        run_tui_action cmd_umount
+        ;;
+      2|status) run_tui_action cmd_status ;;
+      3|shell) run_tui_action cmd_shell ;;
+      4|onboard) run_tui_action cmd_vm_onboard ;;
+      5|auth-openai) run_tui_action cmd_sciclaw_passthrough auth login --provider openai ;;
+      6|auth-anthropic) run_tui_action cmd_sciclaw_passthrough auth login --provider anthropic ;;
+      7|discord) run_tui_action cmd_sciclaw_passthrough channels setup discord ;;
+      8|telegram) run_tui_action cmd_sciclaw_passthrough channels setup telegram ;;
+      9|gateway) run_tui_action cmd_sciclaw_passthrough gateway ;;
+      10|service-install) run_tui_action cmd_sciclaw_passthrough service install ;;
+      11|service-start) run_tui_action cmd_sciclaw_passthrough service start ;;
+      12|service-restart) run_tui_action cmd_sciclaw_passthrough service restart ;;
+      13|logs) run_tui_action cmd_sciclaw_passthrough service logs ;;
+      14|doctor) run_tui_action cmd_doctor ;;
+      15|push)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_push "$project_dir"
+        ;;
+      16|pull)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_pull "$project_dir"
+        ;;
+      17|stop) run_tui_action cmd_stop ;;
+      18|destroy)
+        if confirm_destroy_vm; then
+          run_tui_action cmd_destroy --force
+        else
+          echo "Destroy cancelled."
+          pause_screen
+        fi
+        ;;
+      g|G|guide|guided) run_tui_action run_guided_setup ;;
+      q|Q|quit|exit) break ;;
+      *)
+        echo "Unknown selection: ${choice:-<empty>}"
+        pause_screen
+        ;;
+    esac
+  done
+}
+
+# ── Main ─────────────────────────────────────────────────────────
+
+check_multipass
+
+case "${1:-help}" in
+  start)   shift; cmd_start "$@" ;;
+  stop)    cmd_stop ;;
+  status)  cmd_status ;;
+  destroy) cmd_destroy ;;
+  shell)   cmd_shell ;;
+  doctor)  cmd_doctor ;;
+  mount)   shift; cmd_mount "$@" ;;
+  umount|unmount) cmd_umount ;;
+  onboard) cmd_vm_onboard "${@:2}" ;;
+  auth)    cmd_sciclaw_passthrough auth "${@:2}" ;;
+  channels) cmd_sciclaw_passthrough channels "${@:2}" ;;
+  tui)     cmd_tui ;;
+  push)    cmd_push "${2:-}" ;;
+  pull)    cmd_pull "${2:-}" ;;
+  help|--help|-h)
+    echo "Usage: $VM_CMD_LABEL <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  start [dir] [--live-mount] [--mount-type classic|native]"
+    echo "                 Create/start VM and sync (or live-mount) project directory"
+    echo "  stop          Pause the VM"
+    echo "  status        Show VM info"
+    echo "  destroy       Delete the VM"
+    echo "  shell         Open a terminal in the VM (drops you into project dir)"
+    echo "  doctor        Check all tools are installed"
+    echo "  onboard [...] Run sciclaw onboard inside VM (interactive/idempotent)"
+    echo "  auth [...]    Run sciclaw auth ... inside VM"
+    echo "  channels [...] Run sciclaw channels ... inside VM"
+    echo "  tui           Open interactive VM control center"
+    echo "  mount [dir] [--type classic|native]"
+    echo "                 Live-mount host directory into VM project path"
+    echo "  umount        Disable live mount for VM project path"
+    echo "  push [dir]    Sync local changes → VM"
+    echo "  pull [dir]    Sync VM changes → local"
+    ;;
+  *)
+    die "unknown command: $1 (try '$VM_CMD_LABEL help')"
+    ;;
+esac

@@ -10,8 +10,11 @@ tag="${1:?Usage: update-tap.sh <tag> <repo>}"
 repo="${2:?Usage: update-tap.sh <tag> <repo>}"
 version="${tag#v}"
 base="https://github.com/${repo}/releases/download/${tag}"
-tap_repo="drpedapati/homebrew-tap"
-formula_path="Formula/sciclaw.rb"
+tap_repo="${TAP_REPO:-drpedapati/homebrew-tap}"
+formula_name="${FORMULA_NAME:-sciclaw}"
+formula_class="${FORMULA_CLASS:-Sciclaw}"
+formula_desc="${FORMULA_DESC:-Autonomous paired scientist CLI forked from PicoClaw}"
+formula_path="${FORMULA_PATH:-Formula/${formula_name}.rb}"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
@@ -35,15 +38,23 @@ echo "  linux-amd64:  ${sha_linux_amd64}"
 echo "  source:       ${sha_source}"
 
 # Clone tap, render formula, push
-echo "  Updating tap formula..."
+echo "  Updating tap formula: ${formula_path}"
 gh repo clone "${tap_repo}" "${tmpdir}/tap" -- --depth 1 -q
 
 cat > "${tmpdir}/tap/${formula_path}" <<FORMULA
-class Sciclaw < Formula
-  desc "Autonomous paired scientist CLI forked from PicoClaw"
+class ${formula_class} < Formula
+  desc "${formula_desc}"
   homepage "https://github.com/drpedapati/sciclaw"
   version "${version}"
   license "MIT"
+
+  depends_on "imagemagick"
+  depends_on "irl"
+  depends_on "pandoc"
+  depends_on "ripgrep"
+  depends_on "sciclaw-docx-review"
+  depends_on "sciclaw-pubmed-cli"
+  depends_on "uv"
 
   on_macos do
     on_arm do
@@ -69,14 +80,6 @@ class Sciclaw < Formula
     url "${source_url}"
     sha256 "${sha_source}"
   end
-
-  depends_on "irl"
-  depends_on "imagemagick"
-  depends_on "pandoc"
-  depends_on "ripgrep"
-  depends_on "uv"
-  depends_on "sciclaw-docx-review"
-  depends_on "sciclaw-pubmed-cli"
 
   def install
     # Install pre-compiled binary
@@ -150,7 +153,7 @@ git add "${formula_path}"
 if git diff --cached --quiet; then
   echo "  No formula changes detected."
 else
-  git commit -m "sciclaw ${tag}" -q
+  git commit -m "${formula_name} ${tag}" -q
   git push origin main -q
-  echo "  Tap updated: ${tap_repo} → ${tag}"
+  echo "  Tap updated: ${tap_repo} (${formula_path}) → ${tag}"
 fi

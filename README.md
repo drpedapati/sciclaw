@@ -56,6 +56,14 @@ That's it. sciClaw runs in the background and responds to your messages. See the
 brew tap drpedapati/tap && brew install sciclaw
 ```
 
+### Homebrew (development channel)
+
+```bash
+brew tap drpedapati/tap && brew install sciclaw-dev
+```
+
+`sciclaw-dev` tracks development branch releases. If stable `sciclaw` is already installed, uninstall it first to avoid binary name collisions.
+
 Then run the interactive setup wizard:
 ```bash
 sciclaw onboard
@@ -221,6 +229,35 @@ Platform notes:
 - **Linux**: `systemd --user` (`~/.config/systemd/user/sciclaw-gateway.service`)
 - **WSL**: service mode works when systemd is enabled; otherwise `sciclaw gateway` in a terminal
 
+## Collaborative Routing (Channel -> Workspace)
+
+For team deployments, route each chat room/thread to its own workspace with per-room sender ACLs.
+
+Example:
+
+```bash
+sciclaw routing add \
+  --channel discord \
+  --chat-id 1467290563052048476 \
+  --workspace /absolute/path/to/project-a \
+  --allow 8535331528,1467290563052048476 \
+  --label project-a
+
+sciclaw routing enable
+sciclaw routing validate
+sciclaw routing reload
+```
+
+Useful operations:
+- `sciclaw routing status`
+- `sciclaw routing list`
+- `sciclaw routing explain --channel <channel> --chat-id <id> --sender <id>`
+- `sciclaw routing set-users --channel <channel> --chat-id <id> --allow <id1,id2>`
+- `sciclaw routing remove --channel <channel> --chat-id <id>`
+- `sciclaw routing export --out routing.json` / `sciclaw routing import --in routing.json [--replace]`
+
+Session isolation is namespaced as `<channel>:<chat_id>@<workspace_hash>` to prevent cross-workspace context bleed.
+
 ## IRL Integration
 
 sciClaw integrates with [IRL](https://github.com/drpedapati/irl-template) (Idempotent Research Loop) for project lifecycle management. IRL is installed automatically as a Homebrew dependency.
@@ -261,6 +298,9 @@ cp config/config.example.json config/config.json   # edit with your credentials
 docker compose --profile gateway up -d              # gateway mode
 docker compose run --rm sciclaw-agent -m "Hello"    # one-shot
 ```
+
+The Docker image is a full runtime and includes:
+`python3`, `uv`, `ripgrep`, `imagemagick`, `pandoc`, `quarto`, `docx-review`, `pubmed-cli`, and `irl`.
 
 ## Troubleshooting
 
