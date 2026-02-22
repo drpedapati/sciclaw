@@ -70,10 +70,16 @@ func renderSystemInfoPanel(snap *VMSnapshot, w int) string {
 
 	osStr := runtime.GOOS + "/" + runtime.GOARCH
 
+	backend := "systemd (user)"
+	if runtime.GOOS == "darwin" {
+		backend = "launchd (user)"
+	}
+
 	content := fmt.Sprintf(
-		"%s %s\n%s %s\n%s %s",
+		"%s %s\n%s %s\n%s %s\n%s %s",
 		styleLabel.Render("Mode:"), styleOK.Render("Local"),
 		styleLabel.Render("System:"), styleValue.Render(osStr),
+		styleLabel.Render("Service:"), styleValue.Render(backend),
 		styleLabel.Render("Agent:"), styleValue.Render(verStr),
 	)
 
@@ -125,17 +131,19 @@ func renderVMInfoPanel(snap *VMSnapshot, w int) string {
 }
 
 func renderChecklistPanel(snap *VMSnapshot, w int) string {
-	items := []struct {
+	type checkItem struct {
 		status string
 		label  string
-	}{
+	}
+
+	items := []checkItem{
 		{boolStatus(snap.ConfigExists), "Configuration file"},
 		{boolStatus(snap.WorkspaceExists), "Workspace folder"},
 		{boolStatus(snap.AuthStoreExists), "Login credentials"},
 		{providerCheckStatus(snap.OpenAI, snap.Anthropic), providerCheckLabel(snap.OpenAI, snap.Anthropic)},
 		{channelCheckStatus(snap.Discord.Status, snap.Telegram.Status), channelCheckLabel(snap.Discord, snap.Telegram)},
-		{boolStatus(snap.ServiceInstalled), "Agent service installed"},
-		{boolStatus(snap.ServiceRunning), "Agent service running"},
+		{boolStatus(snap.ServiceInstalled), "Gateway service installed"},
+		{boolStatus(snap.ServiceRunning), "Gateway service running"},
 	}
 
 	var lines []string

@@ -324,12 +324,15 @@ func hostConfigRaw() (string, error) {
 
 // SuggestedStep returns a plain-English suggestion and the tab index to navigate to.
 func (s *VMSnapshot) SuggestedStep() (message, detail string, tabIdx int) {
+	// VM-specific states — only reachable when running in VM mode.
 	if s.State == "NotFound" || s.State == "" {
 		return "Create and start the VM", "Run 'sciclaw vm start' to provision your virtual machine.", -1
 	}
 	if s.State != "Running" && s.State != "Local" {
 		return "Start the VM", "The VM exists but is not running. Run 'sciclaw vm start'.", -1
 	}
+
+	// Mode-neutral suggestions from here on.
 	if s.OpenAI != "ready" && s.Anthropic != "ready" {
 		return "Log in to an AI provider", "You need credentials for OpenAI or Anthropic to use the agent.", tabLogin
 	}
@@ -337,10 +340,10 @@ func (s *VMSnapshot) SuggestedStep() (message, detail string, tabIdx int) {
 		return "Set up a messaging app", "Connect Discord or Telegram so you can chat with your agent.", tabChannels
 	}
 	if !s.ServiceInstalled {
-		return "Install the agent service", "The background service lets your agent run continuously.", tabAgent
+		return "Install the gateway service", "The background service lets your agent run continuously.", tabAgent
 	}
 	if !s.ServiceRunning {
-		return "Start the agent service", "Your agent is installed but not running yet.", tabAgent
+		return "Start the gateway service", "Your agent is installed but not running yet.", tabAgent
 	}
 	return "You're all set!", "Your agent is running and ready. Check the logs for activity.", tabAgent
 }
