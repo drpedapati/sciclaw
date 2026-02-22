@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/sipeed/picoclaw/pkg/auth"
 )
 
+const anthropicOAuthBetaHeader = "oauth-2025-04-20"
+
 type ClaudeProvider struct {
 	client      *anthropic.Client
 	tokenSource func() (string, error)
+	oauthToken  bool
 }
 
 func NewClaudeProvider(token string) *ClaudeProvider {
@@ -20,7 +24,10 @@ func NewClaudeProvider(token string) *ClaudeProvider {
 		option.WithAuthToken(token),
 		option.WithBaseURL("https://api.anthropic.com"),
 	)
-	return &ClaudeProvider{client: &client}
+	return &ClaudeProvider{
+		client:     &client,
+		oauthToken: isAnthropicOAuthToken(token),
+	}
 }
 
 func NewClaudeProviderWithTokenSource(token string, tokenSource func() (string, error)) *ClaudeProvider {
@@ -31,12 +38,17 @@ func NewClaudeProviderWithTokenSource(token string, tokenSource func() (string, 
 
 func (p *ClaudeProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
 	var opts []option.RequestOption
+	useOAuthBeta := p.oauthToken
 	if p.tokenSource != nil {
 		tok, err := p.tokenSource()
 		if err != nil {
 			return nil, fmt.Errorf("refreshing token: %w", err)
 		}
 		opts = append(opts, option.WithAuthToken(tok))
+		useOAuthBeta = isAnthropicOAuthToken(tok)
+	}
+	if useOAuthBeta {
+		opts = append(opts, option.WithHeader("anthropic-beta", anthropicOAuthBetaHeader))
 	}
 
 	params, err := buildClaudeParams(messages, tools, model, options)
@@ -46,7 +58,7 @@ func (p *ClaudeProvider) Chat(ctx context.Context, messages []Message, tools []T
 
 	resp, err := p.client.Messages.New(ctx, params, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("claude API call: %w", err)
+		return nil, wrapClaudeAPIError(err, useOAuthBeta)
 	}
 
 	return parseClaudeResponse(resp), nil
@@ -213,4 +225,28 @@ func createClaudeTokenSource() func() (string, error) {
 		}
 		return cred.AccessToken, nil
 	}
+}
+
+func isAnthropicOAuthToken(token string) bool {
+	return strings.HasPrefix(strings.TrimSpace(token), "sk-ant-oat")
+}
+
+func wrapClaudeAPIError(err error, oauthToken bool) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if oauthToken && strings.Contains(msg, "Invalid bearer token") {
+		return fmt.Errorf(
+			"claude API call: %w (Anthropic OAuth token is invalid or expired; run `sciclaw auth login --provider anthropic` or re-run `sciclaw auth import-op ...` with a fresh token)",
+			err,
+		)
+	}
+	if oauthToken && strings.Contains(msg, "OAuth authentication is currently not supported") {
+		return fmt.Errorf(
+			"claude API call: %w (OAuth token detected; this usually means required Anthropic OAuth beta headers are missing in the client path)",
+			err,
+		)
+	}
+	return fmt.Errorf("claude API call: %w", err)
 }

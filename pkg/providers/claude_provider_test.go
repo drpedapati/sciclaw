@@ -2,8 +2,10 @@ package providers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -152,6 +154,10 @@ func TestClaudeProvider_ChatRoundTrip(t *testing.T) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		if got := r.Header.Get("anthropic-beta"); got != "" {
+			http.Error(w, "unexpected anthropic-beta header for non-oauth token", http.StatusBadRequest)
+			return
+		}
 
 		var reqBody map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&reqBody)
@@ -194,10 +200,104 @@ func TestClaudeProvider_ChatRoundTrip(t *testing.T) {
 	}
 }
 
+func TestClaudeProvider_ChatRoundTrip_OAuthTokenAddsBetaHeader(t *testing.T) {
+	oauthToken := "sk-ant-oat01-test-oauth-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer "+oauthToken {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if got := r.Header.Get("anthropic-beta"); got != anthropicOAuthBetaHeader {
+			http.Error(w, "missing oauth beta header", http.StatusBadRequest)
+			return
+		}
+
+		resp := map[string]interface{}{
+			"id":          "msg_test_oauth",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       "claude-sonnet-4-5-20250929",
+			"stop_reason": "end_turn",
+			"content": []map[string]interface{}{
+				{"type": "text", "text": "ALIVE"},
+			},
+			"usage": map[string]interface{}{
+				"input_tokens":  10,
+				"output_tokens": 5,
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewClaudeProvider(oauthToken)
+	provider.client = createAnthropicTestClient(server.URL, oauthToken)
+
+	resp, err := provider.Chat(t.Context(), []Message{{Role: "user", Content: "Ping"}}, nil, "claude-sonnet-4-5-20250929", map[string]interface{}{"max_tokens": 64})
+	if err != nil {
+		t.Fatalf("Chat() error: %v", err)
+	}
+	if resp.Content != "ALIVE" {
+		t.Errorf("Content = %q, want %q", resp.Content, "ALIVE")
+	}
+}
+
 func TestClaudeProvider_GetDefaultModel(t *testing.T) {
 	p := NewClaudeProvider("test-token")
 	if got := p.GetDefaultModel(); got != "claude-sonnet-4-5-20250929" {
 		t.Errorf("GetDefaultModel() = %q, want %q", got, "claude-sonnet-4-5-20250929")
+	}
+}
+
+func TestIsAnthropicOAuthToken(t *testing.T) {
+	tests := []struct {
+		token string
+		want  bool
+	}{
+		{token: "sk-ant-oat01-abc123", want: true},
+		{token: " sk-ant-oat01-abc123 ", want: true},
+		{token: "sk-ant-oat02-abc123", want: true},
+		{token: "sk-ant-oat-abc123", want: true},
+		{token: "sk-ant-api03-abc123", want: false},
+		{token: "sk-ant-ort01-abc123", want: false},
+		{token: "", want: false},
+	}
+	for _, tt := range tests {
+		if got := isAnthropicOAuthToken(tt.token); got != tt.want {
+			t.Errorf("isAnthropicOAuthToken(%q) = %v, want %v", tt.token, got, tt.want)
+		}
+	}
+}
+
+func TestWrapClaudeAPIError_InvalidBearerHint(t *testing.T) {
+	base := errors.New("401 Unauthorized: Invalid bearer token")
+	err := wrapClaudeAPIError(base, true)
+	if err == nil {
+		t.Fatal("wrapClaudeAPIError() returned nil")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "Invalid bearer token") {
+		t.Fatalf("error missing original message: %q", got)
+	}
+	if !strings.Contains(got, "invalid or expired") {
+		t.Fatalf("error missing remediation hint: %q", got)
+	}
+}
+
+func TestWrapClaudeAPIError_NoOAuthHintForNonOAuth(t *testing.T) {
+	base := errors.New("401 Unauthorized: Invalid bearer token")
+	err := wrapClaudeAPIError(base, false)
+	if err == nil {
+		t.Fatal("wrapClaudeAPIError() returned nil")
+	}
+	got := err.Error()
+	if strings.Contains(got, "invalid or expired") {
+		t.Fatalf("unexpected oauth-specific hint in non-oauth error: %q", got)
 	}
 }
 
