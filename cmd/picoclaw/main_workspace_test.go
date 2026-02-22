@@ -44,10 +44,10 @@ func TestCreateWorkspaceTemplatesCreatesExpectedStructure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(agentsContent), "paired-scientist") {
-		t.Fatalf("AGENTS.md missing paired-scientist guidance")
+	if !strings.Contains(string(agentsContent), "Operating Loop") {
+		t.Fatalf("AGENTS.md missing operating loop guidance")
 	}
-	if !strings.Contains(string(agentsContent), "Baseline Scientific Skills") {
+	if !strings.Contains(string(agentsContent), "Baseline Skills") {
 		t.Fatalf("AGENTS.md missing baseline skill manifest")
 	}
 

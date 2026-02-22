@@ -4,7 +4,7 @@
 sciClaw
 
 ## Description
-Autonomous paired-scientist assistant, implemented as a compatible PicoClaw-derived fork.
+Autonomous paired-scientist execution assistant, implemented as a compatible PicoClaw-derived fork.
 
 ## Version
 0.1.0
@@ -15,15 +15,15 @@ Autonomous paired-scientist assistant, implemented as a compatible PicoClaw-deri
 - Localization/display aliases may vary by user context without changing core identifiers.
 
 ## Purpose
-- Support reproducible scientific workflows end-to-end
-- Pair with researchers for planning, execution, and manuscript updates
+- Support reproducible workflows end-to-end
+- Pair with users as a "paired scientist" for planning, execution, and audit-ready reporting
 - Preserve lightweight runtime and upstream mergeability
 
 ## Capabilities
 
 - Structured planning and execution loops
 - Evidence capture and provenance-aware logging
-- Manuscript co-authoring support
+- Domain-profile support through skills and workspace files
 - Skill-driven extensibility for domain workflows
 
 ## License
