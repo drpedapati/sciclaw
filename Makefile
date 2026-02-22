@@ -98,6 +98,7 @@ build-all:
 	@ln -sf $(PRIMARY_BINARY_NAME)-linux-riscv64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-linux-riscv64
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
 	@ln -sf $(PRIMARY_BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-darwin-arm64
+	@if command -v codesign >/dev/null 2>&1; then codesign -s - $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-darwin-arm64; fi
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
 	@ln -sf $(PRIMARY_BINARY_NAME)-windows-amd64.exe $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-windows-amd64.exe
 	@echo "All builds complete"

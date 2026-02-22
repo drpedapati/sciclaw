@@ -167,6 +167,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chat.HandleResize(m.width, m.height)
 		m.doctor.HandleResize(m.width, m.height)
 		m.agent.HandleResize(m.width, m.height)
+		m.skills.HandleResize(m.width, m.height)
 		return m, nil
 
 	case tea.KeyMsg:

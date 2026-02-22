@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -26,13 +27,19 @@ type skillRow struct {
 	Description string
 }
 
-// SkillsModel handles the Skills tab.
+// SkillsModel handles the Skills tab with a master-detail layout.
 type SkillsModel struct {
 	exec        Executor
 	mode        skillsMode
 	loaded      bool
 	selectedRow int
 	skills      []skillRow
+
+	// Viewports for master list and detail pane.
+	listVP   viewport.Model
+	detailVP viewport.Model
+	width    int
+	height   int
 
 	// Install text input
 	input textinput.Model
@@ -46,7 +53,18 @@ func NewSkillsModel(exec Executor) SkillsModel {
 	ti.CharLimit = 128
 	ti.Width = 50
 	ti.Placeholder = "e.g. drpedapati/sciclaw-skills/weather"
-	return SkillsModel{exec: exec, input: ti}
+
+	listVP := viewport.New(60, 8)
+	listVP.KeyMap = viewport.KeyMap{} // disable built-in keys
+	detailVP := viewport.New(60, 8)
+	detailVP.KeyMap = viewport.KeyMap{} // disable built-in keys
+
+	return SkillsModel{
+		exec:     exec,
+		input:    ti,
+		listVP:   listVP,
+		detailVP: detailVP,
+	}
 }
 
 func (m *SkillsModel) AutoRun() tea.Cmd {
@@ -59,6 +77,148 @@ func (m *SkillsModel) AutoRun() tea.Cmd {
 func (m *SkillsModel) HandleList(msg skillsListMsg) {
 	m.loaded = true
 	m.skills = parseSkillsList(msg.output)
+	if m.selectedRow >= len(m.skills) {
+		m.selectedRow = max(0, len(m.skills)-1)
+	}
+	m.rebuildListContent()
+	m.rebuildDetailContent()
+}
+
+func (m *SkillsModel) HandleResize(width, height int) {
+	m.width = width
+	m.height = height
+	w := width - 8
+	if w < 40 {
+		w = 40
+	}
+	avail := height - 14 // room for header, tab bar, keybindings, status bar
+	listH := avail * 2 / 5
+	if listH < 4 {
+		listH = 4
+	}
+	detailH := avail - listH
+	if detailH < 4 {
+		detailH = 4
+	}
+	m.listVP.Width = w
+	m.listVP.Height = listH
+	m.detailVP.Width = w
+	m.detailVP.Height = detailH
+	m.rebuildListContent()
+	m.rebuildDetailContent()
+}
+
+func (m *SkillsModel) rebuildListContent() {
+	if len(m.skills) == 0 {
+		m.listVP.SetContent(styleDim.Render("  No skills installed."))
+		return
+	}
+
+	var lines []string
+	for i, sk := range m.skills {
+		indicator := "  "
+		if i == m.selectedRow {
+			indicator = styleBold.Foreground(colorAccent).Render("▸ ")
+		}
+
+		name := sk.Name
+		if i == m.selectedRow {
+			name = styleBold.Render(name)
+		}
+
+		source := ""
+		if sk.Source != "" {
+			source = styleDim.Render(" (" + sk.Source + ")")
+		}
+
+		line := fmt.Sprintf("  %s%s%s", indicator, name, source)
+		if i == m.selectedRow {
+			line = lipgloss.NewStyle().
+				Background(lipgloss.Color("#2A2A4A")).
+				Width(m.listVP.Width - 2).
+				Render(line)
+		}
+		lines = append(lines, line)
+	}
+	m.listVP.SetContent(strings.Join(lines, "\n"))
+}
+
+func (m *SkillsModel) rebuildDetailContent() {
+	if len(m.skills) == 0 || m.selectedRow >= len(m.skills) {
+		m.detailVP.SetContent(styleDim.Render("  Select a skill to view details."))
+		return
+	}
+
+	sk := m.skills[m.selectedRow]
+	var lines []string
+	lines = append(lines, fmt.Sprintf("  %s  %s", styleLabel.Render("Name:"), styleValue.Render(sk.Name)))
+	if sk.Source != "" {
+		lines = append(lines, fmt.Sprintf("  %s  %s", styleLabel.Render("Source:"), sourceBadge(sk.Source)))
+	}
+	if sk.Description != "" {
+		lines = append(lines, "")
+		// Word-wrap description to panel width.
+		descW := m.detailVP.Width - 6
+		if descW < 30 {
+			descW = 30
+		}
+		for _, wrapped := range wrapText(sk.Description, descW) {
+			lines = append(lines, "  "+wrapped)
+		}
+	}
+	m.detailVP.SetContent(strings.Join(lines, "\n"))
+	m.detailVP.GotoTop()
+}
+
+func sourceBadge(source string) string {
+	switch source {
+	case "workspace":
+		return lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render(source)
+	case "builtin":
+		return lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(source)
+	case "global":
+		return lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render(source)
+	default:
+		return styleDim.Render(source)
+	}
+}
+
+// wrapText wraps a string to the given width, breaking on spaces.
+func wrapText(text string, width int) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+	var lines []string
+	current := words[0]
+	for _, w := range words[1:] {
+		if len(current)+1+len(w) > width {
+			lines = append(lines, current)
+			current = w
+		} else {
+			current += " " + w
+		}
+	}
+	lines = append(lines, current)
+	return lines
+}
+
+// syncListScroll ensures the selected row is visible in the list viewport.
+func (m *SkillsModel) syncListScroll() {
+	if len(m.skills) == 0 {
+		return
+	}
+	// Each row is one line in the viewport content.
+	topVisible := m.listVP.YOffset
+	bottomVisible := topVisible + m.listVP.Height - 1
+	if m.selectedRow < topVisible {
+		m.listVP.SetYOffset(m.selectedRow)
+	} else if m.selectedRow > bottomVisible {
+		m.listVP.SetYOffset(m.selectedRow - m.listVP.Height + 1)
+	}
 }
 
 func parseSkillsList(output string) []skillRow {
@@ -133,10 +293,16 @@ func (m SkillsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SkillsModel, tea.
 	case "up", "k":
 		if m.selectedRow > 0 {
 			m.selectedRow--
+			m.rebuildListContent()
+			m.rebuildDetailContent()
+			m.syncListScroll()
 		}
 	case "down", "j":
 		if m.selectedRow < len(m.skills)-1 {
 			m.selectedRow++
+			m.rebuildListContent()
+			m.rebuildDetailContent()
+			m.syncListScroll()
 		}
 	case "i":
 		m.mode = skillsInstall
@@ -165,67 +331,52 @@ func (m SkillsModel) View(snap *VMSnapshot, width int) string {
 		return "\n  Loading skills...\n"
 	}
 
-	var lines []string
+	var b strings.Builder
 
-	if len(m.skills) == 0 {
-		lines = append(lines, "")
-		lines = append(lines, "  No skills installed.")
-		lines = append(lines, "")
-		lines = append(lines, styleDim.Render("  Skills extend your agent's capabilities."))
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  %s Install a skill   %s Refresh",
+	// Master list panel.
+	listContent := m.listVP.View()
+	listPanel := stylePanel.Width(panelW).Render(listContent)
+	listTitle := stylePanelTitle.Render("Skills")
+	b.WriteString(placePanelTitle(listPanel, listTitle))
+
+	// Detail panel.
+	detailContent := m.detailVP.View()
+	detailPanel := stylePanel.Width(panelW).Render(detailContent)
+	detailTitle := stylePanelTitle.Render("Detail")
+	b.WriteString(placePanelTitle(detailPanel, detailTitle))
+
+	// Keybindings.
+	if len(m.skills) > 0 {
+		b.WriteString(fmt.Sprintf("  %s Install   %s Remove   %s Refresh\n",
 			styleKey.Render("[i]"),
+			styleKey.Render("[r]"),
 			styleKey.Render("[l]"),
 		))
 	} else {
-		// Table header.
-		lines = append(lines, fmt.Sprintf("  %-24s  %-12s  %s",
-			styleDim.Render("Name"),
-			styleDim.Render("Source"),
-			styleDim.Render("Description"),
-		))
-		lines = append(lines, styleDim.Render("  "+strings.Repeat("─", 60)))
-
-		for i, sk := range m.skills {
-			line := fmt.Sprintf("  %-24s  %-12s  %s", sk.Name, sk.Source, sk.Description)
-			if i == m.selectedRow && m.mode == skillsNormal {
-				line = lipgloss.NewStyle().
-					Background(lipgloss.Color("#2A2A4A")).
-					Bold(true).
-					Render(line)
-			}
-			lines = append(lines, line)
-		}
-
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  %s Install   %s Remove selected   %s Refresh",
+		b.WriteString(fmt.Sprintf("  %s Install a skill   %s Refresh\n",
 			styleKey.Render("[i]"),
-			styleKey.Render("[r]"),
 			styleKey.Render("[l]"),
 		))
 	}
 
 	// Overlays.
 	if m.mode == skillsInstall {
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  GitHub repo: %s", m.input.View()))
-		lines = append(lines, styleHint.Render("    e.g. drpedapati/sciclaw-skills/weather"))
-		lines = append(lines, styleDim.Render("    Enter to install, Esc to cancel"))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  GitHub repo: %s\n", m.input.View()))
+		b.WriteString(styleHint.Render("    e.g. drpedapati/sciclaw-skills/weather") + "\n")
+		b.WriteString(styleDim.Render("    Enter to install, Esc to cancel") + "\n")
 	}
 
 	if m.mode == skillsConfirmRemove {
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  Remove skill %s? %s / %s",
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  Remove skill %s? %s / %s\n",
 			styleBold.Render(m.removeName),
 			styleKey.Render("[y]es"),
 			styleKey.Render("[n]o"),
 		))
 	}
 
-	content := strings.Join(lines, "\n")
-	panel := stylePanel.Width(panelW).Render(content)
-	title := stylePanelTitle.Render("Skills")
-	return placePanelTitle(panel, title)
+	return b.String()
 }
 
 func fetchSkillsList(exec Executor) tea.Cmd {
