@@ -2,7 +2,9 @@
 # sciClaw VM manager — one-command setup via Multipass.
 #
 # Usage:
-#   deploy/vm start [project-dir]   Create/start VM, sync project directory
+#   deploy/vm start [project-dir] [--live-mount] [--mount-type classic|native]
+#                                    Create/start VM and sync project directory
+#                                    (or mount it live)
 #   deploy/vm stop                  Pause the VM (frees RAM, keeps state)
 #   deploy/vm status                Show VM state
 #   deploy/vm destroy               Delete the VM entirely
@@ -12,6 +14,9 @@
 #   deploy/vm auth [args...]        Run sciclaw auth ... inside the VM
 #   deploy/vm channels [args...]    Run sciclaw channels ... inside the VM
 #   deploy/vm tui                   Open interactive VM control center
+#   deploy/vm mount [project-dir] [--type classic|native]
+#                                    Live-mount host project into VM
+#   deploy/vm umount                Remove live mount for /home/ubuntu/project
 #   deploy/vm push [project-dir]    Sync host → VM
 #   deploy/vm pull [project-dir]    Sync VM → host
 #
@@ -31,6 +36,7 @@ TOOLCHAIN_ENV="${SCICLAW_VM_TOOLCHAIN_ENV:-$SCRIPT_DIR/toolchain.env}"
 VM_PROJECT="/home/ubuntu/project"
 STATE_DIR="${SCICLAW_VM_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/sciclaw}"
 STATE_PROJECT_FILE="$STATE_DIR/vm-project-path"
+STATE_SYNC_MODE_FILE="$STATE_DIR/vm-sync-mode"
 VM_CMD_LABEL="${SCICLAW_VM_CMD_LABEL:-deploy/vm}"
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -64,6 +70,42 @@ vm_state() {
 resolve_project() {
   local dir="${1:-$(pwd)}"
   cd "$dir" && pwd
+}
+
+wait_for_vm_state() {
+  local want="$1"
+  local tries="${2:-20}"
+  local i state
+  for ((i=0; i<tries; i++)); do
+    state="$(vm_state)"
+    if [ "$state" = "$want" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+sync_mode_get() {
+  if [ -f "$STATE_SYNC_MODE_FILE" ]; then
+    cat "$STATE_SYNC_MODE_FILE"
+  else
+    echo "sync"
+  fi
+}
+
+sync_mode_set() {
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$1" > "$STATE_SYNC_MODE_FILE"
+}
+
+vm_project_is_mounted() {
+  local state
+  state="$(vm_state)"
+  if [ "$state" = "NotFound" ]; then
+    return 1
+  fi
+  multipass info "$VM_NAME" 2>/dev/null | grep -F "$VM_PROJECT" >/dev/null
 }
 
 render_cloud_init() {
@@ -145,8 +187,38 @@ sync_from_vm() {
 # ── Commands ─────────────────────────────────────────────────────
 
 cmd_start() {
+  local project_arg=""
+  local live_mount="no"
+  local mount_type="${SCICLAW_VM_MOUNT_TYPE:-classic}"
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --live-mount|--mount)
+        live_mount="yes"
+        ;;
+      --mount-type)
+        shift
+        [ $# -gt 0 ] || die "--mount-type requires a value (classic|native)"
+        mount_type="$1"
+        ;;
+      --sync)
+        live_mount="no"
+        ;;
+      -*)
+        die "unknown start option: $1"
+        ;;
+      *)
+        if [ -n "$project_arg" ]; then
+          die "unexpected extra argument: $1"
+        fi
+        project_arg="$1"
+        ;;
+    esac
+    shift
+  done
+
   local project_dir
-  project_dir=$(resolve_project "${1:-}")
+  project_dir=$(resolve_project "${project_arg:-}")
 
   if [ ! -d "$project_dir" ]; then
     die "directory not found: $project_dir"
@@ -201,8 +273,13 @@ cmd_start() {
       ;;
   esac
 
-  # Sync project files into the VM
-  sync_to_vm "$project_dir"
+  # Sync project files into the VM (or mount live).
+  if [ "$live_mount" = "yes" ]; then
+    cmd_mount_internal "$project_dir" "$mount_type"
+  else
+    sync_to_vm "$project_dir"
+    sync_mode_set "sync"
+  fi
 
   # Save project path so push/pull know where to sync
   mkdir -p "$STATE_DIR"
@@ -212,14 +289,109 @@ cmd_start() {
   echo "Ready. Your project is at $VM_PROJECT inside the VM."
   echo ""
   echo "  $VM_CMD_LABEL shell     Open a terminal in the VM"
-  echo "  $VM_CMD_LABEL push      Sync your local changes → VM"
-  echo "  $VM_CMD_LABEL pull      Sync VM changes → local"
+  if [ "$live_mount" = "yes" ]; then
+    echo "  Live mount: enabled ($mount_type)"
+    echo "  $VM_CMD_LABEL umount    Disable live mount"
+  else
+    echo "  $VM_CMD_LABEL push      Sync your local changes → VM"
+    echo "  $VM_CMD_LABEL pull      Sync VM changes → local"
+    echo "  Tip: use '$VM_CMD_LABEL mount $project_dir' for live mount mode"
+  fi
   echo "  $VM_CMD_LABEL doctor    Check that all tools are installed"
   echo "  $VM_CMD_LABEL stop      Pause the VM"
 }
 
+cmd_mount_internal() {
+  local project_dir="$1"
+  local mount_type="${2:-classic}"
+  local state was_running
+
+  [ -d "$project_dir" ] || die "directory not found: $project_dir"
+
+  state="$(vm_state)"
+  if [ "$state" = "NotFound" ]; then
+    die "no VM found. Run '$VM_CMD_LABEL start' first."
+  fi
+
+  case "$mount_type" in
+    classic|native) ;;
+    *) die "invalid mount type: $mount_type (expected classic|native)" ;;
+  esac
+
+  was_running="no"
+  if [ "$mount_type" = "native" ]; then
+    case "$state" in
+      Running|Starting)
+        was_running="yes"
+        info "Stopping VM for native mount..."
+        multipass stop "$VM_NAME"
+        wait_for_vm_state "Stopped" 30 || die "VM did not stop in time for native mount"
+        ;;
+    esac
+  fi
+
+  # Replace existing mount at the project target if present.
+  multipass umount "$VM_NAME:$VM_PROJECT" >/dev/null 2>&1 || true
+  multipass mount -t "$mount_type" "$project_dir" "$VM_NAME:$VM_PROJECT"
+
+  if [ "$mount_type" = "native" ] && [ "$was_running" = "yes" ]; then
+    multipass start "$VM_NAME"
+  fi
+
+  mkdir -p "$STATE_DIR"
+  echo "$project_dir" > "$STATE_PROJECT_FILE"
+  sync_mode_set "mount:$mount_type"
+  info "Live mount active: $project_dir ↔ $VM_NAME:$VM_PROJECT ($mount_type)"
+}
+
+cmd_mount() {
+  local project_dir=""
+  local mount_type="${SCICLAW_VM_MOUNT_TYPE:-classic}"
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --type)
+        shift
+        [ $# -gt 0 ] || die "--type requires a value (classic|native)"
+        mount_type="$1"
+        ;;
+      -*)
+        die "unknown mount option: $1"
+        ;;
+      *)
+        if [ -n "$project_dir" ]; then
+          die "unexpected extra argument: $1"
+        fi
+        project_dir="$1"
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$project_dir" ]; then
+    project_dir="$(default_project_dir)"
+  fi
+  project_dir="$(resolve_project "$project_dir")"
+  cmd_mount_internal "$project_dir" "$mount_type"
+}
+
+cmd_umount() {
+  local state
+  state="$(vm_state)"
+  if [ "$state" = "NotFound" ]; then
+    die "no VM found. Run '$VM_CMD_LABEL start' first."
+  fi
+  multipass umount "$VM_NAME:$VM_PROJECT" >/dev/null 2>&1 || true
+  sync_mode_set "sync"
+  info "Live mount removed for $VM_NAME:$VM_PROJECT"
+}
+
 cmd_push() {
   local project_dir
+  if vm_project_is_mounted; then
+    info "Live mount is active at $VM_PROJECT; push is unnecessary."
+    return
+  fi
   if [ -n "${1:-}" ]; then
     project_dir=$(resolve_project "$1")
   elif [ -f "$STATE_PROJECT_FILE" ]; then
@@ -232,6 +404,10 @@ cmd_push() {
 
 cmd_pull() {
   local project_dir
+  if vm_project_is_mounted; then
+    info "Live mount is active at $VM_PROJECT; pull is unnecessary."
+    return
+  fi
   if [ -n "${1:-}" ]; then
     project_dir=$(resolve_project "$1")
   elif [ -f "$STATE_PROJECT_FILE" ]; then
@@ -263,6 +439,12 @@ cmd_status() {
     return
   fi
   multipass info "$VM_NAME"
+  echo ""
+  if vm_project_is_mounted; then
+    echo "Sync mode: live mount ($(sync_mode_get))"
+  else
+    echo "Sync mode: tar sync ($(sync_mode_get))"
+  fi
   if [ -f "$STATE_PROJECT_FILE" ]; then
     echo ""
     echo "Project: $(cat "$STATE_PROJECT_FILE") ↔ VM:$VM_PROJECT"
@@ -687,6 +869,13 @@ cmd_tui() {
         project_dir="$(prompt_project_dir)"
         run_tui_action cmd_start "$project_dir"
         ;;
+      m|mount)
+        project_dir="$(prompt_project_dir)"
+        run_tui_action cmd_mount "$project_dir"
+        ;;
+      u|umount|unmount)
+        run_tui_action cmd_umount
+        ;;
       2|status) run_tui_action cmd_status ;;
       3|shell) run_tui_action cmd_shell ;;
       4|onboard) run_tui_action cmd_sciclaw_passthrough onboard ;;
@@ -732,12 +921,14 @@ cmd_tui() {
 check_multipass
 
 case "${1:-help}" in
-  start)   cmd_start "${2:-}" ;;
+  start)   shift; cmd_start "$@" ;;
   stop)    cmd_stop ;;
   status)  cmd_status ;;
   destroy) cmd_destroy ;;
   shell)   cmd_shell ;;
   doctor)  cmd_doctor ;;
+  mount)   shift; cmd_mount "$@" ;;
+  umount|unmount) cmd_umount ;;
   onboard) cmd_sciclaw_passthrough onboard "${@:2}" ;;
   auth)    cmd_sciclaw_passthrough auth "${@:2}" ;;
   channels) cmd_sciclaw_passthrough channels "${@:2}" ;;
@@ -748,7 +939,8 @@ case "${1:-help}" in
     echo "Usage: $VM_CMD_LABEL <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [dir]   Create/start VM and sync project directory (default: cwd)"
+    echo "  start [dir] [--live-mount] [--mount-type classic|native]"
+    echo "                 Create/start VM and sync (or live-mount) project directory"
     echo "  stop          Pause the VM"
     echo "  status        Show VM info"
     echo "  destroy       Delete the VM"
@@ -758,6 +950,9 @@ case "${1:-help}" in
     echo "  auth [...]    Run sciclaw auth ... inside VM"
     echo "  channels [...] Run sciclaw channels ... inside VM"
     echo "  tui           Open interactive VM control center"
+    echo "  mount [dir] [--type classic|native]"
+    echo "                 Live-mount host directory into VM project path"
+    echo "  umount        Disable live mount for VM project path"
     echo "  push [dir]    Sync local changes → VM"
     echo "  pull [dir]    Sync VM changes → local"
     ;;
