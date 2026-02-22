@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/mymmrac/telego"
 
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -24,6 +26,10 @@ func channelsCmd() {
 	switch os.Args[2] {
 	case "list":
 		channelsListCmd()
+	case "list-rooms":
+		channelsListRoomsCmd()
+	case "pair-telegram":
+		channelsPairTelegramCmd()
 	case "setup":
 		if len(os.Args) < 4 {
 			fmt.Printf("Usage: %s channels setup <telegram|discord>\n", invokedCLIName())
@@ -39,6 +45,8 @@ func channelsHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nChannels:")
 	fmt.Printf("  %s channels list\n", commandName)
+	fmt.Printf("  %s channels list-rooms --channel discord\n", commandName)
+	fmt.Printf("  %s channels pair-telegram [--timeout 15]\n", commandName)
 	fmt.Printf("  %s channels setup telegram\n", commandName)
 	fmt.Printf("  %s channels setup discord\n", commandName)
 	fmt.Println()
@@ -324,4 +332,105 @@ func sendTelegramTestMessage(bot *telego.Bot, chatID int64, text string) error {
 		Text:   text,
 	})
 	return err
+}
+
+// channelsListRoomsCmd lists servers and text channels for a configured bot.
+// Usage: sciclaw channels list-rooms --channel discord
+// Output: one line per channel: channel_id|guild_name|#channel_name
+func channelsListRoomsCmd() {
+	channel := ""
+	args := os.Args[3:]
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--channel" && i+1 < len(args) {
+			channel = args[i+1]
+			i++
+		}
+	}
+
+	switch strings.ToLower(channel) {
+	case "discord":
+		listDiscordRooms()
+	default:
+		fmt.Fprintf(os.Stderr, "Usage: %s channels list-rooms --channel discord\n", invokedCLIName())
+		os.Exit(2)
+	}
+}
+
+func listDiscordRooms() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	token := strings.TrimSpace(cfg.Channels.Discord.Token)
+	if token == "" {
+		fmt.Fprintf(os.Stderr, "No Discord bot token configured\n")
+		os.Exit(1)
+	}
+
+	session, err := discordgo.New("Bot " + token)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create Discord session: %v\n", err)
+		os.Exit(1)
+	}
+
+	guilds, err := session.UserGuilds(200, "", "", false)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to list guilds: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, g := range guilds {
+		channels, err := session.GuildChannels(g.ID)
+		if err != nil {
+			continue
+		}
+		for _, ch := range channels {
+			if ch.Type != discordgo.ChannelTypeGuildText {
+				continue
+			}
+			fmt.Printf("%s|%s|#%s\n", ch.ID, g.Name, ch.Name)
+		}
+	}
+}
+
+// channelsPairTelegramCmd listens for a Telegram message to detect chat ID.
+// Usage: sciclaw channels pair-telegram [--timeout 15]
+// Output on success: chat_id|chat_type|username
+func channelsPairTelegramCmd() {
+	timeout := 15
+	args := os.Args[3:]
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--timeout" && i+1 < len(args) {
+			if v, err := strconv.Atoi(args[i+1]); err == nil && v > 0 {
+				timeout = v
+			}
+			i++
+		}
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	token := strings.TrimSpace(cfg.Channels.Telegram.Token)
+	if token == "" {
+		fmt.Fprintf(os.Stderr, "No Telegram bot token configured\n")
+		os.Exit(1)
+	}
+
+	bot, err := newTelegramBot(token, cfg.Channels.Telegram.Proxy)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create Telegram bot: %v\n", err)
+		os.Exit(1)
+	}
+
+	p, err := telegramPairOnce(bot, time.Duration(timeout)*time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%d|%s|%s\n", p.ChatID, p.ChatType, p.Username)
 }

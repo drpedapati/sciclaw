@@ -337,13 +337,13 @@ func (s *VMSnapshot) SuggestedStep() (message, detail string, tabIdx int) {
 		return "Log in to an AI provider", "You need credentials for OpenAI or Anthropic to use the agent.", tabLogin
 	}
 	if s.Discord.Status != "ready" && s.Telegram.Status != "ready" {
-		return "Set up a messaging app", "Connect Discord or Telegram so you can chat with your agent.", tabChannels
+		return "Set up a channel", "Connect Discord or Telegram so you can chat with your agent.", tabChannels
 	}
 	if !s.ServiceInstalled {
-		return "Install the gateway service", "The background service lets your agent run continuously.", tabAgent
+		return "Install the gateway service", "The background service lets your gateway run continuously.", tabAgent
 	}
 	if !s.ServiceRunning {
-		return "Start the gateway service", "Your agent is installed but not running yet.", tabAgent
+		return "Start the gateway service", "The gateway service is installed but not running yet.", tabAgent
 	}
-	return "You're all set!", "Your agent is running and ready. Check the logs for activity.", tabAgent
+	return "You're all set!", "Your gateway is running and ready. Check the logs for activity.", tabAgent
 }

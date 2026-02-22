@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type chatMessage struct {
@@ -166,17 +167,38 @@ func (m ChatModel) View(snap *VMSnapshot, width int) string {
 func (m ChatModel) renderHistory() string {
 	var lines []string
 
+	wrapW := m.viewport.Width - 4
+	if wrapW < 30 {
+		wrapW = 30
+	}
+
+	indent := "          " // 10 chars to align under "Agent: " content
+	contentW := wrapW - len(indent)
+
 	for _, msg := range m.history {
 		switch msg.Role {
 		case "user":
 			lines = append(lines, "")
-			lines = append(lines, fmt.Sprintf(" %s %s", styleBold.Foreground(colorAccent).Render("You:"), msg.Content))
+			wrapped := wrapText(msg.Content, wrapW-6)
+			lines = append(lines, fmt.Sprintf(" %s %s", styleBold.Foreground(colorAccent).Render("You:"), wrapped[0]))
+			for _, w := range wrapped[1:] {
+				lines = append(lines, "       "+w)
+			}
 		case "assistant":
 			lines = append(lines, "")
-			lines = append(lines, fmt.Sprintf(" %s %s", styleBold.Foreground(colorSuccess).Render("Agent:"), msg.Content))
+			rendered := renderMarkdown(msg.Content, contentW)
+			rLines := strings.Split(rendered, "\n")
+			lines = append(lines, fmt.Sprintf(" %s %s", styleBold.Foreground(colorSuccess).Render("Agent:"), rLines[0]))
+			for _, w := range rLines[1:] {
+				lines = append(lines, indent+w)
+			}
 		case "error":
 			lines = append(lines, "")
-			lines = append(lines, fmt.Sprintf(" %s %s", styleErr.Render("Error:"), msg.Content))
+			wrapped := wrapText(msg.Content, contentW)
+			lines = append(lines, fmt.Sprintf(" %s %s", styleErr.Render("Error:"), wrapped[0]))
+			for _, w := range wrapped[1:] {
+				lines = append(lines, indent+w)
+			}
 		}
 	}
 
@@ -190,6 +212,134 @@ func (m ChatModel) renderHistory() string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// renderMarkdown does lightweight markdown-to-terminal rendering:
+// headers, bold, inline code, fenced code blocks, and bullet lists.
+func renderMarkdown(text string, width int) string {
+	if width < 20 {
+		width = 20
+	}
+
+	codeBlockStyle := lipgloss.NewStyle().Foreground(colorWarning)
+	codeInlineStyle := lipgloss.NewStyle().Foreground(colorWarning)
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(colorTitle)
+	boldStyle := lipgloss.NewStyle().Bold(true)
+
+	var out []string
+	srcLines := strings.Split(text, "\n")
+	inCodeBlock := false
+
+	for _, line := range srcLines {
+		// Fenced code block toggle.
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inCodeBlock = !inCodeBlock
+			if inCodeBlock {
+				out = append(out, styleDim.Render("───"))
+			} else {
+				out = append(out, styleDim.Render("───"))
+			}
+			continue
+		}
+
+		if inCodeBlock {
+			out = append(out, codeBlockStyle.Render(line))
+			continue
+		}
+
+		trimmed := strings.TrimSpace(line)
+
+		// Blank line.
+		if trimmed == "" {
+			out = append(out, "")
+			continue
+		}
+
+		// Headers.
+		if strings.HasPrefix(trimmed, "### ") {
+			out = append(out, headerStyle.Render(strings.TrimPrefix(trimmed, "### ")))
+			continue
+		}
+		if strings.HasPrefix(trimmed, "## ") {
+			out = append(out, headerStyle.Render(strings.TrimPrefix(trimmed, "## ")))
+			continue
+		}
+		if strings.HasPrefix(trimmed, "# ") {
+			out = append(out, headerStyle.Render(strings.TrimPrefix(trimmed, "# ")))
+			continue
+		}
+
+		// Bullet lists — preserve the bullet, wrap the rest.
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
+			body := trimmed[2:]
+			body = applyInlineMarkdown(body, codeInlineStyle, boldStyle)
+			wrapped := wrapText(body, width-2)
+			out = append(out, "- "+wrapped[0])
+			for _, w := range wrapped[1:] {
+				out = append(out, "  "+w)
+			}
+			continue
+		}
+
+		// Numbered lists.
+		if len(trimmed) > 2 && trimmed[0] >= '0' && trimmed[0] <= '9' {
+			if dotIdx := strings.Index(trimmed, ". "); dotIdx > 0 && dotIdx < 4 {
+				prefix := trimmed[:dotIdx+2]
+				body := trimmed[dotIdx+2:]
+				body = applyInlineMarkdown(body, codeInlineStyle, boldStyle)
+				wrapped := wrapText(body, width-len(prefix))
+				out = append(out, prefix+wrapped[0])
+				pad := strings.Repeat(" ", len(prefix))
+				for _, w := range wrapped[1:] {
+					out = append(out, pad+w)
+				}
+				continue
+			}
+		}
+
+		// Regular paragraph — apply inline markdown then wrap.
+		styled := applyInlineMarkdown(trimmed, codeInlineStyle, boldStyle)
+		for _, w := range wrapText(styled, width) {
+			out = append(out, w)
+		}
+	}
+
+	return strings.Join(out, "\n")
+}
+
+// applyInlineMarkdown handles **bold** and `inline code` within a line.
+func applyInlineMarkdown(s string, codeStyle, boldStyle lipgloss.Style) string {
+	// Inline code: `...`
+	for {
+		start := strings.Index(s, "`")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start+1:], "`")
+		if end < 0 {
+			break
+		}
+		end += start + 1
+		code := s[start+1 : end]
+		s = s[:start] + codeStyle.Render(code) + s[end+1:]
+	}
+
+	// Bold: **...**
+	for {
+		start := strings.Index(s, "**")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start+2:], "**")
+		if end < 0 {
+			break
+		}
+		end += start + 2
+		bold := s[start+2 : end]
+		s = s[:start] + boldStyle.Render(bold) + s[end+2:]
+	}
+
+	return s
 }
 
 func sendChatCmd(exec Executor, message string) tea.Cmd {

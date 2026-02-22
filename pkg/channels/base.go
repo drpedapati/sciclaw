@@ -47,7 +47,7 @@ func (c *BaseChannel) IsRunning() bool {
 
 func (c *BaseChannel) IsAllowed(senderID string) bool {
 	if len(c.allowList) == 0 {
-		return true
+		return false // no approved users → reject all messages
 	}
 
 	// Extract parts from compound senderID like "123456|username"

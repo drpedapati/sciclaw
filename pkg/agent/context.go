@@ -16,6 +16,7 @@ import (
 
 type ContextBuilder struct {
 	workspace    string
+	version      string
 	skillsLoader *skills.SkillsLoader
 	memory       *MemoryStore
 	tools        *tools.ToolRegistry // Direct reference to tool registry
@@ -48,6 +49,11 @@ func (cb *ContextBuilder) SetToolsRegistry(registry *tools.ToolRegistry) {
 	cb.tools = registry
 }
 
+// SetVersion sets the runtime version for inclusion in the system prompt.
+func (cb *ContextBuilder) SetVersion(v string) {
+	cb.version = v
+}
+
 func (cb *ContextBuilder) getIdentity() string {
 	now := time.Now().Format("2006-01-02 15:04 (Monday)")
 	workspacePath, _ := filepath.Abs(filepath.Join(cb.workspace))
@@ -56,9 +62,14 @@ func (cb *ContextBuilder) getIdentity() string {
 	// Build tools section dynamically
 	toolsSection := cb.buildToolsSection()
 
-	return fmt.Sprintf(`# sciClaw
+	versionStr := cb.version
+	if versionStr == "" {
+		versionStr = "dev"
+	}
 
-You are sciClaw, a paired-scientist assistant built as a PicoClaw-compatible fork.
+	return fmt.Sprintf(`# sciClaw v%s
+
+You are sciClaw v%s, a paired-scientist assistant built as a PicoClaw-compatible fork.
 
 ## Current Time
 %s
@@ -82,7 +93,7 @@ Your workspace is at: %s
 3. **Memory** - When remembering something, write to %s/memory/MEMORY.md
 
 4. **Reproducibility** - Prefer idempotent actions and report assumptions/uncertainty.`,
-		now, runtime, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
+		versionStr, versionStr, now, runtime, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
 }
 
 func (cb *ContextBuilder) buildToolsSection() string {

@@ -31,6 +31,10 @@ import (
 	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
+// Version is set by the main package at startup to inject the build version
+// into agent system prompts.
+var Version string
+
 type AgentLoop struct {
 	bus             *bus.MessageBus
 	provider        providers.LLMProvider
@@ -152,6 +156,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// Create context builder and set tools registry
 	contextBuilder := NewContextBuilder(workspace)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
+	contextBuilder.SetVersion(Version)
 
 	var hookDispatcher *hooks.Dispatcher
 	hookAuditPath := ""
