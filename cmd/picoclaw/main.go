@@ -44,6 +44,11 @@ var (
 	goVersion string
 )
 
+func init() {
+	// Strip leading "v" set by ldflags so format strings can add their own.
+	version = strings.TrimPrefix(version, "v")
+}
+
 const logo = "🔬"
 const displayName = "sciClaw"
 const cliName = "picoclaw"
