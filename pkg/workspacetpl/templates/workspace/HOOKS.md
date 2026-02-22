@@ -10,7 +10,7 @@ Write short, plain-language bullets so non-technical users can maintain it.
 ## after_turn
 
 - Summarize completed actions and any unresolved risks.
-- Record what should be updated in manuscript and logs.
+- Record what should be updated in plans, logs, or output artifacts.
 
 ## before_llm
 

@@ -1,17 +1,18 @@
 # User
 
-Information about user and project working defaults.
+Information about user and workspace operating defaults.
 
 ## Preferences
 
 - Communication style:
-- Evidence depth:
-- Publication target:
 - Timezone:
 - Language:
+- Risk tolerance:
+- Detail level:
 
 ## Workflow Defaults
 
 - Escalation threshold for ambiguity:
-- Preferred benchmark/report format:
+- Preferred report format:
 - Review cadence:
+- Artifact retention expectations:

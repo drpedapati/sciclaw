@@ -1,11 +1,11 @@
 # Tools
 
-Use tools as part of a scientific workflow, not ad-hoc actions.
+Use tools as part of reproducible workflows, not ad-hoc actions.
 
 ## Discovery
 
-- Search and summarize literature or external sources.
-- Record key evidence and source references in logs/manuscript notes.
+- Search and summarize relevant sources.
+- Record key evidence and references in logs/notes.
 
 ## Execution
 
@@ -24,8 +24,9 @@ Use tools as part of a scientific workflow, not ad-hoc actions.
 
 ## Baseline Skill Policy
 
-- Keep baseline scientific skills installed and available in `workspace/skills/`.
-- Prefer using these skills before ad-hoc prompt-only behavior for literature, provenance, benchmarking, and manuscript operations.
+- Keep baseline skills installed and available in `workspace/skills/`.
+- Prefer using these skills before ad-hoc prompt-only behavior.
+- If your use case is not research-heavy, trim or replace skill folders to match your workflow.
 
 ## Critical CLI-First Rules
 
