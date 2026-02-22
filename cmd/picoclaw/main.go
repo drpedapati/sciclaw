@@ -1231,7 +1231,9 @@ func gatewayCmd() {
 				logger.ErrorCF("routing", "route_invalid", map[string]interface{}{"reason": err.Error()})
 			}
 		}()
+		go watchRoutingReload(ctx, dispatcher)
 		fmt.Printf("✓ Routing enabled: %d mapping(s)\n", len(cfg.Routing.Mappings))
+		fmt.Printf("✓ Routing reload trigger: %s\n", routingReloadTriggerPath())
 	} else {
 		go agentLoop.Run(ctx)
 	}
@@ -1615,6 +1617,57 @@ func authStatusCmd() {
 func getConfigPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".picoclaw", "config.json")
+}
+
+func routingReloadTriggerPath() string {
+	return filepath.Join(filepath.Dir(getConfigPath()), "routing.reload")
+}
+
+func watchRoutingReload(ctx context.Context, dispatcher *routing.Dispatcher) {
+	triggerPath := routingReloadTriggerPath()
+	lastSeen := time.Time{}
+	if st, err := os.Stat(triggerPath); err == nil {
+		lastSeen = st.ModTime()
+	}
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			st, err := os.Stat(triggerPath)
+			if err != nil {
+				continue
+			}
+			if !st.ModTime().After(lastSeen) {
+				continue
+			}
+			lastSeen = st.ModTime()
+
+			cfg, err := loadConfig()
+			if err != nil {
+				logger.ErrorCF("routing", "route_reload_failure", map[string]interface{}{
+					"reason": err.Error(),
+				})
+				continue
+			}
+			resolver, err := routing.NewResolver(cfg)
+			if err != nil {
+				logger.ErrorCF("routing", "route_reload_failure", map[string]interface{}{
+					"reason": err.Error(),
+				})
+				continue
+			}
+
+			dispatcher.ReplaceResolver(resolver)
+			logger.InfoCF("routing", "route_reload_success", map[string]interface{}{
+				"mappings": len(cfg.Routing.Mappings),
+			})
+		}
+	}
 }
 
 func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string, restrict bool) *cron.CronService {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -508,7 +509,18 @@ func routingReloadCmd() {
 		fmt.Printf("Routing config invalid: %v\n", err)
 		return
 	}
-	fmt.Println("Routing config validated. Runtime hot-reload will be wired in a follow-up; restart gateway to apply now.")
+
+	triggerPath := routingReloadTriggerPath()
+	if err := os.MkdirAll(filepath.Dir(triggerPath), 0o755); err != nil {
+		fmt.Printf("Error preparing reload trigger path: %v\n", err)
+		return
+	}
+	payload := []byte(time.Now().UTC().Format(time.RFC3339Nano) + "\n")
+	if err := os.WriteFile(triggerPath, payload, 0o600); err != nil {
+		fmt.Printf("Error writing reload trigger: %v\n", err)
+		return
+	}
+	fmt.Printf("Routing reload requested via %s\n", triggerPath)
 }
 
 func parseAllowListCSV(raw string) config.FlexibleStringSlice {
