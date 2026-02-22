@@ -32,6 +32,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/migrate"
 	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/routing"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
 	"github.com/sipeed/picoclaw/pkg/voice"
@@ -171,6 +172,8 @@ func main() {
 		authCmd()
 	case "cron":
 		cronCmd()
+	case "routing":
+		routingCmd()
 	case "models":
 		modelsCmd()
 	case "skills":
@@ -253,6 +256,7 @@ func printHelp() {
 	fmt.Println("  status      Show sciClaw status")
 	fmt.Println("  doctor      Check deployment health and dependencies")
 	fmt.Println("  cron        Manage scheduled tasks")
+	fmt.Println("  routing     Manage channel->workspace routing and ACLs")
 	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw (PicoClaw-compatible)")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  backup      Backup key sciClaw config/workspace files")
@@ -1213,6 +1217,26 @@ func gatewayCmd() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var loopPool *routing.AgentLoopPool
+	if cfg.Routing.Enabled {
+		resolver, err := routing.NewResolver(cfg)
+		if err != nil {
+			fmt.Printf("Error initializing routing: %v\n", err)
+			os.Exit(1)
+		}
+		loopPool = routing.NewAgentLoopPool(cfg, msgBus, provider)
+		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
+		go func() {
+			if err := dispatcher.Run(ctx); err != nil {
+				logger.ErrorCF("routing", "route_invalid", map[string]interface{}{"reason": err.Error()})
+			}
+		}()
+		go watchRoutingReload(ctx, dispatcher)
+		fmt.Printf("✓ Routing enabled: %d mapping(s)\n", len(cfg.Routing.Mappings))
+		fmt.Printf("✓ Routing reload trigger: %s\n", routingReloadTriggerPath())
+	} else {
+		go agentLoop.Run(ctx)
+	}
 
 	if err := cronService.Start(); err != nil {
 		fmt.Printf("Error starting cron service: %v\n", err)
@@ -1228,8 +1252,6 @@ func gatewayCmd() {
 		fmt.Printf("Error starting channels: %v\n", err)
 	}
 
-	go agentLoop.Run(ctx)
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
 	<-sigChan
@@ -1238,6 +1260,9 @@ func gatewayCmd() {
 	cancel()
 	heartbeatService.Stop()
 	cronService.Stop()
+	if loopPool != nil {
+		loopPool.Close()
+	}
 	agentLoop.Stop()
 	channelManager.StopAll(ctx)
 	fmt.Println("✓ Gateway stopped")
@@ -1592,6 +1617,57 @@ func authStatusCmd() {
 func getConfigPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".picoclaw", "config.json")
+}
+
+func routingReloadTriggerPath() string {
+	return filepath.Join(filepath.Dir(getConfigPath()), "routing.reload")
+}
+
+func watchRoutingReload(ctx context.Context, dispatcher *routing.Dispatcher) {
+	triggerPath := routingReloadTriggerPath()
+	lastSeen := time.Time{}
+	if st, err := os.Stat(triggerPath); err == nil {
+		lastSeen = st.ModTime()
+	}
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			st, err := os.Stat(triggerPath)
+			if err != nil {
+				continue
+			}
+			if !st.ModTime().After(lastSeen) {
+				continue
+			}
+			lastSeen = st.ModTime()
+
+			cfg, err := loadConfig()
+			if err != nil {
+				logger.ErrorCF("routing", "route_reload_failure", map[string]interface{}{
+					"reason": err.Error(),
+				})
+				continue
+			}
+			resolver, err := routing.NewResolver(cfg)
+			if err != nil {
+				logger.ErrorCF("routing", "route_reload_failure", map[string]interface{}{
+					"reason": err.Error(),
+				})
+				continue
+			}
+
+			dispatcher.ReplaceResolver(resolver)
+			logger.InfoCF("routing", "route_reload_success", map[string]interface{}{
+				"mappings": len(cfg.Routing.Mappings),
+			})
+		}
+	}
 }
 
 func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string, restrict bool) *cron.CronService {
