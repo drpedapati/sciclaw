@@ -23,8 +23,8 @@ const (
 	tabModels   = 8
 	tabSkills   = 9
 	tabCron     = 10
-	tabRouting   = 11
-	tabSettings  = 12
+	tabRouting  = 11
+	tabSettings = 12
 )
 
 // tabEntry maps a visible tab position to its logical ID and display name.
@@ -301,6 +301,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+
+	case routingActionMsg:
+		m.routing.HandleAction(msg)
+		return m, tea.Batch(fetchRoutingStatus(m.exec), fetchRoutingListCmd(m.exec))
 
 	case actionDoneMsg:
 		m.loading = true

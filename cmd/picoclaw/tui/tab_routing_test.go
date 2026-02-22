@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type routingTestExec struct {
@@ -92,7 +94,10 @@ func TestRoutingAddMappingCmd_ExpandsWorkspacePath(t *testing.T) {
 		shellOut: "ok",
 	}
 	cmd := routingAddMappingCmd(execStub, "discord", "123", "~/sciclaw/workspace", "u1", "")
-	_ = cmd().(actionDoneMsg)
+	msg := cmd().(routingActionMsg)
+	if !msg.ok {
+		t.Fatalf("expected ok routing action, got: %#v", msg)
+	}
 
 	if !strings.Contains(execStub.lastShell, "--workspace '/Users/tester/sciclaw/workspace'") {
 		t.Fatalf("routing add command missing expanded workspace: %q", execStub.lastShell)
@@ -115,5 +120,63 @@ func TestStartBrowse_UsesExpandedWorkspacePath(t *testing.T) {
 	msg := cmd().(routingDirListMsg)
 	if msg.path != "/Users/tester/picoclaw/workspace" {
 		t.Fatalf("dir-list path = %q, want %q", msg.path, "/Users/tester/picoclaw/workspace")
+	}
+}
+
+func TestEditWorkspace_BrowseRoundTrip(t *testing.T) {
+	execStub := &routingTestExec{
+		home:     "/Users/tester",
+		shellOut: "project/\n",
+	}
+	m := NewRoutingModel(execStub)
+	m.mappings = []routingRow{
+		{Channel: "discord", ChatID: "123", Workspace: "~/picoclaw/workspace"},
+	}
+	m.selectedRow = 0
+
+	edited, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}, nil)
+	if edited.mode != routingEditWorkspace {
+		t.Fatalf("mode = %v, want %v", edited.mode, routingEditWorkspace)
+	}
+
+	browsing, cmd := edited.updateEditWorkspace(tea.KeyMsg{Type: tea.KeyCtrlB}, nil)
+	if browsing.mode != routingBrowseFolder {
+		t.Fatalf("mode = %v, want %v", browsing.mode, routingBrowseFolder)
+	}
+	if browsing.browserTarget != browseTargetEditWorkspace {
+		t.Fatalf("browser target = %v, want %v", browsing.browserTarget, browseTargetEditWorkspace)
+	}
+	if browsing.browserPath != "/Users/tester/picoclaw/workspace" {
+		t.Fatalf("browserPath = %q, want %q", browsing.browserPath, "/Users/tester/picoclaw/workspace")
+	}
+	_ = cmd().(routingDirListMsg)
+
+	restored, _ := browsing.updateBrowseFolder(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")}, nil)
+	if restored.mode != routingEditWorkspace {
+		t.Fatalf("mode = %v, want %v", restored.mode, routingEditWorkspace)
+	}
+	if restored.editWorkspaceInput.Value() != "/Users/tester/picoclaw/workspace" {
+		t.Fatalf("editWorkspaceInput = %q, want %q", restored.editWorkspaceInput.Value(), "/Users/tester/picoclaw/workspace")
+	}
+}
+
+func TestPickRoom_UsesExpandedWorkspaceFromSnapshot(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester"}
+	m := NewRoutingModel(execStub)
+	m.mode = routingPickRoom
+	m.discordRooms = []discordRoom{
+		{ChannelID: "123", GuildName: "Guild", ChannelName: "general"},
+	}
+	m.roomCursor = 0
+
+	next, _ := m.updatePickRoom(tea.KeyMsg{Type: tea.KeyEnter}, &VMSnapshot{WorkspacePath: "~/picoclaw/workspace"})
+	if next.mode != routingAddWizard {
+		t.Fatalf("mode = %v, want %v", next.mode, routingAddWizard)
+	}
+	if next.wizardStep != addStepWorkspace {
+		t.Fatalf("wizardStep = %d, want %d", next.wizardStep, addStepWorkspace)
+	}
+	if next.wizardInput.Value() != "/Users/tester/picoclaw/workspace" {
+		t.Fatalf("workspace input = %q, want %q", next.wizardInput.Value(), "/Users/tester/picoclaw/workspace")
 	}
 }
