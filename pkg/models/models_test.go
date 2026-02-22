@@ -58,7 +58,7 @@ func TestDiscoverFallsBackToBuiltinModels(t *testing.T) {
 	if got, want := result.Provider, "anthropic"; got != want {
 		t.Fatalf("provider = %q, want %q", got, want)
 	}
-	if result.Source != "builtin" && result.Source != "endpoint" {
+	if result.Source != "builtin" && result.Source != "endpoint" && result.Source != "endpoint+builtin" {
 		t.Fatalf("unexpected source %q", result.Source)
 	}
 	if len(result.Models) == 0 {
@@ -73,5 +73,36 @@ func TestDiscoverFallsBackToBuiltinModels(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("builtin anthropic models missing expected id; got %v", result.Models)
+	}
+}
+
+func TestDiscoverIncludesSecondaryConfiguredProviders(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Model = "claude-opus-4-6"
+	cfg.Agents.Defaults.Provider = "anthropic"
+	cfg.Providers.Anthropic.AuthMethod = "token"
+	cfg.Providers.OpenAI.AuthMethod = "oauth"
+
+	result := Discover(cfg)
+	if len(result.Models) == 0 {
+		t.Fatalf("expected non-empty model list")
+	}
+
+	hasClaude := false
+	hasGPT := false
+	for _, m := range result.Models {
+		if m == "claude-opus-4-6" {
+			hasClaude = true
+		}
+		if m == "gpt-5.2" {
+			hasGPT = true
+		}
+	}
+
+	if !hasClaude {
+		t.Fatalf("expected anthro model in list, got %v", result.Models)
+	}
+	if !hasGPT {
+		t.Fatalf("expected openai model in list, got %v", result.Models)
 	}
 }

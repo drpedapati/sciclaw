@@ -288,11 +288,21 @@ func Discover(cfg *config.Config) DiscoverResult {
 		if err == nil && len(models) > 0 {
 			result.Source = "endpoint"
 			result.Models = models
-			return result
 		}
 		if err != nil {
 			result.Warning = err.Error()
 		}
+	}
+
+	// Also include models from other configured providers so users can switch
+	// providers from a single selector without having to manually type IDs.
+	secondary := discoverSecondaryProviders(cfg, provider)
+	for _, name := range secondary {
+		result.Models = append(result.Models, knownModelsForProvider(name)...)
+	}
+	result.Models = dedupeNonEmpty(result.Models)
+	if len(secondary) > 0 && result.Source == "endpoint" {
+		result.Source = "endpoint+builtin"
 	}
 
 	// If provider-specific builtins are empty, include known models from configured providers.
@@ -342,6 +352,29 @@ func resolveDiscoveryProvider(cfg *config.Config) string {
 		return "openai"
 	}
 	return "unknown"
+}
+
+func discoverSecondaryProviders(cfg *config.Config, primary string) []string {
+	candidates := []string{
+		"anthropic",
+		"openai",
+		"openrouter",
+		"gemini",
+		"groq",
+		"deepseek",
+		"zhipu",
+	}
+	var out []string
+	for _, name := range candidates {
+		if name == primary {
+			continue
+		}
+		if resolveAuthMethod(name, cfg) == "not configured" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
 }
 
 func knownModelsForProvider(provider string) []string {
