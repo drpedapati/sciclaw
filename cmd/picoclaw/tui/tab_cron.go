@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -14,6 +15,7 @@ type cronMode int
 const (
 	cronNormal cronMode = iota
 	cronConfirmRemove
+	cronAddTask
 )
 
 type cronListMsg struct{ output string }
@@ -26,7 +28,7 @@ type cronRow struct {
 	NextRun  string
 }
 
-// CronModel handles the Cron tab.
+// CronModel handles the Schedule tab.
 type CronModel struct {
 	exec        Executor
 	mode        cronMode
@@ -36,10 +38,17 @@ type CronModel struct {
 
 	// Remove confirmation
 	removeJob cronRow
+
+	// Add task input
+	addInput textinput.Model
 }
 
 func NewCronModel(exec Executor) CronModel {
-	return CronModel{exec: exec}
+	ti := textinput.New()
+	ti.CharLimit = 200
+	ti.Width = 60
+	ti.Placeholder = `e.g. "Check PubMed for ALS papers every morning at 9am"`
+	return CronModel{exec: exec, addInput: ti}
 }
 
 func (m *CronModel) AutoRun() tea.Cmd {
@@ -106,6 +115,28 @@ func parseCronList(output string) []cronRow {
 func (m CronModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (CronModel, tea.Cmd) {
 	key := msg.String()
 
+	if m.mode == cronAddTask {
+		switch key {
+		case "esc":
+			m.mode = cronNormal
+			m.addInput.Blur()
+			return m, nil
+		case "enter":
+			val := strings.TrimSpace(m.addInput.Value())
+			if val == "" {
+				m.mode = cronNormal
+				m.addInput.Blur()
+				return m, nil
+			}
+			m.mode = cronNormal
+			m.addInput.Blur()
+			return m, addCronNatural(m.exec, val)
+		}
+		var cmd tea.Cmd
+		m.addInput, cmd = m.addInput.Update(msg)
+		return m, cmd
+	}
+
 	if m.mode == cronConfirmRemove {
 		switch key {
 		case "y", "Y":
@@ -140,6 +171,11 @@ func (m CronModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (CronModel, tea.Cmd)
 			m.removeJob = m.jobs[m.selectedRow]
 			m.mode = cronConfirmRemove
 		}
+	case "a":
+		m.mode = cronAddTask
+		m.addInput.SetValue("")
+		m.addInput.Focus()
+		return m, nil
 	case "l":
 		m.loaded = false
 		return m, fetchCronList(m.exec)
@@ -149,6 +185,9 @@ func (m CronModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (CronModel, tea.Cmd)
 
 func (m CronModel) View(snap *VMSnapshot, width int) string {
 	panelW := width - 4
+	if panelW > 100 {
+		panelW = 100
+	}
 	if panelW < 40 {
 		panelW = 40
 	}
@@ -163,10 +202,15 @@ func (m CronModel) View(snap *VMSnapshot, width int) string {
 		lines = append(lines, "")
 		lines = append(lines, "  No scheduled jobs.")
 		lines = append(lines, "")
-		lines = append(lines, styleDim.Render("  Scheduled jobs run your agent automatically on a timer."))
-		lines = append(lines, styleDim.Render("  Use 'sciclaw cron add' to create one."))
+		lines = append(lines, "  No scheduled tasks yet.")
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  %s Refresh", styleKey.Render("[l]")))
+		lines = append(lines, styleDim.Render("  Scheduled tasks run your agent automatically on a timer."))
+		lines = append(lines, styleDim.Render("  Describe what you want in plain English."))
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  %s Add a task   %s Refresh",
+			styleKey.Render("[a]"),
+			styleKey.Render("[l]"),
+		))
 	} else {
 		// Table header.
 		lines = append(lines, fmt.Sprintf("  %-20s  %-22s  %-10s  %s",
@@ -190,11 +234,21 @@ func (m CronModel) View(snap *VMSnapshot, width int) string {
 		}
 
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  %s Toggle enable/disable   %s Remove   %s Refresh",
+		lines = append(lines, fmt.Sprintf("  %s Add a task   %s Toggle   %s Remove   %s Refresh",
+			styleKey.Render("[a]"),
 			styleKey.Render("[e]"),
 			styleKey.Render("[d]"),
 			styleKey.Render("[l]"),
 		))
+	}
+
+	// Add task overlay.
+	if m.mode == cronAddTask {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  %s", styleBold.Render("What should the agent do on a schedule?")))
+		lines = append(lines, fmt.Sprintf("  %s", m.addInput.View()))
+		lines = append(lines, styleHint.Render("    Describe the task and how often, e.g. \"Summarize lab notes every Friday at 5pm\""))
+		lines = append(lines, styleDim.Render("    Enter to create, Esc to cancel"))
 	}
 
 	// Remove confirmation overlay.
@@ -209,7 +263,7 @@ func (m CronModel) View(snap *VMSnapshot, width int) string {
 
 	content := strings.Join(lines, "\n")
 	panel := stylePanel.Width(panelW).Render(content)
-	title := stylePanelTitle.Render("Scheduled Jobs")
+	title := stylePanelTitle.Render("Scheduled Tasks")
 	return placePanelTitle(panel, title)
 }
 
@@ -226,6 +280,17 @@ func cronToggle(exec Executor, jobID, action string) tea.Cmd {
 		cmd := "HOME=" + exec.HomePath() + " sciclaw cron " + action + " " + shellEscape(jobID) + " 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Job " + action + "d"}
+	}
+}
+
+func addCronNatural(exec Executor, description string) tea.Cmd {
+	return func() tea.Msg {
+		cmd := "HOME=" + exec.HomePath() + " sciclaw cron add-natural " + shellEscape(description) + " 2>&1"
+		out, err := exec.ExecShell(30*time.Second, cmd)
+		if err != nil {
+			return actionDoneMsg{output: "Failed to add task: " + strings.TrimSpace(out)}
+		}
+		return actionDoneMsg{output: "Task created: " + strings.TrimSpace(out)}
 	}
 }
 

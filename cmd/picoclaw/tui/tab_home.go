@@ -38,6 +38,9 @@ func (m HomeModel) View(snap *VMSnapshot, width int) string {
 	}
 
 	panelW := width - 4
+	if panelW > 100 {
+		panelW = 100
+	}
 	if panelW < 40 {
 		panelW = 40
 	}
@@ -75,10 +78,16 @@ func renderSystemInfoPanel(snap *VMSnapshot, w int) string {
 		backend = "launchd (user)"
 	}
 
+	wsPath := snap.WorkspacePath
+	if wsPath == "" {
+		wsPath = styleDim.Render("not set")
+	}
+
 	content := fmt.Sprintf(
-		"%s %s\n%s %s\n%s %s\n%s %s",
+		"%s %s\n%s %s\n%s %s\n%s %s\n%s %s",
 		styleLabel.Render("Mode:"), styleOK.Render("Local"),
 		styleLabel.Render("System:"), styleValue.Render(osStr),
+		styleLabel.Render("Workspace:"), wsPath,
 		styleLabel.Render("Service:"), styleValue.Render(backend),
 		styleLabel.Render("Agent:"), styleValue.Render(verStr),
 	)
@@ -116,12 +125,18 @@ func renderVMInfoPanel(snap *VMSnapshot, w int) string {
 		verStr = "-"
 	}
 
+	wsPath := snap.WorkspacePath
+	if wsPath == "" {
+		wsPath = styleDim.Render("not set")
+	}
+
 	content := fmt.Sprintf(
-		"%s %s    %s %s\n%s %s    %s %s\n%s %s",
+		"%s %s    %s %s\n%s %s    %s %s\n%s %s\n%s %s",
 		styleLabel.Render("Status:"), stateStyle.Render(snap.State),
 		styleLabel.Render("IP:"), styleValue.Render(ipStr),
 		styleLabel.Render("CPU Load:"), styleValue.Render(loadStr),
 		styleLabel.Render("Memory:"), styleValue.Render(memStr),
+		styleLabel.Render("Workspace:"), wsPath,
 		styleLabel.Render("Agent:"), styleValue.Render(verStr),
 	)
 
@@ -235,7 +250,7 @@ func channelCheckLabel(discord, telegram ChannelSnapshot) string {
 		parts = append(parts, t)
 	}
 	if len(parts) > 0 {
-		return fmt.Sprintf("Messaging app (%s)", strings.Join(parts, ", "))
+		return fmt.Sprintf("Channel (%s)", strings.Join(parts, ", "))
 	}
-	return "Messaging app (not configured)"
+	return "Channel (not configured)"
 }

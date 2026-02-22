@@ -74,3 +74,5 @@ auth.json
 
 # Manuscript files (private)
 manuscript/
+
+env.local

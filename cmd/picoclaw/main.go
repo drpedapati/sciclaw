@@ -9,6 +9,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -48,6 +49,7 @@ var (
 func init() {
 	// Strip leading "v" set by ldflags so format strings can add their own.
 	version = strings.TrimPrefix(version, "v")
+	agent.Version = version
 }
 
 const logo = "🔬"
@@ -247,7 +249,7 @@ func printHelp() {
 	fmt.Println("  onboard     Initialize sciClaw configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  models      Manage models (list, set, effort, status)")
-	fmt.Println("  auth        Manage authentication (login, logout, status)")
+	fmt.Println("  auth        Manage authentication (login, import-op, logout, status)")
 	fmt.Println("  gateway     Start sciClaw gateway")
 	fmt.Println("  service     Manage background gateway service (launchd/systemd)")
 	fmt.Println("  vm          Manage a Multipass sciClaw VM (no repo checkout required)")
@@ -1409,6 +1411,8 @@ func authCmd() {
 		authLogoutCmd()
 	case "status":
 		authStatusCmd()
+	case "import-op":
+		authImportOPCmd()
 	default:
 		fmt.Printf("Unknown auth command: %s\n", os.Args[2])
 		authHelp()
@@ -1419,6 +1423,7 @@ func authHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nAuth commands:")
 	fmt.Println("  login       Login via device code or paste token")
+	fmt.Println("  import-op   Import credentials from 1Password item JSON")
 	fmt.Println("  logout      Remove stored credentials")
 	fmt.Println("  status      Show current auth status")
 	fmt.Println()
@@ -1426,9 +1431,18 @@ func authHelp() {
 	fmt.Println("  --provider <name>    Provider to login with (openai, anthropic)")
 	fmt.Println("  --device-code        Compatibility flag (OpenAI already uses device code by default)")
 	fmt.Println()
+	fmt.Println("Import-op options:")
+	fmt.Println("  --provider <name>    Provider to import (openai, anthropic)")
+	fmt.Println("  --item <item-ref>    1Password item reference (title/UUID)")
+	fmt.Println("  --vault <vault>      Optional vault name/UUID")
+	fmt.Println("  --auth-method <m>    Optional method override (oauth, token)")
+	fmt.Println("  requires env: OP_SERVICE_ACCOUNT_TOKEN")
+	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Printf("  %s auth login --provider openai\n", commandName)
 	fmt.Printf("  %s auth login --provider anthropic\n", commandName)
+	fmt.Printf("  %s auth import-op --provider openai --item \"OpenAI Creds\"\n", commandName)
+	fmt.Printf("  %s auth import-op --provider anthropic --item \"Anthropic Token\" --vault \"AI\" --auth-method token\n", commandName)
 	fmt.Printf("  %s auth logout --provider openai\n", commandName)
 	fmt.Printf("  %s auth status\n", commandName)
 	fmt.Printf("  (Compatibility alias also works: %s)\n", cliName)
@@ -1528,6 +1542,212 @@ func authLoginPasteToken(provider string) {
 	}
 
 	fmt.Printf("Token saved for %s!\n", provider)
+}
+
+func authImportOPCmd() {
+	provider := ""
+	itemRef := ""
+	vault := ""
+	authMethod := ""
+
+	args := os.Args[3:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--provider", "-p":
+			if i+1 < len(args) {
+				provider = strings.ToLower(strings.TrimSpace(args[i+1]))
+				i++
+			}
+		case "--item":
+			if i+1 < len(args) {
+				itemRef = strings.TrimSpace(args[i+1])
+				i++
+			}
+		case "--vault":
+			if i+1 < len(args) {
+				vault = strings.TrimSpace(args[i+1])
+				i++
+			}
+		case "--auth-method":
+			if i+1 < len(args) {
+				authMethod = strings.ToLower(strings.TrimSpace(args[i+1]))
+				i++
+			}
+		default:
+			fmt.Printf("Unknown option: %s\n", args[i])
+			fmt.Printf("Usage: %s auth import-op --provider <openai|anthropic> --item <item-ref> [--vault <vault>] [--auth-method <oauth|token>]\n", invokedCLIName())
+			return
+		}
+	}
+
+	if provider == "" {
+		fmt.Println("Error: --provider is required")
+		fmt.Println("Supported providers: openai, anthropic")
+		return
+	}
+	if provider != "openai" && provider != "anthropic" {
+		fmt.Printf("Unsupported provider: %s\n", provider)
+		fmt.Println("Supported providers: openai, anthropic")
+		return
+	}
+	if itemRef == "" {
+		fmt.Println("Error: --item is required")
+		return
+	}
+	if authMethod != "" && authMethod != "oauth" && authMethod != "token" {
+		fmt.Printf("Unsupported auth method: %s\n", authMethod)
+		fmt.Println("Supported auth methods: oauth, token")
+		return
+	}
+	if strings.TrimSpace(os.Getenv("OP_SERVICE_ACCOUNT_TOKEN")) == "" {
+		fmt.Println("Error: OP_SERVICE_ACCOUNT_TOKEN is required for auth import-op")
+		return
+	}
+
+	opPath, err := exec.LookPath("op")
+	if err != nil {
+		fmt.Println("Error: 1Password CLI `op` not found in PATH")
+		fmt.Println("Install from https://developer.1password.com/docs/cli/get-started/")
+		os.Exit(1)
+	}
+
+	opArgs := []string{"item", "get", itemRef}
+	if vault != "" {
+		opArgs = append(opArgs, "--vault", vault)
+	}
+	opArgs = append(opArgs, "--format", "json")
+
+	output, err := exec.Command(opPath, opArgs...).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = err.Error()
+		}
+		fmt.Printf("Failed to read 1Password item: %s\n", msg)
+		os.Exit(1)
+	}
+
+	cred, err := parseOPItemCredentialCompat(output, provider, authMethod)
+	if err != nil {
+		fmt.Printf("Failed to parse 1Password item: %v\n", err)
+		os.Exit(1)
+	}
+	if err := auth.SetCredential(provider, cred); err != nil {
+		fmt.Printf("Failed to save credentials: %v\n", err)
+		os.Exit(1)
+	}
+
+	appCfg, err := loadConfig()
+	if err == nil {
+		switch provider {
+		case "openai":
+			appCfg.Providers.OpenAI.AuthMethod = cred.AuthMethod
+		case "anthropic":
+			appCfg.Providers.Anthropic.AuthMethod = cred.AuthMethod
+		}
+		if err := config.SaveConfig(getConfigPath(), appCfg); err != nil {
+			fmt.Printf("Warning: could not update config: %v\n", err)
+		}
+	}
+
+	fmt.Printf("Imported credentials for %s via 1Password (method: %s)\n", provider, cred.AuthMethod)
+}
+
+// parseOPItemCredentialCompat mirrors expected 1Password item parsing behavior for auth import.
+func parseOPItemCredentialCompat(raw []byte, provider, authMethodOverride string) (*auth.AuthCredential, error) {
+	type opField struct {
+		ID      string      `json:"id"`
+		Label   string      `json:"label"`
+		Purpose string      `json:"purpose"`
+		Type    string      `json:"type"`
+		Value   interface{} `json:"value"`
+	}
+	type opItem struct {
+		Fields []opField `json:"fields"`
+	}
+
+	var item opItem
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return nil, fmt.Errorf("invalid op item JSON: %w", err)
+	}
+
+	values := make(map[string]string)
+	for _, field := range item.Fields {
+		value := strings.TrimSpace(fmt.Sprintf("%v", field.Value))
+		if value == "" || value == "<nil>" {
+			continue
+		}
+		for _, name := range []string{field.ID, field.Label} {
+			key := normalizeOPFieldKey(name)
+			if key == "" {
+				continue
+			}
+			if _, exists := values[key]; !exists {
+				values[key] = value
+			}
+		}
+		if strings.EqualFold(strings.TrimSpace(field.Purpose), "PASSWORD") {
+			if _, exists := values["password"]; !exists {
+				values["password"] = value
+			}
+		}
+	}
+
+	findValue := func(keys ...string) string {
+		for _, key := range keys {
+			if value := strings.TrimSpace(values[key]); value != "" {
+				return value
+			}
+		}
+		return ""
+	}
+
+	accessToken := findValue(
+		"access_token",
+		"token",
+		"api_key",
+		"apikey",
+		"password",
+		"session_token",
+	)
+	if accessToken == "" {
+		return nil, fmt.Errorf("no token-like field found (expected one of: access_token, token, api_key, password)")
+	}
+
+	refreshToken := findValue("refresh_token")
+	accountID := findValue("account_id", "chatgpt_account_id", "organization_id", "org_id")
+	authMethod := strings.ToLower(strings.TrimSpace(authMethodOverride))
+	if authMethod == "" {
+		authMethod = strings.ToLower(strings.TrimSpace(findValue("auth_method", "method")))
+	}
+	if authMethod == "" {
+		if refreshToken != "" {
+			authMethod = "oauth"
+		} else {
+			authMethod = "token"
+		}
+	}
+	if authMethod != "oauth" && authMethod != "token" {
+		return nil, fmt.Errorf("unsupported auth method %q", authMethod)
+	}
+
+	return &auth.AuthCredential{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		AccountID:    accountID,
+		Provider:     provider,
+		AuthMethod:   authMethod,
+	}, nil
+}
+
+func normalizeOPFieldKey(raw string) string {
+	key := strings.TrimSpace(strings.ToLower(raw))
+	replacer := strings.NewReplacer("-", "_", " ", "_", ".", "_")
+	key = replacer.Replace(key)
+	for strings.Contains(key, "__") {
+		key = strings.ReplaceAll(key, "__", "_")
+	}
+	return strings.Trim(key, "_")
 }
 
 func authLogoutCmd() {

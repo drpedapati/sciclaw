@@ -101,6 +101,11 @@ sciclaw onboard
 ```bash
 sciclaw auth login --provider openai     # OAuth device code — works with your ChatGPT account
 sciclaw auth login --provider anthropic  # Token paste
+
+# Optional: import from 1Password item JSON (requires OP_SERVICE_ACCOUNT_TOKEN)
+export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
+sciclaw auth import-op --provider openai --item "OpenAI Credentials"
+sciclaw auth import-op --provider anthropic --item "Anthropic Token" --vault "AI" --auth-method token
 ```
 
 **3. Connect a chat app** and start messaging:
@@ -447,7 +452,7 @@ Last refreshed:
 | `sciclaw gateway` | Start chat gateway |
 | `sciclaw service install\|start\|stop\|restart\|logs\|uninstall` | Manage background service |
 | `sciclaw channels setup <channel>` | Configure a chat channel |
-| `sciclaw auth login\|status` | Manage credentials |
+| `sciclaw auth login\|logout\|status\|import-op` | Manage credentials |
 | `sciclaw skills list\|install` | Manage skills |
 | `sciclaw cron list\|add` | Manage scheduled jobs |
 

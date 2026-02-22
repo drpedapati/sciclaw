@@ -23,7 +23,8 @@ const (
 	tabModels   = 8
 	tabSkills   = 9
 	tabCron     = 10
-	tabRouting  = 11
+	tabRouting   = 11
+	tabSettings  = 12
 )
 
 // tabEntry maps a visible tab position to its logical ID and display name.
@@ -68,26 +69,28 @@ type Model struct {
 	skills   SkillsModel
 	cron     CronModel
 	routing  RoutingModel
+	settings SettingsModel
 }
 
 func buildTabs(mode Mode) []tabEntry {
 	tabs := []tabEntry{
 		{"Home", tabHome},
 		{"Chat", tabChat},
-		{"Messaging Apps", tabChannels},
+		{"Channels", tabChannels},
+		{"Routing", tabRouting},
 		{"Users", tabUsers},
-		{"Login", tabLogin},
-		{"Health Check", tabDoctor},
-		{"Agent Service", tabAgent},
+		{"Models", tabModels},
+		{"Skills", tabSkills},
+		{"Schedule", tabCron},
 	}
 	if mode == ModeVM {
-		tabs = append(tabs, tabEntry{"Your Files", tabFiles})
+		tabs = append(tabs, tabEntry{"Files", tabFiles})
 	}
 	tabs = append(tabs,
-		tabEntry{"Models", tabModels},
-		tabEntry{"Skills", tabSkills},
-		tabEntry{"Cron", tabCron},
-		tabEntry{"Routing", tabRouting},
+		tabEntry{"Settings", tabSettings},
+		tabEntry{"Gateway", tabAgent},
+		tabEntry{"Login", tabLogin},
+		tabEntry{"Health", tabDoctor},
 	)
 	return tabs
 }
@@ -115,6 +118,7 @@ func NewModel(exec Executor) Model {
 		skills:    NewSkillsModel(exec),
 		cron:      NewCronModel(exec),
 		routing:   NewRoutingModel(exec),
+		settings:  NewSettingsModel(exec),
 	}
 }
 
@@ -141,10 +145,13 @@ func (m Model) subTabCapturingInput() bool {
 	return idx == tabChat || // Chat always captures
 		(idx == tabChannels && m.channels.mode != modeNormal) ||
 		(idx == tabUsers && m.users.mode != usersNormal) ||
+		(idx == tabLogin && m.login.mode != loginNormal) ||
 		(idx == tabFiles && m.files.mode != filesNormal) ||
 		(idx == tabModels && m.models.mode != modelsNormal) ||
 		(idx == tabSkills && m.skills.mode != skillsNormal) ||
-		(idx == tabRouting && m.routing.mode != routingNormal)
+		(idx == tabRouting && m.routing.mode != routingNormal) ||
+		(idx == tabCron && m.cron.mode != cronNormal) ||
+		(idx == tabSettings && m.settings.mode != settingsNormal)
 }
 
 // maybeAutoRun triggers auto-fetch when certain tabs are first visited.
@@ -160,6 +167,8 @@ func (m *Model) maybeAutoRun() tea.Cmd {
 		return m.cron.AutoRun()
 	case tabRouting:
 		return m.routing.AutoRun()
+	case tabSettings:
+		return m.settings.AutoRun()
 	}
 	return nil
 }
@@ -176,6 +185,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agent.HandleResize(m.width, m.height)
 		m.skills.HandleResize(m.width, m.height)
 		m.routing.HandleResize(m.width, m.height)
+		m.settings.HandleResize(m.width, m.height)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -202,6 +212,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.channels, cmd = m.channels.Update(msg, m.snapshot)
 			case tabUsers:
 				m.users, cmd = m.users.Update(msg, m.snapshot)
+			case tabLogin:
+				m.login, cmd = m.login.Update(msg, m.snapshot)
 			case tabFiles:
 				m.files, cmd = m.files.Update(msg, m.snapshot)
 			case tabModels:
@@ -210,6 +222,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.skills, cmd = m.skills.Update(msg, m.snapshot)
 			case tabRouting:
 				m.routing, cmd = m.routing.Update(msg, m.snapshot)
+			case tabCron:
+				m.cron, cmd = m.cron.Update(msg, m.snapshot)
+			case tabSettings:
+				m.settings, cmd = m.settings.Update(msg, m.snapshot)
 			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
@@ -256,6 +272,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cron, cmd = m.cron.Update(msg, m.snapshot)
 		case tabRouting:
 			m.routing, cmd = m.routing.Update(msg, m.snapshot)
+		case tabSettings:
+			m.settings, cmd = m.settings.Update(msg, m.snapshot)
 		}
 		if cmd != nil {
 			cmds = append(cmds, cmd)
@@ -327,6 +345,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case routingReloadMsg:
 		m.routing.HandleReload(msg)
 		return m, nil
+
+	case routingDirListMsg:
+		m.routing.HandleDirList(msg)
+		return m, nil
+
+	case routingDiscordRoomsMsg:
+		m.routing.HandleDiscordRooms(msg)
+		return m, nil
+
+	case routingTelegramPairMsg:
+		m.routing.HandleTelegramPair(msg)
+		return m, nil
+
+	case settingsDataMsg:
+		m.settings.HandleData(msg)
+		return m, nil
 	}
 
 	return m, tea.Batch(cmds...)
@@ -393,6 +427,8 @@ func (m Model) View() string {
 			content = m.cron.View(m.snapshot, contentWidth)
 		case tabRouting:
 			content = m.routing.View(m.snapshot, contentWidth)
+		case tabSettings:
+			content = m.settings.View(m.snapshot, contentWidth)
 		}
 		b.WriteString(content)
 	}

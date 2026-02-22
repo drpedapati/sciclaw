@@ -88,6 +88,9 @@ func (m *SkillsModel) HandleResize(width, height int) {
 	m.width = width
 	m.height = height
 	w := width - 8
+	if w > 96 {
+		w = 96
+	}
 	if w < 40 {
 		w = 40
 	}
@@ -323,6 +326,9 @@ func (m SkillsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SkillsModel, tea.
 
 func (m SkillsModel) View(snap *VMSnapshot, width int) string {
 	panelW := width - 4
+	if panelW > 100 {
+		panelW = 100
+	}
 	if panelW < 40 {
 		panelW = 40
 	}

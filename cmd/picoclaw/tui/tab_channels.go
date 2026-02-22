@@ -161,6 +161,9 @@ func (m ChannelsModel) View(snap *VMSnapshot, width int) string {
 	}
 
 	panelW := width - 4
+	if panelW > 100 {
+		panelW = 100
+	}
 	if panelW < 40 {
 		panelW = 40
 	}
@@ -192,6 +195,8 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 		badge = badgeReady()
 	case ch.Status == "open":
 		badge = badgeWarning()
+	case ch.Status == "off" && ch.HasToken:
+		badge = styleDim.Render("[Disabled]")
 	case ch.Status == "off":
 		badge = styleDim.Render("[Not Configured]")
 	default:
@@ -205,16 +210,25 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 		lines = append(lines, styleHint.Render("  Host has this channel configured. Press [i] to import settings into VM."))
 	}
 
-	if ch.Status == "off" {
+	if ch.Status == "off" && ch.HasToken {
+		// Disabled in settings — don't offer setup.
 		lines = append(lines, "")
+		lines = append(lines, styleDim.Render("  Disabled in settings. Enable it on the Settings tab to use this channel."))
+	} else if ch.Status == "off" {
+		// Never configured — offer setup.
+		lines = append(lines, "")
+		keyStyle := styleKey
+		if !focused {
+			keyStyle = styleDim
+		}
 		if canImportFromHost(ch, hostCh) {
 			lines = append(lines, fmt.Sprintf("  %s Import host settings   %s Set up %s",
-				styleKey.Render("[i]"),
-				styleKey.Render("[s]"),
+				keyStyle.Render("[i]"),
+				keyStyle.Render("[s]"),
 				name,
 			))
 		} else {
-			lines = append(lines, fmt.Sprintf("  %s Set up %s", styleKey.Render("[s]"), name))
+			lines = append(lines, fmt.Sprintf("  %s Set up %s", keyStyle.Render("[s]"), name))
 		}
 	} else {
 		// Approved users table
@@ -222,7 +236,7 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 		lines = append(lines, fmt.Sprintf(" %s", styleBold.Render("Approved Users (who can talk to your bot):")))
 
 		if len(ch.ApprovedUsers) == 0 {
-			lines = append(lines, styleWarn.Render("   No users approved yet. Anyone could message the bot."))
+			lines = append(lines, styleWarn.Render("   No users approved. Add someone to start chatting."))
 		} else {
 			// Table header
 			lines = append(lines, fmt.Sprintf("  %s  %-20s  %s",
@@ -249,15 +263,19 @@ func (m ChannelsModel) renderChannelPanel(name string, ch ChannelSnapshot, focus
 			}
 		}
 
-		// Actions
+		// Actions — dim on unfocused panel.
 		lines = append(lines, "")
+		keyStyle := styleKey
+		if !focused {
+			keyStyle = styleDim
+		}
 		actions := fmt.Sprintf("  %s Add a user   %s Remove selected   %s Reconfigure",
-			styleKey.Render("[a]"),
-			styleKey.Render("[d]"),
-			styleKey.Render("[s]"),
+			keyStyle.Render("[a]"),
+			keyStyle.Render("[d]"),
+			keyStyle.Render("[s]"),
 		)
 		if canImportFromHost(ch, hostCh) {
-			actions += "   " + styleKey.Render("[i]") + " Import host settings"
+			actions += "   " + keyStyle.Render("[i]") + " Import host settings"
 		}
 		lines = append(lines, actions)
 	}
@@ -318,6 +336,8 @@ func channelStatusText(vmCh, hostCh ChannelSnapshot) string {
 		return styleWarn.Render("Connected, no approved users")
 	case vmCh.Status == "broken":
 		return styleErr.Render("Missing bot token")
+	case vmCh.Status == "off" && vmCh.HasToken:
+		return styleDim.Render("Disabled")
 	default:
 		return styleDim.Render("Not configured")
 	}
