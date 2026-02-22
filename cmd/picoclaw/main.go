@@ -32,6 +32,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/migrate"
 	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/routing"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
 	"github.com/sipeed/picoclaw/pkg/voice"
@@ -1206,6 +1207,24 @@ func gatewayCmd() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var loopPool *routing.AgentLoopPool
+	if cfg.Routing.Enabled {
+		resolver, err := routing.NewResolver(cfg)
+		if err != nil {
+			fmt.Printf("Error initializing routing: %v\n", err)
+			os.Exit(1)
+		}
+		loopPool = routing.NewAgentLoopPool(cfg, msgBus, provider)
+		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
+		go func() {
+			if err := dispatcher.Run(ctx); err != nil {
+				logger.ErrorCF("routing", "route_invalid", map[string]interface{}{"reason": err.Error()})
+			}
+		}()
+		fmt.Printf("✓ Routing enabled: %d mapping(s)\n", len(cfg.Routing.Mappings))
+	} else {
+		go agentLoop.Run(ctx)
+	}
 
 	if err := cronService.Start(); err != nil {
 		fmt.Printf("Error starting cron service: %v\n", err)
@@ -1221,8 +1240,6 @@ func gatewayCmd() {
 		fmt.Printf("Error starting channels: %v\n", err)
 	}
 
-	go agentLoop.Run(ctx)
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
 	<-sigChan
@@ -1231,6 +1248,9 @@ func gatewayCmd() {
 	cancel()
 	heartbeatService.Stop()
 	cronService.Stop()
+	if loopPool != nil {
+		loopPool.Close()
+	}
 	agentLoop.Stop()
 	channelManager.StopAll(ctx)
 	fmt.Println("✓ Gateway stopped")
