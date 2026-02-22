@@ -115,6 +115,21 @@ runcmd:
 
     # Bootstrap config/workspace/skills via the installed CLI.
     su - ubuntu -c 'HOME=/home/ubuntu /usr/local/bin/sciclaw onboard --yes'
+    # VM-first defaults: trust full VM filesystem by default and point workspace at project mount path.
+    su - ubuntu -c 'python3 - <<'"'"'PY'"'"'
+import json
+import os
+
+cfg_path = os.path.expanduser("~/.picoclaw/config.json")
+if os.path.exists(cfg_path):
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    d = cfg.setdefault("agents", {}).setdefault("defaults", {})
+    d["workspace"] = "/home/ubuntu/project"
+    d["restrict_to_workspace"] = False
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+PY'
 
     rm -rf /tmp/uv* /tmp/quarto.tgz /tmp/irl /tmp/docx-review /tmp/pubmed \
            /tmp/sciclaw /tmp/sciclaw-source.tgz "/tmp/sciclaw-${SCICLAW_VERSION}"

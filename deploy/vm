@@ -285,6 +285,9 @@ cmd_start() {
   mkdir -p "$STATE_DIR"
   echo "$project_dir" > "$STATE_PROJECT_FILE"
 
+  # One-time migration for legacy VM configs to VM-first defaults.
+  cmd_apply_vm_defaults
+
   echo ""
   echo "Ready. Your project is at $VM_PROJECT inside the VM."
   echo ""
@@ -491,6 +494,61 @@ cmd_doctor() {
   multipass exec "$VM_NAME" -- sciclaw doctor
 }
 
+# Migrate legacy VM defaults to VM-first behavior:
+# - workspace: /home/ubuntu/project
+# - restrict_to_workspace: false
+# This runs only when config still looks like legacy defaults.
+cmd_apply_vm_defaults() {
+  require_running
+  local out
+  out="$(multipass exec "$VM_NAME" -- bash -lc '
+python3 - <<"PY"
+import json
+import os
+
+cfg_path = os.path.expanduser("~/.picoclaw/config.json")
+if not os.path.exists(cfg_path):
+    print("skipped:no-config")
+    raise SystemExit(0)
+
+with open(cfg_path, "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+
+d = cfg.setdefault("agents", {}).setdefault("defaults", {})
+workspace = str(d.get("workspace", "") or "").strip()
+restrict = d.get("restrict_to_workspace", True)
+
+legacy_workspaces = {"", "~/sciclaw", "/home/ubuntu/sciclaw"}
+changed = False
+
+if workspace in legacy_workspaces:
+    d["workspace"] = "/home/ubuntu/project"
+    changed = True
+
+if restrict is True and workspace in legacy_workspaces:
+    d["restrict_to_workspace"] = False
+    changed = True
+
+if changed:
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    print("updated")
+else:
+    print("unchanged")
+PY
+' 2>/dev/null || true)"
+
+  case "$(printf '%s' "$out" | tail -n 1)" in
+    updated)
+      info "VM defaults migrated: workspace=/home/ubuntu/project, restrict_to_workspace=false"
+      ;;
+    skipped:no-config)
+      ;;
+    *)
+      ;;
+  esac
+}
+
 require_running() {
   local state
   state=$(vm_state)
@@ -502,6 +560,11 @@ require_running() {
 cmd_sciclaw_passthrough() {
   require_running
   multipass exec "$VM_NAME" -- env HOME=/home/ubuntu sciclaw "$@"
+}
+
+cmd_vm_onboard() {
+  cmd_sciclaw_passthrough onboard "$@"
+  cmd_apply_vm_defaults
 }
 
 default_project_dir() {
@@ -878,7 +941,7 @@ cmd_tui() {
         ;;
       2|status) run_tui_action cmd_status ;;
       3|shell) run_tui_action cmd_shell ;;
-      4|onboard) run_tui_action cmd_sciclaw_passthrough onboard ;;
+      4|onboard) run_tui_action cmd_vm_onboard ;;
       5|auth-openai) run_tui_action cmd_sciclaw_passthrough auth login --provider openai ;;
       6|auth-anthropic) run_tui_action cmd_sciclaw_passthrough auth login --provider anthropic ;;
       7|discord) run_tui_action cmd_sciclaw_passthrough channels setup discord ;;
@@ -929,7 +992,7 @@ case "${1:-help}" in
   doctor)  cmd_doctor ;;
   mount)   shift; cmd_mount "$@" ;;
   umount|unmount) cmd_umount ;;
-  onboard) cmd_sciclaw_passthrough onboard "${@:2}" ;;
+  onboard) cmd_vm_onboard "${@:2}" ;;
   auth)    cmd_sciclaw_passthrough auth "${@:2}" ;;
   channels) cmd_sciclaw_passthrough channels "${@:2}" ;;
   tui)     cmd_tui ;;
