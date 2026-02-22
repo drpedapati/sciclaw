@@ -1286,6 +1286,22 @@ func modelsCmd() {
 	switch os.Args[2] {
 	case "list":
 		models.PrintList(cfg)
+	case "discover":
+		jsonOut := false
+		if len(os.Args) >= 4 && os.Args[3] == "--json" {
+			jsonOut = true
+		}
+		result := models.Discover(cfg)
+		if jsonOut {
+			data, err := json.Marshal(result)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(string(data))
+			return
+		}
+		models.PrintDiscover(result)
 	case "set":
 		if len(os.Args) < 4 {
 			fmt.Printf("Usage: %s models set <model>\n", commandName)
@@ -1311,7 +1327,7 @@ func modelsCmd() {
 		models.PrintStatus(cfg)
 	default:
 		fmt.Printf("Unknown models command: %s\n", os.Args[2])
-		fmt.Printf("Usage: %s models [list|set|effort|status]\n", commandName)
+		fmt.Printf("Usage: %s models [list|discover|set|effort|status]\n", commandName)
 	}
 }
 

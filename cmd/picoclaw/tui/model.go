@@ -331,6 +331,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.models.HandleStatus(msg)
 		return m, nil
 
+	case modelsCatalogMsg:
+		m.models.HandleCatalog(msg)
+		return m, nil
+
 	case skillsListMsg:
 		m.skills.HandleList(msg)
 		return m, nil
