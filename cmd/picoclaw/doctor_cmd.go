@@ -202,6 +202,9 @@ func runDoctor(opts doctorOptions) doctorReport {
 		} else {
 			add(doctorCheck{Name: "agent.restrict_to_workspace", Status: doctorWarn, Message: "false (tools can access outside workspace)"})
 		}
+		for _, c := range checkRoutingDiagnostics(cfg) {
+			add(c)
+		}
 
 		// Optional: PubMed API key (improves rate limits).
 		if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" || strings.TrimSpace(os.Getenv("NCBI_API_KEY")) != "" {
@@ -977,6 +980,79 @@ func syncBaselineSkills(srcSkillsDir, dstSkillsDir string) error {
 		}
 	}
 	return nil
+}
+
+func checkRoutingDiagnostics(cfg *config.Config) []doctorCheck {
+	checks := make([]doctorCheck, 0, 6)
+	add := func(c doctorCheck) { checks = append(checks, c) }
+
+	if cfg.Routing.Enabled {
+		add(doctorCheck{Name: "routing.enabled", Status: doctorOK, Message: "true"})
+	} else {
+		add(doctorCheck{Name: "routing.enabled", Status: doctorSkip, Message: "false"})
+	}
+
+	add(doctorCheck{
+		Name:    "routing.mappings.count",
+		Status:  doctorOK,
+		Message: fmt.Sprintf("%d", len(cfg.Routing.Mappings)),
+	})
+
+	behavior := strings.TrimSpace(cfg.Routing.UnmappedBehavior)
+	switch behavior {
+	case "", config.RoutingUnmappedBehaviorBlock, config.RoutingUnmappedBehaviorDefault:
+		if behavior == "" {
+			behavior = config.RoutingUnmappedBehaviorBlock
+		}
+		add(doctorCheck{Name: "routing.unmapped_behavior", Status: doctorOK, Message: behavior})
+	default:
+		add(doctorCheck{Name: "routing.unmapped_behavior", Status: doctorErr, Message: behavior})
+	}
+
+	workspaceMissing := 0
+	allowlistEmpty := 0
+	for _, m := range cfg.Routing.Mappings {
+		if info, err := os.Stat(m.Workspace); err != nil || !info.IsDir() {
+			workspaceMissing++
+		}
+
+		nonEmpty := 0
+		for _, sender := range m.AllowedSenders {
+			if strings.TrimSpace(sender) != "" {
+				nonEmpty++
+			}
+		}
+		if nonEmpty == 0 {
+			allowlistEmpty++
+		}
+	}
+
+	wsStatus := doctorOK
+	if workspaceMissing > 0 {
+		wsStatus = doctorErr
+	}
+	add(doctorCheck{
+		Name:    "routing.mappings.workspace_missing",
+		Status:  wsStatus,
+		Message: fmt.Sprintf("%d", workspaceMissing),
+	})
+
+	allowStatus := doctorOK
+	if allowlistEmpty > 0 {
+		allowStatus = doctorErr
+	}
+	add(doctorCheck{
+		Name:    "routing.mappings.allowlist_empty",
+		Status:  allowStatus,
+		Message: fmt.Sprintf("%d", allowlistEmpty),
+	})
+
+	if err := config.ValidateRoutingConfig(cfg.Routing); err != nil {
+		add(doctorCheck{Name: "routing.mappings.invalid", Status: doctorErr, Message: err.Error()})
+	} else {
+		add(doctorCheck{Name: "routing.mappings.invalid", Status: doctorOK, Message: "0"})
+	}
+	return checks
 }
 
 func tryCreatePubmedCLIShim() error {
