@@ -305,7 +305,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 	}
 
 	// Gateway log quick scan: common Telegram 409 conflict from multiple instances.
-	add(checkGatewayLog())
+	add(checkGatewayLog(cfg != nil && cfg.Channels.Telegram.Enabled))
 	for _, c := range checkServiceStatus(opts) {
 		add(c)
 	}
@@ -508,7 +508,7 @@ func checkWorkspacePythonVenv(workspace string, opts doctorOptions) doctorCheck 
 	}
 }
 
-func checkGatewayLog() doctorCheck {
+func checkGatewayLog(telegramEnabled bool) doctorCheck {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "home directory unavailable"}
@@ -516,6 +516,9 @@ func checkGatewayLog() doctorCheck {
 	p := filepath.Join(home, ".picoclaw", "gateway.log")
 	if !fileExists(p) {
 		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "not found"}
+	}
+	if !telegramEnabled {
+		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "telegram disabled; skipped 409 conflict scan"}
 	}
 
 	tail, err := readTail(p, 128*1024)
