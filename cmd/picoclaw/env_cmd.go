@@ -25,7 +25,7 @@ type vmHelperFiles struct {
 }
 
 func tuiCmd() {
-	tui.RunLocal()
+	tui.RunAuto()
 }
 
 func vmCmd() {
