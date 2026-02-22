@@ -172,6 +172,8 @@ func main() {
 		authCmd()
 	case "cron":
 		cronCmd()
+	case "routing":
+		routingCmd()
 	case "models":
 		modelsCmd()
 	case "skills":
@@ -254,6 +256,7 @@ func printHelp() {
 	fmt.Println("  status      Show sciClaw status")
 	fmt.Println("  doctor      Check deployment health and dependencies")
 	fmt.Println("  cron        Manage scheduled tasks")
+	fmt.Println("  routing     Manage channel->workspace routing and ACLs")
 	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw (PicoClaw-compatible)")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  backup      Backup key sciClaw config/workspace files")
