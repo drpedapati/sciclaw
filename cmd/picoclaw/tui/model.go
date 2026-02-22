@@ -23,6 +23,7 @@ const (
 	tabModels   = 8
 	tabSkills   = 9
 	tabCron     = 10
+	tabRouting  = 11
 )
 
 // tabEntry maps a visible tab position to its logical ID and display name.
@@ -66,6 +67,7 @@ type Model struct {
 	models   ModelsModel
 	skills   SkillsModel
 	cron     CronModel
+	routing  RoutingModel
 }
 
 func buildTabs(mode Mode) []tabEntry {
@@ -85,6 +87,7 @@ func buildTabs(mode Mode) []tabEntry {
 		tabEntry{"Models", tabModels},
 		tabEntry{"Skills", tabSkills},
 		tabEntry{"Cron", tabCron},
+		tabEntry{"Routing", tabRouting},
 	)
 	return tabs
 }
@@ -111,6 +114,7 @@ func NewModel(exec Executor) Model {
 		models:    NewModelsModel(exec),
 		skills:    NewSkillsModel(exec),
 		cron:      NewCronModel(exec),
+		routing:   NewRoutingModel(exec),
 	}
 }
 
@@ -139,7 +143,8 @@ func (m Model) subTabCapturingInput() bool {
 		(idx == tabUsers && m.users.mode != usersNormal) ||
 		(idx == tabFiles && m.files.mode != filesNormal) ||
 		(idx == tabModels && m.models.mode != modelsNormal) ||
-		(idx == tabSkills && m.skills.mode != skillsNormal)
+		(idx == tabSkills && m.skills.mode != skillsNormal) ||
+		(idx == tabRouting && m.routing.mode != routingNormal)
 }
 
 // maybeAutoRun triggers auto-fetch when certain tabs are first visited.
@@ -153,6 +158,8 @@ func (m *Model) maybeAutoRun() tea.Cmd {
 		return m.skills.AutoRun()
 	case tabCron:
 		return m.cron.AutoRun()
+	case tabRouting:
+		return m.routing.AutoRun()
 	}
 	return nil
 }
@@ -168,6 +175,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.doctor.HandleResize(m.width, m.height)
 		m.agent.HandleResize(m.width, m.height)
 		m.skills.HandleResize(m.width, m.height)
+		m.routing.HandleResize(m.width, m.height)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -200,6 +208,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.models, cmd = m.models.Update(msg, m.snapshot)
 			case tabSkills:
 				m.skills, cmd = m.skills.Update(msg, m.snapshot)
+			case tabRouting:
+				m.routing, cmd = m.routing.Update(msg, m.snapshot)
 			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
@@ -244,6 +254,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.skills, cmd = m.skills.Update(msg, m.snapshot)
 		case tabCron:
 			m.cron, cmd = m.cron.Update(msg, m.snapshot)
+		case tabRouting:
+			m.routing, cmd = m.routing.Update(msg, m.snapshot)
 		}
 		if cmd != nil {
 			cmds = append(cmds, cmd)
@@ -298,6 +310,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case cronListMsg:
 		m.cron.HandleList(msg)
+		return m, nil
+
+	case routingStatusMsg:
+		m.routing.HandleStatus(msg)
+		return m, nil
+
+	case routingListMsg:
+		m.routing.HandleList(msg)
+		return m, nil
+
+	case routingValidateMsg:
+		m.routing.HandleValidate(msg)
+		return m, nil
+
+	case routingReloadMsg:
+		m.routing.HandleReload(msg)
 		return m, nil
 	}
 
@@ -363,6 +391,8 @@ func (m Model) View() string {
 			content = m.skills.View(m.snapshot, contentWidth)
 		case tabCron:
 			content = m.cron.View(m.snapshot, contentWidth)
+		case tabRouting:
+			content = m.routing.View(m.snapshot, contentWidth)
 		}
 		b.WriteString(content)
 	}
