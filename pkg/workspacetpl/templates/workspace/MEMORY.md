@@ -1,30 +1,33 @@
 # Long-term Memory
 
-This file stores durable scientific context across sessions.
+This file stores durable operational context across sessions.
 
-## Active Hypotheses
+## Runtime State
 
-- Hypothesis:
-- Status:
-- Next check:
+- Active provider/auth state:
+- Active channels and allowlists:
+- Service/runtime notes:
 
-## Accepted Findings
+## Active Projects
 
-- Finding:
-- Evidence:
-- Confidence:
+- Project:
+- Current objective:
+- Next action:
 
-## Rejected Paths
+## Stable Preferences
 
-- Path:
-- Reason rejected:
+- Communication style:
+- Detail level:
+- Risk tolerance:
 
-## Open Questions
+## Known Issues / Workarounds
 
-- Question:
-- Blocker:
+- Issue:
+- Workaround:
+- Follow-up:
 
-## Manuscript TODOs
+## Optional Domain Notes
 
-- Section:
-- Required artifact/evidence:
+- Domain:
+- Key terms/entities:
+- Useful references:
