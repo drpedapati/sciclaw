@@ -62,7 +62,10 @@ func (e *LocalExecutor) ServiceInstalled() bool {
 	if err != nil {
 		return false
 	}
-	return !strings.Contains(out, "not installed")
+	if installed, ok := parseServiceStatusFlag(out, "installed"); ok {
+		return installed
+	}
+	return !strings.Contains(strings.ToLower(out), "not installed")
 }
 
 func (e *LocalExecutor) ServiceActive() bool {
@@ -70,7 +73,10 @@ func (e *LocalExecutor) ServiceActive() bool {
 	if err != nil {
 		return false
 	}
-	return strings.Contains(out, "Running: yes") || strings.Contains(out, "running: yes")
+	if running, ok := parseServiceStatusFlag(out, "running"); ok {
+		return running
+	}
+	return strings.Contains(strings.ToLower(out), "running: yes")
 }
 
 func (e *LocalExecutor) InteractiveProcess(args ...string) *exec.Cmd {
@@ -103,4 +109,28 @@ func runLocalCmd(timeout time.Duration, name string, args ...string) (string, er
 		_ = cmd.Process.Kill()
 		return "", exec.ErrNotFound
 	}
+}
+
+func parseServiceStatusFlag(out, key string) (bool, bool) {
+	keyLower := strings.ToLower(strings.TrimSpace(key))
+	for _, raw := range strings.Split(out, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		lineLower := strings.ToLower(line)
+		prefix := keyLower + ":"
+		if !strings.HasPrefix(lineLower, prefix) {
+			continue
+		}
+		val := strings.TrimSpace(lineLower[len(prefix):])
+		switch {
+		case strings.HasPrefix(val, "yes"):
+			return true, true
+		case strings.HasPrefix(val, "no"):
+			return false, true
+		}
+		return false, false
+	}
+	return false, false
 }

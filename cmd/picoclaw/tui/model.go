@@ -318,6 +318,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agent.HandleLogsMsg(msg)
 		return m, nil
 
+	case serviceActionMsg:
+		m.agent.HandleServiceAction(msg)
+		m.loading = true
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
+
 	case modelsStatusMsg:
 		m.models.HandleStatus(msg)
 		return m, nil

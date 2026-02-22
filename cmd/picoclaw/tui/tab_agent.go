@@ -11,6 +11,11 @@ import (
 )
 
 type logsMsg struct{ content string }
+type serviceActionMsg struct {
+	action string
+	ok     bool
+	output string
+}
 
 // AgentModel handles the Agent Service tab.
 type AgentModel struct {
@@ -52,6 +57,20 @@ func (m *AgentModel) HandleLogsMsg(msg logsMsg) {
 	m.logsContent = msg.content
 	m.logsLoaded = true
 	m.logsViewport.SetContent(msg.content)
+}
+
+func (m *AgentModel) HandleServiceAction(msg serviceActionMsg) {
+	header := fmt.Sprintf("Service %s completed.", msg.action)
+	if !msg.ok {
+		header = fmt.Sprintf("Service %s failed.", msg.action)
+	}
+	content := header
+	if strings.TrimSpace(msg.output) != "" {
+		content += "\n\n" + strings.TrimSpace(msg.output)
+	}
+	m.logsContent = content
+	m.logsLoaded = true
+	m.logsViewport.SetContent(content)
 }
 
 func (m *AgentModel) HandleResize(width, height int) {
@@ -156,9 +175,18 @@ func serviceBackendLabel(mode Mode) string {
 
 func serviceAction(exec Executor, action string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw service " + action
-		_, _ = exec.ExecShell(10*time.Second, cmd)
-		return actionDoneMsg{output: "Service " + action + " completed."}
+		cmd := "HOME=" + exec.HomePath() + " sciclaw service " + action + " 2>&1"
+		out, err := exec.ExecShell(15*time.Second, cmd)
+		if err != nil {
+			if strings.TrimSpace(out) == "" {
+				out = err.Error()
+			}
+			return serviceActionMsg{action: action, ok: false, output: strings.TrimSpace(out)}
+		}
+		if strings.TrimSpace(out) == "" {
+			out = "No output."
+		}
+		return serviceActionMsg{action: action, ok: true, output: strings.TrimSpace(out)}
 	}
 }
 
