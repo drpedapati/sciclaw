@@ -568,7 +568,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 			m.wizardInput.SetValue("")
 			m.wizardInput.Placeholder = "/absolute/path/to/workspace"
 			if snap != nil && snap.WorkspacePath != "" {
-				m.wizardInput.SetValue(snap.WorkspacePath)
+				m.wizardInput.SetValue(expandHomeForExecPath(snap.WorkspacePath, m.exec.HomePath()))
 			}
 			return m, nil
 		}
@@ -583,7 +583,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 			if val == "" {
 				return m, nil
 			}
-			m.wizardPath = val
+			m.wizardPath = expandHomeForExecPath(val, m.exec.HomePath())
 			m.wizardStep = addStepAllow
 			m.wizardInput.SetValue("")
 			m.wizardInput.Placeholder = "sender_id1,sender_id2"
@@ -638,11 +638,12 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 
 func (m *RoutingModel) startBrowse(snap *VMSnapshot) tea.Cmd {
 	m.mode = routingBrowseFolder
-	startPath := strings.TrimSpace(m.wizardInput.Value())
-	if startPath == "" || !strings.HasPrefix(startPath, "/") {
+	startPath := expandHomeForExecPath(strings.TrimSpace(m.wizardInput.Value()), m.exec.HomePath())
+	if startPath == "" || !filepath.IsAbs(startPath) {
 		if snap != nil && snap.WorkspacePath != "" {
-			startPath = snap.WorkspacePath
-		} else {
+			startPath = expandHomeForExecPath(snap.WorkspacePath, m.exec.HomePath())
+		}
+		if startPath == "" || !filepath.IsAbs(startPath) {
 			startPath = m.exec.HomePath()
 		}
 	}
@@ -1096,6 +1097,7 @@ func routingReloadCmd(exec Executor) tea.Cmd {
 
 func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, label string) tea.Cmd {
 	return func() tea.Msg {
+		workspace = expandHomeForExecPath(workspace, exec.HomePath())
 		cmd := fmt.Sprintf("HOME=%s sciclaw routing add --channel %s --chat-id %s --workspace %s --allow %s",
 			exec.HomePath(),
 			shellEscape(channel),
@@ -1127,10 +1129,11 @@ func routingSetUsersCmd(exec Executor, channel, chatID, allowCSV string) tea.Cmd
 
 func fetchDirListCmd(exec Executor, dirPath string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := fmt.Sprintf("ls -1pF %s 2>/dev/null", shellEscape(dirPath))
+		resolvedPath := expandHomeForExecPath(dirPath, exec.HomePath())
+		cmd := fmt.Sprintf("ls -1pF %s 2>/dev/null", shellEscape(resolvedPath))
 		out, err := exec.ExecShell(5*time.Second, cmd)
 		if err != nil {
-			return routingDirListMsg{path: dirPath, err: "Cannot read directory"}
+			return routingDirListMsg{path: resolvedPath, err: "Cannot read directory"}
 		}
 		var dirs []string
 		for _, line := range strings.Split(out, "\n") {
@@ -1142,8 +1145,19 @@ func fetchDirListCmd(exec Executor, dirPath string) tea.Cmd {
 				dirs = append(dirs, strings.TrimSuffix(line, "/"))
 			}
 		}
-		return routingDirListMsg{path: dirPath, dirs: dirs}
+		return routingDirListMsg{path: resolvedPath, dirs: dirs}
 	}
+}
+
+func expandHomeForExecPath(path, home string) string {
+	path = strings.TrimSpace(path)
+	if path == "~" {
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 func fetchDiscordRoomsCmd(exec Executor) tea.Cmd {
