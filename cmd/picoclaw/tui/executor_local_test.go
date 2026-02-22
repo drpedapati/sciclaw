@@ -1,6 +1,9 @@
 package tui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseServiceStatusFlag(t *testing.T) {
 	out := `
@@ -32,3 +35,28 @@ Gateway service status:
 	}
 }
 
+func TestMergePathList_PrefersFrontAndDedupes(t *testing.T) {
+	got := mergePathList(
+		[]string{"/Users/tester/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"},
+		"/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin",
+	)
+	parts := strings.Split(got, ":")
+	if len(parts) < 5 {
+		t.Fatalf("merged path too short: %q", got)
+	}
+	if parts[0] != "/Users/tester/.local/bin" {
+		t.Fatalf("first path = %q, want %q", parts[0], "/Users/tester/.local/bin")
+	}
+	if parts[1] != "/opt/homebrew/bin" {
+		t.Fatalf("second path = %q, want %q", parts[1], "/opt/homebrew/bin")
+	}
+	if parts[2] != "/usr/local/bin" {
+		t.Fatalf("third path = %q, want %q", parts[2], "/usr/local/bin")
+	}
+	if strings.Count(got, "/opt/homebrew/bin") != 1 {
+		t.Fatalf("expected deduped /opt/homebrew/bin in %q", got)
+	}
+	if strings.Count(got, "/usr/local/bin") != 1 {
+		t.Fatalf("expected deduped /usr/local/bin in %q", got)
+	}
+}

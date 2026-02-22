@@ -89,6 +89,7 @@ func (e *LocalExecutor) InteractiveProcess(args ...string) *exec.Cmd {
 
 func runLocalCmd(timeout time.Duration, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
+	cmd.Env = localCommandEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -109,6 +110,65 @@ func runLocalCmd(timeout time.Duration, name string, args ...string) (string, er
 		_ = cmd.Process.Kill()
 		return "", exec.ErrNotFound
 	}
+}
+
+func localCommandEnv() []string {
+	env := append([]string(nil), os.Environ()...)
+
+	currentPath := ""
+	pathIdx := -1
+	for i, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			pathIdx = i
+			currentPath = strings.TrimPrefix(kv, "PATH=")
+			break
+		}
+	}
+
+	var preferred []string
+	if exe, err := os.Executable(); err == nil {
+		if dir := strings.TrimSpace(filepath.Dir(exe)); dir != "" {
+			preferred = append(preferred, dir)
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		preferred = append(preferred, filepath.Join(home, ".local", "bin"))
+	}
+	preferred = append(preferred, "/opt/homebrew/bin", "/usr/local/bin")
+
+	mergedPath := mergePathList(preferred, currentPath)
+	pathKV := "PATH=" + mergedPath
+	if pathIdx >= 0 {
+		env[pathIdx] = pathKV
+		return env
+	}
+	return append(env, pathKV)
+}
+
+func mergePathList(preferred []string, current string) string {
+	seen := map[string]struct{}{}
+	var ordered []string
+
+	appendPart := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		ordered = append(ordered, p)
+	}
+
+	for _, p := range preferred {
+		appendPart(p)
+	}
+	for _, p := range strings.Split(current, string(os.PathListSeparator)) {
+		appendPart(p)
+	}
+
+	return strings.Join(ordered, string(os.PathListSeparator))
 }
 
 func parseServiceStatusFlag(out, key string) (bool, bool) {
