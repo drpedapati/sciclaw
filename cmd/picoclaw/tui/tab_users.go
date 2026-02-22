@@ -1,4 +1,4 @@
-package vmtui
+package tui
 
 import (
 	"fmt"
@@ -26,24 +26,25 @@ type userRow struct {
 
 // UsersModel handles the Users tab.
 type UsersModel struct {
+	exec        Executor
 	mode        usersMode
 	selectedRow int
 
 	// Add wizard state
-	addInput  textinput.Model
-	addStep   int    // 0=channel pick, 1=ID, 2=optional name
+	addInput   textinput.Model
+	addStep    int    // 0=channel pick, 1=ID, 2=optional name
 	addChannel string
-	pendingID string
+	pendingID  string
 
 	// Remove confirmation state
 	removeRow userRow
 }
 
-func NewUsersModel() UsersModel {
+func NewUsersModel(exec Executor) UsersModel {
 	ti := textinput.New()
 	ti.CharLimit = 64
 	ti.Width = 40
-	return UsersModel{addInput: ti}
+	return UsersModel{exec: exec, addInput: ti}
 }
 
 func buildRows(snap *VMSnapshot) []userRow {
@@ -110,7 +111,7 @@ func (m UsersModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (UsersModel, tea.Cm
 		switch key {
 		case "y", "Y":
 			m.mode = usersNormal
-			return m, removeUserFromVMConfig(m.removeRow.Channel, m.removeRow.OrigIdx)
+			return m, removeUserFromConfig(m.exec, m.removeRow.Channel, m.removeRow.OrigIdx)
 		case "n", "N", "esc":
 			m.mode = usersNormal
 		}
@@ -164,7 +165,7 @@ func (m UsersModel) handleAddSubmit() (UsersModel, tea.Cmd) {
 	entry := FormatEntry(m.pendingID, val)
 	m.mode = usersNormal
 	m.addInput.Blur()
-	return m, addUserToVMConfig(m.addChannel, entry)
+	return m, addUserToConfig(m.exec, m.addChannel, entry)
 }
 
 func (m UsersModel) View(snap *VMSnapshot, width int) string {

@@ -1,9 +1,7 @@
-package vmtui
+package tui
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -20,11 +18,12 @@ const (
 
 // LoginModel handles the Login tab.
 type LoginModel struct {
+	exec     Executor
 	selected loginSelection
 }
 
-func NewLoginModel() LoginModel {
-	return LoginModel{}
+func NewLoginModel(exec Executor) LoginModel {
+	return LoginModel{exec: exec}
 }
 
 func (m LoginModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (LoginModel, tea.Cmd) {
@@ -42,10 +41,7 @@ func (m LoginModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (LoginModel, tea.Cm
 		if m.selected == loginAnthropic {
 			provider = "anthropic"
 		}
-		c := exec.Command("multipass", "exec", vmName, "--", "env", "HOME=/home/ubuntu", "sciclaw", "auth", "login", "--provider", provider)
-		c.Stdin = os.Stdin
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
+		c := m.exec.InteractiveProcess("sciclaw", "auth", "login", "--provider", provider)
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
 			return actionDoneMsg{output: "Login flow completed."}
 		})
@@ -54,7 +50,7 @@ func (m LoginModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (LoginModel, tea.Cm
 		if m.selected == loginAnthropic {
 			provider = "anthropic"
 		}
-		return m, logoutFromVM(provider)
+		return m, logoutCmd(m.exec, provider)
 	}
 	return m, nil
 }
@@ -116,9 +112,10 @@ func renderProviderRow(name, state string) string {
 	return fmt.Sprintf("  %-14s  %s %-12s", name, icon, statusText)
 }
 
-func logoutFromVM(provider string) tea.Cmd {
+func logoutCmd(exec Executor, provider string) tea.Cmd {
 	return func() tea.Msg {
-		_, _ = VMExecShell(5*time.Second, fmt.Sprintf("HOME=/home/ubuntu sciclaw auth logout --provider %s", provider))
+		cmd := fmt.Sprintf("HOME=%s sciclaw auth logout --provider %s", exec.HomePath(), provider)
+		_, _ = exec.ExecShell(5*time.Second, cmd)
 		return actionDoneMsg{output: "Logged out from " + provider + "."}
 	}
 }

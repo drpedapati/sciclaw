@@ -1,7 +1,8 @@
-package vmtui
+package tui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -13,32 +14,32 @@ type logsMsg struct{ content string }
 
 // AgentModel handles the Agent Service tab.
 type AgentModel struct {
+	exec         Executor
 	logsViewport viewport.Model
 	logsContent  string
 	logsLoaded   bool
 }
 
-func NewAgentModel() AgentModel {
+func NewAgentModel(exec Executor) AgentModel {
 	vp := viewport.New(60, 10)
 	vp.SetContent("Loading logs...")
-	return AgentModel{logsViewport: vp}
+	return AgentModel{exec: exec, logsViewport: vp}
 }
 
 func (m AgentModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (AgentModel, tea.Cmd) {
 	switch msg.String() {
 	case "s":
-		return m, serviceAction("start")
+		return m, serviceAction(m.exec, "start")
 	case "t":
-		return m, serviceAction("stop")
+		return m, serviceAction(m.exec, "stop")
 	case "r":
-		// 'r' at root level is refresh — only use in agent tab context
-		return m, serviceAction("restart")
+		return m, serviceAction(m.exec, "restart")
 	case "i":
-		return m, serviceAction("install")
+		return m, serviceAction(m.exec, "install")
 	case "u":
-		return m, serviceAction("uninstall")
+		return m, serviceAction(m.exec, "uninstall")
 	case "l":
-		return m, fetchLogs()
+		return m, fetchLogs(m.exec)
 	}
 
 	// Forward to viewport for scrolling.
@@ -103,7 +104,7 @@ func (m AgentModel) renderServicePanel(snap *VMSnapshot, w int) string {
 	))
 	lines = append(lines, fmt.Sprintf(" %s %s",
 		styleLabel.Render("Backend:"),
-		styleDim.Render("systemd (user)"),
+		styleDim.Render(serviceBackendLabel(m.exec.Mode())),
 	))
 
 	lines = append(lines, "")
@@ -143,16 +144,28 @@ func yesNo(v bool) string {
 	return styleErr.Render("No")
 }
 
-func serviceAction(action string) tea.Cmd {
+func serviceBackendLabel(mode Mode) string {
+	if mode == ModeVM {
+		return "systemd (user)"
+	}
+	if runtime.GOOS == "darwin" {
+		return "launchd (user)"
+	}
+	return "systemd (user)"
+}
+
+func serviceAction(exec Executor, action string) tea.Cmd {
 	return func() tea.Msg {
-		_, _ = VMExecShell(10*time.Second, fmt.Sprintf("HOME=/home/ubuntu sciclaw service %s", action))
+		cmd := "HOME=" + exec.HomePath() + " sciclaw service " + action
+		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Service " + action + " completed."}
 	}
 }
 
-func fetchLogs() tea.Cmd {
+func fetchLogs(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		out, err := VMExecShell(10*time.Second, "HOME=/home/ubuntu sciclaw service logs --lines 50 2>&1")
+		cmd := "HOME=" + exec.HomePath() + " sciclaw service logs --lines 50 2>&1"
+		out, err := exec.ExecShell(10*time.Second, cmd)
 		if err != nil {
 			return logsMsg{content: fmt.Sprintf("Error fetching logs: %v", err)}
 		}

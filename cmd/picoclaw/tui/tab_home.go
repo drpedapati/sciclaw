@@ -1,7 +1,8 @@
-package vmtui
+package tui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -43,8 +44,12 @@ func (m HomeModel) View(snap *VMSnapshot, width int) string {
 
 	var b strings.Builder
 
-	// VM Info panel
-	b.WriteString(renderVMInfoPanel(snap, panelW))
+	// Info panel — mode-aware
+	if snap.State == "Local" {
+		b.WriteString(renderSystemInfoPanel(snap, panelW))
+	} else {
+		b.WriteString(renderVMInfoPanel(snap, panelW))
+	}
 	b.WriteString("\n")
 
 	// Setup Checklist panel
@@ -55,6 +60,26 @@ func (m HomeModel) View(snap *VMSnapshot, width int) string {
 	b.WriteString(renderSuggestedPanel(snap, panelW))
 
 	return b.String()
+}
+
+func renderSystemInfoPanel(snap *VMSnapshot, w int) string {
+	verStr := snap.AgentVersion
+	if verStr == "" {
+		verStr = "-"
+	}
+
+	osStr := runtime.GOOS + "/" + runtime.GOARCH
+
+	content := fmt.Sprintf(
+		"%s %s\n%s %s\n%s %s",
+		styleLabel.Render("Mode:"), styleOK.Render("Local"),
+		styleLabel.Render("System:"), styleValue.Render(osStr),
+		styleLabel.Render("Agent:"), styleValue.Render(verStr),
+	)
+
+	panel := stylePanel.Width(w).Render(content)
+	title := stylePanelTitle.Render("System")
+	return placePanelTitle(panel, title)
 }
 
 func renderVMInfoPanel(snap *VMSnapshot, w int) string {

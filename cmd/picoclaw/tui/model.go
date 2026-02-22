@@ -1,4 +1,4 @@
-package vmtui
+package tui
 
 import (
 	"fmt"
@@ -10,7 +10,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var tabNames = []string{"Home", "Chat", "Messaging Apps", "Users", "Login", "Health Check", "Agent Service", "Your Files"}
+// Tab index constants.
+const (
+	tabHome     = 0
+	tabChat     = 1
+	tabChannels = 2
+	tabUsers    = 3
+	tabLogin    = 4
+	tabDoctor   = 5
+	tabAgent    = 6
+	tabFiles    = 7 // VM-only
+)
 
 // Messages.
 type snapshotMsg struct {
@@ -22,6 +32,8 @@ type actionDoneMsg struct{ output string }
 
 // Model is the root TUI model.
 type Model struct {
+	exec      Executor
+	tabNames  []string
 	activeTab int
 	width     int
 	height    int
@@ -44,22 +56,32 @@ type Model struct {
 	files    FilesModel
 }
 
-func NewModel() Model {
+func buildTabNames(mode Mode) []string {
+	tabs := []string{"Home", "Chat", "Messaging Apps", "Users", "Login", "Health Check", "Agent Service"}
+	if mode == ModeVM {
+		tabs = append(tabs, "Your Files")
+	}
+	return tabs
+}
+
+func NewModel(exec Executor) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
 	return Model{
+		exec:      exec,
+		tabNames:  buildTabNames(exec.Mode()),
 		activeTab: 0,
 		spinner:   s,
 		loading:   true,
 		home:      NewHomeModel(),
-		chat:      NewChatModel(),
-		channels:  NewChannelsModel(),
-		users:     NewUsersModel(),
-		login:     NewLoginModel(),
-		doctor:    NewDoctorModel(),
-		agent:     NewAgentModel(),
+		chat:      NewChatModel(exec),
+		channels:  NewChannelsModel(exec),
+		users:     NewUsersModel(exec),
+		login:     NewLoginModel(exec),
+		doctor:    NewDoctorModel(exec),
+		agent:     NewAgentModel(exec),
 		files:     NewFilesModel(),
 	}
 }
@@ -67,23 +89,31 @@ func NewModel() Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
-		fetchSnapshotCmd(),
+		fetchSnapshotCmd(m.exec),
 		tickCmd(),
 	)
+}
+
+// tabIndex maps the visible tab position to the logical tab constant.
+// In local mode, tab 7 (Files) is hidden, so visible indices 0-6 map directly.
+// In VM mode, all 8 tabs map directly.
+func (m Model) tabIndex() int {
+	return m.activeTab
 }
 
 // subTabCapturingInput returns true when a sub-tab is in a mode
 // that captures all keyboard input (text entry, confirmation dialogs).
 func (m Model) subTabCapturingInput() bool {
-	return m.activeTab == 1 || // Chat always captures
-		(m.activeTab == 2 && m.channels.mode != modeNormal) ||
-		(m.activeTab == 3 && m.users.mode != usersNormal) ||
-		(m.activeTab == 7 && m.files.mode != filesNormal)
+	idx := m.tabIndex()
+	return idx == tabChat || // Chat always captures
+		(idx == tabChannels && m.channels.mode != modeNormal) ||
+		(idx == tabUsers && m.users.mode != usersNormal) ||
+		(idx == tabFiles && m.files.mode != filesNormal)
 }
 
 // maybeAutoRunDoctor triggers doctor auto-run when the Health Check tab is first visited.
 func (m *Model) maybeAutoRunDoctor() tea.Cmd {
-	if m.activeTab == 5 {
+	if m.tabIndex() == tabDoctor {
 		return m.doctor.AutoRun()
 	}
 	return nil
@@ -102,6 +132,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		idx := m.tabIndex()
+
 		// When a sub-tab is capturing input, allow ctrl+c and tab navigation,
 		// then delegate everything else to the active sub-tab.
 		if m.subTabCapturingInput() {
@@ -109,21 +141,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "tab":
-				m.activeTab = (m.activeTab + 1) % len(tabNames)
+				m.activeTab = (m.activeTab + 1) % len(m.tabNames)
 				return m, m.maybeAutoRunDoctor()
 			case "shift+tab":
-				m.activeTab = (m.activeTab - 1 + len(tabNames)) % len(tabNames)
+				m.activeTab = (m.activeTab - 1 + len(m.tabNames)) % len(m.tabNames)
 				return m, m.maybeAutoRunDoctor()
 			}
 			var cmd tea.Cmd
-			switch m.activeTab {
-			case 1:
+			switch idx {
+			case tabChat:
 				m.chat, cmd = m.chat.Update(msg, m.snapshot)
-			case 2:
+			case tabChannels:
 				m.channels, cmd = m.channels.Update(msg, m.snapshot)
-			case 3:
+			case tabUsers:
 				m.users, cmd = m.users.Update(msg, m.snapshot)
-			case 7:
+			case tabFiles:
 				m.files, cmd = m.files.Update(msg, m.snapshot)
 			}
 			if cmd != nil {
@@ -137,31 +169,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "tab":
-			m.activeTab = (m.activeTab + 1) % len(tabNames)
+			m.activeTab = (m.activeTab + 1) % len(m.tabNames)
 			return m, m.maybeAutoRunDoctor()
 		case "shift+tab":
-			m.activeTab = (m.activeTab - 1 + len(tabNames)) % len(tabNames)
+			m.activeTab = (m.activeTab - 1 + len(m.tabNames)) % len(m.tabNames)
 			return m, m.maybeAutoRunDoctor()
 		}
 
 		// Delegate to active tab.
 		var cmd tea.Cmd
-		switch m.activeTab {
-		case 0:
+		switch idx {
+		case tabHome:
 			m.home, cmd = m.home.Update(msg, m.snapshot)
-		case 1:
+		case tabChat:
 			m.chat, cmd = m.chat.Update(msg, m.snapshot)
-		case 2:
+		case tabChannels:
 			m.channels, cmd = m.channels.Update(msg, m.snapshot)
-		case 3:
+		case tabUsers:
 			m.users, cmd = m.users.Update(msg, m.snapshot)
-		case 4:
+		case tabLogin:
 			m.login, cmd = m.login.Update(msg, m.snapshot)
-		case 5:
+		case tabDoctor:
 			m.doctor, cmd = m.doctor.Update(msg, m.snapshot)
-		case 6:
+		case tabAgent:
 			m.agent, cmd = m.agent.Update(msg, m.snapshot)
-		case 7:
+		case tabFiles:
 			m.files, cmd = m.files.Update(msg, m.snapshot)
 		}
 		if cmd != nil {
@@ -182,7 +214,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		if !m.loading && time.Since(m.lastRefresh) > 10*time.Second {
 			m.loading = true
-			return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(), tickCmd())
+			return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec), tickCmd())
 		}
 		return m, tickCmd()
 
@@ -193,7 +225,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case actionDoneMsg:
 		m.loading = true
-		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd())
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
 
 	case chatResponseMsg:
 		m.chat.HandleResponse(msg)
@@ -219,7 +251,11 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Header
-	header := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render("  sciClaw VM Control Center")
+	title := "  sciClaw Control Center"
+	if m.exec.Mode() == ModeVM {
+		title = "  sciClaw VM Control Center"
+	}
+	header := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render(title)
 	b.WriteString(header)
 	b.WriteString("\n")
 
@@ -234,26 +270,31 @@ func (m Model) View() string {
 
 	// Loading indicator
 	if m.loading && m.snapshot == nil {
-		content := fmt.Sprintf("\n  %s Connecting to VM...\n", m.spinner.View())
+		loadText := "Loading..."
+		if m.exec.Mode() == ModeVM {
+			loadText = "Connecting to VM..."
+		}
+		content := fmt.Sprintf("\n  %s %s\n", m.spinner.View(), loadText)
 		b.WriteString(content)
 	} else {
+		idx := m.tabIndex()
 		var content string
-		switch m.activeTab {
-		case 0:
+		switch idx {
+		case tabHome:
 			content = m.home.View(m.snapshot, contentWidth)
-		case 1:
+		case tabChat:
 			content = m.chat.View(m.snapshot, contentWidth)
-		case 2:
+		case tabChannels:
 			content = m.channels.View(m.snapshot, contentWidth)
-		case 3:
+		case tabUsers:
 			content = m.users.View(m.snapshot, contentWidth)
-		case 4:
+		case tabLogin:
 			content = m.login.View(m.snapshot, contentWidth)
-		case 5:
+		case tabDoctor:
 			content = m.doctor.View(m.snapshot, contentWidth)
-		case 6:
+		case tabAgent:
 			content = m.agent.View(m.snapshot, contentWidth)
-		case 7:
+		case tabFiles:
 			content = m.files.View(m.snapshot, contentWidth)
 		}
 		b.WriteString(content)
@@ -274,7 +315,7 @@ func (m Model) View() string {
 
 func (m Model) renderTabBar() string {
 	var tabs []string
-	for i, name := range tabNames {
+	for i, name := range m.tabNames {
 		if i == m.activeTab {
 			tabs = append(tabs, styleTabActive.Render(name))
 		} else {
@@ -288,14 +329,18 @@ func (m Model) renderTabBar() string {
 func (m Model) renderStatusBar() string {
 	left := ""
 	if m.snapshot != nil {
-		stateColor := colorSuccess
-		switch m.snapshot.State {
-		case "Stopped":
-			stateColor = colorWarning
-		case "NotFound", "":
-			stateColor = colorError
+		if m.exec.Mode() == ModeVM {
+			stateColor := colorSuccess
+			switch m.snapshot.State {
+			case "Stopped":
+				stateColor = colorWarning
+			case "NotFound", "":
+				stateColor = colorError
+			}
+			left = fmt.Sprintf(" VM: %s", lipgloss.NewStyle().Foreground(stateColor).Bold(true).Render(m.snapshot.State))
+		} else {
+			left = fmt.Sprintf(" Mode: %s", lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("Local"))
 		}
-		left = fmt.Sprintf(" VM: %s", lipgloss.NewStyle().Foreground(stateColor).Bold(true).Render(m.snapshot.State))
 		if m.loading {
 			left += fmt.Sprintf("  %s", m.spinner.View())
 		}
@@ -317,9 +362,9 @@ func (m Model) renderStatusBar() string {
 	return styleStatusBar.Width(m.width).Render(left + strings.Repeat(" ", gap) + right)
 }
 
-func fetchSnapshotCmd() tea.Cmd {
+func fetchSnapshotCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		snap := CollectSnapshot()
+		snap := CollectSnapshot(exec)
 		return snapshotMsg{snapshot: snap}
 	}
 }

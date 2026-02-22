@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sipeed/picoclaw/cmd/picoclaw/vmtui"
+	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
 )
 
 const defaultGHCRImage = "ghcr.io/drpedapati/sciclaw"
@@ -24,10 +24,14 @@ type vmHelperFiles struct {
 	cleanupDir    string
 }
 
+func tuiCmd() {
+	tui.RunLocal()
+}
+
 func vmCmd() {
 	// Intercept the TUI subcommand — runs pure Go, no bash delegation.
 	if len(os.Args) > 2 && os.Args[2] == "tui" {
-		vmtui.Run()
+		tui.RunVM()
 		return
 	}
 

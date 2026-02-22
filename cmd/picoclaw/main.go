@@ -148,6 +148,8 @@ func main() {
 		gatewayCmd()
 	case "service":
 		serviceCmd()
+	case "tui":
+		tuiCmd()
 	case "vm":
 		vmCmd()
 	case "docker":

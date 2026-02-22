@@ -1,4 +1,4 @@
-package vmtui
+package tui
 
 import "github.com/charmbracelet/lipgloss"
 

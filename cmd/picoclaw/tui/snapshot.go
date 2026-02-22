@@ -1,4 +1,4 @@
-package vmtui
+package tui
 
 import (
 	"encoding/json"
@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// VMSnapshot holds the complete runtime state collected from the VM.
+// VMSnapshot holds the complete runtime state collected from the VM or local host.
 type VMSnapshot struct {
-	// VM info (from multipass info)
+	// VM info (from multipass info) — empty in local mode
 	State  string
 	IPv4   string
 	Load   string
@@ -42,7 +42,7 @@ type VMSnapshot struct {
 	ServiceInstalled bool
 	ServiceRunning   bool
 
-	// Mount state
+	// Mount state (VM-only)
 	Mounts []MountInfo
 
 	// Timestamp
@@ -116,11 +116,17 @@ type authCredJSON struct {
 	APIKey      string `json:"api_key"`
 }
 
-// CollectSnapshot gathers all VM state. Safe to call from a goroutine.
-func CollectSnapshot() VMSnapshot {
+// CollectSnapshot gathers all state. Safe to call from a goroutine.
+func CollectSnapshot(exec Executor) VMSnapshot {
+	if exec.Mode() == ModeVM {
+		return collectVMSnapshot(exec)
+	}
+	return collectLocalSnapshot(exec)
+}
+
+func collectVMSnapshot(exec Executor) VMSnapshot {
 	snap := VMSnapshot{FetchedAt: time.Now()}
 
-	// Fetch VM info and in-VM data in parallel.
 	var wg sync.WaitGroup
 	var vmInfo VMInfo
 	var cfgRaw, authRaw, hostCfgRaw string
@@ -128,10 +134,10 @@ func CollectSnapshot() VMSnapshot {
 
 	wg.Add(5)
 	go func() { defer wg.Done(); vmInfo = GetVMInfo() }()
-	go func() { defer wg.Done(); cfgRaw, cfgErr = VMCatFile("/home/ubuntu/.picoclaw/config.json") }()
-	go func() { defer wg.Done(); authRaw, authErr = VMCatFile("/home/ubuntu/.picoclaw/auth.json") }()
+	go func() { defer wg.Done(); cfgRaw, cfgErr = exec.ReadFile(exec.ConfigPath()) }()
+	go func() { defer wg.Done(); authRaw, authErr = exec.ReadFile(exec.AuthPath()) }()
 	go func() { defer wg.Done(); hostCfgRaw, hostCfgErr = hostConfigRaw() }()
-	go func() { defer wg.Done(); snap.AgentVersion = VMAgentVersion() }()
+	go func() { defer wg.Done(); snap.AgentVersion = exec.AgentVersion() }()
 	wg.Wait()
 
 	snap.State = vmInfo.State
@@ -170,7 +176,7 @@ func CollectSnapshot() VMSnapshot {
 	// Workspace.
 	snap.WorkspacePath = cfg.Agents.Defaults.Workspace
 	if snap.WorkspacePath != "" {
-		out, err := VMExecShell(3*time.Second, "test -d "+shellEscape(expandHome(snap.WorkspacePath))+" && echo yes || echo no")
+		out, err := exec.ExecShell(3*time.Second, "test -d "+shellEscape(expandHome(snap.WorkspacePath))+" && echo yes || echo no")
 		snap.WorkspaceExists = err == nil && strings.TrimSpace(out) == "yes"
 	}
 
@@ -185,8 +191,65 @@ func CollectSnapshot() VMSnapshot {
 	// Service state (parallel).
 	var wg2 sync.WaitGroup
 	wg2.Add(2)
-	go func() { defer wg2.Done(); snap.ServiceInstalled = VMServiceInstalled() }()
-	go func() { defer wg2.Done(); snap.ServiceRunning = VMServiceActive() }()
+	go func() { defer wg2.Done(); snap.ServiceInstalled = exec.ServiceInstalled() }()
+	go func() { defer wg2.Done(); snap.ServiceRunning = exec.ServiceActive() }()
+	wg2.Wait()
+
+	return snap
+}
+
+func collectLocalSnapshot(exec Executor) VMSnapshot {
+	snap := VMSnapshot{
+		State:     "Local",
+		FetchedAt: time.Now(),
+	}
+
+	var wg sync.WaitGroup
+	var cfgRaw, authRaw string
+	var cfgErr, authErr error
+
+	wg.Add(3)
+	go func() { defer wg.Done(); cfgRaw, cfgErr = exec.ReadFile(exec.ConfigPath()) }()
+	go func() { defer wg.Done(); authRaw, authErr = exec.ReadFile(exec.AuthPath()) }()
+	go func() { defer wg.Done(); snap.AgentVersion = exec.AgentVersion() }()
+	wg.Wait()
+
+	// Parse config.
+	snap.ConfigExists = cfgErr == nil && strings.TrimSpace(cfgRaw) != ""
+	var cfg configJSON
+	if snap.ConfigExists {
+		_ = json.Unmarshal([]byte(cfgRaw), &cfg)
+	}
+
+	// Parse auth.
+	snap.AuthStoreExists = authErr == nil && strings.TrimSpace(authRaw) != ""
+	var auth authJSON
+	if snap.AuthStoreExists {
+		_ = json.Unmarshal([]byte(authRaw), &auth)
+	}
+
+	// Workspace.
+	snap.WorkspacePath = cfg.Agents.Defaults.Workspace
+	if snap.WorkspacePath != "" {
+		expanded := expandHomeLocal(snap.WorkspacePath, exec.HomePath())
+		if info, err := os.Stat(expanded); err == nil && info.IsDir() {
+			snap.WorkspaceExists = true
+		}
+	}
+
+	// Provider state.
+	snap.OpenAI = providerState(cfg.Providers.OpenAI, auth.Credentials["openai"])
+	snap.Anthropic = providerState(cfg.Providers.Anthropic, auth.Credentials["anthropic"])
+
+	// Channel state.
+	snap.Discord = channelState(cfg.Channels.Discord)
+	snap.Telegram = channelState(cfg.Channels.Telegram)
+
+	// Service state (parallel).
+	var wg2 sync.WaitGroup
+	wg2.Add(2)
+	go func() { defer wg2.Done(); snap.ServiceInstalled = exec.ServiceInstalled() }()
+	go func() { defer wg2.Done(); snap.ServiceRunning = exec.ServiceActive() }()
 	wg2.Wait()
 
 	return snap
@@ -235,6 +298,13 @@ func expandHome(path string) string {
 	return path
 }
 
+func expandHomeLocal(path, home string) string {
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(home, path[2:])
+	}
+	return path
+}
+
 func shellEscape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
@@ -257,20 +327,20 @@ func (s *VMSnapshot) SuggestedStep() (message, detail string, tabIdx int) {
 	if s.State == "NotFound" || s.State == "" {
 		return "Create and start the VM", "Run 'sciclaw vm start' to provision your virtual machine.", -1
 	}
-	if s.State != "Running" {
+	if s.State != "Running" && s.State != "Local" {
 		return "Start the VM", "The VM exists but is not running. Run 'sciclaw vm start'.", -1
 	}
 	if s.OpenAI != "ready" && s.Anthropic != "ready" {
-		return "Log in to an AI provider", "You need credentials for OpenAI or Anthropic to use the agent.", 2
+		return "Log in to an AI provider", "You need credentials for OpenAI or Anthropic to use the agent.", tabLogin
 	}
 	if s.Discord.Status != "ready" && s.Telegram.Status != "ready" {
-		return "Set up a messaging app", "Connect Discord or Telegram so you can chat with your agent.", 1
+		return "Set up a messaging app", "Connect Discord or Telegram so you can chat with your agent.", tabChannels
 	}
 	if !s.ServiceInstalled {
-		return "Install the agent service", "The background service lets your agent run continuously.", 3
+		return "Install the agent service", "The background service lets your agent run continuously.", tabAgent
 	}
 	if !s.ServiceRunning {
-		return "Start the agent service", "Your agent is installed but not running yet.", 3
+		return "Start the agent service", "Your agent is installed but not running yet.", tabAgent
 	}
-	return "You're all set!", "Your agent is running and ready. Check the logs for activity.", 3
+	return "You're all set!", "Your agent is running and ready. Check the logs for activity.", tabAgent
 }

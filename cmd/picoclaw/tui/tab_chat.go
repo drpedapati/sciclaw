@@ -1,4 +1,4 @@
-package vmtui
+package tui
 
 import (
 	"fmt"
@@ -22,13 +22,14 @@ type chatResponseMsg struct {
 
 // ChatModel handles the Chat tab.
 type ChatModel struct {
+	exec     Executor
 	viewport viewport.Model
 	input    textinput.Model
 	history  []chatMessage
 	waiting  bool
 }
 
-func NewChatModel() ChatModel {
+func NewChatModel(exec Executor) ChatModel {
 	vp := viewport.New(60, 15)
 
 	ti := textinput.New()
@@ -38,6 +39,7 @@ func NewChatModel() ChatModel {
 	ti.Focus()
 
 	return ChatModel{
+		exec:     exec,
 		viewport: vp,
 		input:    ti,
 	}
@@ -56,7 +58,7 @@ func (m ChatModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ChatModel, tea.Cmd)
 		m.waiting = true
 		m.input.SetValue("")
 		m.refreshViewport()
-		return m, sendChatCmd(val)
+		return m, sendChatCmd(m.exec, val)
 
 	case "up", "down", "pgup", "pgdown":
 		// Forward scroll keys to viewport.
@@ -190,10 +192,10 @@ func (m ChatModel) renderHistory() string {
 	return strings.Join(lines, "\n")
 }
 
-func sendChatCmd(message string) tea.Cmd {
+func sendChatCmd(exec Executor, message string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=/home/ubuntu sciclaw agent -m " + shellEscape(message) + " -s tui:chat 2>/dev/null"
-		out, err := VMExecShell(120*time.Second, cmd)
+		cmd := "HOME=" + exec.HomePath() + " sciclaw agent -m " + shellEscape(message) + " -s tui:chat 2>/dev/null"
+		out, err := exec.ExecShell(120*time.Second, cmd)
 		if err != nil {
 			return chatResponseMsg{err: fmt.Errorf("agent error: %w", err)}
 		}

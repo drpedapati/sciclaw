@@ -1,10 +1,9 @@
-package vmtui
+package tui
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,6 +28,7 @@ const (
 
 // ChannelsModel handles the Messaging Apps tab.
 type ChannelsModel struct {
+	exec        Executor
 	focus       channelFocus
 	mode        channelMode
 	selectedRow int // selected row in the focused channel's user table
@@ -52,12 +52,13 @@ type ChannelsModel struct {
 	setupUserID  string
 }
 
-func NewChannelsModel() ChannelsModel {
+func NewChannelsModel(exec Executor) ChannelsModel {
 	ti := textinput.New()
 	ti.CharLimit = 64
 	ti.Width = 40
 
 	return ChannelsModel{
+		exec:     exec,
 		addInput: ti,
 	}
 }
@@ -323,7 +324,7 @@ func channelStatusText(vmCh, hostCh ChannelSnapshot) string {
 }
 
 func (m ChannelsModel) importFocusedFromHost(snap *VMSnapshot) tea.Cmd {
-	if snap == nil {
+	if snap == nil || m.exec.Mode() != ModeVM {
 		return nil
 	}
 	channel := "discord"
@@ -337,10 +338,10 @@ func (m ChannelsModel) importFocusedFromHost(snap *VMSnapshot) tea.Cmd {
 	if !canImportFromHost(vmCh, hostCh) {
 		return nil
 	}
-	return importChannelFromHostToVM(channel)
+	return importChannelFromHostToVM(m.exec, channel)
 }
 
-func importChannelFromHostToVM(channel string) tea.Cmd {
+func importChannelFromHostToVM(exec Executor, channel string) tea.Cmd {
 	return func() tea.Msg {
 		raw, err := hostConfigRaw()
 		if err != nil {
@@ -362,12 +363,6 @@ func importChannelFromHostToVM(channel string) tea.Cmd {
 		}
 
 		enabled := src.Enabled || strings.TrimSpace(src.Token) != ""
-		enabledPy := "False"
-		if enabled {
-			enabledPy = "True"
-		}
-		tokenJSON, _ := json.Marshal(src.Token)
-		proxyJSON, _ := json.Marshal(src.Proxy)
 		allow := make([]string, 0, len(src.AllowFrom))
 		for _, entry := range src.AllowFrom {
 			entry = strings.TrimSpace(entry)
@@ -375,24 +370,8 @@ func importChannelFromHostToVM(channel string) tea.Cmd {
 				allow = append(allow, entry)
 			}
 		}
-		allowJSON, _ := json.Marshal(allow)
 
-		script := fmt.Sprintf(`
-import json
-with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
-    cfg = json.load(f)
-ch = cfg.setdefault('channels', {}).setdefault('%s', {})
-ch['enabled'] = %s
-ch['token'] = %s
-ch['allow_from'] = %s
-if '%s' == 'telegram':
-    ch['proxy'] = %s
-with open('/home/ubuntu/.picoclaw/config.json', 'w') as f:
-    json.dump(cfg, f, indent=2)
-print('ok')
-`, channel, enabledPy, string(tokenJSON), string(allowJSON), channel, string(proxyJSON))
-
-		if _, err := VMExecShell(5*time.Second, "python3 -c "+shellEscape(script)); err != nil {
+		if err := setChannelConfig(exec, channel, enabled, src.Token, src.Proxy, allow); err != nil {
 			return actionDoneMsg{output: fmt.Sprintf("Import failed: %v", err)}
 		}
 		return actionDoneMsg{output: capitalizeFirst(channel) + " settings imported from host."}
@@ -463,8 +442,7 @@ func (m ChannelsModel) handleAddSubmit(snap *VMSnapshot) (ChannelsModel, tea.Cmd
 	m.mode = modeNormal
 	m.addInput.Blur()
 
-	// Save to config inside the VM.
-	return m, addUserToVMConfig(m.addChannel, entry)
+	return m, addUserToConfig(m.exec, m.addChannel, entry)
 }
 
 func (m ChannelsModel) executeRemove(snap *VMSnapshot) (ChannelsModel, tea.Cmd) {
@@ -473,7 +451,7 @@ func (m ChannelsModel) executeRemove(snap *VMSnapshot) (ChannelsModel, tea.Cmd) 
 	if m.focus == focusTelegram {
 		ch = "telegram"
 	}
-	return m, removeUserFromVMConfig(ch, m.removeIdx)
+	return m, removeUserFromConfig(m.exec, ch, m.removeIdx)
 }
 
 func (m ChannelsModel) startSetup(snap *VMSnapshot) (ChannelsModel, tea.Cmd) {
@@ -552,7 +530,7 @@ func (m ChannelsModel) handleSetupSubmit(snap *VMSnapshot) (ChannelsModel, tea.C
 		m.mode = modeNormal
 		m.addInput.EchoMode = textinput.EchoNormal
 		m.addInput.CharLimit = 64
-		return m, saveChannelSetup(m.setupChannel, m.setupToken, m.setupUserID)
+		return m, doSaveChannelSetup(m.exec, m.setupChannel, m.setupToken, m.setupUserID)
 	}
 
 	return m, nil
@@ -596,69 +574,32 @@ func (m ChannelsModel) renderSetupOverlay(channelName string) string {
 	return strings.Join(lines, "\n")
 }
 
-func saveChannelSetup(channel, token, userEntry string) tea.Cmd {
+// doSaveChannelSetup saves channel token and optional first user via Go config editing.
+func doSaveChannelSetup(exec Executor, channel, token, userEntry string) tea.Cmd {
 	return func() tea.Msg {
-		tokenJSON, _ := json.Marshal(token)
-		userJSON, _ := json.Marshal(userEntry)
-		script := fmt.Sprintf(`
-import json
-with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
-    cfg = json.load(f)
-ch = cfg.setdefault('channels', {}).setdefault('%s', {})
-ch['enabled'] = True
-ch['token'] = %s
-user = %s
-if user:
-    af = ch.setdefault('allow_from', [])
-    if user not in af:
-        af.append(user)
-with open('/home/ubuntu/.picoclaw/config.json', 'w') as f:
-    json.dump(cfg, f, indent=2)
-print('ok')
-`, channel, string(tokenJSON), string(userJSON))
-		_, _ = VMExecShell(5*time.Second, "python3 -c "+shellEscape(script))
+		if err := saveChannelSetupConfig(exec, channel, token, userEntry); err != nil {
+			return actionDoneMsg{output: fmt.Sprintf("Setup failed: %v", err)}
+		}
 		return actionDoneMsg{output: channel + " setup saved."}
 	}
 }
 
-// addUserToVMConfig appends a user to the channel's allow_from in the VM config.
-func addUserToVMConfig(channel, entry string) tea.Cmd {
+// addUserToConfig appends a user to the channel's allow_from via Go config editing.
+func addUserToConfig(exec Executor, channel, entry string) tea.Cmd {
 	return func() tea.Msg {
-		// JSON-encode the entry value for safe embedding in Python.
-		entryJSON, _ := json.Marshal(entry)
-		script := fmt.Sprintf(`
-import json
-with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
-    cfg = json.load(f)
-ch = cfg.setdefault('channels', {}).setdefault('%s', {})
-af = ch.setdefault('allow_from', [])
-entry = %s
-if entry not in af:
-    af.append(entry)
-with open('/home/ubuntu/.picoclaw/config.json', 'w') as f:
-    json.dump(cfg, f, indent=2)
-print('ok')
-`, channel, string(entryJSON))
-		_, _ = VMExecShell(5*time.Second, "python3 -c "+shellEscape(script))
+		if err := appendAllowFrom(exec, channel, entry); err != nil {
+			return actionDoneMsg{output: fmt.Sprintf("Failed to add user: %v", err)}
+		}
 		return actionDoneMsg{output: "User added."}
 	}
 }
 
-// removeUserFromVMConfig removes a user by index from the channel's allow_from.
-func removeUserFromVMConfig(channel string, idx int) tea.Cmd {
+// removeUserFromConfig removes a user by index via Go config editing.
+func removeUserFromConfig(exec Executor, channel string, idx int) tea.Cmd {
 	return func() tea.Msg {
-		script := fmt.Sprintf(`
-import json
-with open('/home/ubuntu/.picoclaw/config.json', 'r') as f:
-    cfg = json.load(f)
-af = cfg.get('channels', {}).get('%s', {}).get('allow_from', [])
-if %d < len(af):
-    af.pop(%d)
-with open('/home/ubuntu/.picoclaw/config.json', 'w') as f:
-    json.dump(cfg, f, indent=2)
-print('ok')
-`, channel, idx, idx)
-		_, _ = VMExecShell(5*time.Second, "python3 -c "+shellEscape(script))
+		if err := removeAllowFrom(exec, channel, idx); err != nil {
+			return actionDoneMsg{output: fmt.Sprintf("Failed to remove user: %v", err)}
+		}
 		return actionDoneMsg{output: "User removed."}
 	}
 }

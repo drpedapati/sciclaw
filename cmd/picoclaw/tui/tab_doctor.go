@@ -1,4 +1,4 @@
-package vmtui
+package tui
 
 import (
 	"encoding/json"
@@ -44,6 +44,7 @@ type doctorDoneMsg struct {
 
 // DoctorModel handles the Health Check tab.
 type DoctorModel struct {
+	exec     Executor
 	report   *doctorReport
 	running  bool
 	errMsg   string
@@ -51,10 +52,10 @@ type DoctorModel struct {
 	viewport viewport.Model
 }
 
-func NewDoctorModel() DoctorModel {
+func NewDoctorModel(exec Executor) DoctorModel {
 	vp := viewport.New(60, 20)
 	vp.SetContent(styleDim.Render("  Press Enter or [r] to run health check."))
-	return DoctorModel{viewport: vp}
+	return DoctorModel{exec: exec, viewport: vp}
 }
 
 func (m DoctorModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (DoctorModel, tea.Cmd) {
@@ -63,7 +64,7 @@ func (m DoctorModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (DoctorModel, tea.
 		if !m.running {
 			m.running = true
 			m.hasRun = true
-			return m, runDoctorCmd()
+			return m, runDoctorCmd(m.exec)
 		}
 	}
 
@@ -80,7 +81,7 @@ func (m *DoctorModel) AutoRun() tea.Cmd {
 	}
 	m.running = true
 	m.hasRun = true
-	return runDoctorCmd()
+	return runDoctorCmd(m.exec)
 }
 
 func (m *DoctorModel) HandleResult(msg doctorDoneMsg) {
@@ -235,9 +236,10 @@ func doctorIcon(status doctorCheckStatus) string {
 	}
 }
 
-func runDoctorCmd() tea.Cmd {
+func runDoctorCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		out, err := VMExecShell(90*time.Second, "HOME=/home/ubuntu sciclaw doctor --json 2>&1")
+		cmd := "HOME=" + exec.HomePath() + " sciclaw doctor --json 2>&1"
+		out, err := exec.ExecShell(90*time.Second, cmd)
 		if err != nil {
 			return doctorDoneMsg{err: fmt.Errorf("command failed: %w", err)}
 		}
