@@ -548,6 +548,7 @@
       <a class="sidebar-link" href="#channels">Overview</a>
       <a class="sidebar-link nested" href="#telegram">Telegram</a>
       <a class="sidebar-link nested" href="#discord">Discord</a>
+      <a class="sidebar-link nested" href="#routing">Collaborative Routing</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Advanced</div>
@@ -1538,6 +1539,32 @@
           <li>Generate an invite URL via OAuth2 (scopes: <code>bot</code>; permissions: Send Messages, Read Message History).</li>
           <li>Use <code>sciclaw service status</code> to confirm the gateway is running in background mode.</li>
         </ol>
+      </div>
+
+      <!-- ─── Collaborative Routing ─── -->
+      <div class="section" id="routing">
+        <h3>Collaborative Routing</h3>
+        <p>Use routing when multiple chat rooms or teams should map to separate workspaces with separate sender ACLs.</p>
+
+        <p><strong>1. Add mapping</strong></p>
+        <pre><code><span class="hl-cmd">sciclaw</span> routing add \
+  <span class="hl-flag">--channel</span> discord \
+  <span class="hl-flag">--chat-id</span> 1467290563052048476 \
+  <span class="hl-flag">--workspace</span> /absolute/path/to/project-a \
+  <span class="hl-flag">--allow</span> 8535331528,1467290563052048476 \
+  <span class="hl-flag">--label</span> project-a</code></pre>
+
+        <p><strong>2. Enable + validate + apply live</strong></p>
+        <pre><code><span class="hl-cmd">sciclaw</span> routing enable
+<span class="hl-cmd">sciclaw</span> routing validate
+<span class="hl-cmd">sciclaw</span> routing reload</code></pre>
+
+        <p><strong>3. Inspect / troubleshoot decisions</strong></p>
+        <pre><code><span class="hl-cmd">sciclaw</span> routing status
+<span class="hl-cmd">sciclaw</span> routing list
+<span class="hl-cmd">sciclaw</span> routing explain <span class="hl-flag">--channel</span> discord <span class="hl-flag">--chat-id</span> 1467290563052048476 <span class="hl-flag">--sender</span> 8535331528</code></pre>
+
+        <p>Session keys are namespaced as <code>&lt;channel&gt;:&lt;chat_id&gt;@&lt;workspace_hash&gt;</code> to isolate context across workspaces.</p>
       </div>
 
       <hr />
