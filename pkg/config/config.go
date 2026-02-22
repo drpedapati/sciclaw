@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/caarlos0/env/v11"
@@ -51,6 +52,7 @@ type Config struct {
 	Tools     ToolsConfig     `json:"tools"`
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	Devices   DevicesConfig   `json:"devices"`
+	Routing   RoutingConfig   `json:"routing"`
 	mu        sync.RWMutex
 }
 
@@ -67,6 +69,25 @@ type AgentDefaults struct {
 	Temperature         float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
 	MaxToolIterations   int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
 	ReasoningEffort     string  `json:"reasoning_effort,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_REASONING_EFFORT"`
+}
+
+const (
+	RoutingUnmappedBehaviorBlock   = "block"
+	RoutingUnmappedBehaviorDefault = "default"
+)
+
+type RoutingConfig struct {
+	Enabled          bool             `json:"enabled"`
+	UnmappedBehavior string           `json:"unmapped_behavior"`
+	Mappings         []RoutingMapping `json:"mappings"`
+}
+
+type RoutingMapping struct {
+	Channel        string              `json:"channel"`
+	ChatID         string              `json:"chat_id"`
+	Workspace      string              `json:"workspace"`
+	AllowedSenders FlexibleStringSlice `json:"allowed_senders"`
+	Label          string              `json:"label,omitempty"`
 }
 
 type ChannelsConfig struct {
@@ -322,6 +343,11 @@ func DefaultConfig() *Config {
 			Enabled:    false,
 			MonitorUSB: true,
 		},
+		Routing: RoutingConfig{
+			Enabled:          false,
+			UnmappedBehavior: RoutingUnmappedBehaviorBlock,
+			Mappings:         []RoutingMapping{},
+		},
 	}
 }
 
@@ -346,6 +372,12 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Agents.Defaults.MaxToolIterations < 0 {
 		cfg.Agents.Defaults.MaxToolIterations = 0
 	}
+	if strings.TrimSpace(cfg.Routing.UnmappedBehavior) == "" {
+		cfg.Routing.UnmappedBehavior = RoutingUnmappedBehaviorBlock
+	}
+	if err := ValidateRoutingConfig(cfg.Routing); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -353,6 +385,9 @@ func LoadConfig(path string) (*Config, error) {
 func SaveConfig(path string, cfg *Config) error {
 	cfg.mu.RLock()
 	defer cfg.mu.RUnlock()
+	if err := ValidateRoutingConfig(cfg.Routing); err != nil {
+		return err
+	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -433,4 +468,68 @@ func expandHome(path string) string {
 		return home
 	}
 	return path
+}
+
+func ValidateRoutingConfig(r RoutingConfig) error {
+	behavior := strings.TrimSpace(r.UnmappedBehavior)
+	if behavior == "" {
+		behavior = RoutingUnmappedBehaviorBlock
+	}
+
+	switch behavior {
+	case RoutingUnmappedBehaviorBlock, RoutingUnmappedBehaviorDefault:
+	default:
+		return fmt.Errorf(
+			"routing.unmapped_behavior must be %q or %q",
+			RoutingUnmappedBehaviorBlock,
+			RoutingUnmappedBehaviorDefault,
+		)
+	}
+
+	seen := make(map[string]struct{}, len(r.Mappings))
+	for i, m := range r.Mappings {
+		channel := strings.TrimSpace(m.Channel)
+		if channel == "" {
+			return fmt.Errorf("routing.mappings[%d].channel is required", i)
+		}
+
+		chatID := strings.TrimSpace(m.ChatID)
+		if chatID == "" {
+			return fmt.Errorf("routing.mappings[%d].chat_id is required", i)
+		}
+
+		key := strings.ToLower(channel) + "\x00" + chatID
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("routing.mappings[%d] duplicates mapping for (%s,%s)", i, channel, chatID)
+		}
+		seen[key] = struct{}{}
+
+		workspace := strings.TrimSpace(m.Workspace)
+		if workspace == "" {
+			return fmt.Errorf("routing.mappings[%d].workspace is required", i)
+		}
+		if !filepath.IsAbs(workspace) {
+			return fmt.Errorf("routing.mappings[%d].workspace must be an absolute path", i)
+		}
+		info, err := os.Stat(workspace)
+		if err != nil {
+			return fmt.Errorf("routing.mappings[%d].workspace is not accessible: %w", i, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("routing.mappings[%d].workspace must be a directory", i)
+		}
+		if _, err := os.ReadDir(workspace); err != nil {
+			return fmt.Errorf("routing.mappings[%d].workspace is not readable: %w", i, err)
+		}
+
+		if len(m.AllowedSenders) == 0 {
+			return fmt.Errorf("routing.mappings[%d].allowed_senders must contain at least one sender", i)
+		}
+		for j, sender := range m.AllowedSenders {
+			if strings.TrimSpace(sender) == "" {
+				return fmt.Errorf("routing.mappings[%d].allowed_senders[%d] cannot be empty", i, j)
+			}
+		}
+	}
+	return nil
 }
