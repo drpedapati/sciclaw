@@ -9,12 +9,19 @@ import (
 
 const vmName = "sciclaw"
 
+// MountInfo represents a single multipass mount.
+type MountInfo struct {
+	HostPath string
+	VMPath   string
+}
+
 // VMInfo holds parsed output from multipass info.
 type VMInfo struct {
 	State  string
 	IPv4   string
 	Load   string
 	Memory string
+	Mounts []MountInfo
 }
 
 // VMState returns the current VM state (Running, Stopped, NotFound, etc.).
@@ -37,6 +44,7 @@ func GetVMInfo() VMInfo {
 		IPv4:   parseInfoField(info, "IPv4"),
 		Load:   parseInfoField(info, "Load"),
 		Memory: parseInfoField(info, "Memory usage"),
+		Mounts: parseMounts(info),
 	}
 }
 
@@ -115,4 +123,35 @@ func parseInfoField(output, key string) string {
 		}
 	}
 	return ""
+}
+
+// parseMounts extracts mount entries from multipass info output.
+// The format is:
+//
+//	Mounts:         /host/path => /vm/path
+//	                    UID map: ...
+//	                    GID map: ...
+func parseMounts(output string) []MountInfo {
+	var mounts []MountInfo
+	inMounts := false
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Mounts:") {
+			inMounts = true
+			trimmed = strings.TrimPrefix(trimmed, "Mounts:")
+			trimmed = strings.TrimSpace(trimmed)
+		} else if len(line) > 0 && line[0] != ' ' && strings.Contains(line, ":") {
+			inMounts = false
+		}
+		if inMounts && strings.Contains(trimmed, " => ") {
+			parts := strings.SplitN(trimmed, " => ", 2)
+			if len(parts) == 2 {
+				mounts = append(mounts, MountInfo{
+					HostPath: strings.TrimSpace(parts[0]),
+					VMPath:   strings.TrimSpace(parts[1]),
+				})
+			}
+		}
+	}
+	return mounts
 }

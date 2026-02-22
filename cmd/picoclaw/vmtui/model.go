@@ -77,7 +77,8 @@ func (m Model) Init() tea.Cmd {
 func (m Model) subTabCapturingInput() bool {
 	return m.activeTab == 1 || // Chat always captures
 		(m.activeTab == 2 && m.channels.mode != modeNormal) ||
-		(m.activeTab == 3 && m.users.mode != usersNormal)
+		(m.activeTab == 3 && m.users.mode != usersNormal) ||
+		(m.activeTab == 7 && m.files.mode != filesNormal)
 }
 
 // maybeAutoRunDoctor triggers doctor auto-run when the Health Check tab is first visited.
@@ -122,6 +123,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.channels, cmd = m.channels.Update(msg, m.snapshot)
 			case 3:
 				m.users, cmd = m.users.Update(msg, m.snapshot)
+			case 7:
+				m.files, cmd = m.files.Update(msg, m.snapshot)
 			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)

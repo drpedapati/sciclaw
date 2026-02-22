@@ -42,6 +42,9 @@ type VMSnapshot struct {
 	ServiceInstalled bool
 	ServiceRunning   bool
 
+	// Mount state
+	Mounts []MountInfo
+
 	// Timestamp
 	FetchedAt time.Time
 }
@@ -135,6 +138,7 @@ func CollectSnapshot() VMSnapshot {
 	snap.IPv4 = vmInfo.IPv4
 	snap.Load = vmInfo.Load
 	snap.Memory = vmInfo.Memory
+	snap.Mounts = vmInfo.Mounts
 
 	if snap.State != "Running" {
 		return snap
