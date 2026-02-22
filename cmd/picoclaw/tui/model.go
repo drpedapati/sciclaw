@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Tab index constants.
+// Tab logical IDs — stable regardless of which tabs are visible.
 const (
 	tabHome     = 0
 	tabChat     = 1
@@ -20,7 +20,16 @@ const (
 	tabDoctor   = 5
 	tabAgent    = 6
 	tabFiles    = 7 // VM-only
+	tabModels   = 8
+	tabSkills   = 9
+	tabCron     = 10
 )
+
+// tabEntry maps a visible tab position to its logical ID and display name.
+type tabEntry struct {
+	name string
+	id   int
+}
 
 // Messages.
 type snapshotMsg struct {
@@ -33,7 +42,7 @@ type actionDoneMsg struct{ output string }
 // Model is the root TUI model.
 type Model struct {
 	exec      Executor
-	tabNames  []string
+	tabs      []tabEntry
 	activeTab int
 	width     int
 	height    int
@@ -54,13 +63,29 @@ type Model struct {
 	doctor   DoctorModel
 	agent    AgentModel
 	files    FilesModel
+	models   ModelsModel
+	skills   SkillsModel
+	cron     CronModel
 }
 
-func buildTabNames(mode Mode) []string {
-	tabs := []string{"Home", "Chat", "Messaging Apps", "Users", "Login", "Health Check", "Agent Service"}
-	if mode == ModeVM {
-		tabs = append(tabs, "Your Files")
+func buildTabs(mode Mode) []tabEntry {
+	tabs := []tabEntry{
+		{"Home", tabHome},
+		{"Chat", tabChat},
+		{"Messaging Apps", tabChannels},
+		{"Users", tabUsers},
+		{"Login", tabLogin},
+		{"Health Check", tabDoctor},
+		{"Agent Service", tabAgent},
 	}
+	if mode == ModeVM {
+		tabs = append(tabs, tabEntry{"Your Files", tabFiles})
+	}
+	tabs = append(tabs,
+		tabEntry{"Models", tabModels},
+		tabEntry{"Skills", tabSkills},
+		tabEntry{"Cron", tabCron},
+	)
 	return tabs
 }
 
@@ -71,7 +96,7 @@ func NewModel(exec Executor) Model {
 
 	return Model{
 		exec:      exec,
-		tabNames:  buildTabNames(exec.Mode()),
+		tabs:      buildTabs(exec.Mode()),
 		activeTab: 0,
 		spinner:   s,
 		loading:   true,
@@ -83,6 +108,9 @@ func NewModel(exec Executor) Model {
 		doctor:    NewDoctorModel(exec),
 		agent:     NewAgentModel(exec),
 		files:     NewFilesModel(),
+		models:    NewModelsModel(exec),
+		skills:    NewSkillsModel(exec),
+		cron:      NewCronModel(exec),
 	}
 }
 
@@ -94,11 +122,12 @@ func (m Model) Init() tea.Cmd {
 	)
 }
 
-// tabIndex maps the visible tab position to the logical tab constant.
-// In local mode, tab 7 (Files) is hidden, so visible indices 0-6 map directly.
-// In VM mode, all 8 tabs map directly.
+// tabIndex returns the logical tab ID for the currently visible tab position.
 func (m Model) tabIndex() int {
-	return m.activeTab
+	if m.activeTab < len(m.tabs) {
+		return m.tabs[m.activeTab].id
+	}
+	return tabHome
 }
 
 // subTabCapturingInput returns true when a sub-tab is in a mode
@@ -108,13 +137,22 @@ func (m Model) subTabCapturingInput() bool {
 	return idx == tabChat || // Chat always captures
 		(idx == tabChannels && m.channels.mode != modeNormal) ||
 		(idx == tabUsers && m.users.mode != usersNormal) ||
-		(idx == tabFiles && m.files.mode != filesNormal)
+		(idx == tabFiles && m.files.mode != filesNormal) ||
+		(idx == tabModels && m.models.mode != modelsNormal) ||
+		(idx == tabSkills && m.skills.mode != skillsNormal)
 }
 
-// maybeAutoRunDoctor triggers doctor auto-run when the Health Check tab is first visited.
-func (m *Model) maybeAutoRunDoctor() tea.Cmd {
-	if m.tabIndex() == tabDoctor {
+// maybeAutoRun triggers auto-fetch when certain tabs are first visited.
+func (m *Model) maybeAutoRun() tea.Cmd {
+	switch m.tabIndex() {
+	case tabDoctor:
 		return m.doctor.AutoRun()
+	case tabModels:
+		return m.models.AutoRun()
+	case tabSkills:
+		return m.skills.AutoRun()
+	case tabCron:
+		return m.cron.AutoRun()
 	}
 	return nil
 }
@@ -141,11 +179,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "tab":
-				m.activeTab = (m.activeTab + 1) % len(m.tabNames)
-				return m, m.maybeAutoRunDoctor()
+				m.activeTab = (m.activeTab + 1) % len(m.tabs)
+				return m, m.maybeAutoRun()
 			case "shift+tab":
-				m.activeTab = (m.activeTab - 1 + len(m.tabNames)) % len(m.tabNames)
-				return m, m.maybeAutoRunDoctor()
+				m.activeTab = (m.activeTab - 1 + len(m.tabs)) % len(m.tabs)
+				return m, m.maybeAutoRun()
 			}
 			var cmd tea.Cmd
 			switch idx {
@@ -157,6 +195,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.users, cmd = m.users.Update(msg, m.snapshot)
 			case tabFiles:
 				m.files, cmd = m.files.Update(msg, m.snapshot)
+			case tabModels:
+				m.models, cmd = m.models.Update(msg, m.snapshot)
+			case tabSkills:
+				m.skills, cmd = m.skills.Update(msg, m.snapshot)
 			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
@@ -169,11 +211,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "tab":
-			m.activeTab = (m.activeTab + 1) % len(m.tabNames)
-			return m, m.maybeAutoRunDoctor()
+			m.activeTab = (m.activeTab + 1) % len(m.tabs)
+			return m, m.maybeAutoRun()
 		case "shift+tab":
-			m.activeTab = (m.activeTab - 1 + len(m.tabNames)) % len(m.tabNames)
-			return m, m.maybeAutoRunDoctor()
+			m.activeTab = (m.activeTab - 1 + len(m.tabs)) % len(m.tabs)
+			return m, m.maybeAutoRun()
 		}
 
 		// Delegate to active tab.
@@ -195,6 +237,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.agent, cmd = m.agent.Update(msg, m.snapshot)
 		case tabFiles:
 			m.files, cmd = m.files.Update(msg, m.snapshot)
+		case tabModels:
+			m.models, cmd = m.models.Update(msg, m.snapshot)
+		case tabSkills:
+			m.skills, cmd = m.skills.Update(msg, m.snapshot)
+		case tabCron:
+			m.cron, cmd = m.cron.Update(msg, m.snapshot)
 		}
 		if cmd != nil {
 			cmds = append(cmds, cmd)
@@ -237,6 +285,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case logsMsg:
 		m.agent.HandleLogsMsg(msg)
+		return m, nil
+
+	case modelsStatusMsg:
+		m.models.HandleStatus(msg)
+		return m, nil
+
+	case skillsListMsg:
+		m.skills.HandleList(msg)
+		return m, nil
+
+	case cronListMsg:
+		m.cron.HandleList(msg)
 		return m, nil
 	}
 
@@ -296,6 +356,12 @@ func (m Model) View() string {
 			content = m.agent.View(m.snapshot, contentWidth)
 		case tabFiles:
 			content = m.files.View(m.snapshot, contentWidth)
+		case tabModels:
+			content = m.models.View(m.snapshot, contentWidth)
+		case tabSkills:
+			content = m.skills.View(m.snapshot, contentWidth)
+		case tabCron:
+			content = m.cron.View(m.snapshot, contentWidth)
 		}
 		b.WriteString(content)
 	}
@@ -315,11 +381,11 @@ func (m Model) View() string {
 
 func (m Model) renderTabBar() string {
 	var tabs []string
-	for i, name := range m.tabNames {
+	for i, t := range m.tabs {
 		if i == m.activeTab {
-			tabs = append(tabs, styleTabActive.Render(name))
+			tabs = append(tabs, styleTabActive.Render(t.name))
 		} else {
-			tabs = append(tabs, styleTabInactive.Render(name))
+			tabs = append(tabs, styleTabInactive.Render(t.name))
 		}
 	}
 	row := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
