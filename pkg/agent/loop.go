@@ -234,30 +234,7 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 			if !ok {
 				continue
 			}
-
-			response, err := al.processMessage(ctx, msg)
-			if err != nil {
-				response = fmt.Sprintf("Error processing message: %v", err)
-			}
-
-			if response != "" {
-				// Check if the message tool already sent a response during this round.
-				// If so, skip publishing to avoid duplicate messages to the user.
-				alreadySent := false
-				if tool, ok := al.tools.Get("message"); ok {
-					if mt, ok := tool.(*tools.MessageTool); ok {
-						alreadySent = mt.HasSentInRound()
-					}
-				}
-
-				if !alreadySent {
-					al.bus.PublishOutbound(bus.OutboundMessage{
-						Channel: msg.Channel,
-						ChatID:  msg.ChatID,
-						Content: response,
-					})
-				}
-			}
+			al.HandleInbound(ctx, msg)
 		}
 	}
 
@@ -266,6 +243,36 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 
 func (al *AgentLoop) Stop() {
 	al.running.Store(false)
+}
+
+// HandleInbound processes one inbound message and publishes any response.
+// It is used both by the default bus consumer loop and routed dispatchers.
+func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) {
+	response, err := al.processMessage(ctx, msg)
+	if err != nil {
+		response = fmt.Sprintf("Error processing message: %v", err)
+	}
+
+	if response == "" {
+		return
+	}
+
+	// Check if the message tool already sent a response during this round.
+	// If so, skip publishing to avoid duplicate messages to the user.
+	alreadySent := false
+	if tool, ok := al.tools.Get("message"); ok {
+		if mt, ok := tool.(*tools.MessageTool); ok {
+			alreadySent = mt.HasSentInRound()
+		}
+	}
+
+	if !alreadySent {
+		al.bus.PublishOutbound(bus.OutboundMessage{
+			Channel: msg.Channel,
+			ChatID:  msg.ChatID,
+			Content: response,
+		})
+	}
 }
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
