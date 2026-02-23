@@ -41,6 +41,16 @@ type snapshotMsg struct {
 type tickMsg time.Time
 type actionDoneMsg struct{ output string }
 
+// homeNavigateMsg requests a tab switch from the Home tab.
+type homeNavigateMsg struct{ tabID int }
+
+// onboardExecDoneMsg reports the result of an async wizard command.
+type onboardExecDoneMsg struct {
+	step   int
+	output string
+	err    error
+}
+
 // Model is the root TUI model.
 type Model struct {
 	exec      Executor
@@ -108,7 +118,7 @@ func NewModel(exec Executor) Model {
 		activeTab: 0,
 		spinner:   s,
 		loading:   true,
-		home:      NewHomeModel(),
+		home:      NewHomeModel(exec),
 		chat:      NewChatModel(exec),
 		channels:  NewChannelsModel(exec),
 		users:     NewUsersModel(exec),
@@ -145,6 +155,7 @@ func (m Model) tabIndex() int {
 func (m Model) subTabCapturingInput() bool {
 	idx := m.tabIndex()
 	return idx == tabChat || // Chat always captures
+		(idx == tabHome && m.home.onboardActive) ||
 		(idx == tabChannels && m.channels.mode != modeNormal) ||
 		(idx == tabUsers && m.users.mode != usersNormal) ||
 		(idx == tabLogin && m.login.mode != loginNormal) ||
@@ -208,6 +219,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			switch idx {
+			case tabHome:
+				m.home, cmd = m.home.Update(msg, m.snapshot)
 			case tabChat:
 				m.chat, cmd = m.chat.Update(msg, m.snapshot)
 			case tabChannels:
@@ -287,10 +300,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.snapshot = &msg.snapshot
 			m.snapshotErr = nil
+			// Activate onboard wizard on first snapshot when config is missing.
+			if !m.home.wizardChecked {
+				m.home.wizardChecked = true
+				if !msg.snapshot.ConfigExists {
+					m.home.onboardActive = true
+					m.home.onboardStep = 0
+				}
+			}
 		} else {
 			m.snapshotErr = msg.err
 		}
 		return m, nil
+
+	case homeNavigateMsg:
+		for i, t := range m.tabs {
+			if t.id == msg.tabID {
+				m.activeTab = i
+				return m, m.maybeAutoRun()
+			}
+		}
+		return m, nil
+
+	case onboardExecDoneMsg:
+		m.home.HandleExecDone(msg)
+		// Refresh snapshot after wizard actions.
+		m.loading = true
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
 
 	case tickMsg:
 		if !m.loading && time.Since(m.lastRefresh) > 10*time.Second {

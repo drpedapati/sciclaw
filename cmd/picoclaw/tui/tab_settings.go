@@ -27,6 +27,7 @@ type settingsDataMsg struct {
 	unmappedBehavior string
 	defaultModel     string
 	reasoningEffort  string
+	pubmedAPIKey     string
 	err              error
 }
 
@@ -63,6 +64,7 @@ type SettingsModel struct {
 	unmappedBehavior   string
 	defaultModel       string
 	reasoningEffort    string
+	pubmedAPIKey       string
 	modelNeedsRestart  bool
 	effortNeedsRestart bool
 
@@ -117,6 +119,7 @@ func (m *SettingsModel) HandleData(msg settingsDataMsg) {
 	m.unmappedBehavior = msg.unmappedBehavior
 	m.defaultModel = msg.defaultModel
 	m.reasoningEffort = msg.reasoningEffort
+	m.pubmedAPIKey = msg.pubmedAPIKey
 }
 
 func (m *SettingsModel) HandleResize(width, height int) {
@@ -157,6 +160,7 @@ func (m SettingsModel) buildDisplayRows(snap *VMSnapshot) []settingRow {
 		{key: "unmapped_behavior", label: "Unmapped behavior", value: m.unmappedBehavior, kind: settingEnum, options: []string{"block", "default"}},
 		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent", restartRequired: modelRestartRequired},
 		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: []string{"", "low", "medium", "high"}, restartRequired: effortRestartRequired},
+		{key: "pubmed_api_key", label: "PubMed API key", value: m.pubmedAPIKey, kind: settingText, section: "Integrations"},
 	}
 	if snap != nil {
 		rows = append(rows,
@@ -371,6 +375,14 @@ func (m *SettingsModel) applyTextEdit(value string) tea.Cmd {
 		m.flashMsg = styleOK.Render("✓") + " Model: " + value
 		m.flashUntil = time.Now().Add(3 * time.Second)
 		return settingsSetConfig(m.exec, []string{"agents", "defaults", "model"}, value)
+	case "pubmed_api_key":
+		if value == m.pubmedAPIKey {
+			return nil
+		}
+		m.pubmedAPIKey = value
+		m.flashMsg = styleOK.Render("✓") + " PubMed API key saved"
+		m.flashUntil = time.Now().Add(3 * time.Second)
+		return settingsSetConfig(m.exec, []string{"integrations", "pubmed", "api_key"}, value)
 	}
 	return nil
 }
@@ -494,8 +506,11 @@ func (m SettingsModel) View(snap *VMSnapshot, width int) string {
 	if m.mode == settingsEditing {
 		b.WriteString("\n")
 		editLabel := m.editKey
-		if m.editKey == "default_model" {
+		switch m.editKey {
+		case "default_model":
 			editLabel = "Model"
+		case "pubmed_api_key":
+			editLabel = "PubMed API key"
 		}
 		b.WriteString(fmt.Sprintf("  %s: %s\n", styleBold.Render(editLabel), m.input.View()))
 		b.WriteString(styleDim.Render("    Enter to save, Esc to cancel") + "\n")
@@ -526,8 +541,25 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 		msg := settingsDataMsg{}
 		cfg, err := readConfigMap(exec)
 		if err != nil {
-			msg.err = err
-			return msg
+			// Config bootstrap: create defaults if missing.
+			home := exec.HomePath()
+			_, _ = exec.ExecShell(5*time.Second, "mkdir -p "+shellEscape(home+"/.picoclaw/workspace"))
+			cfg = map[string]interface{}{
+				"agents": map[string]interface{}{
+					"defaults": map[string]interface{}{
+						"model":     "gpt-5.2",
+						"workspace": "~/.picoclaw/workspace",
+					},
+				},
+				"channels": map[string]interface{}{
+					"discord":  map[string]interface{}{"enabled": false},
+					"telegram": map[string]interface{}{"enabled": false},
+				},
+			}
+			if wErr := writeConfigMap(exec, cfg); wErr != nil {
+				msg.err = wErr
+				return msg
+			}
 		}
 
 		if channels, ok := cfg["channels"].(map[string]interface{}); ok {
@@ -543,6 +575,12 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 			if defaults, ok := agents["defaults"].(map[string]interface{}); ok {
 				msg.defaultModel, _ = defaults["model"].(string)
 				msg.reasoningEffort, _ = defaults["reasoning_effort"].(string)
+			}
+		}
+
+		if integrations, ok := cfg["integrations"].(map[string]interface{}); ok {
+			if pubmed, ok := integrations["pubmed"].(map[string]interface{}); ok {
+				msg.pubmedAPIKey, _ = pubmed["api_key"].(string)
 			}
 		}
 

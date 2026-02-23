@@ -46,6 +46,9 @@ type SkillsModel struct {
 
 	// Remove confirmation
 	removeName string
+
+	// Baseline install
+	baselineLoading bool
 }
 
 func NewSkillsModel(exec Executor) SkillsModel {
@@ -76,6 +79,7 @@ func (m *SkillsModel) AutoRun() tea.Cmd {
 
 func (m *SkillsModel) HandleList(msg skillsListMsg) {
 	m.loaded = true
+	m.baselineLoading = false
 	m.skills = parseSkillsList(msg.output)
 	if m.selectedRow >= len(m.skills) {
 		m.selectedRow = max(0, len(m.skills)-1)
@@ -317,6 +321,11 @@ func (m SkillsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SkillsModel, tea.
 			m.removeName = m.skills[m.selectedRow].Name
 			m.mode = skillsConfirmRemove
 		}
+	case "I":
+		if !m.baselineLoading && len(m.skills) < 3 {
+			m.baselineLoading = true
+			return m, baselineInstallCmd(m.exec)
+		}
 	case "l":
 		m.loaded = false
 		return m, fetchSkillsList(m.exec)
@@ -353,16 +362,26 @@ func (m SkillsModel) View(snap *VMSnapshot, width int) string {
 
 	// Keybindings.
 	if len(m.skills) > 0 {
-		b.WriteString(fmt.Sprintf("  %s Install   %s Remove   %s Refresh\n",
+		line := fmt.Sprintf("  %s Install   %s Remove   %s Refresh",
 			styleKey.Render("[i]"),
 			styleKey.Render("[r]"),
 			styleKey.Render("[l]"),
-		))
+		)
+		if len(m.skills) < 3 {
+			line += fmt.Sprintf("   %s Install baseline skills", styleKey.Render("[I]"))
+		}
+		b.WriteString(line + "\n")
 	} else {
-		b.WriteString(fmt.Sprintf("  %s Install a skill   %s Refresh\n",
+		b.WriteString(fmt.Sprintf("  %s Install a skill   %s Install baseline skills   %s Refresh\n",
 			styleKey.Render("[i]"),
+			styleKey.Render("[I]"),
 			styleKey.Render("[l]"),
 		))
+	}
+
+	// Baseline install loading indicator.
+	if m.baselineLoading {
+		b.WriteString(styleDim.Render("  Installing baseline skills...") + "\n")
 	}
 
 	// Overlays.
@@ -406,5 +425,24 @@ func removeSkillCmd(exec Executor, name string) tea.Cmd {
 		cmd := "HOME=" + exec.HomePath() + " sciclaw skills remove " + shellEscape(name) + " 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Removed skill " + name}
+	}
+}
+
+func baselineInstallCmd(exec Executor) tea.Cmd {
+	return func() tea.Msg {
+		home := exec.HomePath()
+		baseline := []string{
+			"drpedapati/sciclaw-skills/pubmed",
+			"drpedapati/sciclaw-skills/weather",
+			"drpedapati/sciclaw-skills/web-search",
+		}
+		for _, repo := range baseline {
+			cmd := "HOME=" + home + " sciclaw skills install " + shellEscape(repo) + " 2>&1"
+			exec.ExecShell(30*time.Second, cmd)
+		}
+		// Return skills list to refresh the display.
+		listCmd := "HOME=" + home + " sciclaw skills list 2>&1"
+		out, _ := exec.ExecShell(10*time.Second, listCmd)
+		return skillsListMsg{output: out}
 	}
 }
