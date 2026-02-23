@@ -1146,6 +1146,16 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 func gatewayCmd() {
 	// Check for --debug flag
 	args := os.Args[2:]
+	if len(args) > 0 && strings.EqualFold(strings.TrimSpace(args[0]), "status") {
+		// Backward-compatible alias: avoid accidentally launching a second
+		// gateway process when users ask for status.
+		originalArgs := append([]string(nil), os.Args...)
+		os.Args = []string{originalArgs[0], "service", "status"}
+		defer func() { os.Args = originalArgs }()
+		serviceCmd()
+		return
+	}
+
 	for _, arg := range args {
 		if arg == "--debug" || arg == "-d" {
 			logger.SetLevel(logger.DEBUG)

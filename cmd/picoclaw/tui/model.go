@@ -50,11 +50,13 @@ type Model struct {
 	height    int
 
 	// Shared state
-	snapshot    *VMSnapshot
-	snapshotErr error
-	loading     bool
-	spinner     spinner.Model
-	lastRefresh time.Time
+	snapshot     *VMSnapshot
+	snapshotErr  error
+	loading      bool
+	spinner      spinner.Model
+	lastRefresh  time.Time
+	lastAction   string
+	lastActionAt time.Time
 
 	// Sub-models for each tab
 	home     HomeModel
@@ -307,6 +309,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(fetchRoutingStatus(m.exec), fetchRoutingListCmd(m.exec))
 
 	case actionDoneMsg:
+		if trimmed := strings.TrimSpace(msg.output); trimmed != "" {
+			m.lastAction = trimmed
+			m.lastActionAt = time.Now()
+		}
 		m.loading = true
 		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
 
@@ -505,6 +511,19 @@ func (m Model) renderStatusBar() string {
 		}
 	} else if m.loading {
 		left = fmt.Sprintf(" %s Connecting...", m.spinner.View())
+	}
+
+	if !m.lastActionAt.IsZero() && time.Since(m.lastActionAt) <= 8*time.Second {
+		msgStyle := styleOK
+		lower := strings.ToLower(m.lastAction)
+		if strings.Contains(lower, "fail") || strings.Contains(lower, "error") {
+			msgStyle = styleErr
+		}
+		if strings.TrimSpace(left) == "" {
+			left = " " + msgStyle.Render(m.lastAction)
+		} else {
+			left += "  " + msgStyle.Render(m.lastAction)
+		}
 	}
 
 	right := "Tab: switch section  Enter: select  q: quit"
