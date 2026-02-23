@@ -379,7 +379,7 @@ func checkBinaryWithHint(name string, args []string, timeout time.Duration, inst
 }
 
 func checkBinary(name string, args []string, timeout time.Duration) doctorCheck {
-	p, err := exec.LookPath(name)
+	p, err := lookPathWithFallback(name)
 	if err != nil {
 		return doctorCheck{Name: name, Status: doctorErr, Message: "not found in PATH"}
 	}
@@ -425,6 +425,19 @@ func checkBinary(name string, args []string, timeout time.Duration) doctorCheck 
 		c.Data["output"] = truncateOneLine(out, 180)
 	}
 	return c
+}
+
+func lookPathWithFallback(name string) (string, error) {
+	if p, err := exec.LookPath(name); err == nil {
+		return p, nil
+	}
+	for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"} {
+		candidate := filepath.Join(dir, name)
+		if fileExists(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", exec.ErrNotFound
 }
 
 func checkPandocNIHTemplate() doctorCheck {

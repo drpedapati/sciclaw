@@ -5,6 +5,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,7 +49,8 @@ func (m *launchdManager) Install() error {
 		return err
 	}
 
-	plist := renderLaunchdPlist(m.label, m.exePath, m.stdoutPath, m.stderrPath)
+	pathEnv := buildSystemdPath(os.Getenv("PATH"), m.detectBrewPrefix())
+	plist := renderLaunchdPlist(m.label, m.exePath, m.stdoutPath, m.stderrPath, pathEnv)
 	if err := writeFileIfChanged(m.plistPath, []byte(plist), 0644); err != nil {
 		return err
 	}
@@ -166,4 +168,15 @@ func commandErrorDetail(err error, out []byte) string {
 		return err.Error()
 	}
 	return ""
+}
+
+func (m *launchdManager) detectBrewPrefix() string {
+	if _, err := exec.LookPath("brew"); err != nil {
+		return ""
+	}
+	out, err := runCommand(m.runner, 4*time.Second, "brew", "--prefix")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

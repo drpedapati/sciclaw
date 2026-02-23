@@ -22,7 +22,7 @@ WantedBy=default.target
 `, exePath, pathEnv)
 }
 
-func renderLaunchdPlist(label, exePath, stdoutPath, stderrPath string) string {
+func renderLaunchdPlist(label, exePath, stdoutPath, stderrPath, pathEnv string) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -47,7 +47,13 @@ func renderLaunchdPlist(label, exePath, stdoutPath, stderrPath string) string {
 
   <key>StandardErrorPath</key>
   <string>%s</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>%s</string>
+  </dict>
 </dict>
 </plist>
-`, label, exePath, stdoutPath, stderrPath)
+`, label, exePath, stdoutPath, stderrPath, pathEnv)
 }

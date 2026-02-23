@@ -30,12 +30,48 @@ func getGlobalConfigDir() string {
 	return filepath.Join(home, ".picoclaw")
 }
 
+func resolveGlobalSkillsDir() string {
+	base := strings.TrimSpace(getGlobalConfigDir())
+	if base == "" {
+		return ""
+	}
+	workspaceSkills := filepath.Join(base, "workspace", "skills")
+	legacySkills := filepath.Join(base, "skills")
+
+	// Prefer the workspace baseline skills path used by onboarded installs.
+	if hasSkillsDir(workspaceSkills) {
+		return workspaceSkills
+	}
+	// Fall back to legacy global skills location if present.
+	if hasSkillsDir(legacySkills) {
+		return legacySkills
+	}
+	// Default to workspace-based path so future installs land in one place.
+	return workspaceSkills
+}
+
+func hasSkillsDir(path string) bool {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(path, entry.Name(), "SKILL.md")); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func NewContextBuilder(workspace string) *ContextBuilder {
 	// builtin skills: skills directory in current project
 	// Use the skills/ directory under the current working directory
 	wd, _ := os.Getwd()
 	builtinSkillsDir := filepath.Join(wd, "skills")
-	globalSkillsDir := filepath.Join(getGlobalConfigDir(), "skills")
+	globalSkillsDir := resolveGlobalSkillsDir()
 
 	return &ContextBuilder{
 		workspace:    workspace,
@@ -159,15 +195,25 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 		"TOOLS.md",
 	}
 
-	var result string
+	primaryWorkspace := filepath.Clean(cb.workspace)
+	fallbackWorkspace := filepath.Clean(filepath.Join(getGlobalConfigDir(), "workspace"))
+
+	var result strings.Builder
 	for _, filename := range bootstrapFiles {
-		filePath := filepath.Join(cb.workspace, filename)
-		if data, err := os.ReadFile(filePath); err == nil {
-			result += fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data))
+		candidates := []string{filepath.Join(primaryWorkspace, filename)}
+		if fallbackWorkspace != "" && fallbackWorkspace != "." && fallbackWorkspace != primaryWorkspace {
+			candidates = append(candidates, filepath.Join(fallbackWorkspace, filename))
+		}
+
+		for _, filePath := range candidates {
+			if data, err := os.ReadFile(filePath); err == nil {
+				result.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data)))
+				break
+			}
 		}
 	}
 
-	return result
+	return result.String()
 }
 
 func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string) []providers.Message {

@@ -92,11 +92,14 @@ func TestBuildSystemdPath_NoBrewPrefix(t *testing.T) {
 }
 
 func TestRenderLaunchdPlist(t *testing.T) {
-	plist := renderLaunchdPlist("io.sciclaw.gateway", "/opt/homebrew/bin/sciclaw", "/tmp/out.log", "/tmp/err.log")
+	plist := renderLaunchdPlist("io.sciclaw.gateway", "/opt/homebrew/bin/sciclaw", "/tmp/out.log", "/tmp/err.log", "/opt/homebrew/bin:/usr/bin:/bin")
 	mustContain(t, plist, "<string>io.sciclaw.gateway</string>")
 	mustContain(t, plist, "<string>/opt/homebrew/bin/sciclaw</string>")
 	mustContain(t, plist, "<string>gateway</string>")
 	mustContain(t, plist, "<string>/tmp/out.log</string>")
+	mustContain(t, plist, "<key>EnvironmentVariables</key>")
+	mustContain(t, plist, "<key>PATH</key>")
+	mustContain(t, plist, "<string>/opt/homebrew/bin:/usr/bin:/bin</string>")
 }
 
 func mustContain(t *testing.T, s, needle string) {
