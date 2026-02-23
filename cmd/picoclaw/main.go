@@ -34,6 +34,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/routing"
+	svcmgr "github.com/sipeed/picoclaw/pkg/service"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
 	"github.com/sipeed/picoclaw/pkg/voice"
@@ -249,8 +250,8 @@ func printHelp() {
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  models      Manage models (list, set, effort, status)")
 	fmt.Println("  auth        Manage authentication (login, import-op, logout, status)")
-	fmt.Println("  gateway     Start sciClaw gateway")
-	fmt.Println("  service     Manage background gateway service (launchd/systemd)")
+	fmt.Println("  gateway     Start sciClaw gateway in foreground (debug/containers)")
+	fmt.Println("  service     Manage background gateway service (launchd/systemd, recommended)")
 	fmt.Println("  vm          Manage a Multipass sciClaw VM (no repo checkout required)")
 	fmt.Println("  docker      Convenience wrapper for sciClaw container workflows")
 	fmt.Println("  channels    Setup and manage chat channels (Telegram, Discord, etc.)")
@@ -1161,6 +1162,25 @@ func gatewayCmd() {
 			logger.SetLevel(logger.DEBUG)
 			fmt.Println("🔍 Debug mode enabled")
 			break
+		}
+	}
+
+	// Guard against double-running channel pollers (e.g. Telegram 409 conflicts)
+	// when users already have the managed service active.
+	exePath, err := resolveServiceExecutablePath(os.Args[0], exec.LookPath, os.Executable)
+	if err == nil {
+		if mgr, mgrErr := svcmgr.NewManager(exePath); mgrErr == nil {
+			if st, statusErr := mgr.Status(); statusErr == nil && st.Running {
+				backend := strings.TrimSpace(st.Backend)
+				if backend == "" {
+					backend = mgr.Backend()
+				}
+				fmt.Fprintf(os.Stderr, "Gateway is already running via %s service.\n", backend)
+				fmt.Fprintf(os.Stderr, "  Stop it first:  %s service stop\n", invokedCLIName())
+				fmt.Fprintf(os.Stderr, "  View logs:      %s service logs\n", invokedCLIName())
+				fmt.Fprintf(os.Stderr, "  Restart:        %s service restart\n", invokedCLIName())
+				os.Exit(1)
+			}
 		}
 	}
 
