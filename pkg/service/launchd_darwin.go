@@ -141,7 +141,7 @@ func (m *launchdManager) Status() (Status, error) {
 	out, err := runCommand(m.runner, 3*time.Second, "launchctl", "print", m.serviceTarget)
 	if err == nil {
 		text := strings.ToLower(string(out))
-		if strings.Contains(text, "state = running") || strings.Contains(text, "pid =") {
+		if strings.Contains(text, "state = running") || hasNonZeroPID(text) {
 			st.Running = true
 		}
 		st.Detail = oneLine(string(out))
@@ -166,6 +166,21 @@ func (m *launchdManager) Logs(lines int) (string, error) {
 		return "", fmt.Errorf("no launchd logs found at %s or %s", m.stdoutPath, m.stderrPath)
 	}
 	return combined, nil
+}
+
+// hasNonZeroPID checks for "pid = <nonzero>" in launchctl print output.
+// "pid = 0" appears when the service is bootstrapped but not actually running.
+func hasNonZeroPID(text string) bool {
+	idx := strings.Index(text, "pid = ")
+	if idx < 0 {
+		return false
+	}
+	rest := strings.TrimSpace(text[idx+len("pid = "):])
+	// Check that the pid value is not "0".
+	if len(rest) > 0 && rest[0] != '0' && rest[0] >= '1' && rest[0] <= '9' {
+		return true
+	}
+	return false
 }
 
 func commandErrorDetail(err error, out []byte) string {

@@ -1167,19 +1167,23 @@ func gatewayCmd() {
 
 	// Guard against double-running channel pollers (e.g. Telegram 409 conflicts)
 	// when users already have the managed service active.
-	exePath, err := resolveServiceExecutablePath(os.Args[0], exec.LookPath, os.Executable)
-	if err == nil {
-		if mgr, mgrErr := svcmgr.NewManager(exePath); mgrErr == nil {
-			if st, statusErr := mgr.Status(); statusErr == nil && st.Running {
-				backend := strings.TrimSpace(st.Backend)
-				if backend == "" {
-					backend = mgr.Backend()
+	// Skip this check when we ARE the managed service (launchd sets XPC_SERVICE_NAME,
+	// systemd sets INVOCATION_ID).
+	if os.Getenv("XPC_SERVICE_NAME") == "" && os.Getenv("INVOCATION_ID") == "" {
+		exePath, err := resolveServiceExecutablePath(os.Args[0], exec.LookPath, os.Executable)
+		if err == nil {
+			if mgr, mgrErr := svcmgr.NewManager(exePath); mgrErr == nil {
+				if st, statusErr := mgr.Status(); statusErr == nil && st.Running {
+					backend := strings.TrimSpace(st.Backend)
+					if backend == "" {
+						backend = mgr.Backend()
+					}
+					fmt.Fprintf(os.Stderr, "Gateway is already running via %s service.\n", backend)
+					fmt.Fprintf(os.Stderr, "  Stop it first:  %s service stop\n", invokedCLIName())
+					fmt.Fprintf(os.Stderr, "  View logs:      %s service logs\n", invokedCLIName())
+					fmt.Fprintf(os.Stderr, "  Restart:        %s service restart\n", invokedCLIName())
+					os.Exit(1)
 				}
-				fmt.Fprintf(os.Stderr, "Gateway is already running via %s service.\n", backend)
-				fmt.Fprintf(os.Stderr, "  Stop it first:  %s service stop\n", invokedCLIName())
-				fmt.Fprintf(os.Stderr, "  View logs:      %s service logs\n", invokedCLIName())
-				fmt.Fprintf(os.Stderr, "  Restart:        %s service restart\n", invokedCLIName())
-				os.Exit(1)
 			}
 		}
 	}
