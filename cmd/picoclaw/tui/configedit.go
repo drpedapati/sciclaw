@@ -147,3 +147,20 @@ func removeAllowFrom(exec Executor, channel string, idx int) error {
 	ch["allow_from"] = existing
 	return writeConfigMap(exec, cfg)
 }
+
+// replaceAllowFrom replaces an entry by index in a channel's allow_from.
+func replaceAllowFrom(exec Executor, channel string, idx int, entry string) error {
+	cfg, err := readConfigMap(exec)
+	if err != nil {
+		return err
+	}
+	channels := ensureMap(cfg, "channels")
+	ch := ensureMap(channels, channel)
+	existing := getStringSlice(ch, "allow_from")
+	if idx < 0 || idx >= len(existing) {
+		return nil
+	}
+	existing[idx] = strings.TrimSpace(entry)
+	ch["allow_from"] = existing
+	return writeConfigMap(exec, cfg)
+}

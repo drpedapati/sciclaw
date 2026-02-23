@@ -51,9 +51,29 @@ func TestParseServiceLogsOptionsInvalid(t *testing.T) {
 	}
 }
 
-func TestResolveServiceExecutablePath_PrefersLookPath(t *testing.T) {
+func TestResolveServiceExecutablePath_PrefersExplicitArgv0Path(t *testing.T) {
 	got, err := resolveServiceExecutablePath(
 		"/home/linuxbrew/.linuxbrew/Cellar/sciclaw/0.1.39/bin/sciclaw",
+		func(file string) (string, error) {
+			t.Fatalf("lookPath should not be called for explicit argv0 path")
+			return "", nil
+		},
+		func() (string, error) {
+			t.Fatalf("executable fallback should not be called for explicit argv0 path")
+			return "", nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("resolveServiceExecutablePath returned error: %v", err)
+	}
+	if got != "/home/linuxbrew/.linuxbrew/Cellar/sciclaw/0.1.39/bin/sciclaw" {
+		t.Fatalf("expected argv0 path, got %q", got)
+	}
+}
+
+func TestResolveServiceExecutablePath_PrefersLookPathForBareCommand(t *testing.T) {
+	got, err := resolveServiceExecutablePath(
+		"sciclaw",
 		func(file string) (string, error) {
 			if file != "sciclaw" {
 				t.Fatalf("expected lookup for sciclaw, got %q", file)
@@ -61,14 +81,15 @@ func TestResolveServiceExecutablePath_PrefersLookPath(t *testing.T) {
 			return "/home/linuxbrew/.linuxbrew/bin/sciclaw", nil
 		},
 		func() (string, error) {
-			return "/home/linuxbrew/.linuxbrew/Cellar/sciclaw/0.1.39/bin/sciclaw", nil
+			t.Fatalf("executable fallback should not be called when lookPath succeeds")
+			return "", nil
 		},
 	)
 	if err != nil {
 		t.Fatalf("resolveServiceExecutablePath returned error: %v", err)
 	}
 	if got != "/home/linuxbrew/.linuxbrew/bin/sciclaw" {
-		t.Fatalf("expected stable Homebrew path, got %q", got)
+		t.Fatalf("expected lookPath result, got %q", got)
 	}
 }
 

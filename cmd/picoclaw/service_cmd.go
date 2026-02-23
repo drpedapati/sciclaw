@@ -158,6 +158,17 @@ func resolveServiceExecutablePath(
 	executable func() (string, error),
 ) (string, error) {
 	arg0 := strings.TrimSpace(argv0)
+
+	// If argv0 is an explicit path, prefer it verbatim (after Abs). This keeps
+	// service bindings stable when users invoke via a managed shim path such as
+	// /opt/homebrew/bin/sciclaw, even if PATH points to another copy first.
+	if arg0 != "" && (strings.Contains(arg0, "/") || strings.Contains(arg0, `\`)) {
+		if abs, err := filepath.Abs(arg0); err == nil {
+			return abs, nil
+		}
+		return arg0, nil
+	}
+
 	base := strings.TrimSpace(filepath.Base(arg0))
 	if base != "" {
 		if resolved, err := lookPath(base); err == nil && strings.TrimSpace(resolved) != "" {
@@ -166,14 +177,6 @@ func resolveServiceExecutablePath(
 			}
 			return resolved, nil
 		}
-	}
-
-	// If argv0 is an explicit path, keep using it as a fallback.
-	if arg0 != "" && (strings.Contains(arg0, "/") || strings.Contains(arg0, `\`)) {
-		if abs, err := filepath.Abs(arg0); err == nil {
-			return abs, nil
-		}
-		return arg0, nil
 	}
 
 	return executable()

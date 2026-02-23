@@ -50,11 +50,13 @@ type Model struct {
 	height    int
 
 	// Shared state
-	snapshot    *VMSnapshot
-	snapshotErr error
-	loading     bool
-	spinner     spinner.Model
-	lastRefresh time.Time
+	snapshot     *VMSnapshot
+	snapshotErr  error
+	loading      bool
+	spinner      spinner.Model
+	lastRefresh  time.Time
+	lastAction   string
+	lastActionAt time.Time
 
 	// Sub-models for each tab
 	home     HomeModel
@@ -87,8 +89,8 @@ func buildTabs(mode Mode) []tabEntry {
 		tabs = append(tabs, tabEntry{"Files", tabFiles})
 	}
 	tabs = append(tabs,
-		tabEntry{"Settings", tabSettings},
 		tabEntry{"Gateway", tabAgent},
+		tabEntry{"Settings", tabSettings},
 		tabEntry{"Login", tabLogin},
 		tabEntry{"Health", tabDoctor},
 	)
@@ -304,11 +306,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case routingActionMsg:
 		m.routing.HandleAction(msg)
-		return m, tea.Batch(fetchRoutingStatus(m.exec), fetchRoutingListCmd(m.exec))
+		m.loading = true
+		return m, tea.Batch(
+			m.spinner.Tick,
+			fetchSnapshotCmd(m.exec),
+			fetchSettingsData(m.exec),
+			fetchRoutingStatus(m.exec),
+			fetchRoutingListCmd(m.exec),
+		)
 
 	case actionDoneMsg:
+		if trimmed := strings.TrimSpace(msg.output); trimmed != "" {
+			m.lastAction = trimmed
+			m.lastActionAt = time.Now()
+		}
 		m.loading = true
-		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec), fetchSettingsData(m.exec))
 
 	case chatResponseMsg:
 		m.chat.HandleResponse(msg)
@@ -324,6 +337,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case serviceActionMsg:
 		m.agent.HandleServiceAction(msg)
+		m.settings.HandleServiceAction(msg)
 		m.loading = true
 		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
 
@@ -387,9 +401,9 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Header
-	title := "  sciClaw Control Center"
+	title := "🦞🧪 sciClaw Control Center"
 	if m.exec.Mode() == ModeVM {
-		title = "  sciClaw VM Control Center"
+		title = "🦞🧪 sciClaw VM Control Center"
 	}
 	header := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render(title)
 	b.WriteString(header)
@@ -505,6 +519,19 @@ func (m Model) renderStatusBar() string {
 		}
 	} else if m.loading {
 		left = fmt.Sprintf(" %s Connecting...", m.spinner.View())
+	}
+
+	if !m.lastActionAt.IsZero() && time.Since(m.lastActionAt) <= 8*time.Second {
+		msgStyle := styleOK
+		lower := strings.ToLower(m.lastAction)
+		if strings.Contains(lower, "fail") || strings.Contains(lower, "error") {
+			msgStyle = styleErr
+		}
+		if strings.TrimSpace(left) == "" {
+			left = " " + msgStyle.Render(m.lastAction)
+		} else {
+			left += "  " + msgStyle.Render(m.lastAction)
+		}
 	}
 
 	right := "Tab: switch section  Enter: select  q: quit"

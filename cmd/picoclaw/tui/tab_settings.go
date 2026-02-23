@@ -14,8 +14,9 @@ import (
 type settingsMode int
 
 const (
-	settingsNormal  settingsMode = iota
-	settingsEditing              // text input active
+	settingsNormal         settingsMode = iota
+	settingsEditing                     // text input active
+	settingsConfirmDisable              // confirm before disabling a live channel
 )
 
 // settingsDataMsg carries parsed config values.
@@ -39,12 +40,13 @@ const (
 )
 
 type settingRow struct {
-	key     string
-	label   string
-	value   string
-	kind    settingKind
-	options []string // valid values for enums
-	section string   // section header (set on first row of each section)
+	key             string
+	label           string
+	value           string
+	kind            settingKind
+	options         []string // valid values for enums
+	section         string   // section header (set on first row of each section)
+	restartRequired bool
 }
 
 // SettingsModel handles the Settings tab.
@@ -55,12 +57,14 @@ type SettingsModel struct {
 	selectedRow int
 
 	// Editable config values
-	discordEnabled   bool
-	telegramEnabled  bool
-	routingEnabled   bool
-	unmappedBehavior string
-	defaultModel     string
-	reasoningEffort  string
+	discordEnabled     bool
+	telegramEnabled    bool
+	routingEnabled     bool
+	unmappedBehavior   string
+	defaultModel       string
+	reasoningEffort    string
+	modelNeedsRestart  bool
+	effortNeedsRestart bool
 
 	vp     viewport.Model
 	width  int
@@ -69,6 +73,11 @@ type SettingsModel struct {
 	// Text editing
 	input   textinput.Model
 	editKey string
+
+	// Confirmation state for risky toggles.
+	pendingToggleKey   string
+	pendingToggleName  string
+	pendingToggleValue bool
 
 	// Flash feedback
 	flashMsg   string
@@ -134,17 +143,25 @@ func (m SettingsModel) buildDisplayRows(snap *VMSnapshot) []settingRow {
 		effortDisplay = "default"
 	}
 
+	modelRestartRequired := m.modelNeedsRestart
+	effortRestartRequired := m.effortNeedsRestart
+	if snap != nil && !snap.ServiceRunning {
+		modelRestartRequired = false
+		effortRestartRequired = false
+	}
+
 	rows := []settingRow{
 		{key: "discord_enabled", label: "Discord", value: boolYesNo(m.discordEnabled), kind: settingBool, section: "Channels"},
 		{key: "telegram_enabled", label: "Telegram", value: boolYesNo(m.telegramEnabled), kind: settingBool},
 		{key: "routing_enabled", label: "Routing", value: boolYesNo(m.routingEnabled), kind: settingBool, section: "Routing"},
 		{key: "unmapped_behavior", label: "Unmapped behavior", value: m.unmappedBehavior, kind: settingEnum, options: []string{"block", "default"}},
-		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent"},
-		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: []string{"", "low", "medium", "high"}},
+		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent", restartRequired: modelRestartRequired},
+		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: []string{"", "low", "medium", "high"}, restartRequired: effortRestartRequired},
 	}
 	if snap != nil {
 		rows = append(rows,
-			settingRow{key: "svc_installed", label: "Installed", value: boolYesNo(snap.ServiceInstalled), kind: settingReadonly, section: "Service"},
+			settingRow{key: "svc_autostart", label: "Auto-start on boot", value: boolYesNo(snap.ServiceAutoStart), kind: settingBool, section: "Service"},
+			settingRow{key: "svc_installed", label: "Installed", value: boolYesNo(snap.ServiceInstalled), kind: settingReadonly},
 			settingRow{key: "svc_running", label: "Running", value: boolYesNo(snap.ServiceRunning), kind: settingReadonly},
 			settingRow{key: "workspace", label: "Workspace", value: snap.WorkspacePath, kind: settingReadonly, section: "General"},
 		)
@@ -185,6 +202,22 @@ func (m SettingsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SettingsModel, 
 		return m, cmd
 	}
 
+	if m.mode == settingsConfirmDisable {
+		switch key {
+		case "y", "enter":
+			toggleKey := m.pendingToggleKey
+			target := m.pendingToggleValue
+			m.clearPendingToggle()
+			m.mode = settingsNormal
+			return m, m.applyBoolToggle(toggleKey, target)
+		case "n", "esc":
+			m.clearPendingToggle()
+			m.mode = settingsNormal
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch key {
 	case "up", "k":
 		if m.selectedRow > 0 {
@@ -199,7 +232,7 @@ func (m SettingsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SettingsModel, 
 			row := rows[m.selectedRow]
 			switch row.kind {
 			case settingBool:
-				return m, m.toggleBool(row.key)
+				return m, m.requestBoolToggle(row.key, snap)
 			case settingEnum:
 				return m, m.cycleEnum(row.key, row.value, row.options)
 			case settingText:
@@ -210,6 +243,10 @@ func (m SettingsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SettingsModel, 
 				return m, nil
 			}
 		}
+	case "s":
+		return m, m.requestServiceAction("start")
+	case "t":
+		return m, m.requestServiceAction("stop")
 	case "l":
 		m.loaded = false
 		return m, fetchSettingsData(m.exec)
@@ -217,22 +254,73 @@ func (m SettingsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SettingsModel, 
 	return m, nil
 }
 
-func (m *SettingsModel) toggleBool(key string) tea.Cmd {
+func (m *SettingsModel) requestBoolToggle(key string, snap *VMSnapshot) tea.Cmd {
 	switch key {
 	case "discord_enabled":
-		m.discordEnabled = !m.discordEnabled
-		m.setFlash("Discord", m.discordEnabled)
-		return settingsToggleChannel(m.exec, "discord", m.discordEnabled)
+		target := !m.discordEnabled
+		if !target {
+			m.mode = settingsConfirmDisable
+			m.pendingToggleKey = key
+			m.pendingToggleName = "Discord"
+			m.pendingToggleValue = target
+			return nil
+		}
+		return m.applyBoolToggle(key, target)
 	case "telegram_enabled":
-		m.telegramEnabled = !m.telegramEnabled
-		m.setFlash("Telegram", m.telegramEnabled)
-		return settingsToggleChannel(m.exec, "telegram", m.telegramEnabled)
+		target := !m.telegramEnabled
+		if !target {
+			m.mode = settingsConfirmDisable
+			m.pendingToggleKey = key
+			m.pendingToggleName = "Telegram"
+			m.pendingToggleValue = target
+			return nil
+		}
+		return m.applyBoolToggle(key, target)
 	case "routing_enabled":
-		m.routingEnabled = !m.routingEnabled
-		m.setFlash("Routing", m.routingEnabled)
-		return routingToggleCmd(m.exec, m.routingEnabled)
+		target := !m.routingEnabled
+		return m.applyBoolToggle(key, target)
+	case "svc_autostart":
+		if snap == nil {
+			return nil
+		}
+		target := !snap.ServiceAutoStart
+		m.setFlash("Auto-start on boot", target)
+		if target {
+			return serviceAction(m.exec, "install")
+		}
+		return serviceAction(m.exec, "uninstall")
 	}
 	return nil
+}
+
+func (m *SettingsModel) requestServiceAction(action string) tea.Cmd {
+	m.flashMsg = styleOK.Render("✓") + " Service " + action + " requested"
+	m.flashUntil = time.Now().Add(3 * time.Second)
+	return serviceAction(m.exec, action)
+}
+
+func (m *SettingsModel) applyBoolToggle(key string, enabled bool) tea.Cmd {
+	switch key {
+	case "discord_enabled":
+		m.discordEnabled = enabled
+		m.setFlash("Discord", enabled)
+		return settingsToggleChannel(m.exec, "discord", enabled)
+	case "telegram_enabled":
+		m.telegramEnabled = enabled
+		m.setFlash("Telegram", enabled)
+		return settingsToggleChannel(m.exec, "telegram", enabled)
+	case "routing_enabled":
+		m.routingEnabled = enabled
+		m.setFlash("Routing", enabled)
+		return routingToggleCmd(m.exec, enabled)
+	}
+	return nil
+}
+
+func (m *SettingsModel) clearPendingToggle() {
+	m.pendingToggleKey = ""
+	m.pendingToggleName = ""
+	m.pendingToggleValue = false
 }
 
 func (m *SettingsModel) cycleEnum(key, current string, options []string) tea.Cmd {
@@ -260,6 +348,7 @@ func (m *SettingsModel) cycleEnum(key, current string, options []string) tea.Cmd
 		return settingsSetConfig(m.exec, []string{"routing", "unmapped_behavior"}, next)
 	case "reasoning_effort":
 		m.reasoningEffort = next
+		m.effortNeedsRestart = true
 		display := next
 		if display == "" {
 			display = "default"
@@ -274,12 +363,28 @@ func (m *SettingsModel) cycleEnum(key, current string, options []string) tea.Cmd
 func (m *SettingsModel) applyTextEdit(value string) tea.Cmd {
 	switch m.editKey {
 	case "default_model":
+		if value == m.defaultModel {
+			return nil
+		}
 		m.defaultModel = value
+		m.modelNeedsRestart = true
 		m.flashMsg = styleOK.Render("✓") + " Model: " + value
 		m.flashUntil = time.Now().Add(3 * time.Second)
 		return settingsSetConfig(m.exec, []string{"agents", "defaults", "model"}, value)
 	}
 	return nil
+}
+
+// HandleServiceAction clears restart-pending hints after successful service lifecycle actions.
+func (m *SettingsModel) HandleServiceAction(msg serviceActionMsg) {
+	if !msg.ok {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(msg.action)) {
+	case "restart", "start", "install", "refresh":
+		m.modelNeedsRestart = false
+		m.effortNeedsRestart = false
+	}
 }
 
 func (m *SettingsModel) setFlash(name string, enabled bool) {
@@ -350,6 +455,10 @@ func (m SettingsModel) View(snap *VMSnapshot, width int) string {
 			}
 		}
 
+		if row.restartRequired {
+			valStr += " " + styleWarn.Render("(restart to apply)")
+		}
+
 		labelStyle := lipgloss.NewStyle().Foreground(colorMuted).Width(20)
 		line := fmt.Sprintf("  %s%s  %s", indicator, labelStyle.Render(row.label), valStr)
 
@@ -376,6 +485,10 @@ func (m SettingsModel) View(snap *VMSnapshot, width int) string {
 		styleKey.Render("[Enter]"),
 		styleKey.Render("[l]"),
 	))
+	b.WriteString(fmt.Sprintf("  %s Start service   %s Stop service\n",
+		styleKey.Render("[s]"),
+		styleKey.Render("[t]"),
+	))
 
 	// Text editing overlay
 	if m.mode == settingsEditing {
@@ -386,6 +499,16 @@ func (m SettingsModel) View(snap *VMSnapshot, width int) string {
 		}
 		b.WriteString(fmt.Sprintf("  %s: %s\n", styleBold.Render(editLabel), m.input.View()))
 		b.WriteString(styleDim.Render("    Enter to save, Esc to cancel") + "\n")
+	}
+
+	if m.mode == settingsConfirmDisable {
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  %s %s?\n",
+			styleWarn.Render("Disable channel"),
+			styleBold.Render(m.pendingToggleName),
+		))
+		b.WriteString(styleDim.Render("    New messages from this channel will stop until re-enabled.") + "\n")
+		b.WriteString(styleDim.Render("    Press y/Enter to confirm, n/Esc to cancel.") + "\n")
 	}
 
 	// Flash message
@@ -427,6 +550,17 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 			msg.routingEnabled, _ = routing["enabled"].(bool)
 			msg.unmappedBehavior, _ = routing["unmapped_behavior"].(string)
 		}
+
+		// Prefer live routing status from CLI when available so Settings reflects
+		// the currently active routing mode/source of truth.
+		statusOut, statusErr := exec.ExecShell(8*time.Second, "HOME="+exec.HomePath()+" sciclaw routing status 2>&1")
+		if statusErr == nil && strings.TrimSpace(statusOut) != "" {
+			status := parseRoutingStatus(statusOut)
+			msg.routingEnabled = status.Enabled
+			if strings.TrimSpace(status.UnmappedBehavior) != "" {
+				msg.unmappedBehavior = status.UnmappedBehavior
+			}
+		}
 		if msg.unmappedBehavior == "" {
 			msg.unmappedBehavior = "block"
 		}
@@ -439,13 +573,19 @@ func settingsToggleChannel(exec Executor, channel string, enabled bool) tea.Cmd 
 	return func() tea.Msg {
 		cfg, err := readConfigMap(exec)
 		if err != nil {
-			cfg = map[string]interface{}{}
+			return actionDoneMsg{output: fmt.Sprintf("Failed to load config: %v", err)}
 		}
 		channels := ensureMap(cfg, "channels")
 		ch := ensureMap(channels, channel)
 		ch["enabled"] = enabled
-		_ = writeConfigMap(exec, cfg)
-		return actionDoneMsg{output: channel + " toggled"}
+		if err := writeConfigMap(exec, cfg); err != nil {
+			return actionDoneMsg{output: fmt.Sprintf("Failed to save %s setting: %v", channel, err)}
+		}
+		state := "disabled"
+		if enabled {
+			state = "enabled"
+		}
+		return actionDoneMsg{output: fmt.Sprintf("%s %s.", capitalizeFirst(channel), state)}
 	}
 }
 
@@ -453,14 +593,16 @@ func settingsSetConfig(exec Executor, path []string, value interface{}) tea.Cmd 
 	return func() tea.Msg {
 		cfg, err := readConfigMap(exec)
 		if err != nil {
-			cfg = map[string]interface{}{}
+			return actionDoneMsg{output: fmt.Sprintf("Failed to load config: %v", err)}
 		}
 		current := cfg
 		for _, key := range path[:len(path)-1] {
 			current = ensureMap(current, key)
 		}
 		current[path[len(path)-1]] = value
-		_ = writeConfigMap(exec, cfg)
+		if err := writeConfigMap(exec, cfg); err != nil {
+			return actionDoneMsg{output: fmt.Sprintf("Failed to save %s: %v", path[len(path)-1], err)}
+		}
 		return actionDoneMsg{output: "Updated " + path[len(path)-1]}
 	}
 }
