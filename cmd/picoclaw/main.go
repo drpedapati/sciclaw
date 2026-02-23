@@ -194,10 +194,9 @@ func main() {
 
 		workspace := cfg.WorkspacePath()
 		installer := skills.NewSkillInstaller(workspace)
-		// 获取全局配置目录和内置 skills 目录
 		globalDir := filepath.Dir(getConfigPath())
 		globalSkillsDir := filepath.Join(globalDir, "skills")
-		builtinSkillsDir := filepath.Join(globalDir, "picoclaw", "skills")
+		builtinSkillsDir := resolveBuiltinSkillsDir(workspace)
 		skillsLoader := skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir)
 
 		switch subcommand {
@@ -840,11 +839,7 @@ func baselineSkillSourceDirs(workspace string) []string {
 	}
 
 	if exePath, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exePath)
-		candidates = append(candidates,
-			filepath.Clean(filepath.Join(exeDir, "..", "share", "sciclaw", "skills")),
-			filepath.Clean(filepath.Join(exeDir, "..", "share", "picoclaw", "skills")),
-		)
+		candidates = append(candidates, skillSourceDirsForExecutable(exePath)...)
 	}
 
 	// User-local fallback, e.g. ~/.picoclaw/skills
@@ -863,6 +858,51 @@ func baselineSkillSourceDirs(workspace string) []string {
 		}
 	}
 	return dirs
+}
+
+func skillSourceDirsForExecutable(exePath string) []string {
+	exeDir := filepath.Dir(exePath)
+	shareDir := filepath.Clean(filepath.Join(exeDir, "..", "share"))
+
+	dirs := []string{
+		filepath.Join(shareDir, "sciclaw", "skills"),
+		filepath.Join(shareDir, "picoclaw", "skills"),
+		filepath.Join(shareDir, "sciclaw-dev", "skills"),
+	}
+
+	// Homebrew formula installs resources under share/<formula>/...
+	// e.g. sciclaw, sciclaw-dev.
+	formulaName := filepath.Base(filepath.Dir(filepath.Dir(shareDir)))
+	if formulaName != "" && formulaName != "." && formulaName != string(filepath.Separator) {
+		dirs = append(dirs, filepath.Join(shareDir, formulaName, "skills"))
+	}
+
+	return dirs
+}
+
+func resolveBuiltinSkillsDir(workspace string) string {
+	for _, dir := range baselineSkillSourceDirs(workspace) {
+		if dirHasSkillMarkdown(dir) {
+			return dir
+		}
+	}
+	return ""
+}
+
+func dirHasSkillMarkdown(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, entry.Name(), "SKILL.md")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func migrateCmd() {
@@ -2262,26 +2302,33 @@ func skillsRemoveCmd(installer *skills.SkillInstaller, skillName string) {
 }
 
 func skillsInstallBuiltinCmd(workspace string) {
-	builtinSkillsDir := "./picoclaw/skills"
+	builtinSkillsDir := resolveBuiltinSkillsDir(workspace)
+	if strings.TrimSpace(builtinSkillsDir) == "" {
+		fmt.Println("✗ No builtin skills source detected.")
+		fmt.Println("  Reinstall sciclaw via Homebrew or run from a repo checkout that contains ./skills.")
+		return
+	}
 	workspaceSkillsDir := filepath.Join(workspace, "skills")
 
-	fmt.Printf("Copying builtin skills to workspace...\n")
+	fmt.Printf("Copying builtin skills to workspace from %s...\n", builtinSkillsDir)
 
-	skillsToInstall := []string{
-		"weather",
-		"news",
-		"stock",
-		"calculator",
+	entries, err := os.ReadDir(builtinSkillsDir)
+	if err != nil {
+		fmt.Printf("✗ Failed to read builtin skills: %v\n", err)
+		return
 	}
 
-	for _, skillName := range skillsToInstall {
-		builtinPath := filepath.Join(builtinSkillsDir, skillName)
-		workspacePath := filepath.Join(workspaceSkillsDir, skillName)
-
-		if _, err := os.Stat(builtinPath); err != nil {
-			fmt.Printf("⊘ Builtin skill '%s' not found: %v\n", skillName, err)
+	installed := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
 			continue
 		}
+		skillName := entry.Name()
+		builtinPath := filepath.Join(builtinSkillsDir, skillName)
+		if _, err := os.Stat(filepath.Join(builtinPath, "SKILL.md")); err != nil {
+			continue
+		}
+		workspacePath := filepath.Join(workspaceSkillsDir, skillName)
 
 		if err := os.MkdirAll(workspacePath, 0755); err != nil {
 			fmt.Printf("✗ Failed to create directory for %s: %v\n", skillName, err)
@@ -2290,10 +2337,18 @@ func skillsInstallBuiltinCmd(workspace string) {
 
 		if err := copyDirectory(builtinPath, workspacePath); err != nil {
 			fmt.Printf("✗ Failed to copy %s: %v\n", skillName, err)
+			continue
 		}
+		fmt.Printf("  ✓ %s\n", skillName)
+		installed++
 	}
 
-	fmt.Println("\n✓ All builtin skills installed!")
+	if installed == 0 {
+		fmt.Println("⊘ No builtin skills found to install.")
+		return
+	}
+
+	fmt.Printf("\n✓ Installed %d builtin skills.\n", installed)
 	fmt.Println("Now you can use them in your workspace.")
 }
 
@@ -2303,10 +2358,17 @@ func skillsListBuiltinCmd() {
 		fmt.Printf("Error loading config: %v\n", err)
 		return
 	}
-	builtinSkillsDir := filepath.Join(filepath.Dir(cfg.WorkspacePath()), "picoclaw", "skills")
+	builtinSkillsDir := resolveBuiltinSkillsDir(cfg.WorkspacePath())
+	if strings.TrimSpace(builtinSkillsDir) == "" {
+		fmt.Println("\nAvailable Builtin Skills:")
+		fmt.Println("-----------------------")
+		fmt.Println("No builtin skills source detected.")
+		return
+	}
 
 	fmt.Println("\nAvailable Builtin Skills:")
 	fmt.Println("-----------------------")
+	fmt.Printf("Source: %s\n", builtinSkillsDir)
 
 	entries, err := os.ReadDir(builtinSkillsDir)
 	if err != nil {
@@ -2320,32 +2382,14 @@ func skillsListBuiltinCmd() {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() {
-			skillName := entry.Name()
-			skillFile := filepath.Join(builtinSkillsDir, skillName, "SKILL.md")
-
-			description := "No description"
-			if _, err := os.Stat(skillFile); err == nil {
-				data, err := os.ReadFile(skillFile)
-				if err == nil {
-					content := string(data)
-					if idx := strings.Index(content, "\n"); idx > 0 {
-						firstLine := content[:idx]
-						if strings.Contains(firstLine, "description:") {
-							descLine := strings.Index(content[idx:], "\n")
-							if descLine > 0 {
-								description = strings.TrimSpace(content[idx+descLine : idx+descLine])
-							}
-						}
-					}
-				}
-			}
-			status := "✓"
-			fmt.Printf("  %s  %s\n", status, entry.Name())
-			if description != "" {
-				fmt.Printf("     %s\n", description)
-			}
+		if !entry.IsDir() {
+			continue
 		}
+		skillFile := filepath.Join(builtinSkillsDir, entry.Name(), "SKILL.md")
+		if _, err := os.Stat(skillFile); err != nil {
+			continue
+		}
+		fmt.Printf("  ✓  %s\n", entry.Name())
 	}
 }
 

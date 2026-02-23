@@ -155,3 +155,50 @@ func TestEnsureBaselineScienceSkillsFromSourcesDoesNotOverwriteExistingSkill(t *
 		t.Fatalf("existing baseline skill was overwritten unexpectedly")
 	}
 }
+
+func TestSkillSourceDirsForExecutableIncludesFormulaScopedShareDir(t *testing.T) {
+	exePath := "/opt/homebrew/Cellar/sciclaw-dev/0.1.53-dev.26/bin/sciclaw"
+	dirs := skillSourceDirsForExecutable(exePath)
+	want := filepath.Clean("/opt/homebrew/Cellar/sciclaw-dev/0.1.53-dev.26/share/sciclaw-dev/skills")
+	if !sliceContainsPath(dirs, want) {
+		t.Fatalf("expected %q in %v", want, dirs)
+	}
+}
+
+func TestSkillSourceDirsForExecutableIncludesStableShareDir(t *testing.T) {
+	exePath := "/opt/homebrew/Cellar/sciclaw/0.1.53/bin/sciclaw"
+	dirs := skillSourceDirsForExecutable(exePath)
+	want := filepath.Clean("/opt/homebrew/Cellar/sciclaw/0.1.53/share/sciclaw/skills")
+	if !sliceContainsPath(dirs, want) {
+		t.Fatalf("expected %q in %v", want, dirs)
+	}
+}
+
+func TestDirHasSkillMarkdown(t *testing.T) {
+	root := t.TempDir()
+	if dirHasSkillMarkdown(root) {
+		t.Fatalf("expected empty dir to return false")
+	}
+
+	skillDir := filepath.Join(root, "example-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# example"), 0644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	if !dirHasSkillMarkdown(root) {
+		t.Fatalf("expected dir with SKILL.md to return true")
+	}
+}
+
+func sliceContainsPath(paths []string, target string) bool {
+	cleanTarget := filepath.Clean(target)
+	for _, p := range paths {
+		if filepath.Clean(p) == cleanTarget {
+			return true
+		}
+	}
+	return false
+}
