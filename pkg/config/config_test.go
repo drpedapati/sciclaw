@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -24,6 +25,19 @@ func TestDefaultConfig_WorkspacePath(t *testing.T) {
 	// since expandHome behavior may differ based on environment
 	if cfg.Agents.Defaults.Workspace == "" {
 		t.Error("Workspace should not be empty")
+	}
+	if cfg.Agents.Defaults.SharedWorkspace == "" {
+		t.Error("SharedWorkspace should not be empty")
+	}
+	if !cfg.Agents.Defaults.SharedWorkspaceReadOnly {
+		t.Error("SharedWorkspaceReadOnly should default to true")
+	}
+}
+
+func TestDefaultConfig_SharedWorkspacePath(t *testing.T) {
+	cfg := DefaultConfig()
+	if strings.TrimSpace(cfg.SharedWorkspacePath()) == "" {
+		t.Fatal("SharedWorkspacePath should not be empty")
 	}
 }
 

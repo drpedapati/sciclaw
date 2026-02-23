@@ -8,8 +8,25 @@ import (
 	"strings"
 )
 
+type AccessMode int
+
+const (
+	AccessRead AccessMode = iota
+	AccessWrite
+)
+
+type allowedRoot struct {
+	abs      string
+	real     string
+	readOnly bool
+}
+
 // validatePath ensures the given path is within the workspace if restrict is true.
 func validatePath(path, workspace string, restrict bool) (string, error) {
+	return validatePathWithPolicy(path, workspace, restrict, AccessRead, "", false)
+}
+
+func validatePathWithPolicy(path, workspace string, restrict bool, mode AccessMode, sharedWorkspace string, sharedWorkspaceReadOnly bool) (string, error) {
 	if workspace == "" {
 		return path, nil
 	}
@@ -29,34 +46,85 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 		}
 	}
 
-	if restrict {
-		if !isWithinWorkspace(absPath, absWorkspace) {
-			return "", fmt.Errorf("access denied: path is outside the workspace")
-		}
+	if !restrict {
+		return absPath, nil
+	}
 
-		workspaceReal := absWorkspace
-		if resolved, err := filepath.EvalSymlinks(absWorkspace); err == nil {
-			workspaceReal = resolved
-		}
-
-		if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
-			if !isWithinWorkspace(resolved, workspaceReal) {
-				return "", fmt.Errorf("access denied: symlink resolves outside workspace")
+	roots := []allowedRoot{makeAllowedRoot(absWorkspace, false)}
+	if strings.TrimSpace(sharedWorkspace) != "" {
+		if absShared, err := filepath.Abs(strings.TrimSpace(sharedWorkspace)); err == nil {
+			sharedRoot := makeAllowedRoot(absShared, sharedWorkspaceReadOnly)
+			if !samePath(roots[0].abs, sharedRoot.abs) {
+				roots = append(roots, sharedRoot)
 			}
-		} else if os.IsNotExist(err) {
-			if parentResolved, err := resolveExistingAncestor(filepath.Dir(absPath)); err == nil {
-				if !isWithinWorkspace(parentResolved, workspaceReal) {
-					return "", fmt.Errorf("access denied: symlink resolves outside workspace")
-				}
-			} else if !os.IsNotExist(err) {
-				return "", fmt.Errorf("failed to resolve path: %w", err)
-			}
-		} else {
-			return "", fmt.Errorf("failed to resolve path: %w", err)
 		}
 	}
 
+	root := rootForPath(absPath, roots, false)
+	if root == nil {
+		return "", fmt.Errorf("access denied: path is outside allowed roots")
+	}
+	if root.readOnly && mode == AccessWrite {
+		return "", fmt.Errorf("access denied: shared workspace is read-only")
+	}
+
+	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+		resolvedRoot := rootForPath(resolved, roots, true)
+		if resolvedRoot == nil {
+			return "", fmt.Errorf("access denied: symlink resolves outside allowed roots")
+		}
+		if resolvedRoot.readOnly && mode == AccessWrite {
+			return "", fmt.Errorf("access denied: shared workspace is read-only")
+		}
+	} else if os.IsNotExist(err) {
+		if parentResolved, err := resolveExistingAncestor(filepath.Dir(absPath)); err == nil {
+			resolvedRoot := rootForPath(parentResolved, roots, true)
+			if resolvedRoot == nil {
+				return "", fmt.Errorf("access denied: symlink resolves outside allowed roots")
+			}
+			if resolvedRoot.readOnly && mode == AccessWrite {
+				return "", fmt.Errorf("access denied: shared workspace is read-only")
+			}
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("failed to resolve path: %w", err)
+		}
+	} else {
+		return "", fmt.Errorf("failed to resolve path: %w", err)
+	}
+
 	return absPath, nil
+}
+
+func makeAllowedRoot(path string, readOnly bool) allowedRoot {
+	abs := filepath.Clean(path)
+	real := abs
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		real = filepath.Clean(resolved)
+	}
+	return allowedRoot{
+		abs:      abs,
+		real:     real,
+		readOnly: readOnly,
+	}
+}
+
+func samePath(a, b string) bool {
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func rootForPath(path string, roots []allowedRoot, useReal bool) *allowedRoot {
+	candidate := filepath.Clean(path)
+	for i := range roots {
+		root := roots[i]
+		base := root.abs
+		if useReal {
+			base = root.real
+		}
+		if isWithinWorkspace(candidate, base) {
+			return &roots[i]
+		}
+	}
+	return nil
 }
 
 func resolveExistingAncestor(path string) (string, error) {
@@ -78,12 +146,19 @@ func isWithinWorkspace(candidate, workspace string) bool {
 }
 
 type ReadFileTool struct {
-	workspace string
-	restrict  bool
+	workspace               string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
 }
 
 func NewReadFileTool(workspace string, restrict bool) *ReadFileTool {
 	return &ReadFileTool{workspace: workspace, restrict: restrict}
+}
+
+func (t *ReadFileTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *ReadFileTool) Name() string {
@@ -113,7 +188,7 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult("path is required")
 	}
 
-	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
+	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
@@ -127,12 +202,19 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 }
 
 type WriteFileTool struct {
-	workspace string
-	restrict  bool
+	workspace               string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
 }
 
 func NewWriteFileTool(workspace string, restrict bool) *WriteFileTool {
 	return &WriteFileTool{workspace: workspace, restrict: restrict}
+}
+
+func (t *WriteFileTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *WriteFileTool) Name() string {
@@ -171,7 +253,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 		return ErrorResult("content is required")
 	}
 
-	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
+	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
@@ -189,12 +271,19 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 }
 
 type ListDirTool struct {
-	workspace string
-	restrict  bool
+	workspace               string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
 }
 
 func NewListDirTool(workspace string, restrict bool) *ListDirTool {
 	return &ListDirTool{workspace: workspace, restrict: restrict}
+}
+
+func (t *ListDirTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *ListDirTool) Name() string {
@@ -224,7 +313,7 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 		path = "."
 	}
 
-	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
+	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
 		return ErrorResult(err.Error())
 	}

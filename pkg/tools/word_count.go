@@ -9,8 +9,10 @@ import (
 )
 
 type WordCountTool struct {
-	workspace string
-	restrict  bool
+	workspace               string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
 }
 
 func NewWordCountTool(workspace string, restrict bool) *WordCountTool {
@@ -18,6 +20,11 @@ func NewWordCountTool(workspace string, restrict bool) *WordCountTool {
 		workspace: workspace,
 		restrict:  restrict,
 	}
+}
+
+func (t *WordCountTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *WordCountTool) Name() string {
@@ -55,7 +62,7 @@ func (t *WordCountTool) Execute(ctx context.Context, args map[string]interface{}
 
 	source := "text"
 	if strings.TrimSpace(path) != "" {
-		resolved, err := validatePath(path, t.workspace, t.restrict)
+		resolved, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 		if err != nil {
 			return ErrorResult(err.Error())
 		}

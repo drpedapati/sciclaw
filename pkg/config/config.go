@@ -61,14 +61,16 @@ type AgentsConfig struct {
 }
 
 type AgentDefaults struct {
-	Workspace           string  `json:"workspace" env:"PICOCLAW_AGENTS_DEFAULTS_WORKSPACE"`
-	RestrictToWorkspace bool    `json:"restrict_to_workspace" env:"PICOCLAW_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
-	Provider            string  `json:"provider" env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
-	Model               string  `json:"model" env:"PICOCLAW_AGENTS_DEFAULTS_MODEL"`
-	MaxTokens           int     `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
-	Temperature         float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
-	MaxToolIterations   int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
-	ReasoningEffort     string  `json:"reasoning_effort,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_REASONING_EFFORT"`
+	Workspace               string  `json:"workspace" env:"PICOCLAW_AGENTS_DEFAULTS_WORKSPACE"`
+	RestrictToWorkspace     bool    `json:"restrict_to_workspace" env:"PICOCLAW_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
+	SharedWorkspace         string  `json:"shared_workspace" env:"PICOCLAW_AGENTS_DEFAULTS_SHARED_WORKSPACE"`
+	SharedWorkspaceReadOnly bool    `json:"shared_workspace_read_only" env:"PICOCLAW_AGENTS_DEFAULTS_SHARED_WORKSPACE_READ_ONLY"`
+	Provider                string  `json:"provider" env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
+	Model                   string  `json:"model" env:"PICOCLAW_AGENTS_DEFAULTS_MODEL"`
+	MaxTokens               int     `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
+	Temperature             float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
+	MaxToolIterations       int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+	ReasoningEffort         string  `json:"reasoning_effort,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_REASONING_EFFORT"`
 }
 
 const (
@@ -236,13 +238,15 @@ func DefaultConfig() *Config {
 			Defaults: AgentDefaults{
 				// Keep config/auth under ~/.picoclaw for compatibility, but default the *workspace*
 				// to a visible directory for scientific users.
-				Workspace:           "~/sciclaw",
-				RestrictToWorkspace: true,
-				Provider:            "",
-				Model:               "gpt-5.2",
-				MaxTokens:           8192,
-				Temperature:         0.7,
-				MaxToolIterations:   0, // 0 = no hard iteration cap
+				Workspace:               "~/sciclaw",
+				RestrictToWorkspace:     true,
+				SharedWorkspace:         "~/sciclaw",
+				SharedWorkspaceReadOnly: true,
+				Provider:                "",
+				Model:                   "gpt-5.2",
+				MaxTokens:               8192,
+				Temperature:             0.7,
+				MaxToolIterations:       0, // 0 = no hard iteration cap
 			},
 		},
 		Channels: ChannelsConfig{
@@ -406,6 +410,12 @@ func (c *Config) WorkspacePath() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return expandHome(c.Agents.Defaults.Workspace)
+}
+
+func (c *Config) SharedWorkspacePath() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return expandHome(c.Agents.Defaults.SharedWorkspace)
 }
 
 func (c *Config) GetAPIKey() string {

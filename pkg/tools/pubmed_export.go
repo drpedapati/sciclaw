@@ -14,12 +14,14 @@ import (
 type pubmedRunFunc func(ctx context.Context, binary string, args []string, cwd string, env map[string]string) (string, string, error)
 
 type PubMedExportTool struct {
-	workspace string
-	restrict  bool
-	extraEnv  map[string]string
-	run       pubmedRunFunc
-	findBin   func() (string, error)
-	timeout   time.Duration
+	workspace               string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
+	extraEnv                map[string]string
+	run                     pubmedRunFunc
+	findBin                 func() (string, error)
+	timeout                 time.Duration
 }
 
 func NewPubMedExportTool(workspace string, restrict bool) *PubMedExportTool {
@@ -39,6 +41,11 @@ func newPubMedExportToolWithRunner(workspace string, restrict bool, runner pubme
 		t.run = runner
 	}
 	return t
+}
+
+func (t *PubMedExportTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *PubMedExportTool) SetExtraEnv(env map[string]string) {
@@ -96,7 +103,7 @@ func (t *PubMedExportTool) Execute(ctx context.Context, args map[string]interfac
 		return ErrorResult("output_file is required")
 	}
 
-	outputPath, err := validatePath(outputFile, t.workspace, t.restrict)
+	outputPath, err := validatePathWithPolicy(outputFile, t.workspace, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
 		return ErrorResult(err.Error())
 	}

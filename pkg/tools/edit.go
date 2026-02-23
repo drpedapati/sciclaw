@@ -10,8 +10,10 @@ import (
 // EditFileTool edits a file by replacing old_text with new_text.
 // The old_text must exist exactly in the file.
 type EditFileTool struct {
-	allowedDir string
-	restrict   bool
+	allowedDir              string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
 }
 
 // NewEditFileTool creates a new EditFileTool with optional directory restriction.
@@ -20,6 +22,11 @@ func NewEditFileTool(allowedDir string, restrict bool) *EditFileTool {
 		allowedDir: allowedDir,
 		restrict:   restrict,
 	}
+}
+
+func (t *EditFileTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *EditFileTool) Name() string {
@@ -67,7 +74,7 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult("new_text is required")
 	}
 
-	resolvedPath, err := validatePath(path, t.allowedDir, t.restrict)
+	resolvedPath, err := validatePathWithPolicy(path, t.allowedDir, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
@@ -102,12 +109,19 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 }
 
 type AppendFileTool struct {
-	workspace string
-	restrict  bool
+	workspace               string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
 }
 
 func NewAppendFileTool(workspace string, restrict bool) *AppendFileTool {
 	return &AppendFileTool{workspace: workspace, restrict: restrict}
+}
+
+func (t *AppendFileTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *AppendFileTool) Name() string {
@@ -146,7 +160,7 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 		return ErrorResult("content is required")
 	}
 
-	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
+	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
 		return ErrorResult(err.Error())
 	}

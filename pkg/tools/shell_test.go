@@ -210,6 +210,46 @@ func TestShellTool_RestrictToWorkspace(t *testing.T) {
 	}
 }
 
+func TestShellTool_AllowsSharedWorkspaceReadPath(t *testing.T) {
+	workspace := t.TempDir()
+	shared := t.TempDir()
+	tool := NewExecTool(workspace, false)
+	tool.SetRestrictToWorkspace(true)
+	tool.SetSharedWorkspacePolicy(shared, true)
+
+	cmd := "cat " + filepath.Join(shared, "AGENTS.md")
+	if blocked := tool.guardCommand(cmd, workspace); blocked != "" {
+		t.Fatalf("expected shared workspace read path to pass guard, got: %q", blocked)
+	}
+}
+
+func TestShellTool_BlocksSharedWorkspaceWritePathWhenReadOnly(t *testing.T) {
+	workspace := t.TempDir()
+	shared := t.TempDir()
+	tool := NewExecTool(workspace, false)
+	tool.SetRestrictToWorkspace(true)
+	tool.SetSharedWorkspacePolicy(shared, true)
+
+	cmd := "touch " + filepath.Join(shared, "note.txt")
+	blocked := tool.guardCommand(cmd, workspace)
+	if !strings.Contains(blocked, "shared workspace is read-only") {
+		t.Fatalf("expected shared read-only block, got: %q", blocked)
+	}
+}
+
+func TestShellTool_BlocksMutatingInSharedCWDWhenReadOnly(t *testing.T) {
+	workspace := t.TempDir()
+	shared := t.TempDir()
+	tool := NewExecTool(workspace, false)
+	tool.SetRestrictToWorkspace(true)
+	tool.SetSharedWorkspacePolicy(shared, true)
+
+	blocked := tool.guardCommand("touch note.txt", shared)
+	if !strings.Contains(blocked, "shared workspace is read-only") {
+		t.Fatalf("expected mutating command in shared cwd to be blocked, got: %q", blocked)
+	}
+}
+
 func TestShellTool_PubMedFieldTagsNotBlockedByPathGuard(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewExecTool(tmpDir, false)
