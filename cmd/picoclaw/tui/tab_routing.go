@@ -111,17 +111,24 @@ type RoutingModel struct {
 	removeMapping routingRow
 
 	// Add-mapping wizard state
-	wizardStep    int
-	wizardChannel string
-	wizardChatID  string
-	wizardPath    string
-	wizardAllow   string
-	wizardLabel   string
-	wizardInput   textinput.Model
+	wizardStep          int
+	wizardChannel       string
+	wizardChatID        string
+	wizardPath          string
+	wizardAllow         string
+	wizardLabel         string
+	wizardInput         textinput.Model
+	wizardAllowCursor   int
+	wizardAllowSelected map[string]bool
+	wizardAllowManual   bool
 
 	// Edit-users/workspace state
 	editUsersInput     textinput.Model
 	editWorkspaceInput textinput.Model
+	editUsersCursor    int
+	editUsersSelected  map[string]bool
+	editUsersExtras    []string
+	editUsersManual    bool
 
 	// Folder browser state
 	browserPath    string
@@ -480,6 +487,135 @@ func parseRoutingList(output string) []routingRow {
 	return mappings
 }
 
+func channelApprovedUsers(channel string, snap *VMSnapshot) []ApprovedUser {
+	if snap == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "telegram":
+		return snap.Telegram.ApprovedUsers
+	default:
+		return snap.Discord.ApprovedUsers
+	}
+}
+
+func parseAllowCSV(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v == "" {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func canonicalSenderToken(raw string) string {
+	parsed := ParseApprovedUser(raw)
+	if strings.TrimSpace(parsed.UserID) != "" {
+		return strings.TrimSpace(parsed.UserID)
+	}
+	if strings.TrimSpace(parsed.Raw) != "" {
+		return strings.TrimSpace(parsed.Raw)
+	}
+	return strings.TrimSpace(raw)
+}
+
+func approvedUserToken(u ApprovedUser) string {
+	if strings.TrimSpace(u.UserID) != "" {
+		return strings.TrimSpace(u.UserID)
+	}
+	return canonicalSenderToken(u.Raw)
+}
+
+func initAllowSelection(users []ApprovedUser, allowCSV string) (map[string]bool, []string) {
+	selected := map[string]bool{}
+	extras := []string{}
+
+	available := map[string]struct{}{}
+	for _, u := range users {
+		token := approvedUserToken(u)
+		if token != "" {
+			available[token] = struct{}{}
+		}
+	}
+
+	seenExtras := map[string]struct{}{}
+	for _, raw := range parseAllowCSV(allowCSV) {
+		canonical := canonicalSenderToken(raw)
+		if canonical == "" {
+			continue
+		}
+		if _, ok := available[canonical]; ok {
+			selected[canonical] = true
+			continue
+		}
+		if _, seen := seenExtras[canonical]; seen {
+			continue
+		}
+		seenExtras[canonical] = struct{}{}
+		extras = append(extras, strings.TrimSpace(raw))
+	}
+
+	return selected, extras
+}
+
+func buildAllowCSV(users []ApprovedUser, selected map[string]bool, extras []string) string {
+	if selected == nil {
+		selected = map[string]bool{}
+	}
+	out := make([]string, 0, len(users)+len(extras))
+	seen := map[string]struct{}{}
+
+	for _, u := range users {
+		token := approvedUserToken(u)
+		if token == "" || !selected[token] {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		out = append(out, token)
+	}
+
+	for _, raw := range extras {
+		token := strings.TrimSpace(raw)
+		if token == "" {
+			continue
+		}
+		canonical := canonicalSenderToken(token)
+		if canonical == "" {
+			continue
+		}
+		if _, ok := seen[canonical]; ok {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		out = append(out, token)
+	}
+
+	return strings.Join(out, ",")
+}
+
+func allUsersSelected(users []ApprovedUser, selected map[string]bool) bool {
+	if len(users) == 0 {
+		return false
+	}
+	for _, u := range users {
+		token := approvedUserToken(u)
+		if token == "" {
+			continue
+		}
+		if !selected[token] {
+			return false
+		}
+	}
+	return true
+}
+
 // --- Update ---
 
 func (m RoutingModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, tea.Cmd) {
@@ -489,7 +625,7 @@ func (m RoutingModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, te
 	case routingAddWizard:
 		return m.updateAddWizard(msg, snap)
 	case routingEditUsers:
-		return m.updateEditUsers(msg)
+		return m.updateEditUsers(msg, snap)
 	case routingEditWorkspace:
 		return m.updateEditWorkspace(msg, snap)
 	case routingBrowseFolder:
@@ -549,7 +685,7 @@ func (m RoutingModel) updateNormal(msg tea.KeyMsg, snap *VMSnapshot) (RoutingMod
 	case "a":
 		return m.startAddWizard(snap)
 	case "u":
-		return m.startEditUsers()
+		return m.startEditUsers(snap)
 	}
 	return m, nil
 }
@@ -564,9 +700,36 @@ func (m RoutingModel) startAddWizard(snap *VMSnapshot) (RoutingModel, tea.Cmd) {
 	m.wizardPath = ""
 	m.wizardAllow = ""
 	m.wizardLabel = ""
+	m.wizardAllowCursor = 0
+	m.wizardAllowSelected = nil
+	m.wizardAllowManual = false
 	m.wizardInput.SetValue("")
 	m.wizardInput.Blur()
 	return m, nil
+}
+
+func (m *RoutingModel) initWizardAllowStep(snap *VMSnapshot) {
+	users := channelApprovedUsers(m.wizardChannel, snap)
+	m.wizardAllowCursor = 0
+	m.wizardAllowSelected = map[string]bool{}
+	m.wizardAllowManual = len(users) == 0
+
+	if len(users) == 0 {
+		m.wizardInput.SetValue("")
+		m.wizardInput.Placeholder = "sender_id1,sender_id2"
+		m.wizardInput.Focus()
+		return
+	}
+
+	// Default to all known approved users selected for new mappings.
+	for _, u := range users {
+		token := approvedUserToken(u)
+		if token == "" {
+			continue
+		}
+		m.wizardAllowSelected[token] = true
+	}
+	m.wizardInput.Blur()
 }
 
 func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, tea.Cmd) {
@@ -638,8 +801,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 			}
 			m.wizardPath = expandHomeForExecPath(val, m.exec.HomePath())
 			m.wizardStep = addStepAllow
-			m.wizardInput.SetValue("")
-			m.wizardInput.Placeholder = "sender_id1,sender_id2"
+			m.initWizardAllowStep(snap)
 			return m, nil
 		case "ctrl+b":
 			return m, m.startBrowse(snap)
@@ -649,9 +811,76 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 		return m, cmd
 
 	case addStepAllow:
-		if key == "enter" {
-			val := strings.TrimSpace(m.wizardInput.Value())
-			if val == "" {
+		users := channelApprovedUsers(m.wizardChannel, snap)
+		if len(users) == 0 || m.wizardAllowManual {
+			switch key {
+			case "enter":
+				val := strings.TrimSpace(m.wizardInput.Value())
+				if val == "" {
+					return m, nil
+				}
+				m.wizardAllow = val
+				m.wizardStep = addStepLabel
+				m.wizardInput.SetValue("")
+				m.wizardInput.Placeholder = "(optional label)"
+				return m, nil
+			case "p":
+				if len(users) > 0 {
+					m.wizardAllowManual = false
+					m.wizardInput.Blur()
+					if m.wizardAllowSelected == nil {
+						m.wizardAllowSelected, _ = initAllowSelection(users, m.wizardInput.Value())
+					}
+				}
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.wizardInput, cmd = m.wizardInput.Update(msg)
+			return m, cmd
+		}
+
+		if m.wizardAllowSelected == nil {
+			m.wizardAllowSelected = map[string]bool{}
+		}
+
+		switch key {
+		case "up", "k":
+			if m.wizardAllowCursor > 0 {
+				m.wizardAllowCursor--
+			}
+			return m, nil
+		case "down", "j":
+			if m.wizardAllowCursor < len(users)-1 {
+				m.wizardAllowCursor++
+			}
+			return m, nil
+		case " ":
+			if m.wizardAllowCursor >= 0 && m.wizardAllowCursor < len(users) {
+				token := approvedUserToken(users[m.wizardAllowCursor])
+				if token != "" {
+					m.wizardAllowSelected[token] = !m.wizardAllowSelected[token]
+				}
+			}
+			return m, nil
+		case "a":
+			selectAll := !allUsersSelected(users, m.wizardAllowSelected)
+			for _, u := range users {
+				token := approvedUserToken(u)
+				if token == "" {
+					continue
+				}
+				m.wizardAllowSelected[token] = selectAll
+			}
+			return m, nil
+		case "m":
+			m.wizardAllowManual = true
+			m.wizardInput.SetValue(buildAllowCSV(users, m.wizardAllowSelected, nil))
+			m.wizardInput.Placeholder = "sender_id1,sender_id2"
+			m.wizardInput.Focus()
+			return m, nil
+		case "enter":
+			val := buildAllowCSV(users, m.wizardAllowSelected, nil)
+			if strings.TrimSpace(val) == "" {
 				return m, nil
 			}
 			m.wizardAllow = val
@@ -660,9 +889,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 			m.wizardInput.Placeholder = "(optional label)"
 			return m, nil
 		}
-		var cmd tea.Cmd
-		m.wizardInput, cmd = m.wizardInput.Update(msg)
-		return m, cmd
+		return m, nil
 
 	case addStepLabel:
 		if key == "enter" {
@@ -792,7 +1019,7 @@ func (m RoutingModel) updateBrowseFolder(msg tea.KeyMsg, snap *VMSnapshot) (Rout
 
 // --- Edit Users ---
 
-func (m RoutingModel) startEditUsers() (RoutingModel, tea.Cmd) {
+func (m RoutingModel) startEditUsers(snap *VMSnapshot) (RoutingModel, tea.Cmd) {
 	if m.selectedRow >= len(m.mappings) {
 		return m, nil
 	}
@@ -800,31 +1027,111 @@ func (m RoutingModel) startEditUsers() (RoutingModel, tea.Cmd) {
 	row := m.mappings[m.selectedRow]
 	m.editUsersInput.SetValue(row.AllowedSenders)
 	m.editUsersInput.Placeholder = "sender_id1,sender_id2"
-	m.editUsersInput.Focus()
+	m.editUsersCursor = 0
+	users := channelApprovedUsers(row.Channel, snap)
+	m.editUsersSelected, m.editUsersExtras = initAllowSelection(users, row.AllowedSenders)
+	m.editUsersManual = len(users) == 0
+	if m.editUsersManual {
+		m.editUsersInput.Focus()
+	} else {
+		m.editUsersInput.Blur()
+	}
 	return m, nil
 }
 
-func (m RoutingModel) updateEditUsers(msg tea.KeyMsg) (RoutingModel, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+func (m RoutingModel) updateEditUsers(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, tea.Cmd) {
+	key := msg.String()
+	if key == "esc" {
 		m.mode = routingNormal
 		m.editUsersInput.Blur()
 		return m, nil
-	case "enter":
-		val := strings.TrimSpace(m.editUsersInput.Value())
-		if val == "" {
+	}
+
+	if m.selectedRow >= len(m.mappings) {
+		m.mode = routingNormal
+		m.editUsersInput.Blur()
+		return m, nil
+	}
+	row := m.mappings[m.selectedRow]
+	users := channelApprovedUsers(row.Channel, snap)
+
+	if len(users) == 0 || m.editUsersManual {
+		switch key {
+		case "enter":
+			val := strings.TrimSpace(m.editUsersInput.Value())
+			if val == "" {
+				return m, nil
+			}
 			m.mode = routingNormal
 			m.editUsersInput.Blur()
+			return m, routingSetUsersCmd(m.exec, row.Channel, row.ChatID, val)
+		case "p":
+			if len(users) > 0 {
+				m.editUsersManual = false
+				m.editUsersInput.Blur()
+				if m.editUsersSelected == nil {
+					m.editUsersSelected, m.editUsersExtras = initAllowSelection(users, m.editUsersInput.Value())
+				}
+			}
 			return m, nil
 		}
-		row := m.mappings[m.selectedRow]
+		var cmd tea.Cmd
+		m.editUsersInput, cmd = m.editUsersInput.Update(msg)
+		return m, cmd
+	}
+
+	if m.editUsersSelected == nil {
+		m.editUsersSelected = map[string]bool{}
+	}
+
+	switch key {
+	case "up", "k":
+		if m.editUsersCursor > 0 {
+			m.editUsersCursor--
+		}
+		return m, nil
+	case "down", "j":
+		if m.editUsersCursor < len(users)-1 {
+			m.editUsersCursor++
+		}
+		return m, nil
+	case " ":
+		if m.editUsersCursor >= 0 && m.editUsersCursor < len(users) {
+			token := approvedUserToken(users[m.editUsersCursor])
+			if token != "" {
+				m.editUsersSelected[token] = !m.editUsersSelected[token]
+			}
+		}
+		return m, nil
+	case "a":
+		selectAll := !allUsersSelected(users, m.editUsersSelected)
+		for _, u := range users {
+			token := approvedUserToken(u)
+			if token == "" {
+				continue
+			}
+			m.editUsersSelected[token] = selectAll
+		}
+		return m, nil
+	case "m":
+		m.editUsersManual = true
+		m.editUsersInput.SetValue(buildAllowCSV(users, m.editUsersSelected, m.editUsersExtras))
+		m.editUsersInput.Placeholder = "sender_id1,sender_id2"
+		m.editUsersInput.Focus()
+		return m, nil
+	case "enter":
+		val := buildAllowCSV(users, m.editUsersSelected, m.editUsersExtras)
+		if strings.TrimSpace(val) == "" {
+			m.flashMsg = styleErr.Render("✗") + " Select at least one allowed sender"
+			m.flashUntil = time.Now().Add(4 * time.Second)
+			return m, nil
+		}
 		m.mode = routingNormal
 		m.editUsersInput.Blur()
 		return m, routingSetUsersCmd(m.exec, row.Channel, row.ChatID, val)
 	}
-	var cmd tea.Cmd
-	m.editUsersInput, cmd = m.editUsersInput.Update(msg)
-	return m, cmd
+
+	return m, nil
 }
 
 func (m RoutingModel) startEditWorkspace() (RoutingModel, tea.Cmd) {
@@ -1029,7 +1336,7 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 		// Wizard overlay (can be triggered from empty state).
 		if m.mode == routingAddWizard {
 			b.WriteString("\n")
-			b.WriteString(m.renderAddWizardOverlay())
+			b.WriteString(m.renderAddWizardOverlay(snap))
 		}
 		if m.mode == routingBrowseFolder {
 			b.WriteString("\n")
@@ -1092,13 +1399,13 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 	// Overlay: add wizard.
 	if m.mode == routingAddWizard {
 		b.WriteString("\n")
-		b.WriteString(m.renderAddWizardOverlay())
+		b.WriteString(m.renderAddWizardOverlay(snap))
 	}
 
 	// Overlay: edit users.
 	if m.mode == routingEditUsers {
 		b.WriteString("\n")
-		b.WriteString(m.renderEditUsersOverlay())
+		b.WriteString(m.renderEditUsersOverlay(snap))
 	}
 
 	// Overlay: edit workspace.
@@ -1374,7 +1681,7 @@ func startTelegramPairCmd(exec Executor) tea.Cmd {
 
 // --- Render overlays ---
 
-func (m RoutingModel) renderAddWizardOverlay() string {
+func (m RoutingModel) renderAddWizardOverlay(snap *VMSnapshot) string {
 	var lines []string
 	displayStep := m.wizardStep + 1
 	if m.wizardStep == addStepChatIDManual {
@@ -1415,8 +1722,45 @@ func (m RoutingModel) renderAddWizardOverlay() string {
 		lines = append(lines, fmt.Sprintf("    %s to browse folders", styleKey.Render("Ctrl+B")))
 
 	case addStepAllow:
-		lines = append(lines, fmt.Sprintf("  Allowed senders: %s", m.wizardInput.View()))
-		lines = append(lines, styleHint.Render("    Comma-separated user IDs (e.g. 123456,789012)"))
+		users := channelApprovedUsers(m.wizardChannel, snap)
+		if len(users) == 0 || m.wizardAllowManual {
+			lines = append(lines, fmt.Sprintf("  Allowed senders: %s", m.wizardInput.View()))
+			lines = append(lines, styleHint.Render("    Comma-separated user IDs (e.g. 123456,789012)"))
+			if len(users) > 0 {
+				lines = append(lines, styleHint.Render(fmt.Sprintf("    %s switch back to Users picker", styleKey.Render("p"))))
+			}
+		} else {
+			lines = append(lines, "  Allowed senders (from Users tab):")
+			for i, user := range users {
+				mark := "[ ]"
+				token := approvedUserToken(user)
+				if m.wizardAllowSelected != nil && m.wizardAllowSelected[token] {
+					mark = "[x]"
+				}
+				prefix := "  "
+				if i == m.wizardAllowCursor {
+					prefix = styleBold.Foreground(colorAccent).Render("> ")
+				}
+
+				label := user.DisplayID()
+				if user.Username != "" {
+					label = fmt.Sprintf("%s (%s)", user.Username, user.DisplayID())
+				}
+				line := fmt.Sprintf("    %s%s %s", prefix, mark, label)
+				if i == m.wizardAllowCursor {
+					line = lipgloss.NewStyle().
+						Background(lipgloss.Color("#2A2A4A")).
+						Render(line)
+				}
+				lines = append(lines, line)
+			}
+			lines = append(lines, styleHint.Render(fmt.Sprintf("    %s move  %s toggle  %s all/none  %s manual CSV",
+				styleKey.Render("j/k"),
+				styleKey.Render("Space"),
+				styleKey.Render("a"),
+				styleKey.Render("m"),
+			)))
+		}
 
 	case addStepLabel:
 		lines = append(lines, fmt.Sprintf("  Label (optional): %s", m.wizardInput.View()))
@@ -1443,12 +1787,54 @@ func (m RoutingModel) renderAddWizardOverlay() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m RoutingModel) renderEditUsersOverlay() string {
+func (m RoutingModel) renderEditUsersOverlay(snap *VMSnapshot) string {
 	row := m.mappings[m.selectedRow]
+	users := channelApprovedUsers(row.Channel, snap)
 	var lines []string
 	lines = append(lines, styleBold.Render(fmt.Sprintf("  Edit allowed users for %s:%s", row.Channel, row.ChatID)))
-	lines = append(lines, fmt.Sprintf("  Allowed senders: %s", m.editUsersInput.View()))
-	lines = append(lines, styleHint.Render("    Comma-separated user IDs. This replaces the current list."))
+	if len(users) == 0 || m.editUsersManual {
+		lines = append(lines, fmt.Sprintf("  Allowed senders: %s", m.editUsersInput.View()))
+		lines = append(lines, styleHint.Render("    Comma-separated user IDs. This replaces the current list."))
+		if len(users) > 0 {
+			lines = append(lines, styleHint.Render(fmt.Sprintf("    %s switch back to Users picker", styleKey.Render("p"))))
+		}
+		lines = append(lines, styleDim.Render("    Enter to save, Esc to cancel"))
+		return strings.Join(lines, "\n")
+	}
+
+	lines = append(lines, "  Toggle users from the central approved-users list:")
+	for i, user := range users {
+		mark := "[ ]"
+		token := approvedUserToken(user)
+		if m.editUsersSelected != nil && m.editUsersSelected[token] {
+			mark = "[x]"
+		}
+		prefix := "  "
+		if i == m.editUsersCursor {
+			prefix = styleBold.Foreground(colorAccent).Render("> ")
+		}
+
+		label := user.DisplayID()
+		if user.Username != "" {
+			label = fmt.Sprintf("%s (%s)", user.Username, user.DisplayID())
+		}
+		line := fmt.Sprintf("    %s%s %s", prefix, mark, label)
+		if i == m.editUsersCursor {
+			line = lipgloss.NewStyle().
+				Background(lipgloss.Color("#2A2A4A")).
+				Render(line)
+		}
+		lines = append(lines, line)
+	}
+	if len(m.editUsersExtras) > 0 {
+		lines = append(lines, styleHint.Render(fmt.Sprintf("    Preserving %d custom sender(s) not in Users list", len(m.editUsersExtras))))
+	}
+	lines = append(lines, styleHint.Render(fmt.Sprintf("    %s move  %s toggle  %s all/none  %s manual CSV",
+		styleKey.Render("j/k"),
+		styleKey.Render("Space"),
+		styleKey.Render("a"),
+		styleKey.Render("m"),
+	)))
 	lines = append(lines, styleDim.Render("    Enter to save, Esc to cancel"))
 	return strings.Join(lines, "\n")
 }

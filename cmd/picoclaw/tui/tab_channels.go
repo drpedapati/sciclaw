@@ -623,3 +623,13 @@ func removeUserFromConfig(exec Executor, channel string, idx int) tea.Cmd {
 		return actionDoneMsg{output: "User removed."}
 	}
 }
+
+// updateUserInConfig replaces an existing allow_from entry by index.
+func updateUserInConfig(exec Executor, channel string, idx int, entry string) tea.Cmd {
+	return func() tea.Msg {
+		if err := replaceAllowFrom(exec, channel, idx, entry); err != nil {
+			return actionDoneMsg{output: fmt.Sprintf("Failed to update user: %v", err)}
+		}
+		return actionDoneMsg{output: "User updated."}
+	}
+}

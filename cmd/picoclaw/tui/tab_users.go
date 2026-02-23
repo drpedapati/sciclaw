@@ -15,6 +15,7 @@ const (
 	usersNormal usersMode = iota
 	usersAdd
 	usersConfirmRemove
+	usersEdit
 )
 
 // userRow represents one entry in the unified users table.
@@ -32,19 +33,26 @@ type UsersModel struct {
 
 	// Add wizard state
 	addInput   textinput.Model
-	addStep    int    // 0=channel pick, 1=ID, 2=optional name
+	addStep    int // 0=channel pick, 1=ID, 2=optional name
 	addChannel string
 	pendingID  string
 
 	// Remove confirmation state
 	removeRow userRow
+
+	// Edit state
+	editRow   userRow
+	editInput textinput.Model
 }
 
 func NewUsersModel(exec Executor) UsersModel {
 	ti := textinput.New()
 	ti.CharLimit = 64
 	ti.Width = 40
-	return UsersModel{exec: exec, addInput: ti}
+	ei := textinput.New()
+	ei.CharLimit = 64
+	ei.Width = 40
+	return UsersModel{exec: exec, addInput: ti, editInput: ei}
 }
 
 func buildRows(snap *VMSnapshot) []userRow {
@@ -118,6 +126,38 @@ func (m UsersModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (UsersModel, tea.Cm
 		return m, nil
 	}
 
+	// Edit mode.
+	if m.mode == usersEdit {
+		switch key {
+		case "esc":
+			m.mode = usersNormal
+			m.editInput.Blur()
+			return m, nil
+		case "enter":
+			name := strings.TrimSpace(m.editInput.Value())
+			current := m.editRow.User
+			entry := ""
+			if current.UserID != "" {
+				entry = FormatEntry(current.UserID, name)
+			} else if name != "" {
+				entry = name
+			} else {
+				entry = strings.TrimSpace(current.Raw)
+			}
+			if strings.TrimSpace(entry) == "" {
+				m.mode = usersNormal
+				m.editInput.Blur()
+				return m, nil
+			}
+			m.mode = usersNormal
+			m.editInput.Blur()
+			return m, updateUserInConfig(m.exec, m.editRow.Channel, m.editRow.OrigIdx, entry)
+		}
+		var cmd tea.Cmd
+		m.editInput, cmd = m.editInput.Update(msg)
+		return m, cmd
+	}
+
 	// Normal mode.
 	switch key {
 	case "up", "k":
@@ -139,6 +179,14 @@ func (m UsersModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (UsersModel, tea.Cm
 		if m.selectedRow < len(rows) {
 			m.removeRow = rows[m.selectedRow]
 			m.mode = usersConfirmRemove
+		}
+	case "e":
+		if m.selectedRow < len(rows) {
+			m.editRow = rows[m.selectedRow]
+			m.mode = usersEdit
+			m.editInput.SetValue(strings.TrimSpace(m.editRow.User.Username))
+			m.editInput.Placeholder = "(optional display name)"
+			m.editInput.Focus()
 		}
 	}
 	return m, nil
@@ -220,6 +268,9 @@ func (m UsersModel) View(snap *VMSnapshot, width int) string {
 			styleKey.Render("[a]"),
 			styleKey.Render("[d]"),
 		))
+		lines = append(lines, fmt.Sprintf("  %s Edit selected label",
+			styleKey.Render("[e]"),
+		))
 	}
 
 	// Overlay for add/remove modes.
@@ -236,6 +287,16 @@ func (m UsersModel) View(snap *VMSnapshot, width int) string {
 			styleKey.Render("[y]es"),
 			styleKey.Render("[n]o"),
 		))
+	}
+	if m.mode == usersEdit {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  Edit display name for %s (%s): %s",
+			styleBold.Render(m.editRow.User.DisplayName()),
+			styleBold.Render(capitalizeFirst(m.editRow.Channel)),
+			m.editInput.View(),
+		))
+		lines = append(lines, styleHint.Render("    Leave blank to clear label and keep only the ID"))
+		lines = append(lines, styleDim.Render("    Enter to save, Esc to cancel"))
 	}
 
 	content := strings.Join(lines, "\n")

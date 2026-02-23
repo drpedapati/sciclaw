@@ -180,3 +180,75 @@ func TestPickRoom_UsesExpandedWorkspaceFromSnapshot(t *testing.T) {
 		t.Fatalf("workspace input = %q, want %q", next.wizardInput.Value(), "/Users/tester/picoclaw/workspace")
 	}
 }
+
+func TestInitAllowSelection_SeparatesKnownUsersFromExtras(t *testing.T) {
+	users := []ApprovedUser{
+		ParseApprovedUser("111|alice"),
+		ParseApprovedUser("222|bob"),
+	}
+	selected, extras := initAllowSelection(users, "111,333|carol,@dave")
+
+	if !selected["111"] {
+		t.Fatalf("expected known user 111 to be selected: %#v", selected)
+	}
+	if selected["222"] {
+		t.Fatalf("did not expect 222 selected by default: %#v", selected)
+	}
+	if got := strings.Join(extras, ","); got != "333|carol,@dave" {
+		t.Fatalf("extras = %q, want %q", got, "333|carol,@dave")
+	}
+}
+
+func TestBuildAllowCSV_PreservesUserOrderThenExtras(t *testing.T) {
+	users := []ApprovedUser{
+		ParseApprovedUser("111|alice"),
+		ParseApprovedUser("222|bob"),
+		ParseApprovedUser("333|carol"),
+	}
+	selected := map[string]bool{
+		"333": true,
+		"111": true,
+	}
+	got := buildAllowCSV(users, selected, []string{"@external"})
+	if got != "111,333,@external" {
+		t.Fatalf("buildAllowCSV = %q, want %q", got, "111,333,@external")
+	}
+}
+
+func TestRoutingEditUsers_PickerSavesSelection(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester", shellOut: "ok"}
+	m := NewRoutingModel(execStub)
+	m.mappings = []routingRow{
+		{Channel: "discord", ChatID: "123", AllowedSenders: "111"},
+	}
+	m.selectedRow = 0
+	snap := &VMSnapshot{
+		Discord: ChannelSnapshot{
+			ApprovedUsers: []ApprovedUser{
+				ParseApprovedUser("111|alice"),
+				ParseApprovedUser("222|bob"),
+			},
+		},
+	}
+
+	next, _ := m.startEditUsers(snap)
+	if next.mode != routingEditUsers {
+		t.Fatalf("mode = %v, want %v", next.mode, routingEditUsers)
+	}
+	if !next.editUsersSelected["111"] {
+		t.Fatalf("expected 111 selected initially")
+	}
+
+	// Move cursor to second user and toggle on.
+	next, _ = next.updateEditUsers(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}, snap)
+	next, _ = next.updateEditUsers(tea.KeyMsg{Type: tea.KeySpace}, snap)
+
+	saved, cmd := next.updateEditUsers(tea.KeyMsg{Type: tea.KeyEnter}, snap)
+	if saved.mode != routingNormal {
+		t.Fatalf("mode = %v, want %v", saved.mode, routingNormal)
+	}
+	_ = cmd().(routingActionMsg)
+	if !strings.Contains(execStub.lastShell, "--allow '111,222'") {
+		t.Fatalf("expected set-users allow list built from picker, cmd=%q", execStub.lastShell)
+	}
+}
