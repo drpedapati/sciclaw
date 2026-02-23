@@ -195,7 +195,11 @@ func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 		m.onboardStep = wizardService
 	case wizardService:
 		if msg.err != nil {
-			m.onboardResult = "Service install failed: " + msg.err.Error()
+			detail := strings.TrimSpace(msg.output)
+			if detail == "" {
+				detail = msg.err.Error()
+			}
+			m.onboardResult = "err:Service install failed: " + detail
 		} else {
 			m.onboardResult = "Service installed and started."
 		}
@@ -389,8 +393,14 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 				"\n" +
 				"  " + styleDim.Render("This enables the background agent.") + "\n"
 		} else if m.onboardResult != "" {
+			icon := styleOK.Render("✓")
+			resultText := m.onboardResult
+			if strings.HasPrefix(m.onboardResult, "err:") {
+				icon = styleErr.Render("✗")
+				resultText = m.onboardResult[4:]
+			}
 			content = "\n" +
-				"  " + styleOK.Render("✓") + " " + m.onboardResult + "\n" +
+				"  " + icon + " " + resultText + "\n" +
 				"\n" +
 				"  " + styleDim.Render("Press Enter to continue.") + "\n"
 		} else {

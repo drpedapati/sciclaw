@@ -55,6 +55,10 @@ func (m *launchdManager) Install() error {
 		return err
 	}
 
+	// Clear any stale disabled state before bootstrap — a previous uninstall
+	// may have left the label in launchd's disabled overrides database, which
+	// causes bootstrap to fail with "Input/output error".
+	_, _ = runCommand(m.runner, 5*time.Second, "launchctl", "enable", m.serviceTarget)
 	_, _ = runCommand(m.runner, 10*time.Second, "launchctl", "bootout", m.serviceTarget)
 	if out, err := runCommand(m.runner, 10*time.Second, "launchctl", "bootstrap", m.domainTarget, m.plistPath); err != nil {
 		msg := strings.ToLower(string(out))
@@ -70,6 +74,8 @@ func (m *launchdManager) Install() error {
 
 func (m *launchdManager) Uninstall() error {
 	_, _ = runCommand(m.runner, 10*time.Second, "launchctl", "bootout", m.serviceTarget)
+	// Clear the disabled override so a future install won't fail on bootstrap.
+	_, _ = runCommand(m.runner, 5*time.Second, "launchctl", "enable", m.serviceTarget)
 	if err := os.Remove(m.plistPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -84,6 +90,8 @@ func (m *launchdManager) Start() error {
 		return err
 	}
 
+	// Ensure the label isn't stuck in the disabled overrides database.
+	_, _ = runCommand(m.runner, 5*time.Second, "launchctl", "enable", m.serviceTarget)
 	if _, err := runCommand(m.runner, 3*time.Second, "launchctl", "print", m.serviceTarget); err != nil {
 		if out, err2 := runCommand(m.runner, 10*time.Second, "launchctl", "bootstrap", m.domainTarget, m.plistPath); err2 != nil {
 			msg := strings.ToLower(string(out))
