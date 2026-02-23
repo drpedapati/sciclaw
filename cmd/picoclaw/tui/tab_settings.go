@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -541,7 +542,12 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 		msg := settingsDataMsg{}
 		cfg, err := readConfigMap(exec)
 		if err != nil {
-			// Config bootstrap: create defaults if missing.
+			if !isConfigNotFoundError(err) {
+				msg.err = err
+				return msg
+			}
+
+			// Config bootstrap: create defaults only when config is missing.
 			home := exec.HomePath()
 			_, _ = exec.ExecShell(5*time.Second, "mkdir -p "+shellEscape(home+"/.picoclaw/workspace"))
 			cfg = map[string]interface{}{
@@ -605,6 +611,19 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 
 		return msg
 	}
+}
+
+func isConfigNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if os.IsNotExist(err) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "no such file or directory") ||
+		strings.Contains(lower, "file does not exist") ||
+		strings.Contains(lower, "not exist")
 }
 
 func settingsToggleChannel(exec Executor, channel string, enabled bool) tea.Cmd {

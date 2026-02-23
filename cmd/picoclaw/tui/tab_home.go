@@ -76,15 +76,15 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 	case wizardAuth:
 		switch key {
 		case "enter":
+			m.onboardLoading = true
+			m.onboardResult = ""
 			c := m.exec.InteractiveProcess("sciclaw", "auth", "login", "--provider", "openai")
-			return m, tea.ExecProcess(c, func(err error) tea.Msg {
-				return onboardExecDoneMsg{step: wizardAuth}
-			})
+			return m, tea.ExecProcess(c, onboardExecCallback(wizardAuth))
 		case "a":
+			m.onboardLoading = true
+			m.onboardResult = ""
 			c := m.exec.InteractiveProcess("sciclaw", "auth", "login", "--provider", "anthropic")
-			return m, tea.ExecProcess(c, func(err error) tea.Msg {
-				return onboardExecDoneMsg{step: wizardAuth}
-			})
+			return m, tea.ExecProcess(c, onboardExecCallback(wizardAuth))
 		case "esc":
 			m.onboardStep = wizardSmoke
 		}
@@ -112,15 +112,15 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 	case wizardChannel:
 		switch key {
 		case "t":
+			m.onboardLoading = true
+			m.onboardResult = ""
 			c := m.exec.InteractiveProcess("sciclaw", "channels", "setup", "telegram")
-			return m, tea.ExecProcess(c, func(err error) tea.Msg {
-				return onboardExecDoneMsg{step: wizardChannel}
-			})
+			return m, tea.ExecProcess(c, onboardExecCallback(wizardChannel))
 		case "d":
+			m.onboardLoading = true
+			m.onboardResult = ""
 			c := m.exec.InteractiveProcess("sciclaw", "channels", "setup", "discord")
-			return m, tea.ExecProcess(c, func(err error) tea.Msg {
-				return onboardExecDoneMsg{step: wizardChannel}
-			})
+			return m, tea.ExecProcess(c, onboardExecCallback(wizardChannel))
 		case "s", "esc":
 			m.onboardStep = wizardService
 		}
@@ -153,6 +153,12 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 	return m, nil
 }
 
+func onboardExecCallback(step int) func(error) tea.Msg {
+	return func(err error) tea.Msg {
+		return onboardExecDoneMsg{step: step, err: err}
+	}
+}
+
 // HandleExecDone processes async wizard command results.
 func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 	m.onboardLoading = false
@@ -166,6 +172,11 @@ func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 			m.onboardStep = wizardAuth
 		}
 	case wizardAuth:
+		if msg.err != nil {
+			m.onboardResult = "Login was not completed. Retry or press Esc to skip."
+			return
+		}
+		m.onboardResult = ""
 		m.onboardStep = wizardSmoke
 	case wizardSmoke:
 		if msg.err != nil {
@@ -176,6 +187,11 @@ func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 			m.onboardSmokePass = true
 		}
 	case wizardChannel:
+		if msg.err != nil {
+			m.onboardResult = "Channel setup was not completed. Retry or press [s] to skip."
+			return
+		}
+		m.onboardResult = ""
 		m.onboardStep = wizardService
 	case wizardService:
 		if msg.err != nil {
@@ -311,16 +327,20 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 		))
 
 	case wizardAuth:
-		b.WriteString(m.wizardFrame(panelW, "Authentication",
-			"\n"+
-				"  "+styleOK.Render("✓")+" Configuration file created.\n"+
-				"\n"+
-				"  Choose your AI provider:\n"+
-				"\n"+
-				"  "+styleKey.Render("[Enter]")+" Log in with OpenAI (recommended)\n"+
-				"  "+styleKey.Render("[a]")+"     Log in with Anthropic\n"+
-				"  "+styleKey.Render("[Esc]")+"   Skip for now\n",
-		))
+		content := "\n" +
+			"  " + styleOK.Render("✓") + " Configuration file created.\n" +
+			"\n" +
+			"  Choose your AI provider:\n" +
+			"\n" +
+			"  " + styleKey.Render("[Enter]") + " Log in with OpenAI (recommended)\n" +
+			"  " + styleKey.Render("[a]") + "     Log in with Anthropic\n" +
+			"  " + styleKey.Render("[Esc]") + "   Skip for now\n"
+		if m.onboardLoading {
+			content += "\n  " + styleDim.Render("Waiting for login flow to complete...") + "\n"
+		} else if m.onboardResult != "" {
+			content += "\n  " + styleWarn.Render("! "+m.onboardResult) + "\n"
+		}
+		b.WriteString(m.wizardFrame(panelW, "Authentication", content))
 
 	case wizardSmoke:
 		var content string
@@ -348,14 +368,18 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 		b.WriteString(m.wizardFrame(panelW, "Smoke Test (optional)", content))
 
 	case wizardChannel:
-		b.WriteString(m.wizardFrame(panelW, "Chat Channel",
-			"\n"+
-				"  Connect a messaging app?\n"+
-				"\n"+
-				"  "+styleKey.Render("[t]")+" Set up Telegram\n"+
-				"  "+styleKey.Render("[d]")+" Set up Discord\n"+
-				"  "+styleKey.Render("[s]")+" Skip for now\n",
-		))
+		content := "\n" +
+			"  Connect a messaging app?\n" +
+			"\n" +
+			"  " + styleKey.Render("[t]") + " Set up Telegram\n" +
+			"  " + styleKey.Render("[d]") + " Set up Discord\n" +
+			"  " + styleKey.Render("[s]") + " Skip for now\n"
+		if m.onboardLoading {
+			content += "\n  " + styleDim.Render("Waiting for channel setup to complete...") + "\n"
+		} else if m.onboardResult != "" {
+			content += "\n  " + styleWarn.Render("! "+m.onboardResult) + "\n"
+		}
+		b.WriteString(m.wizardFrame(panelW, "Chat Channel", content))
 
 	case wizardService:
 		var content string

@@ -19,7 +19,10 @@ const (
 	skillsConfirmRemove
 )
 
-type skillsListMsg struct{ output string }
+type skillsListMsg struct {
+	output       string
+	fromBaseline bool
+}
 
 type skillRow struct {
 	Name        string
@@ -79,7 +82,9 @@ func (m *SkillsModel) AutoRun() tea.Cmd {
 
 func (m *SkillsModel) HandleList(msg skillsListMsg) {
 	m.loaded = true
-	m.baselineLoading = false
+	if msg.fromBaseline {
+		m.baselineLoading = false
+	}
 	m.skills = parseSkillsList(msg.output)
 	if m.selectedRow >= len(m.skills) {
 		m.selectedRow = max(0, len(m.skills)-1)
@@ -408,7 +413,7 @@ func fetchSkillsList(exec Executor) tea.Cmd {
 	return func() tea.Msg {
 		cmd := "HOME=" + exec.HomePath() + " sciclaw skills list 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
-		return skillsListMsg{output: out}
+		return skillsListMsg{output: out, fromBaseline: false}
 	}
 }
 
@@ -443,6 +448,6 @@ func baselineInstallCmd(exec Executor) tea.Cmd {
 		// Return skills list to refresh the display.
 		listCmd := "HOME=" + home + " sciclaw skills list 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, listCmd)
-		return skillsListMsg{output: out}
+		return skillsListMsg{output: out, fromBaseline: true}
 	}
 }
