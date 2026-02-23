@@ -49,3 +49,46 @@ func TestLoadBootstrapFilesIncludesTools(t *testing.T) {
 		t.Fatalf("bootstrap content missing TOOLS.md body")
 	}
 }
+
+func TestLoadBootstrapFilesFallsBackToGlobalWorkspace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	globalWorkspace := filepath.Join(home, ".picoclaw", "workspace")
+	if err := os.MkdirAll(globalWorkspace, 0755); err != nil {
+		t.Fatalf("mkdir global workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalWorkspace, "AGENTS.md"), []byte("# Global Agents\n"), 0644); err != nil {
+		t.Fatalf("write global AGENTS.md: %v", err)
+	}
+
+	routedWorkspace := t.TempDir()
+	cb := NewContextBuilder(routedWorkspace)
+	bootstrap := cb.LoadBootstrapFiles()
+
+	if !strings.Contains(bootstrap, "# Global Agents") {
+		t.Fatalf("expected fallback AGENTS.md from global workspace, got: %q", bootstrap)
+	}
+}
+
+func TestContextBuilderLoadsGlobalWorkspaceSkillsForRoutedWorkspace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	skillDir := filepath.Join(home, ".picoclaw", "workspace", "skills", "baseline")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Baseline\n"), 0644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	routedWorkspace := t.TempDir()
+	cb := NewContextBuilder(routedWorkspace)
+	info := cb.GetSkillsInfo()
+
+	total, _ := info["total"].(int)
+	if total < 1 {
+		t.Fatalf("expected at least one skill from global workspace, got %v", info)
+	}
+}

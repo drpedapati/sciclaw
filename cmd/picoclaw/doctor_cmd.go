@@ -305,7 +305,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 	}
 
 	// Gateway log quick scan: common Telegram 409 conflict from multiple instances.
-	add(checkGatewayLog())
+	add(checkGatewayLog(cfg != nil && cfg.Channels.Telegram.Enabled))
 	for _, c := range checkServiceStatus(opts) {
 		add(c)
 	}
@@ -379,7 +379,7 @@ func checkBinaryWithHint(name string, args []string, timeout time.Duration, inst
 }
 
 func checkBinary(name string, args []string, timeout time.Duration) doctorCheck {
-	p, err := exec.LookPath(name)
+	p, err := lookPathWithFallback(name)
 	if err != nil {
 		return doctorCheck{Name: name, Status: doctorErr, Message: "not found in PATH"}
 	}
@@ -425,6 +425,19 @@ func checkBinary(name string, args []string, timeout time.Duration) doctorCheck 
 		c.Data["output"] = truncateOneLine(out, 180)
 	}
 	return c
+}
+
+func lookPathWithFallback(name string) (string, error) {
+	if p, err := exec.LookPath(name); err == nil {
+		return p, nil
+	}
+	for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"} {
+		candidate := filepath.Join(dir, name)
+		if fileExists(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", exec.ErrNotFound
 }
 
 func checkPandocNIHTemplate() doctorCheck {
@@ -508,7 +521,7 @@ func checkWorkspacePythonVenv(workspace string, opts doctorOptions) doctorCheck 
 	}
 }
 
-func checkGatewayLog() doctorCheck {
+func checkGatewayLog(telegramEnabled bool) doctorCheck {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "home directory unavailable"}
@@ -516,6 +529,9 @@ func checkGatewayLog() doctorCheck {
 	p := filepath.Join(home, ".picoclaw", "gateway.log")
 	if !fileExists(p) {
 		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "not found"}
+	}
+	if !telegramEnabled {
+		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "telegram disabled; skipped 409 conflict scan"}
 	}
 
 	tail, err := readTail(p, 128*1024)

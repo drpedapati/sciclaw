@@ -5,6 +5,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,7 +49,8 @@ func (m *launchdManager) Install() error {
 		return err
 	}
 
-	plist := renderLaunchdPlist(m.label, m.exePath, m.stdoutPath, m.stderrPath)
+	pathEnv := buildSystemdPath(os.Getenv("PATH"), m.detectBrewPrefix())
+	plist := renderLaunchdPlist(m.label, m.exePath, m.stdoutPath, m.stderrPath, pathEnv)
 	if err := writeFileIfChanged(m.plistPath, []byte(plist), 0644); err != nil {
 		return err
 	}
@@ -90,8 +92,16 @@ func (m *launchdManager) Start() error {
 			}
 		}
 	}
+	if out, err := runCommand(m.runner, 5*time.Second, "launchctl", "enable", m.serviceTarget); err != nil {
+		return fmt.Errorf("enable failed: %s", commandErrorDetail(err, out))
+	}
 	if out, err := runCommand(m.runner, 10*time.Second, "launchctl", "kickstart", "-k", m.serviceTarget); err != nil {
-		return fmt.Errorf("kickstart failed: %s", oneLine(string(out)))
+		// launchctl may report a kickstart failure even after successfully loading
+		// and running the service; treat verified running state as success.
+		if st, stErr := m.Status(); stErr == nil && st.Running {
+			return nil
+		}
+		return fmt.Errorf("kickstart failed: %s", commandErrorDetail(err, out))
 	}
 	return nil
 }
@@ -148,4 +158,25 @@ func (m *launchdManager) Logs(lines int) (string, error) {
 		return "", fmt.Errorf("no launchd logs found at %s or %s", m.stdoutPath, m.stderrPath)
 	}
 	return combined, nil
+}
+
+func commandErrorDetail(err error, out []byte) string {
+	if msg := oneLine(string(out)); msg != "" {
+		return msg
+	}
+	if err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+func (m *launchdManager) detectBrewPrefix() string {
+	if _, err := exec.LookPath("brew"); err != nil {
+		return ""
+	}
+	out, err := runCommand(m.runner, 4*time.Second, "brew", "--prefix")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

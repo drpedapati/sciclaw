@@ -518,9 +518,10 @@ func ValidateRoutingConfig(r RoutingConfig) error {
 		if !info.IsDir() {
 			return fmt.Errorf("routing.mappings[%d].workspace must be a directory", i)
 		}
-		if _, err := os.ReadDir(workspace); err != nil {
-			return fmt.Errorf("routing.mappings[%d].workspace is not readable: %w", i, err)
-		}
+		// Avoid eager directory enumeration here. Cloud-backed folders (e.g.,
+		// Dropbox/iCloud File Provider paths) can block for long periods when
+		// read in a background service context, which can stall gateway startup.
+		// Runtime tool execution will still surface permission/readability errors.
 
 		if len(m.AllowedSenders) == 0 {
 			return fmt.Errorf("routing.mappings[%d].allowed_senders must contain at least one sender", i)

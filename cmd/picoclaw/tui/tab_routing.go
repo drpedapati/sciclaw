@@ -20,20 +20,28 @@ const (
 	routingConfirmRemove
 	routingAddWizard
 	routingEditUsers
+	routingEditWorkspace
 	routingBrowseFolder
 	routingPickRoom
 	routingPairTelegram
 )
 
+type routingBrowseTarget int
+
+const (
+	browseTargetAddWizard routingBrowseTarget = iota
+	browseTargetEditWorkspace
+)
+
 // Wizard steps for adding a mapping.
 const (
-	addStepChannel       = 0
-	addStepChatID        = 1 // Discord: auto-picker; Telegram: choice screen
-	addStepWorkspace     = 2
-	addStepAllow         = 3
-	addStepLabel         = 4
-	addStepConfirm       = 5
-	addStepChatIDManual  = 6 // manual text input fallback (both channels)
+	addStepChannel      = 0
+	addStepChatID       = 1 // Discord: auto-picker; Telegram: choice screen
+	addStepWorkspace    = 2
+	addStepAllow        = 3
+	addStepLabel        = 4
+	addStepConfirm      = 5
+	addStepChatIDManual = 6 // manual text input fallback (both channels)
 )
 
 // Messages for async routing operations.
@@ -41,6 +49,11 @@ type routingStatusMsg struct{ output string }
 type routingListMsg struct{ output string }
 type routingValidateMsg struct{ output string }
 type routingReloadMsg struct{ output string }
+type routingActionMsg struct {
+	action string
+	output string
+	ok     bool
+}
 type routingDirListMsg struct {
 	path string
 	dirs []string
@@ -106,8 +119,9 @@ type RoutingModel struct {
 	wizardLabel   string
 	wizardInput   textinput.Model
 
-	// Edit-users state
-	editUsersInput textinput.Model
+	// Edit-users/workspace state
+	editUsersInput     textinput.Model
+	editWorkspaceInput textinput.Model
 
 	// Folder browser state
 	browserPath    string
@@ -115,6 +129,7 @@ type RoutingModel struct {
 	browserCursor  int
 	browserLoading bool
 	browserErr     string
+	browserTarget  routingBrowseTarget
 
 	// Discord room picker state
 	discordRooms []discordRoom
@@ -144,13 +159,17 @@ func NewRoutingModel(exec Executor) RoutingModel {
 	ei := textinput.New()
 	ei.CharLimit = 200
 	ei.Width = 50
+	ew := textinput.New()
+	ew.CharLimit = 300
+	ew.Width = 50
 
 	return RoutingModel{
-		exec:           exec,
-		listVP:         listVP,
-		detailVP:       detailVP,
-		wizardInput:    wi,
-		editUsersInput: ei,
+		exec:               exec,
+		listVP:             listVP,
+		detailVP:           detailVP,
+		wizardInput:        wi,
+		editUsersInput:     ei,
+		editWorkspaceInput: ew,
 	}
 }
 
@@ -193,6 +212,36 @@ func (m *RoutingModel) HandleReload(msg routingReloadMsg) {
 		m.flashMsg = styleErr.Render("✗") + " " + out
 	}
 	m.flashUntil = time.Now().Add(5 * time.Second)
+}
+
+func (m *RoutingModel) HandleAction(msg routingActionMsg) {
+	defaultLabel := "Routing action"
+	switch msg.action {
+	case "add":
+		defaultLabel = "Mapping saved"
+	case "remove":
+		defaultLabel = "Mapping detached"
+	case "set-users":
+		defaultLabel = "Allowed users updated"
+	case "enable":
+		defaultLabel = "Routing enabled"
+	case "disable":
+		defaultLabel = "Routing disabled"
+	}
+
+	out := strings.TrimSpace(msg.output)
+	if msg.ok {
+		if out == "" {
+			out = defaultLabel
+		}
+		m.flashMsg = styleOK.Render("✓") + " " + out
+	} else {
+		if out == "" {
+			out = defaultLabel + " failed"
+		}
+		m.flashMsg = styleErr.Render("✗") + " " + out
+	}
+	m.flashUntil = time.Now().Add(6 * time.Second)
 }
 
 func (m *RoutingModel) HandleDirList(msg routingDirListMsg) {
@@ -441,6 +490,8 @@ func (m RoutingModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, te
 		return m.updateAddWizard(msg, snap)
 	case routingEditUsers:
 		return m.updateEditUsers(msg)
+	case routingEditWorkspace:
+		return m.updateEditWorkspace(msg, snap)
 	case routingBrowseFolder:
 		return m.updateBrowseFolder(msg, snap)
 	case routingPickRoom:
@@ -481,11 +532,13 @@ func (m RoutingModel) updateNormal(msg tea.KeyMsg, snap *VMSnapshot) (RoutingMod
 		}
 	case "t":
 		return m, routingToggleCmd(m.exec, !m.status.Enabled)
-	case "d", "backspace", "delete":
+	case "d", "backspace", "delete", "x":
 		if m.selectedRow < len(m.mappings) {
 			m.removeMapping = m.mappings[m.selectedRow]
 			m.mode = routingConfirmRemove
 		}
+	case "e":
+		return m.startEditWorkspace()
 	case "v":
 		return m, routingValidateCmd(m.exec)
 	case "R":
@@ -568,7 +621,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 			m.wizardInput.SetValue("")
 			m.wizardInput.Placeholder = "/absolute/path/to/workspace"
 			if snap != nil && snap.WorkspacePath != "" {
-				m.wizardInput.SetValue(snap.WorkspacePath)
+				m.wizardInput.SetValue(expandHomeForExecPath(snap.WorkspacePath, m.exec.HomePath()))
 			}
 			return m, nil
 		}
@@ -583,7 +636,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 			if val == "" {
 				return m, nil
 			}
-			m.wizardPath = val
+			m.wizardPath = expandHomeForExecPath(val, m.exec.HomePath())
 			m.wizardStep = addStepAllow
 			m.wizardInput.SetValue("")
 			m.wizardInput.Placeholder = "sender_id1,sender_id2"
@@ -637,12 +690,21 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 // --- Folder Browser ---
 
 func (m *RoutingModel) startBrowse(snap *VMSnapshot) tea.Cmd {
+	return m.startBrowseFromInput(strings.TrimSpace(m.wizardInput.Value()), snap, browseTargetAddWizard)
+}
+
+func (m *RoutingModel) startBrowseFromInput(rawPath string, snap *VMSnapshot, target routingBrowseTarget) tea.Cmd {
 	m.mode = routingBrowseFolder
-	startPath := strings.TrimSpace(m.wizardInput.Value())
-	if startPath == "" || !strings.HasPrefix(startPath, "/") {
-		if snap != nil && snap.WorkspacePath != "" {
-			startPath = snap.WorkspacePath
-		} else {
+	m.browserTarget = target
+	startPath := expandHomeForExecPath(rawPath, m.exec.HomePath())
+	if startPath == "" || !filepath.IsAbs(startPath) {
+		if target == browseTargetEditWorkspace && m.selectedRow < len(m.mappings) {
+			startPath = expandHomeForExecPath(m.mappings[m.selectedRow].Workspace, m.exec.HomePath())
+		}
+		if (startPath == "" || !filepath.IsAbs(startPath)) && snap != nil && snap.WorkspacePath != "" {
+			startPath = expandHomeForExecPath(snap.WorkspacePath, m.exec.HomePath())
+		}
+		if startPath == "" || !filepath.IsAbs(startPath) {
 			startPath = m.exec.HomePath()
 		}
 	}
@@ -651,20 +713,36 @@ func (m *RoutingModel) startBrowse(snap *VMSnapshot) tea.Cmd {
 	m.browserLoading = true
 	m.browserErr = ""
 	m.browserEntries = nil
-	m.wizardInput.Blur()
+	if target == browseTargetEditWorkspace {
+		m.editWorkspaceInput.Blur()
+	} else {
+		m.wizardInput.Blur()
+	}
 	return fetchDirListCmd(m.exec, startPath)
 }
 
 func (m RoutingModel) updateBrowseFolder(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, tea.Cmd) {
 	key := msg.String()
 
+	restoreFromBrowse := func(path string) (RoutingModel, tea.Cmd) {
+		switch m.browserTarget {
+		case browseTargetEditWorkspace:
+			m.mode = routingEditWorkspace
+			m.editWorkspaceInput.SetValue(path)
+			m.editWorkspaceInput.Focus()
+			return m, nil
+		default:
+			m.mode = routingAddWizard
+			m.wizardStep = addStepWorkspace
+			m.wizardInput.SetValue(path)
+			m.wizardInput.Focus()
+			return m, nil
+		}
+	}
+
 	switch key {
 	case "esc":
-		m.mode = routingAddWizard
-		m.wizardStep = addStepWorkspace
-		m.wizardInput.SetValue(m.browserPath)
-		m.wizardInput.Focus()
-		return m, nil
+		return restoreFromBrowse(m.browserPath)
 
 	case "up", "k":
 		if m.browserCursor > 0 {
@@ -693,11 +771,7 @@ func (m RoutingModel) updateBrowseFolder(msg tea.KeyMsg, snap *VMSnapshot) (Rout
 			return m, fetchDirListCmd(m.exec, parent)
 		} else if m.browserCursor == selectIdx {
 			// Select current folder
-			m.mode = routingAddWizard
-			m.wizardStep = addStepWorkspace
-			m.wizardInput.SetValue(m.browserPath)
-			m.wizardInput.Focus()
-			return m, nil
+			return restoreFromBrowse(m.browserPath)
 		} else {
 			// Descend into directory
 			dirName := m.browserEntries[m.browserCursor-1]
@@ -710,11 +784,7 @@ func (m RoutingModel) updateBrowseFolder(msg tea.KeyMsg, snap *VMSnapshot) (Rout
 
 	case " ":
 		// Space selects current folder
-		m.mode = routingAddWizard
-		m.wizardStep = addStepWorkspace
-		m.wizardInput.SetValue(m.browserPath)
-		m.wizardInput.Focus()
-		return m, nil
+		return restoreFromBrowse(m.browserPath)
 	}
 
 	return m, nil
@@ -754,6 +824,47 @@ func (m RoutingModel) updateEditUsers(msg tea.KeyMsg) (RoutingModel, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.editUsersInput, cmd = m.editUsersInput.Update(msg)
+	return m, cmd
+}
+
+func (m RoutingModel) startEditWorkspace() (RoutingModel, tea.Cmd) {
+	if m.selectedRow >= len(m.mappings) {
+		return m, nil
+	}
+	row := m.mappings[m.selectedRow]
+	m.mode = routingEditWorkspace
+	m.editWorkspaceInput.SetValue(row.Workspace)
+	m.editWorkspaceInput.Placeholder = "/absolute/path/to/workspace"
+	m.editWorkspaceInput.Focus()
+	return m, nil
+}
+
+func (m RoutingModel) updateEditWorkspace(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = routingNormal
+		m.editWorkspaceInput.Blur()
+		return m, nil
+	case "ctrl+b":
+		return m, m.startBrowseFromInput(strings.TrimSpace(m.editWorkspaceInput.Value()), snap, browseTargetEditWorkspace)
+	case "enter":
+		if m.selectedRow >= len(m.mappings) {
+			m.mode = routingNormal
+			m.editWorkspaceInput.Blur()
+			return m, nil
+		}
+		val := strings.TrimSpace(m.editWorkspaceInput.Value())
+		if val == "" {
+			return m, nil
+		}
+		row := m.mappings[m.selectedRow]
+		workspace := expandHomeForExecPath(val, m.exec.HomePath())
+		m.mode = routingNormal
+		m.editWorkspaceInput.Blur()
+		return m, routingAddMappingCmd(m.exec, row.Channel, row.ChatID, workspace, row.AllowedSenders, row.Label)
+	}
+	var cmd tea.Cmd
+	m.editWorkspaceInput, cmd = m.editWorkspaceInput.Update(msg)
 	return m, cmd
 }
 
@@ -813,7 +924,7 @@ func (m RoutingModel) updatePickRoom(msg tea.KeyMsg, snap *VMSnapshot) (RoutingM
 			m.wizardInput.SetValue("")
 			m.wizardInput.Placeholder = "/absolute/path/to/workspace"
 			if snap != nil && snap.WorkspacePath != "" {
-				m.wizardInput.SetValue(snap.WorkspacePath)
+				m.wizardInput.SetValue(expandHomeForExecPath(snap.WorkspacePath, m.exec.HomePath()))
 			}
 			m.wizardInput.Focus()
 		}
@@ -952,11 +1063,12 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 	b.WriteString(placePanelTitle(detailPanel, detailTitle))
 
 	// Keybindings.
-	b.WriteString(fmt.Sprintf("  %s Add   %s Edit Users   %s Toggle   %s Remove   %s Check   %s Apply   %s Refresh\n",
+	b.WriteString(fmt.Sprintf("  %s Add   %s Edit Folder   %s Edit Users   %s Toggle   %s Detach   %s Check   %s Apply   %s Refresh\n",
 		styleKey.Render("[a]"),
+		styleKey.Render("[e]"),
 		styleKey.Render("[u]"),
 		styleKey.Render("[t]"),
-		styleKey.Render("[d]"),
+		styleKey.Render("[x]"),
 		styleKey.Render("[v]"),
 		styleKey.Render("[R]"),
 		styleKey.Render("[l]"),
@@ -970,7 +1082,7 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 	// Overlay: remove confirmation.
 	if m.mode == routingConfirmRemove {
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("  Remove mapping %s? %s / %s\n",
+		b.WriteString(fmt.Sprintf("  Detach mapping %s? %s / %s\n",
 			styleBold.Render(m.removeMapping.Channel+":"+m.removeMapping.ChatID),
 			styleKey.Render("[y]es"),
 			styleKey.Render("[n]o"),
@@ -987,6 +1099,12 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 	if m.mode == routingEditUsers {
 		b.WriteString("\n")
 		b.WriteString(m.renderEditUsersOverlay())
+	}
+
+	// Overlay: edit workspace.
+	if m.mode == routingEditWorkspace {
+		b.WriteString("\n")
+		b.WriteString(m.renderEditWorkspaceOverlay())
 	}
 
 	// Overlay: folder browser.
@@ -1064,8 +1182,18 @@ func routingToggleCmd(exec Executor, enable bool) tea.Cmd {
 			action = "enable"
 		}
 		cmd := "HOME=" + exec.HomePath() + " sciclaw routing " + action + " 2>&1"
-		_, _ = exec.ExecShell(10*time.Second, cmd)
-		return actionDoneMsg{output: "Routing " + action + "d"}
+		out, err := exec.ExecShell(10*time.Second, cmd)
+		out = strings.TrimSpace(out)
+		if err != nil {
+			if out == "" {
+				out = err.Error()
+			}
+			return routingActionMsg{action: action, output: out, ok: false}
+		}
+		if out == "" {
+			out = "Routing " + action + "d"
+		}
+		return routingActionMsg{action: action, output: out, ok: true}
 	}
 }
 
@@ -1073,8 +1201,18 @@ func routingRemoveCmd(exec Executor, channel, chatID string) tea.Cmd {
 	return func() tea.Msg {
 		cmd := "HOME=" + exec.HomePath() + " sciclaw routing remove --channel " +
 			shellEscape(channel) + " --chat-id " + shellEscape(chatID) + " 2>&1"
-		_, _ = exec.ExecShell(10*time.Second, cmd)
-		return actionDoneMsg{output: "Removed mapping " + channel + ":" + chatID}
+		out, err := exec.ExecShell(10*time.Second, cmd)
+		out = strings.TrimSpace(out)
+		if err != nil {
+			if out == "" {
+				out = err.Error()
+			}
+			return routingActionMsg{action: "remove", output: out, ok: false}
+		}
+		if out == "" {
+			out = "Removed mapping " + channel + ":" + chatID
+		}
+		return routingActionMsg{action: "remove", output: out, ok: true}
 	}
 }
 
@@ -1096,6 +1234,7 @@ func routingReloadCmd(exec Executor) tea.Cmd {
 
 func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, label string) tea.Cmd {
 	return func() tea.Msg {
+		workspace = expandHomeForExecPath(workspace, exec.HomePath())
 		cmd := fmt.Sprintf("HOME=%s sciclaw routing add --channel %s --chat-id %s --workspace %s --allow %s",
 			exec.HomePath(),
 			shellEscape(channel),
@@ -1107,8 +1246,15 @@ func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, l
 			cmd += " --label " + shellEscape(label)
 		}
 		cmd += " 2>&1"
-		out, _ := exec.ExecShell(10*time.Second, cmd)
-		return actionDoneMsg{output: strings.TrimSpace(out)}
+		out, err := exec.ExecShell(10*time.Second, cmd)
+		out = strings.TrimSpace(out)
+		if err != nil {
+			if out == "" {
+				out = err.Error()
+			}
+			return routingActionMsg{action: "add", output: out, ok: false}
+		}
+		return routingActionMsg{action: "add", output: out, ok: true}
 	}
 }
 
@@ -1120,17 +1266,25 @@ func routingSetUsersCmd(exec Executor, channel, chatID, allowCSV string) tea.Cmd
 			shellEscape(chatID),
 			shellEscape(allowCSV),
 		)
-		out, _ := exec.ExecShell(10*time.Second, cmd)
-		return actionDoneMsg{output: strings.TrimSpace(out)}
+		out, err := exec.ExecShell(10*time.Second, cmd)
+		out = strings.TrimSpace(out)
+		if err != nil {
+			if out == "" {
+				out = err.Error()
+			}
+			return routingActionMsg{action: "set-users", output: out, ok: false}
+		}
+		return routingActionMsg{action: "set-users", output: out, ok: true}
 	}
 }
 
 func fetchDirListCmd(exec Executor, dirPath string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := fmt.Sprintf("ls -1pF %s 2>/dev/null", shellEscape(dirPath))
+		resolvedPath := expandHomeForExecPath(dirPath, exec.HomePath())
+		cmd := fmt.Sprintf("ls -1pF %s 2>/dev/null", shellEscape(resolvedPath))
 		out, err := exec.ExecShell(5*time.Second, cmd)
 		if err != nil {
-			return routingDirListMsg{path: dirPath, err: "Cannot read directory"}
+			return routingDirListMsg{path: resolvedPath, err: "Cannot read directory"}
 		}
 		var dirs []string
 		for _, line := range strings.Split(out, "\n") {
@@ -1142,8 +1296,19 @@ func fetchDirListCmd(exec Executor, dirPath string) tea.Cmd {
 				dirs = append(dirs, strings.TrimSuffix(line, "/"))
 			}
 		}
-		return routingDirListMsg{path: dirPath, dirs: dirs}
+		return routingDirListMsg{path: resolvedPath, dirs: dirs}
 	}
+}
+
+func expandHomeForExecPath(path, home string) string {
+	path = strings.TrimSpace(path)
+	if path == "~" {
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 func fetchDiscordRoomsCmd(exec Executor) tea.Cmd {
@@ -1284,6 +1449,17 @@ func (m RoutingModel) renderEditUsersOverlay() string {
 	lines = append(lines, styleBold.Render(fmt.Sprintf("  Edit allowed users for %s:%s", row.Channel, row.ChatID)))
 	lines = append(lines, fmt.Sprintf("  Allowed senders: %s", m.editUsersInput.View()))
 	lines = append(lines, styleHint.Render("    Comma-separated user IDs. This replaces the current list."))
+	lines = append(lines, styleDim.Render("    Enter to save, Esc to cancel"))
+	return strings.Join(lines, "\n")
+}
+
+func (m RoutingModel) renderEditWorkspaceOverlay() string {
+	row := m.mappings[m.selectedRow]
+	var lines []string
+	lines = append(lines, styleBold.Render(fmt.Sprintf("  Edit folder for %s:%s", row.Channel, row.ChatID)))
+	lines = append(lines, fmt.Sprintf("  Workspace path: %s", m.editWorkspaceInput.View()))
+	lines = append(lines, styleHint.Render("    Enter a new project folder for this room mapping."))
+	lines = append(lines, fmt.Sprintf("    %s to browse folders", styleKey.Render("Ctrl+B")))
 	lines = append(lines, styleDim.Render("    Enter to save, Esc to cancel"))
 	return strings.Join(lines, "\n")
 }

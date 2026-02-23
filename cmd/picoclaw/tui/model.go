@@ -23,8 +23,8 @@ const (
 	tabModels   = 8
 	tabSkills   = 9
 	tabCron     = 10
-	tabRouting   = 11
-	tabSettings  = 12
+	tabRouting  = 11
+	tabSettings = 12
 )
 
 // tabEntry maps a visible tab position to its logical ID and display name.
@@ -302,6 +302,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case routingActionMsg:
+		m.routing.HandleAction(msg)
+		return m, tea.Batch(fetchRoutingStatus(m.exec), fetchRoutingListCmd(m.exec))
+
 	case actionDoneMsg:
 		m.loading = true
 		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
@@ -318,8 +322,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agent.HandleLogsMsg(msg)
 		return m, nil
 
+	case serviceActionMsg:
+		m.agent.HandleServiceAction(msg)
+		m.loading = true
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
+
 	case modelsStatusMsg:
 		m.models.HandleStatus(msg)
+		return m, nil
+
+	case modelsCatalogMsg:
+		m.models.HandleCatalog(msg)
 		return m, nil
 
 	case skillsListMsg:
@@ -447,16 +460,29 @@ func (m Model) View() string {
 }
 
 func (m Model) renderTabBar() string {
-	var tabs []string
-	for i, t := range m.tabs {
-		if i == m.activeTab {
-			tabs = append(tabs, styleTabActive.Render(t.name))
-		} else {
-			tabs = append(tabs, styleTabInactive.Render(t.name))
-		}
+	// Split tabs into two rows to fit narrow terminals.
+	// Row 1: primary workflow tabs, Row 2: admin/config tabs.
+	mid := len(m.tabs) / 2
+	if mid < 1 {
+		mid = len(m.tabs)
 	}
-	row := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-	return styleTabBar.Width(m.width).Render(row)
+
+	renderRow := func(entries []tabEntry, startIdx int) string {
+		var cells []string
+		for i, t := range entries {
+			if startIdx+i == m.activeTab {
+				cells = append(cells, styleTabActive.Render(t.name))
+			} else {
+				cells = append(cells, styleTabInactive.Render(t.name))
+			}
+		}
+		return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	}
+
+	row1 := renderRow(m.tabs[:mid], 0)
+	row2 := renderRow(m.tabs[mid:], mid)
+	both := lipgloss.JoinVertical(lipgloss.Left, row1, row2)
+	return styleTabBar.Width(m.width).Render(both)
 }
 
 func (m Model) renderStatusBar() string {

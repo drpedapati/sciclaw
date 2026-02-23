@@ -1,14 +1,27 @@
 package models
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
 )
+
+const anthropicOAuthBetaHeader = "oauth-2025-04-20"
+
+// DiscoverResult is returned by model discovery.
+type DiscoverResult struct {
+	Provider string   `json:"provider"`
+	Source   string   `json:"source"`
+	Models   []string `json:"models"`
+	Warning  string   `json:"warning,omitempty"`
+}
 
 // ProviderInfo describes a configured provider and its auth status.
 type ProviderInfo struct {
@@ -145,6 +158,7 @@ func PrintList(cfg *config.Config) {
 // SetModel validates and persists a new default model.
 func SetModel(cfg *config.Config, configPath string, newModel string) error {
 	oldModel := cfg.Agents.Defaults.Model
+	oldProvider := cfg.Agents.Defaults.Provider
 	provider := ResolveProvider(newModel, cfg)
 
 	if provider == "unknown" {
@@ -153,6 +167,9 @@ func SetModel(cfg *config.Config, configPath string, newModel string) error {
 	}
 
 	cfg.Agents.Defaults.Model = newModel
+	if provider != "unknown" {
+		cfg.Agents.Defaults.Provider = provider
+	}
 
 	if err := config.SaveConfig(configPath, cfg); err != nil {
 		return fmt.Errorf("saving config: %w", err)
@@ -160,6 +177,13 @@ func SetModel(cfg *config.Config, configPath string, newModel string) error {
 
 	fmt.Printf("Model changed: %s → %s\n", oldModel, newModel)
 	fmt.Printf("Provider: %s\n", provider)
+	if provider != "unknown" && oldProvider != cfg.Agents.Defaults.Provider {
+		old := oldProvider
+		if strings.TrimSpace(old) == "" {
+			old = "(auto)"
+		}
+		fmt.Printf("Pinned provider: %s → %s\n", old, cfg.Agents.Defaults.Provider)
+	}
 	return nil
 }
 
@@ -247,4 +271,206 @@ func resolveAuthMethod(provider string, cfg *config.Config) string {
 	}
 
 	return "not configured"
+}
+
+// Discover returns selectable model IDs for the active provider.
+// It attempts provider endpoint discovery first, then falls back to known built-ins.
+func Discover(cfg *config.Config) DiscoverResult {
+	provider := resolveDiscoveryProvider(cfg)
+	result := DiscoverResult{
+		Provider: provider,
+		Source:   "builtin",
+		Models:   knownModelsForProvider(provider),
+	}
+
+	if provider == "anthropic" {
+		models, err := discoverAnthropicModels(cfg)
+		if err == nil && len(models) > 0 {
+			result.Source = "endpoint"
+			result.Models = models
+		}
+		if err != nil {
+			result.Warning = err.Error()
+		}
+	}
+
+	// Also include models from other configured providers so users can switch
+	// providers from a single selector without having to manually type IDs.
+	secondary := discoverSecondaryProviders(cfg, provider)
+	for _, name := range secondary {
+		result.Models = append(result.Models, knownModelsForProvider(name)...)
+	}
+	result.Models = dedupeNonEmpty(result.Models)
+	if len(secondary) > 0 && result.Source == "endpoint" {
+		result.Source = "endpoint+builtin"
+	}
+
+	// If provider-specific builtins are empty, include known models from configured providers.
+	if len(result.Models) == 0 {
+		for _, p := range ListProviders(cfg) {
+			result.Models = append(result.Models, p.Models...)
+		}
+		result.Models = dedupeNonEmpty(result.Models)
+	}
+
+	if len(result.Models) == 0 {
+		current := strings.TrimSpace(cfg.Agents.Defaults.Model)
+		if current != "" {
+			result.Models = []string{current}
+		}
+	}
+	return result
+}
+
+func PrintDiscover(result DiscoverResult) {
+	fmt.Printf("Provider: %s\n", result.Provider)
+	fmt.Printf("Source:   %s\n", result.Source)
+	if strings.TrimSpace(result.Warning) != "" {
+		fmt.Printf("Warning:  %s\n", result.Warning)
+	}
+	fmt.Println("Models:")
+	for _, m := range result.Models {
+		fmt.Printf("- %s\n", m)
+	}
+}
+
+func resolveDiscoveryProvider(cfg *config.Config) string {
+	byModel := strings.ToLower(strings.TrimSpace(ResolveProvider(cfg.Agents.Defaults.Model, cfg)))
+	if byModel != "" && byModel != "unknown" {
+		return byModel
+	}
+
+	pinned := strings.ToLower(strings.TrimSpace(cfg.Agents.Defaults.Provider))
+	if pinned != "" && pinned != "unknown" {
+		return pinned
+	}
+
+	if cred, err := auth.GetCredential("anthropic"); err == nil && cred != nil && strings.TrimSpace(cred.AccessToken) != "" {
+		return "anthropic"
+	}
+	if cred, err := auth.GetCredential("openai"); err == nil && cred != nil && strings.TrimSpace(cred.AccessToken) != "" {
+		return "openai"
+	}
+	return "unknown"
+}
+
+func discoverSecondaryProviders(cfg *config.Config, primary string) []string {
+	candidates := []string{
+		"anthropic",
+		"openai",
+		"openrouter",
+		"gemini",
+		"groq",
+		"deepseek",
+		"zhipu",
+	}
+	var out []string
+	for _, name := range candidates {
+		if name == primary {
+			continue
+		}
+		if resolveAuthMethod(name, cfg) == "not configured" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+func knownModelsForProvider(provider string) []string {
+	switch provider {
+	case "anthropic":
+		return []string{"claude-opus-4-6", "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"}
+	case "openai":
+		return []string{"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2"}
+	case "gemini":
+		return []string{"gemini-2.5-pro", "gemini-2.5-flash"}
+	case "openrouter":
+		return []string{"openrouter/<model>"}
+	case "deepseek":
+		return []string{"deepseek-chat", "deepseek-reasoner"}
+	case "zhipu":
+		return []string{"glm-4.7"}
+	case "groq":
+		return []string{"groq/llama-3.3-70b"}
+	default:
+		return nil
+	}
+}
+
+func discoverAnthropicModels(cfg *config.Config) ([]string, error) {
+	token := ""
+	if cred, err := auth.GetCredential("anthropic"); err == nil && cred != nil {
+		token = strings.TrimSpace(cred.AccessToken)
+	}
+	if token == "" {
+		token = strings.TrimSpace(cfg.Providers.Anthropic.APIKey)
+	}
+	if token == "" {
+		return nil, fmt.Errorf("anthropic credentials not configured")
+	}
+
+	baseURL := strings.TrimSpace(cfg.Providers.Anthropic.APIBase)
+	if baseURL == "" {
+		baseURL = "https://api.anthropic.com"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/v1")
+
+	opts := []option.RequestOption{
+		option.WithAuthToken(token),
+		option.WithBaseURL(baseURL),
+	}
+	if isAnthropicOAuthToken(token) {
+		opts = append(opts, option.WithHeader("anthropic-beta", anthropicOAuthBetaHeader))
+	}
+
+	client := anthropic.NewClient(opts...)
+	params := anthropic.ModelListParams{
+		Limit: anthropic.Int(1000),
+	}
+	if isAnthropicOAuthToken(token) {
+		params.Betas = []anthropic.AnthropicBeta{
+			anthropic.AnthropicBeta(anthropicOAuthBetaHeader),
+		}
+	}
+
+	pager := client.Models.ListAutoPaging(context.Background(), params)
+	var models []string
+	for pager.Next() {
+		modelID := strings.TrimSpace(pager.Current().ID)
+		if modelID != "" {
+			models = append(models, modelID)
+		}
+	}
+	if err := pager.Err(); err != nil {
+		return nil, err
+	}
+
+	models = dedupeNonEmpty(models)
+	if len(models) == 0 {
+		return nil, fmt.Errorf("anthropic endpoint returned zero models")
+	}
+	return models, nil
+}
+
+func isAnthropicOAuthToken(token string) bool {
+	return strings.HasPrefix(strings.TrimSpace(token), "sk-ant-oat")
+}
+
+func dedupeNonEmpty(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
 }

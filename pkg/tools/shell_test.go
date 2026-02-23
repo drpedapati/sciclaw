@@ -471,3 +471,22 @@ func TestShellTool_ExecuteDoesNotInjectPandocDefaultsForNonDocx(t *testing.T) {
 		t.Fatalf("expected no --defaults injection for non-docx command, got %q", strings.TrimSpace(result.ForLLM))
 	}
 }
+
+func TestMergedExecPATHIncludesHomebrewAndSystemBins(t *testing.T) {
+	got := mergedExecPATH("/usr/bin:/bin")
+	for _, want := range []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("mergedExecPATH missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestMergePathEntriesDedupesAndKeepsBaseOrder(t *testing.T) {
+	got := mergePathEntries(
+		[]string{"/alpha/bin", "/beta/bin", "/alpha/bin"},
+		[]string{"/beta/bin", "/gamma/bin"},
+	)
+	if got != "/alpha/bin:/beta/bin:/gamma/bin" {
+		t.Fatalf("unexpected merged path: %q", got)
+	}
+}
