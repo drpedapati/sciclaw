@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -134,7 +135,7 @@ func TestEditWorkspace_BrowseRoundTrip(t *testing.T) {
 	}
 	m.selectedRow = 0
 
-	edited, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}, nil)
+	edited, _ := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")}, nil)
 	if edited.mode != routingEditWorkspace {
 		t.Fatalf("mode = %v, want %v", edited.mode, routingEditWorkspace)
 	}
@@ -250,5 +251,148 @@ func TestRoutingEditUsers_PickerSavesSelection(t *testing.T) {
 	_ = cmd().(routingActionMsg)
 	if !strings.Contains(execStub.lastShell, "--allow '111,222'") {
 		t.Fatalf("expected set-users allow list built from picker, cmd=%q", execStub.lastShell)
+	}
+}
+
+func TestRoutingExplain_UsesFirstAllowedSenderAndShowsDetails(t *testing.T) {
+	execStub := &routingTestExec{
+		home: "/Users/tester",
+		shellOut: "Routing explain:\n" +
+			"  event: route_allowed\n" +
+			"  allowed: true\n" +
+			"  workspace: /tmp/project-a\n" +
+			"  session_key: discord:123@abc123\n" +
+			"  reason: matched mapping\n",
+	}
+	m := NewRoutingModel(execStub)
+	m.mappings = []routingRow{
+		{Channel: "discord", ChatID: "123", Workspace: "/tmp/project-a", AllowedSenders: "111|alice,222|bob"},
+	}
+	m.selectedRow = 0
+	m.detailVP.Width = 100
+	m.detailVP.Height = 40
+
+	next, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}, nil)
+	if cmd == nil {
+		t.Fatal("expected explain command")
+	}
+	msg := cmd().(routingActionMsg)
+	if msg.action != "explain" || !msg.ok {
+		t.Fatalf("unexpected explain action msg: %#v", msg)
+	}
+	if !strings.Contains(execStub.lastShell, "sciclaw routing explain") {
+		t.Fatalf("expected explain command, got %q", execStub.lastShell)
+	}
+	if !strings.Contains(execStub.lastShell, "--sender '111'") {
+		t.Fatalf("expected first allowed sender id in explain command, got %q", execStub.lastShell)
+	}
+
+	next.HandleAction(msg)
+	detail := next.detailVP.View()
+	for _, want := range []string{"Explain output", "route_allowed", "true", "discord:123@abc123", "matched mapping"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("detail view missing %q:\n%s", want, detail)
+		}
+	}
+}
+
+func TestRoutingExplain_RequiresAllowedSender(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester"}
+	m := NewRoutingModel(execStub)
+	m.mappings = []routingRow{
+		{Channel: "discord", ChatID: "123", Workspace: "/tmp/project-a", AllowedSenders: ""},
+	}
+	m.selectedRow = 0
+
+	next, cmd := m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}, nil)
+	if cmd != nil {
+		t.Fatal("expected no explain command when sender list is empty")
+	}
+	if !strings.Contains(next.flashMsg, "Add at least one allowed sender") {
+		t.Fatalf("unexpected flash message: %q", next.flashMsg)
+	}
+}
+
+func TestRoutingListRows_ShowLabelChannelAndTruncatedChatID(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester"}
+	m := NewRoutingModel(execStub)
+	longChatID := "12345678901234567890"
+	m.mappings = []routingRow{
+		{Channel: "discord", ChatID: longChatID, Workspace: "/tmp/project-a", Label: "project-a"},
+	}
+	m.selectedRow = 0
+	m.rebuildListContent()
+
+	view := m.listVP.View()
+	if !strings.Contains(view, "project-a") {
+		t.Fatalf("list row missing label: %q", view)
+	}
+	if !strings.Contains(view, "discord") {
+		t.Fatalf("list row missing channel: %q", view)
+	}
+	if !strings.Contains(view, truncateMiddle(longChatID, 16)) {
+		t.Fatalf("list row missing truncated chat id: %q", view)
+	}
+}
+
+func TestRoutingListScrollSync_KeepsSelectionVisible(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester"}
+	m := NewRoutingModel(execStub)
+	m.listVP.Height = 3
+	for i := 0; i < 10; i++ {
+		m.mappings = append(m.mappings, routingRow{
+			Channel:        "discord",
+			ChatID:         "room-" + strconv.Itoa(i),
+			Workspace:      "/tmp/project-" + strconv.Itoa(i),
+			AllowedSenders: "111",
+			Label:          "project-" + strconv.Itoa(i),
+		})
+	}
+	m.rebuildListContent()
+
+	var cmd tea.Cmd
+	for i := 0; i < 6; i++ {
+		m, cmd = m.updateNormal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}, nil)
+		if cmd != nil {
+			t.Fatalf("did not expect command while navigating list, got %#v", cmd)
+		}
+	}
+	if m.listVP.YOffset == 0 {
+		t.Fatalf("expected list to scroll, y-offset=%d", m.listVP.YOffset)
+	}
+	if !strings.Contains(m.listVP.View(), "▸") {
+		t.Fatalf("expected selection indicator in visible list:\n%s", m.listVP.View())
+	}
+}
+
+func TestRoutingEmptyState_ShowsOnboardingCommandBlock(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester"}
+	m := NewRoutingModel(execStub)
+	m.loaded = true
+	m.status.Enabled = false
+
+	view := m.View(nil, 100)
+	for _, want := range []string{"No routing mappings yet.", "Quick start:", "sciclaw routing add ...", "sciclaw routing enable"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("empty-state view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestRoutingStatusPanel_DisabledHintAndUnroutedWording(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester"}
+	m := NewRoutingModel(execStub)
+	m.status = routingStatusInfo{
+		Enabled:          false,
+		UnmappedBehavior: "block",
+		MappingCount:     2,
+	}
+
+	panel := m.renderStatusPanel(100)
+	if !strings.Contains(panel, "Unrouted rooms:") {
+		t.Fatalf("status panel should use unrouted wording:\n%s", panel)
+	}
+	if !strings.Contains(panel, "sciclaw routing enable") {
+		t.Fatalf("status panel should include enable helper:\n%s", panel)
 	}
 }

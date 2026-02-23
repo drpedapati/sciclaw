@@ -40,12 +40,13 @@ const (
 )
 
 type settingRow struct {
-	key     string
-	label   string
-	value   string
-	kind    settingKind
-	options []string // valid values for enums
-	section string   // section header (set on first row of each section)
+	key             string
+	label           string
+	value           string
+	kind            settingKind
+	options         []string // valid values for enums
+	section         string   // section header (set on first row of each section)
+	restartRequired bool
 }
 
 // SettingsModel handles the Settings tab.
@@ -56,12 +57,14 @@ type SettingsModel struct {
 	selectedRow int
 
 	// Editable config values
-	discordEnabled   bool
-	telegramEnabled  bool
-	routingEnabled   bool
-	unmappedBehavior string
-	defaultModel     string
-	reasoningEffort  string
+	discordEnabled     bool
+	telegramEnabled    bool
+	routingEnabled     bool
+	unmappedBehavior   string
+	defaultModel       string
+	reasoningEffort    string
+	modelNeedsRestart  bool
+	effortNeedsRestart bool
 
 	vp     viewport.Model
 	width  int
@@ -140,17 +143,25 @@ func (m SettingsModel) buildDisplayRows(snap *VMSnapshot) []settingRow {
 		effortDisplay = "default"
 	}
 
+	modelRestartRequired := m.modelNeedsRestart
+	effortRestartRequired := m.effortNeedsRestart
+	if snap != nil && !snap.ServiceRunning {
+		modelRestartRequired = false
+		effortRestartRequired = false
+	}
+
 	rows := []settingRow{
 		{key: "discord_enabled", label: "Discord", value: boolYesNo(m.discordEnabled), kind: settingBool, section: "Channels"},
 		{key: "telegram_enabled", label: "Telegram", value: boolYesNo(m.telegramEnabled), kind: settingBool},
 		{key: "routing_enabled", label: "Routing", value: boolYesNo(m.routingEnabled), kind: settingBool, section: "Routing"},
 		{key: "unmapped_behavior", label: "Unmapped behavior", value: m.unmappedBehavior, kind: settingEnum, options: []string{"block", "default"}},
-		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent"},
-		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: []string{"", "low", "medium", "high"}},
+		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent", restartRequired: modelRestartRequired},
+		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: []string{"", "low", "medium", "high"}, restartRequired: effortRestartRequired},
 	}
 	if snap != nil {
 		rows = append(rows,
-			settingRow{key: "svc_installed", label: "Installed", value: boolYesNo(snap.ServiceInstalled), kind: settingReadonly, section: "Service"},
+			settingRow{key: "svc_autostart", label: "Auto-start on boot", value: boolYesNo(snap.ServiceAutoStart), kind: settingBool, section: "Service"},
+			settingRow{key: "svc_installed", label: "Installed", value: boolYesNo(snap.ServiceInstalled), kind: settingReadonly},
 			settingRow{key: "svc_running", label: "Running", value: boolYesNo(snap.ServiceRunning), kind: settingReadonly},
 			settingRow{key: "workspace", label: "Workspace", value: snap.WorkspacePath, kind: settingReadonly, section: "General"},
 		)
@@ -221,7 +232,7 @@ func (m SettingsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SettingsModel, 
 			row := rows[m.selectedRow]
 			switch row.kind {
 			case settingBool:
-				return m, m.requestBoolToggle(row.key)
+				return m, m.requestBoolToggle(row.key, snap)
 			case settingEnum:
 				return m, m.cycleEnum(row.key, row.value, row.options)
 			case settingText:
@@ -232,6 +243,10 @@ func (m SettingsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SettingsModel, 
 				return m, nil
 			}
 		}
+	case "s":
+		return m, m.requestServiceAction("start")
+	case "t":
+		return m, m.requestServiceAction("stop")
 	case "l":
 		m.loaded = false
 		return m, fetchSettingsData(m.exec)
@@ -239,7 +254,7 @@ func (m SettingsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (SettingsModel, 
 	return m, nil
 }
 
-func (m *SettingsModel) requestBoolToggle(key string) tea.Cmd {
+func (m *SettingsModel) requestBoolToggle(key string, snap *VMSnapshot) tea.Cmd {
 	switch key {
 	case "discord_enabled":
 		target := !m.discordEnabled
@@ -264,8 +279,24 @@ func (m *SettingsModel) requestBoolToggle(key string) tea.Cmd {
 	case "routing_enabled":
 		target := !m.routingEnabled
 		return m.applyBoolToggle(key, target)
+	case "svc_autostart":
+		if snap == nil {
+			return nil
+		}
+		target := !snap.ServiceAutoStart
+		m.setFlash("Auto-start on boot", target)
+		if target {
+			return serviceAction(m.exec, "install")
+		}
+		return serviceAction(m.exec, "uninstall")
 	}
 	return nil
+}
+
+func (m *SettingsModel) requestServiceAction(action string) tea.Cmd {
+	m.flashMsg = styleOK.Render("✓") + " Service " + action + " requested"
+	m.flashUntil = time.Now().Add(3 * time.Second)
+	return serviceAction(m.exec, action)
 }
 
 func (m *SettingsModel) applyBoolToggle(key string, enabled bool) tea.Cmd {
@@ -317,6 +348,7 @@ func (m *SettingsModel) cycleEnum(key, current string, options []string) tea.Cmd
 		return settingsSetConfig(m.exec, []string{"routing", "unmapped_behavior"}, next)
 	case "reasoning_effort":
 		m.reasoningEffort = next
+		m.effortNeedsRestart = true
 		display := next
 		if display == "" {
 			display = "default"
@@ -331,12 +363,28 @@ func (m *SettingsModel) cycleEnum(key, current string, options []string) tea.Cmd
 func (m *SettingsModel) applyTextEdit(value string) tea.Cmd {
 	switch m.editKey {
 	case "default_model":
+		if value == m.defaultModel {
+			return nil
+		}
 		m.defaultModel = value
+		m.modelNeedsRestart = true
 		m.flashMsg = styleOK.Render("✓") + " Model: " + value
 		m.flashUntil = time.Now().Add(3 * time.Second)
 		return settingsSetConfig(m.exec, []string{"agents", "defaults", "model"}, value)
 	}
 	return nil
+}
+
+// HandleServiceAction clears restart-pending hints after successful service lifecycle actions.
+func (m *SettingsModel) HandleServiceAction(msg serviceActionMsg) {
+	if !msg.ok {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(msg.action)) {
+	case "restart", "start", "install", "refresh":
+		m.modelNeedsRestart = false
+		m.effortNeedsRestart = false
+	}
 }
 
 func (m *SettingsModel) setFlash(name string, enabled bool) {
@@ -407,6 +455,10 @@ func (m SettingsModel) View(snap *VMSnapshot, width int) string {
 			}
 		}
 
+		if row.restartRequired {
+			valStr += " " + styleWarn.Render("(restart to apply)")
+		}
+
 		labelStyle := lipgloss.NewStyle().Foreground(colorMuted).Width(20)
 		line := fmt.Sprintf("  %s%s  %s", indicator, labelStyle.Render(row.label), valStr)
 
@@ -432,6 +484,10 @@ func (m SettingsModel) View(snap *VMSnapshot, width int) string {
 	b.WriteString(fmt.Sprintf("  %s Toggle / Edit   %s Refresh\n",
 		styleKey.Render("[Enter]"),
 		styleKey.Render("[l]"),
+	))
+	b.WriteString(fmt.Sprintf("  %s Start service   %s Stop service\n",
+		styleKey.Render("[s]"),
+		styleKey.Render("[t]"),
 	))
 
 	// Text editing overlay
@@ -493,6 +549,17 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 		if routing, ok := cfg["routing"].(map[string]interface{}); ok {
 			msg.routingEnabled, _ = routing["enabled"].(bool)
 			msg.unmappedBehavior, _ = routing["unmapped_behavior"].(string)
+		}
+
+		// Prefer live routing status from CLI when available so Settings reflects
+		// the currently active routing mode/source of truth.
+		statusOut, statusErr := exec.ExecShell(8*time.Second, "HOME="+exec.HomePath()+" sciclaw routing status 2>&1")
+		if statusErr == nil && strings.TrimSpace(statusOut) != "" {
+			status := parseRoutingStatus(statusOut)
+			msg.routingEnabled = status.Enabled
+			if strings.TrimSpace(status.UnmappedBehavior) != "" {
+				msg.unmappedBehavior = status.UnmappedBehavior
+			}
 		}
 		if msg.unmappedBehavior == "" {
 			msg.unmappedBehavior = "block"

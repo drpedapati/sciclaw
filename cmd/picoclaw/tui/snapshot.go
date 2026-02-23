@@ -41,6 +41,7 @@ type VMSnapshot struct {
 	// Service state
 	ServiceInstalled bool
 	ServiceRunning   bool
+	ServiceAutoStart bool
 
 	// Mount state (VM-only)
 	Mounts []MountInfo
@@ -188,12 +189,8 @@ func collectVMSnapshot(exec Executor) VMSnapshot {
 	snap.Discord = channelState(cfg.Channels.Discord)
 	snap.Telegram = channelState(cfg.Channels.Telegram)
 
-	// Service state (parallel).
-	var wg2 sync.WaitGroup
-	wg2.Add(2)
-	go func() { defer wg2.Done(); snap.ServiceInstalled = exec.ServiceInstalled() }()
-	go func() { defer wg2.Done(); snap.ServiceRunning = exec.ServiceActive() }()
-	wg2.Wait()
+	// Service state from a single status snapshot.
+	snap.ServiceInstalled, snap.ServiceRunning, snap.ServiceAutoStart = collectServiceState(exec)
 
 	return snap
 }
@@ -245,12 +242,8 @@ func collectLocalSnapshot(exec Executor) VMSnapshot {
 	snap.Discord = channelState(cfg.Channels.Discord)
 	snap.Telegram = channelState(cfg.Channels.Telegram)
 
-	// Service state (parallel).
-	var wg2 sync.WaitGroup
-	wg2.Add(2)
-	go func() { defer wg2.Done(); snap.ServiceInstalled = exec.ServiceInstalled() }()
-	go func() { defer wg2.Done(); snap.ServiceRunning = exec.ServiceActive() }()
-	wg2.Wait()
+	// Service state from a single status snapshot.
+	snap.ServiceInstalled, snap.ServiceRunning, snap.ServiceAutoStart = collectServiceState(exec)
 
 	return snap
 }
@@ -263,6 +256,41 @@ func providerState(prov providerJSON, cred authCredJSON) string {
 		return "ready"
 	}
 	return "missing"
+}
+
+func collectServiceState(exec Executor) (installed, running, autoStart bool) {
+	cmd := "HOME=" + exec.HomePath() + " sciclaw service status 2>&1"
+	out, err := exec.ExecShell(8*time.Second, cmd)
+	if err != nil {
+		installed = exec.ServiceInstalled()
+		running = exec.ServiceActive()
+		autoStart = installed
+		return installed, running, autoStart
+	}
+
+	parsedInstalled, hasInstalled := parseServiceStatusFlag(out, "installed")
+	parsedRunning, hasRunning := parseServiceStatusFlag(out, "running")
+	parsedEnabled, hasEnabled := parseServiceStatusFlag(out, "enabled")
+
+	if hasInstalled {
+		installed = parsedInstalled
+	} else {
+		installed = exec.ServiceInstalled()
+	}
+
+	if hasRunning {
+		running = parsedRunning
+	} else {
+		running = exec.ServiceActive()
+	}
+
+	if hasEnabled {
+		autoStart = parsedEnabled
+	} else {
+		autoStart = installed
+	}
+
+	return installed, running, autoStart
 }
 
 func channelState(ch channelJSON) ChannelSnapshot {

@@ -89,8 +89,8 @@ func buildTabs(mode Mode) []tabEntry {
 		tabs = append(tabs, tabEntry{"Files", tabFiles})
 	}
 	tabs = append(tabs,
-		tabEntry{"Settings", tabSettings},
 		tabEntry{"Gateway", tabAgent},
+		tabEntry{"Settings", tabSettings},
 		tabEntry{"Login", tabLogin},
 		tabEntry{"Health", tabDoctor},
 	)
@@ -306,7 +306,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case routingActionMsg:
 		m.routing.HandleAction(msg)
-		return m, tea.Batch(fetchRoutingStatus(m.exec), fetchRoutingListCmd(m.exec))
+		m.loading = true
+		return m, tea.Batch(
+			m.spinner.Tick,
+			fetchSnapshotCmd(m.exec),
+			fetchSettingsData(m.exec),
+			fetchRoutingStatus(m.exec),
+			fetchRoutingListCmd(m.exec),
+		)
 
 	case actionDoneMsg:
 		if trimmed := strings.TrimSpace(msg.output); trimmed != "" {
@@ -314,7 +321,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastActionAt = time.Now()
 		}
 		m.loading = true
-		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec), fetchSettingsData(m.exec))
 
 	case chatResponseMsg:
 		m.chat.HandleResponse(msg)
@@ -330,6 +337,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case serviceActionMsg:
 		m.agent.HandleServiceAction(msg)
+		m.settings.HandleServiceAction(msg)
 		m.loading = true
 		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
 
@@ -393,9 +401,9 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Header
-	title := "  sciClaw Control Center"
+	title := "🦞🧪 sciClaw Control Center"
 	if m.exec.Mode() == ModeVM {
-		title = "  sciClaw VM Control Center"
+		title = "🦞🧪 sciClaw VM Control Center"
 	}
 	header := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render(title)
 	b.WriteString(header)
