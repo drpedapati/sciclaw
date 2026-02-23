@@ -361,6 +361,12 @@ func (s *VMSnapshot) SuggestedStep() (message, detail string, tabIdx int) {
 	}
 
 	// Mode-neutral suggestions from here on.
+	if !s.ConfigExists {
+		return "Create configuration file", "Your config file is missing. Run the setup wizard or go to Settings.", tabSettings
+	}
+	if !s.WorkspaceExists && s.WorkspacePath != "" {
+		return "Create workspace folder", "The workspace directory does not exist yet.", tabSettings
+	}
 	if s.OpenAI != "ready" && s.Anthropic != "ready" {
 		return "Log in to an AI provider", "You need credentials for OpenAI or Anthropic to use the agent.", tabLogin
 	}

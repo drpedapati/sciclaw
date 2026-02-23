@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -81,6 +82,44 @@ func (e *settingsTestExec) ServiceInstalled() bool { return e.serviceInstalled }
 func (e *settingsTestExec) ServiceActive() bool { return e.serviceActive }
 
 func (e *settingsTestExec) InteractiveProcess(_ ...string) *exec.Cmd { return exec.Command("true") }
+
+func TestFetchSettingsData_BootstrapsOnlyForMissingConfig(t *testing.T) {
+	t.Run("missing config bootstraps defaults", func(t *testing.T) {
+		execStub := &settingsTestExec{readErr: os.ErrNotExist}
+		msg := fetchSettingsData(execStub)().(settingsDataMsg)
+		if msg.err != nil {
+			t.Fatalf("expected nil error for missing config bootstrap, got %v", msg.err)
+		}
+		if execStub.writtenRaw == "" {
+			t.Fatalf("expected bootstrap write when config is missing")
+		}
+		if !strings.Contains(execStub.writtenRaw, `"workspace": "~/.picoclaw/workspace"`) {
+			t.Fatalf("expected default workspace in bootstrap config, got %q", execStub.writtenRaw)
+		}
+	})
+
+	t.Run("malformed config returns error and does not rewrite", func(t *testing.T) {
+		execStub := &settingsTestExec{configRaw: "{not-json"}
+		msg := fetchSettingsData(execStub)().(settingsDataMsg)
+		if msg.err == nil {
+			t.Fatalf("expected parse error for malformed config")
+		}
+		if execStub.writtenRaw != "" {
+			t.Fatalf("expected no config rewrite for malformed config, wrote %q", execStub.writtenRaw)
+		}
+	})
+
+	t.Run("non-notfound read errors return error and do not rewrite", func(t *testing.T) {
+		execStub := &settingsTestExec{readErr: errors.New("permission denied")}
+		msg := fetchSettingsData(execStub)().(settingsDataMsg)
+		if msg.err == nil {
+			t.Fatalf("expected read error")
+		}
+		if execStub.writtenRaw != "" {
+			t.Fatalf("expected no config rewrite on read error, wrote %q", execStub.writtenRaw)
+		}
+	})
+}
 
 func TestSettingsToggleChannel_ReadFailureDoesNotWrite(t *testing.T) {
 	execStub := &settingsTestExec{readErr: os.ErrNotExist}
