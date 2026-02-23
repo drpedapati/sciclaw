@@ -275,7 +275,7 @@ func TestFilesystemTool_ReadFile_RejectsSymlinkEscape(t *testing.T) {
 	if !result.IsError {
 		t.Fatalf("expected symlink escape to be blocked")
 	}
-	if !strings.Contains(result.ForLLM, "symlink resolves outside") {
+	if !strings.Contains(result.ForLLM, "outside allowed roots") {
 		t.Fatalf("expected symlink escape error, got: %s", result.ForLLM)
 	}
 }

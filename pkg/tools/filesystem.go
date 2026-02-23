@@ -62,7 +62,7 @@ func validatePathWithPolicy(path, workspace string, restrict bool, mode AccessMo
 
 	root := rootForPath(absPath, roots, false)
 	if root == nil {
-		return "", fmt.Errorf("access denied: path is outside allowed roots")
+		return "", outsideAllowedRootsError(absPath, roots)
 	}
 	if root.readOnly && mode == AccessWrite {
 		return "", fmt.Errorf("access denied: shared workspace is read-only")
@@ -71,7 +71,7 @@ func validatePathWithPolicy(path, workspace string, restrict bool, mode AccessMo
 	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
 		resolvedRoot := rootForPath(resolved, roots, true)
 		if resolvedRoot == nil {
-			return "", fmt.Errorf("access denied: symlink resolves outside allowed roots")
+			return "", outsideAllowedRootsError(resolved, roots)
 		}
 		if resolvedRoot.readOnly && mode == AccessWrite {
 			return "", fmt.Errorf("access denied: shared workspace is read-only")
@@ -80,7 +80,7 @@ func validatePathWithPolicy(path, workspace string, restrict bool, mode AccessMo
 		if parentResolved, err := resolveExistingAncestor(filepath.Dir(absPath)); err == nil {
 			resolvedRoot := rootForPath(parentResolved, roots, true)
 			if resolvedRoot == nil {
-				return "", fmt.Errorf("access denied: symlink resolves outside allowed roots")
+				return "", outsideAllowedRootsError(parentResolved, roots)
 			}
 			if resolvedRoot.readOnly && mode == AccessWrite {
 				return "", fmt.Errorf("access denied: shared workspace is read-only")
@@ -93,6 +93,22 @@ func validatePathWithPolicy(path, workspace string, restrict bool, mode AccessMo
 	}
 
 	return absPath, nil
+}
+
+func outsideAllowedRootsError(resolvedPath string, roots []allowedRoot) error {
+	labels := make([]string, 0, len(roots))
+	for _, root := range roots {
+		label := root.abs
+		if root.readOnly {
+			label += " (read-only)"
+		}
+		labels = append(labels, label)
+	}
+	return fmt.Errorf(
+		"access denied: path is outside allowed roots (path=%s; allowed=%s). Use a routed workspace path, copy/symlink files into that workspace, or ask an admin to add this path to allowed roots",
+		resolvedPath,
+		strings.Join(labels, ", "),
+	)
 }
 
 func makeAllowedRoot(path string, readOnly bool) allowedRoot {
