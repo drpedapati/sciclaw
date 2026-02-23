@@ -148,9 +148,12 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	for k, v := range t.extraEnv {
 		envOverrides[k] = v
 	}
-	if len(envOverrides) > 0 {
-		cmd.Env = mergeEnv(os.Environ(), envOverrides)
+	pathBase := envOverrides["PATH"]
+	if strings.TrimSpace(pathBase) == "" {
+		pathBase = os.Getenv("PATH")
 	}
+	envOverrides["PATH"] = mergedExecPATH(pathBase)
+	cmd.Env = mergeEnv(os.Environ(), envOverrides)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -222,6 +225,60 @@ func mergeEnv(base []string, overrides map[string]string) []string {
 		out = append(out, fmt.Sprintf("%s=%s", k, v))
 	}
 	return out
+}
+
+func mergedExecPATH(current string) string {
+	entries := splitAndCleanPath(current)
+	home, _ := os.UserHomeDir()
+	extras := []string{
+		filepath.Join(home, ".local", "bin"),
+		"/opt/homebrew/bin",
+		"/opt/homebrew/sbin",
+		"/usr/local/bin",
+		"/usr/local/sbin",
+		"/usr/bin",
+		"/bin",
+		"/usr/sbin",
+		"/sbin",
+	}
+	return mergePathEntries(entries, extras)
+}
+
+func splitAndCleanPath(pathValue string) []string {
+	var out []string
+	for _, p := range strings.Split(pathValue, string(os.PathListSeparator)) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func mergePathEntries(base []string, extras []string) string {
+	seen := map[string]struct{}{}
+	var ordered []string
+	appendIfNew := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, exists := seen[path]; exists {
+			return
+		}
+		seen[path] = struct{}{}
+		ordered = append(ordered, path)
+	}
+
+	for _, p := range base {
+		appendIfNew(p)
+	}
+	for _, p := range extras {
+		appendIfNew(p)
+	}
+
+	return strings.Join(ordered, string(os.PathListSeparator))
 }
 
 func (t *ExecTool) commandWithPandocDefaults(command string) (string, error) {
