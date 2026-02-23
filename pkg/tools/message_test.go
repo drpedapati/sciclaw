@@ -272,7 +272,7 @@ func TestMessageTool_Execute_AttachmentOutsideWorkspaceBlocked(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected error for outside-workspace attachment")
 	}
-	if !strings.Contains(result.ForLLM, "outside the workspace") {
+	if !strings.Contains(result.ForLLM, "outside allowed roots") {
 		t.Fatalf("expected workspace denial, got %q", result.ForLLM)
 	}
 }

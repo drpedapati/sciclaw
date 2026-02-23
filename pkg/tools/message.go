@@ -13,12 +13,14 @@ import (
 type SendCallback func(channel, chatID, content string, attachments []bus.OutboundAttachment) error
 
 type MessageTool struct {
-	sendCallback   SendCallback
-	defaultChannel string
-	defaultChatID  string
-	workspace      string
-	restrict       bool
-	sentInRound    bool // Tracks whether a message was sent in the current processing round
+	sendCallback            SendCallback
+	defaultChannel          string
+	defaultChatID           string
+	workspace               string
+	restrict                bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
+	sentInRound             bool // Tracks whether a message was sent in the current processing round
 }
 
 func NewMessageTool(workspace string, restrict bool) *MessageTool {
@@ -26,6 +28,11 @@ func NewMessageTool(workspace string, restrict bool) *MessageTool {
 		workspace: workspace,
 		restrict:  restrict,
 	}
+}
+
+func (t *MessageTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *MessageTool) Name() string {
@@ -177,7 +184,7 @@ func (t *MessageTool) parseAttachments(args map[string]interface{}) ([]bus.Outbo
 			return nil, fmt.Errorf("attachments[%d].path must be a non-empty string", i)
 		}
 
-		resolvedPath, err := validatePath(pathStr, t.workspace, t.restrict)
+		resolvedPath, err := validatePathWithPolicy(pathStr, t.workspace, t.restrict, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 		if err != nil {
 			return nil, fmt.Errorf("attachments[%d]: %w", i, err)
 		}

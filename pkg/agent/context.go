@@ -15,11 +15,12 @@ import (
 )
 
 type ContextBuilder struct {
-	workspace    string
-	version      string
-	skillsLoader *skills.SkillsLoader
-	memory       *MemoryStore
-	tools        *tools.ToolRegistry // Direct reference to tool registry
+	workspace       string
+	sharedWorkspace string
+	version         string
+	skillsLoader    *skills.SkillsLoader
+	memory          *MemoryStore
+	tools           *tools.ToolRegistry // Direct reference to tool registry
 }
 
 func getGlobalConfigDir() string {
@@ -30,7 +31,26 @@ func getGlobalConfigDir() string {
 	return filepath.Join(home, ".picoclaw")
 }
 
-func resolveGlobalSkillsDir() string {
+func defaultSharedWorkspaceDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "sciclaw")
+}
+
+func resolveGlobalSkillsDir(sharedWorkspace string) string {
+	sharedRoot := strings.TrimSpace(sharedWorkspace)
+	if sharedRoot != "" {
+		sharedSkills := filepath.Join(sharedRoot, "skills")
+		if hasSkillsDir(sharedSkills) {
+			return sharedSkills
+		}
+		// Default to shared workspace path even if skills are missing;
+		// onboard/bootstrap should populate this location.
+		return sharedSkills
+	}
+
 	base := strings.TrimSpace(getGlobalConfigDir())
 	if base == "" {
 		return ""
@@ -38,15 +58,15 @@ func resolveGlobalSkillsDir() string {
 	workspaceSkills := filepath.Join(base, "workspace", "skills")
 	legacySkills := filepath.Join(base, "skills")
 
-	// Prefer the workspace baseline skills path used by onboarded installs.
+	// Legacy fallback only when shared workspace is unspecified.
 	if hasSkillsDir(workspaceSkills) {
 		return workspaceSkills
 	}
-	// Fall back to legacy global skills location if present.
 	if hasSkillsDir(legacySkills) {
 		return legacySkills
 	}
-	// Default to workspace-based path so future installs land in one place.
+
+	// Default to workspace-based legacy path when nothing is present.
 	return workspaceSkills
 }
 
@@ -66,17 +86,25 @@ func hasSkillsDir(path string) bool {
 	return false
 }
 
-func NewContextBuilder(workspace string) *ContextBuilder {
+func NewContextBuilder(workspace string, sharedWorkspace ...string) *ContextBuilder {
 	// builtin skills: skills directory in current project
 	// Use the skills/ directory under the current working directory
 	wd, _ := os.Getwd()
 	builtinSkillsDir := filepath.Join(wd, "skills")
-	globalSkillsDir := resolveGlobalSkillsDir()
+	sharedRoot := ""
+	if len(sharedWorkspace) > 0 {
+		sharedRoot = strings.TrimSpace(sharedWorkspace[0])
+	}
+	if sharedRoot == "" {
+		sharedRoot = defaultSharedWorkspaceDir()
+	}
+	globalSkillsDir := resolveGlobalSkillsDir(sharedRoot)
 
 	return &ContextBuilder{
-		workspace:    workspace,
-		skillsLoader: skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
-		memory:       NewMemoryStore(workspace),
+		workspace:       workspace,
+		sharedWorkspace: strings.TrimSpace(sharedRoot),
+		skillsLoader:    skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
+		memory:          NewMemoryStore(workspace),
 	}
 }
 
@@ -196,7 +224,7 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	}
 
 	primaryWorkspace := filepath.Clean(cb.workspace)
-	fallbackWorkspace := filepath.Clean(filepath.Join(getGlobalConfigDir(), "workspace"))
+	fallbackWorkspace := filepath.Clean(cb.sharedWorkspace)
 
 	var result strings.Builder
 	for _, filename := range bootstrapFiles {

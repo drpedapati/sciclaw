@@ -16,17 +16,21 @@ import (
 )
 
 type ExecTool struct {
-	workingDir          string
-	timeout             time.Duration
-	denyPatterns        []*regexp.Regexp
-	allowPatterns       []*regexp.Regexp
-	restrictToWorkspace bool
-	extraEnv            map[string]string
+	workingDir              string
+	timeout                 time.Duration
+	denyPatterns            []*regexp.Regexp
+	allowPatterns           []*regexp.Regexp
+	restrictToWorkspace     bool
+	sharedWorkspace         string
+	sharedWorkspaceReadOnly bool
+	extraEnv                map[string]string
 }
 
 var (
 	shellPathPattern             = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
 	shellURLPattern              = regexp.MustCompile("https?://[^\\s\"'`]+")
+	shellMutatingCommandPattern  = regexp.MustCompile(`(?i)(^|[;&|()\s])(touch|mkdir|rmdir|rm|mv|cp|install|chmod|chown|truncate|tee|sed\s+-i|perl\s+-i|pandoc)([;&|()\s]|$)`)
+	shellWriteRedirectPattern    = regexp.MustCompile(`(^|[^0-9])>>?`)
 	pandocBinaryPattern          = regexp.MustCompile(`(?i)(^|[;&|()\s])pandoc([;&|()\s]|$)`)
 	pandocDefaultsPattern        = regexp.MustCompile(`(?i)(^|[\s;|&])(--defaults|-d)(=|\s+)[^;\n|&]+`)
 	pandocOutputDocxPattern      = regexp.MustCompile(`(?i)(^|[\s;|&])(--output|-o)(=|\s+)[^;\n|&]*\.docx(\s|$)`)
@@ -488,6 +492,11 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		if err != nil {
 			return ""
 		}
+		sharedRoot := absCleanPath(t.sharedWorkspace)
+		cwdInSharedRoot := sharedRoot != "" && isWithinWorkspace(cwdPath, sharedRoot)
+		if cwdInSharedRoot && t.sharedWorkspaceReadOnly && looksMutatingCommand(cmd) {
+			return "Command blocked by safety guard (shared workspace is read-only)"
+		}
 
 		pathScanInput := pathGuardInput
 		// PubMed search syntax uses field tags like [Title/Abstract], which can be
@@ -500,28 +509,61 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		// workspace path checks.
 		pathScanInput = stripURLSegments(pathScanInput)
 		matches := shellPathPattern.FindAllString(pathScanInput, -1)
+		type guardRoot struct {
+			path     string
+			readOnly bool
+		}
+		allowedRoots := []guardRoot{{path: cwdPath, readOnly: cwdInSharedRoot && t.sharedWorkspaceReadOnly}}
+		if sharedRoot != "" && !isWithinWorkspace(cwdPath, sharedRoot) {
+			allowedRoots = append(allowedRoots, guardRoot{path: sharedRoot, readOnly: t.sharedWorkspaceReadOnly})
+		}
 
 		for _, raw := range matches {
 			p, err := filepath.Abs(raw)
 			if err != nil {
 				continue
 			}
-
-			rel, err := filepath.Rel(cwdPath, p)
-			if err != nil {
-				continue
+			var matchedRoot *guardRoot
+			for i := range allowedRoots {
+				root := allowedRoots[i]
+				if isWithinWorkspace(p, root.path) {
+					matchedRoot = &allowedRoots[i]
+					break
+				}
 			}
 
-			if strings.HasPrefix(rel, "..") {
-				if isAllowedOutsideWorkspacePath(p) {
-					continue
+			if matchedRoot == nil {
+				if !isAllowedOutsideWorkspacePath(p) {
+					return "Command blocked by safety guard (path outside working dir)"
 				}
-				return "Command blocked by safety guard (path outside working dir)"
+				continue
+			}
+			if matchedRoot.readOnly && looksMutatingCommand(cmd) {
+				return "Command blocked by safety guard (shared workspace is read-only)"
 			}
 		}
 	}
 
 	return ""
+}
+
+func looksMutatingCommand(command string) bool {
+	cmd := strings.TrimSpace(strings.ToLower(command))
+	if cmd == "" {
+		return false
+	}
+	if shellMutatingCommandPattern.MatchString(cmd) {
+		return true
+	}
+	// Treat non-fd redirections as potentially mutating.
+	if shellWriteRedirectPattern.MatchString(cmd) {
+		return true
+	}
+	// Common write-style flags used by CLI tools.
+	if strings.Contains(cmd, "--output") || strings.Contains(cmd, " -o ") || strings.Contains(cmd, "--ris ") || strings.HasSuffix(cmd, "--ris") {
+		return true
+	}
+	return false
 }
 
 func isPubMedCommand(command string) bool {
@@ -722,6 +764,11 @@ func (t *ExecTool) SetTimeout(timeout time.Duration) {
 
 func (t *ExecTool) SetRestrictToWorkspace(restrict bool) {
 	t.restrictToWorkspace = restrict
+}
+
+func (t *ExecTool) SetSharedWorkspacePolicy(sharedWorkspace string, sharedWorkspaceReadOnly bool) {
+	t.sharedWorkspace = strings.TrimSpace(sharedWorkspace)
+	t.sharedWorkspaceReadOnly = sharedWorkspaceReadOnly
 }
 
 func (t *ExecTool) SetAllowPatterns(patterns []string) error {

@@ -54,7 +54,7 @@ func TestLoadBootstrapFilesFallsBackToGlobalWorkspace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	globalWorkspace := filepath.Join(home, ".picoclaw", "workspace")
+	globalWorkspace := filepath.Join(home, "sciclaw")
 	if err := os.MkdirAll(globalWorkspace, 0755); err != nil {
 		t.Fatalf("mkdir global workspace: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestContextBuilderLoadsGlobalWorkspaceSkillsForRoutedWorkspace(t *testing.T
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	skillDir := filepath.Join(home, ".picoclaw", "workspace", "skills", "baseline")
+	skillDir := filepath.Join(home, "sciclaw", "skills", "baseline")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}

@@ -71,24 +71,44 @@ type processOptions struct {
 // This is shared between main agent and subagents.
 func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus) *tools.ToolRegistry {
 	registry := tools.NewToolRegistry()
+	sharedWorkspace := cfg.SharedWorkspacePath()
+	sharedReadOnly := cfg.Agents.Defaults.SharedWorkspaceReadOnly
 
 	// File system tools
-	registry.Register(tools.NewReadFileTool(workspace, restrict))
-	registry.Register(tools.NewWriteFileTool(workspace, restrict))
-	registry.Register(tools.NewListDirTool(workspace, restrict))
-	registry.Register(tools.NewEditFileTool(workspace, restrict))
-	registry.Register(tools.NewAppendFileTool(workspace, restrict))
+	readFileTool := tools.NewReadFileTool(workspace, restrict)
+	readFileTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
+	registry.Register(readFileTool)
+
+	writeFileTool := tools.NewWriteFileTool(workspace, restrict)
+	writeFileTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
+	registry.Register(writeFileTool)
+
+	listDirTool := tools.NewListDirTool(workspace, restrict)
+	listDirTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
+	registry.Register(listDirTool)
+
+	editFileTool := tools.NewEditFileTool(workspace, restrict)
+	editFileTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
+	registry.Register(editFileTool)
+
+	appendFileTool := tools.NewAppendFileTool(workspace, restrict)
+	appendFileTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
+	registry.Register(appendFileTool)
 
 	// Shell execution
 	execTool := tools.NewExecTool(workspace, restrict)
+	execTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	pubmedExportTool := tools.NewPubMedExportTool(workspace, restrict)
+	pubmedExportTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
 		execTool.SetExtraEnv(map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey})
 		pubmedExportTool.SetExtraEnv(map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey})
 	}
 	registry.Register(execTool)
 	registry.Register(pubmedExportTool)
-	registry.Register(tools.NewWordCountTool(workspace, restrict))
+	wordCountTool := tools.NewWordCountTool(workspace, restrict)
+	wordCountTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
+	registry.Register(wordCountTool)
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
@@ -111,6 +131,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Message tool - available to both agent and subagent
 	// Subagent uses it to communicate directly with user
 	messageTool := tools.NewMessageTool(workspace, restrict)
+	messageTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	messageTool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
 		msgBus.PublishOutbound(bus.OutboundMessage{
 			Channel:     channel,
@@ -154,7 +175,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	stateManager := state.NewManager(workspace)
 
 	// Create context builder and set tools registry
-	contextBuilder := NewContextBuilder(workspace)
+	contextBuilder := NewContextBuilder(workspace, cfg.SharedWorkspacePath())
 	contextBuilder.SetToolsRegistry(toolsRegistry)
 	contextBuilder.SetVersion(Version)
 

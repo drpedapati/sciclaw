@@ -275,7 +275,39 @@ func TestFilesystemTool_ReadFile_RejectsSymlinkEscape(t *testing.T) {
 	if !result.IsError {
 		t.Fatalf("expected symlink escape to be blocked")
 	}
-	if !strings.Contains(result.ForLLM, "symlink resolves outside workspace") {
+	if !strings.Contains(result.ForLLM, "symlink resolves outside") {
 		t.Fatalf("expected symlink escape error, got: %s", result.ForLLM)
+	}
+}
+
+func TestValidatePathWithPolicy_AllowsSharedWorkspaceRead(t *testing.T) {
+	workspace := t.TempDir()
+	shared := t.TempDir()
+
+	sharedFile := filepath.Join(shared, "AGENTS.md")
+	if err := os.WriteFile(sharedFile, []byte("# Shared"), 0o644); err != nil {
+		t.Fatalf("write shared file: %v", err)
+	}
+
+	got, err := validatePathWithPolicy(sharedFile, workspace, true, AccessRead, shared, true)
+	if err != nil {
+		t.Fatalf("expected shared read to be allowed, got error: %v", err)
+	}
+	if got != filepath.Clean(sharedFile) {
+		t.Fatalf("resolved path = %q, want %q", got, filepath.Clean(sharedFile))
+	}
+}
+
+func TestValidatePathWithPolicy_BlocksSharedWorkspaceWriteWhenReadOnly(t *testing.T) {
+	workspace := t.TempDir()
+	shared := t.TempDir()
+
+	target := filepath.Join(shared, "note.txt")
+	_, err := validatePathWithPolicy(target, workspace, true, AccessWrite, shared, true)
+	if err == nil {
+		t.Fatal("expected shared write to be blocked")
+	}
+	if !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("expected read-only error, got: %v", err)
 	}
 }
