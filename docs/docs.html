@@ -627,10 +627,11 @@
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
         <p>The onboard wizard walks you through first-time setup. It starts by creating your config (<code>~/.picoclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. On Linux it also bootstraps a managed workspace Python venv at <code>~/sciclaw/.venv</code> (prefers <code>uv</code>, falls back to <code>python3 -m venv</code>) and installs required packages used by scientific workflows. Then it asks optional questions:</p>
         <ol>
-          <li><strong>PubMed API key</strong> &mdash; An <a href="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/" target="_blank" rel="noopener">NCBI API key</a> removes rate limits on literature searches. Recommended but not required; you can add one later.</li>
           <li><strong>OpenAI login</strong> &mdash; Authenticates with OpenAI using a device-code flow (a link opens in your browser). Skip this if you plan to use a different provider.</li>
-          <li><strong>Chat smoke test</strong> &mdash; Sends a single test message to confirm your AI provider is connected and responding.</li>
-          <li><strong>Messaging apps</strong> &mdash; Optionally pairs Telegram and/or Discord so you can chat with sciClaw from a messaging app instead of the terminal.</li>
+          <li><strong>Chat smoke test</strong> &mdash; If authentication succeeds, a single test message is sent automatically to confirm your AI provider is connected and responding.</li>
+          <li><strong>PubMed API key</strong> &mdash; An <a href="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/" target="_blank" rel="noopener">NCBI API key</a> removes rate limits on literature searches. Recommended but not required; you can add one later.</li>
+          <li><strong>TinyTeX</strong> &mdash; If Quarto is installed, offers to install TinyTeX (~250&nbsp;MB) for PDF rendering. Skipped automatically when Quarto is not detected.</li>
+          <li><strong>Messaging apps</strong> &mdash; Optionally pairs Telegram, Discord, and/or Slack so you can chat with sciClaw from a messaging app instead of the terminal.</li>
         </ol>
         <p>Every prompt defaults to &ldquo;no&rdquo;, so you can press Enter to skip anything and come back later. Running <code>sciclaw onboard</code> again is safe &mdash; it preserves existing settings and credentials.</p>
         <div class="callout">
@@ -764,7 +765,7 @@
 
         <h3>1. Initialize</h3>
         <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, installs baseline scientific skills, and (on Linux) bootstraps <code>~/sciclaw/.venv</code> for Python-based tooling. It also seeds <code>TOOLS.md</code> with CLI-first guardrails (for example: use <code>pubmed</code>/<code>docx-review</code> directly, avoid scraping PubMed HTML, and avoid unnecessary Python subprocess wrappers). In interactive mode, onboard also offers a short wizard (optional OpenAI OAuth login, optional PubMed API key, optional chat smoke test). Use <code>sciclaw onboard --yes</code> to skip prompts.</p>
+        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, installs baseline scientific skills, and (on Linux) bootstraps <code>~/sciclaw/.venv</code> for Python-based tooling. It also seeds <code>TOOLS.md</code> with CLI-first guardrails (for example: use <code>pubmed</code>/<code>docx-review</code> directly, avoid scraping PubMed HTML, and avoid unnecessary Python subprocess wrappers). In interactive mode, onboard also offers a short wizard (OpenAI OAuth login, automatic smoke test, optional PubMed API key, optional TinyTeX install, optional messaging apps). Use <code>sciclaw onboard --yes</code> to skip prompts.</p>
 
         <h3>2. Connect a provider</h3>
         <p><strong>Easiest:</strong> If you have a ChatGPT Plus/Team subscription, log in with device code &mdash; no API key needed:</p>
