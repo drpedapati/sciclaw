@@ -1,4 +1,4 @@
-.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch release-local release-dev-local
+.PHONY: all build build-all install install-skills uninstall uninstall-all clean fmt deps run help test sync-upstream release-dispatch release-local release-dev-local require-clean-tree
 
 # Build variables
 PRIMARY_BINARY_NAME=sciclaw
@@ -204,6 +204,7 @@ release-local:
 		echo "Example: make release-local RELEASE_TAG=v0.1.37"; \
 		exit 1; \
 	fi
+	@$(MAKE) require-clean-tree
 	@if ! command -v gh >/dev/null 2>&1; then \
 		echo "Error: GitHub CLI (gh) is required."; \
 		exit 1; \
@@ -235,6 +236,7 @@ release-dev-local:
 		echo "Example: make release-dev-local RELEASE_DEV_TAG=v0.1.53-dev.1"; \
 		exit 1; \
 	fi
+	@$(MAKE) require-clean-tree
 	@if ! command -v gh >/dev/null 2>&1; then \
 		echo "Error: GitHub CLI (gh) is required."; \
 		exit 1; \
@@ -264,6 +266,7 @@ release-dev-local:
 
 ## release-dispatch: Trigger GitHub Create Tag and Release workflow (binaries + Homebrew tap update)
 release-dispatch:
+	@$(MAKE) require-clean-tree
 	@if [ -z "$(RELEASE_TAG)" ]; then \
 		echo "Error: RELEASE_TAG is required."; \
 		echo "Example: make release-dispatch RELEASE_TAG=v0.1.26"; \
@@ -282,6 +285,14 @@ release-dispatch:
 	@echo "Release workflow queued."
 	@echo "Watch with:"
 	@echo "  gh run list -R $(RELEASE_REPO) --workflow release.yml --limit 5"
+
+## require-clean-tree: Ensure working tree has no pending changes before releases
+require-clean-tree:
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: Working tree has uncommitted changes. Commit everything first."; \
+		git status --short; \
+		exit 1; \
+	fi
 
 ## help: Show this help message
 help:
