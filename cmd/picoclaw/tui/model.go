@@ -210,6 +210,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
+			case "q":
+				// Keep the global quit shortcut available during onboarding.
+				if idx == tabHome && m.home.onboardActive {
+					return m, tea.Quit
+				}
 			case "tab":
 				m.activeTab = (m.activeTab + 1) % len(m.tabs)
 				return m, m.maybeAutoRun()
