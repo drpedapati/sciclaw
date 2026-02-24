@@ -30,7 +30,7 @@ func (e *settingsTestExec) Mode() Mode { return ModeLocal }
 
 func (e *settingsTestExec) ExecShell(_ time.Duration, cmd string) (string, error) {
 	e.shellCommands = append(e.shellCommands, cmd)
-	if strings.Contains(cmd, "sciclaw service status") {
+	if strings.Contains(cmd, "service status") {
 		return e.serviceStatusOut, e.serviceStatusErr
 	}
 	if e.shellErr != nil {
@@ -74,6 +74,8 @@ func (e *settingsTestExec) HomePath() string {
 	}
 	return e.home
 }
+
+func (e *settingsTestExec) BinaryPath() string { return "sciclaw" }
 
 func (e *settingsTestExec) AgentVersion() string { return "vtest" }
 

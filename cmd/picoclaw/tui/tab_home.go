@@ -128,7 +128,7 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 			m.anthropicMode = homeAuthNormal
 			m.onboardLoading = true
 			m.onboardResult = ""
-			c := m.exec.InteractiveProcess("sciclaw", "auth", "login", "--provider", "openai")
+			c := m.exec.InteractiveProcess(m.exec.BinaryPath(), "auth", "login", "--provider", "openai")
 			return m, tea.ExecProcess(c, onboardExecCallback(wizardAuth))
 		case "a":
 			m.onboardResult = ""
@@ -166,12 +166,12 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 		case "t":
 			m.onboardLoading = true
 			m.onboardResult = ""
-			c := m.exec.InteractiveProcess("sciclaw", "channels", "setup", "telegram")
+			c := m.exec.InteractiveProcess(m.exec.BinaryPath(), "channels", "setup", "telegram")
 			return m, tea.ExecProcess(c, onboardExecCallback(wizardChannel))
 		case "d":
 			m.onboardLoading = true
 			m.onboardResult = ""
-			c := m.exec.InteractiveProcess("sciclaw", "channels", "setup", "discord")
+			c := m.exec.InteractiveProcess(m.exec.BinaryPath(), "channels", "setup", "discord")
 			return m, tea.ExecProcess(c, onboardExecCallback(wizardChannel))
 		case "s", "esc":
 			m.onboardStep = wizardService
@@ -291,7 +291,11 @@ func (m HomeModel) createDefaultConfig() tea.Cmd {
 func (m HomeModel) runSmokeTest() tea.Cmd {
 	exec := m.exec
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw agent -m 'Hello, are you there?' 2>&1"
+		modelFlag := ""
+		if smokeModel, err := resolveSmokeTestModel(exec); err == nil && smokeModel != "" {
+			modelFlag = " --model " + shellEscape(smokeModel)
+		}
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " agent -m 'Hello, are you there?'" + modelFlag + " 2>&1"
 		out, err := exec.ExecShell(30*time.Second, cmd)
 		output := strings.TrimSpace(out)
 		if output == "" && err != nil {
@@ -301,10 +305,68 @@ func (m HomeModel) runSmokeTest() tea.Cmd {
 	}
 }
 
+func resolveSmokeTestModel(exec Executor) (string, error) {
+	cfg, err := readConfigMap(exec)
+	if err != nil {
+		return "", err
+	}
+
+	agents := mapValue(cfg, "agents")
+	defaults := mapValue(agents, "defaults")
+	provider := strings.ToLower(asString(defaults["provider"]))
+	model := strings.ToLower(asString(defaults["model"]))
+
+	anthropicConfigured := hasAnthropicCredentials(cfg)
+	openAIConfigured := hasOpenAICredentials(cfg)
+
+	if strings.Contains(model, "claude") || strings.Contains(model, "anthropic/") {
+		return asString(defaults["model"]), nil
+	}
+
+	if provider == "anthropic" && anthropicConfigured {
+		return anthropicDefaultModel, nil
+	}
+
+	if (strings.HasPrefix(model, "gpt") || strings.Contains(model, "openai/")) && !openAIConfigured && anthropicConfigured {
+		return anthropicDefaultModel, nil
+	}
+
+	return "", nil
+}
+
+func hasOpenAICredentials(cfg map[string]interface{}) bool {
+	providers := mapValue(cfg, "providers")
+	openai := mapValue(providers, "openai")
+	authMethod := strings.ToLower(asString(openai["auth_method"]))
+	apiKey := strings.TrimSpace(asString(openai["api_key"]))
+	return authMethod == "oauth" || authMethod == "token" || apiKey != ""
+}
+
+func hasAnthropicCredentials(cfg map[string]interface{}) bool {
+	providers := mapValue(cfg, "providers")
+	anthropic := mapValue(providers, "anthropic")
+	authMethod := strings.ToLower(asString(anthropic["auth_method"]))
+	apiKey := strings.TrimSpace(asString(anthropic["api_key"]))
+	return authMethod == "oauth" || authMethod == "token" || apiKey != ""
+}
+
+func mapValue(m map[string]interface{}, key string) map[string]interface{} {
+	v, ok := m[key]
+	if !ok {
+		return map[string]interface{}{}
+	}
+	casted, ok := v.(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}
+	}
+	return casted
+}
+
 func (m HomeModel) installService() tea.Cmd {
 	exec := m.exec
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw service install 2>&1 && HOME=" + exec.HomePath() + " sciclaw service start 2>&1"
+		bin := shellEscape(exec.BinaryPath())
+		cmd := "HOME=" + exec.HomePath() + " " + bin + " service install 2>&1 && HOME=" + exec.HomePath() + " " + bin + " service start 2>&1"
 		out, err := exec.ExecShell(20*time.Second, cmd)
 		return onboardExecDoneMsg{step: wizardService, output: strings.TrimSpace(out), err: err}
 	}

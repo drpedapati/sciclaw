@@ -230,11 +230,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		maxIter = 0
 	}
 
+	model := resolveModel(cfg.Agents.Defaults.Model, provider)
+
 	return &AgentLoop{
 		bus:             msgBus,
 		provider:        provider,
 		workspace:       workspace,
-		model:           cfg.Agents.Defaults.Model,
+		model:           model,
 		reasoningEffort: cfg.Agents.Defaults.ReasoningEffort,
 		contextWindow:   cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
 		maxIterations:   maxIter,
@@ -246,6 +248,41 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		hookAuditPath:   hookAuditPath,
 		summarizing:     sync.Map{},
 	}
+}
+
+// resolveModel returns the configured model if it looks compatible with the
+// provider, otherwise falls back to the provider's default. This prevents
+// sending e.g. "gpt-5.2" to the Anthropic API.
+func resolveModel(configured string, provider providers.LLMProvider) string {
+	if strings.TrimSpace(configured) == "" {
+		return provider.GetDefaultModel()
+	}
+	lower := strings.ToLower(configured)
+	provDefault := strings.ToLower(provider.GetDefaultModel())
+
+	// Detect cross-provider mismatch:
+	// If provider default is a Claude model but configured model is GPT (or vice versa),
+	// use the provider default.
+	isClaudeProvider := strings.Contains(provDefault, "claude")
+	isGPTModel := strings.HasPrefix(lower, "gpt") || strings.HasPrefix(lower, "o1") || strings.HasPrefix(lower, "o3") || strings.HasPrefix(lower, "o4")
+	isClaudeModel := strings.Contains(lower, "claude")
+
+	if isClaudeProvider && isGPTModel {
+		logger.InfoCF("agent", "Model/provider mismatch: configured model %q is incompatible with Anthropic provider, using %s", map[string]interface{}{
+			"configured": configured,
+			"resolved":   provider.GetDefaultModel(),
+		})
+		return provider.GetDefaultModel()
+	}
+	if !isClaudeProvider && isClaudeModel {
+		logger.InfoCF("agent", "Model/provider mismatch: configured model %q is incompatible with provider, using %s", map[string]interface{}{
+			"configured": configured,
+			"resolved":   provider.GetDefaultModel(),
+		})
+		return provider.GetDefaultModel()
+	}
+
+	return configured
 }
 
 func (al *AgentLoop) Run(ctx context.Context) error {
@@ -318,13 +355,13 @@ func (al *AgentLoop) RecordLastChatID(chatID string) error {
 }
 
 func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey string) (string, error) {
-	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct")
+	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct", "cli")
 }
 
-func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string) (string, error) {
+func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID, senderID string) (string, error) {
 	msg := bus.InboundMessage{
 		Channel:    channel,
-		SenderID:   "cron",
+		SenderID:   senderID,
 		ChatID:     chatID,
 		Content:    content,
 		SessionKey: sessionKey,
@@ -561,6 +598,8 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions) (string, int, error) {
 	iteration := 0
 	var finalContent string
+	var lastMessageToolContent string
+	messageToolFallbackEligible := constants.IsInternalChannel(opts.Channel)
 
 	for {
 		if al.maxIterations > 0 && iteration >= al.maxIterations {
@@ -570,7 +609,11 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"max":        al.maxIterations,
 				})
 			if finalContent == "" {
-				finalContent = fmt.Sprintf("Iteration limit reached (%d) before task completion. Increase `agents.defaults.max_tool_iterations` or set it to 0 for no hard cap.", al.maxIterations)
+				if messageToolFallbackEligible && lastMessageToolContent != "" {
+					finalContent = lastMessageToolContent
+				} else {
+					finalContent = fmt.Sprintf("Iteration limit reached (%d) before task completion. Increase `agents.defaults.max_tool_iterations` or set it to 0 for no hard cap.", al.maxIterations)
+				}
 			}
 			break
 		}
@@ -660,6 +703,16 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		// Check if no tool calls - we're done
 		if len(response.ToolCalls) == 0 {
 			finalContent = response.Content
+			trimmedFinal := strings.TrimSpace(finalContent)
+			trimmedDefault := strings.TrimSpace(opts.DefaultResponse)
+			if messageToolFallbackEligible && lastMessageToolContent != "" && (trimmedFinal == "" || (trimmedDefault != "" && trimmedFinal == trimmedDefault)) {
+				finalContent = lastMessageToolContent
+				logger.InfoCF("agent", "Using message tool fallback content for internal channel",
+					map[string]interface{}{
+						"channel":      opts.Channel,
+						"content_chars": len(finalContent),
+					})
+			}
 			logger.InfoCF("agent", "LLM response without tool calls (direct answer)",
 				map[string]interface{}{
 					"iteration":     iteration,
@@ -745,6 +798,14 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 
 			toolResult := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
+			if messageToolFallbackEligible && tc.Name == "message" {
+				if content, ok := tc.Arguments["content"].(string); ok {
+					trimmed := strings.TrimSpace(content)
+					if trimmed != "" {
+						lastMessageToolContent = trimmed
+					}
+				}
+			}
 
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {
@@ -813,6 +874,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				})
 			}
 		}
+	}
+
+	if strings.TrimSpace(finalContent) == "" && messageToolFallbackEligible && lastMessageToolContent != "" {
+		finalContent = lastMessageToolContent
 	}
 
 	return finalContent, iteration, nil

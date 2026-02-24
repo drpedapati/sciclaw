@@ -12,12 +12,17 @@ import (
 // LocalExecutor runs commands directly on the host.
 type LocalExecutor struct {
 	home string
+	self string // resolved path to current binary
 }
 
 // NewLocalExecutor creates an executor for local (non-VM) mode.
 func NewLocalExecutor() *LocalExecutor {
 	home, _ := os.UserHomeDir()
-	return &LocalExecutor{home: home}
+	self := "sciclaw" // fallback
+	if exe, err := os.Executable(); err == nil {
+		self = exe
+	}
+	return &LocalExecutor{home: home, self: self}
 }
 
 func (e *LocalExecutor) Mode() Mode { return ModeLocal }
@@ -47,7 +52,8 @@ func (e *LocalExecutor) AuthPath() string {
 	return filepath.Join(e.home, ".picoclaw", "auth.json")
 }
 
-func (e *LocalExecutor) HomePath() string { return e.home }
+func (e *LocalExecutor) HomePath() string   { return e.home }
+func (e *LocalExecutor) BinaryPath() string { return e.self }
 
 func (e *LocalExecutor) AgentVersion() string {
 	out, err := runLocalCmd(5*time.Second, "sciclaw", "--version")

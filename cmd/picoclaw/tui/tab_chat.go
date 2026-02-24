@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -344,10 +345,15 @@ func applyInlineMarkdown(s string, codeStyle, boldStyle lipgloss.Style) string {
 
 func sendChatCmd(exec Executor, message string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw agent -m " + shellEscape(message) + " -s tui:chat 2>/dev/null"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " agent -m " + shellEscape(message) + " -s tui:chat 2>/dev/null"
 		out, err := exec.ExecShell(120*time.Second, cmd)
+		out = strings.TrimSpace(out)
 		if err != nil {
-			return chatResponseMsg{err: fmt.Errorf("agent error: %w", err)}
+			errMessage := fmt.Sprintf("agent error: %v", err)
+			if out != "" {
+				errMessage = fmt.Sprintf("agent error: %v (%s)", err, out)
+			}
+			return chatResponseMsg{err: errors.New(errMessage)}
 		}
 		return chatResponseMsg{content: out}
 	}

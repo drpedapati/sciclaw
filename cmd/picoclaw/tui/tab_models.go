@@ -325,7 +325,7 @@ func (m ModelsModel) View(snap *VMSnapshot, width int) string {
 
 func fetchModelsStatus(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw models status 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " models status 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
 		return modelsStatusMsg{output: out}
 	}
@@ -340,7 +340,7 @@ func fetchModelsCatalog(exec Executor) tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw models discover --json 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " models discover --json 2>&1"
 		out, err := exec.ExecShell(20*time.Second, cmd)
 		trimmed := strings.TrimSpace(out)
 
@@ -376,7 +376,7 @@ func fetchModelsCatalog(exec Executor) tea.Cmd {
 
 func setModelCmd(exec Executor, model string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw models set " + shellEscape(model) + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " models set " + shellEscape(model) + " 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Model set to " + model}
 	}
@@ -384,7 +384,7 @@ func setModelCmd(exec Executor, model string) tea.Cmd {
 
 func setEffortCmd(exec Executor, level string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw models effort " + level + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " models effort " + level + " 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Reasoning effort set to " + level}
 	}

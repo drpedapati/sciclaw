@@ -10,6 +10,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const anthropicDefaultModel = "claude-opus-4-6"
+
 type loginSelection int
 
 const (
@@ -97,7 +99,7 @@ func (m LoginModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (LoginModel, tea.Cm
 		if m.selected == loginAnthropic {
 			provider = "anthropic"
 		}
-		c := m.exec.InteractiveProcess("sciclaw", "auth", "login", "--provider", provider)
+		c := m.exec.InteractiveProcess(m.exec.BinaryPath(), "auth", "login", "--provider", provider)
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
 			return actionDoneMsg{output: "Login flow completed."}
 		})
@@ -198,6 +200,9 @@ func renderProviderRow(name, state string) string {
 }
 
 // saveAPIKey writes the API key into config.json under providers.<provider>.api_key.
+//
+// For Anthropic tokens entered in the UI, set a safe default model so direct CLI
+// calls continue to use Anthropic if that's what the user just configured.
 func saveAPIKey(exec Executor, provider, key string) error {
 	cfg, err := readConfigMap(exec)
 	if err != nil {
@@ -206,12 +211,26 @@ func saveAPIKey(exec Executor, provider, key string) error {
 	providers := ensureMap(cfg, "providers")
 	p := ensureMap(providers, provider)
 	p["api_key"] = key
+
+	if provider == "anthropic" {
+		agents := ensureMap(cfg, "agents")
+		defaults := ensureMap(agents, "defaults")
+		if v, ok := defaults["model"]; !ok || strings.TrimSpace(asString(v)) == "" || strings.EqualFold(asString(v), "gpt-5.2") {
+			defaults["model"] = anthropicDefaultModel
+		}
+	}
+
 	return writeConfigMap(exec, cfg)
+}
+
+func asString(v interface{}) string {
+	s, _ := v.(string)
+	return strings.TrimSpace(s)
 }
 
 func logoutCmd(exec Executor, provider string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := fmt.Sprintf("HOME=%s sciclaw auth logout --provider %s", exec.HomePath(), provider)
+		cmd := fmt.Sprintf("HOME=%s %s auth logout --provider %s", exec.HomePath(), shellEscape(exec.BinaryPath()), provider)
 		_, _ = exec.ExecShell(5*time.Second, cmd)
 		return actionDoneMsg{output: "Logged out from " + provider + "."}
 	}

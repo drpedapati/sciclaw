@@ -597,7 +597,7 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 
 		// Prefer live routing status from CLI when available so Settings reflects
 		// the currently active routing mode/source of truth.
-		statusOut, statusErr := exec.ExecShell(8*time.Second, "HOME="+exec.HomePath()+" sciclaw routing status 2>&1")
+		statusOut, statusErr := exec.ExecShell(8*time.Second, "HOME="+exec.HomePath()+" "+shellEscape(exec.BinaryPath())+" routing status 2>&1")
 		if statusErr == nil && strings.TrimSpace(statusOut) != "" {
 			status := parseRoutingStatus(statusOut)
 			msg.routingEnabled = status.Enabled

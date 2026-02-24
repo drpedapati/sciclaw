@@ -40,6 +40,8 @@ func (e *serviceTestExec) AuthPath() string { return "/tmp/auth.json" }
 
 func (e *serviceTestExec) HomePath() string { return e.home }
 
+func (e *serviceTestExec) BinaryPath() string { return "sciclaw" }
+
 func (e *serviceTestExec) AgentVersion() string { return "vtest" }
 
 func (e *serviceTestExec) ServiceInstalled() bool { return true }

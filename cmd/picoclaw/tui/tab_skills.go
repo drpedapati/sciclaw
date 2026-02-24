@@ -411,7 +411,7 @@ func (m SkillsModel) View(snap *VMSnapshot, width int) string {
 
 func fetchSkillsList(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw skills list 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " skills list 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
 		return skillsListMsg{output: out, fromBaseline: false}
 	}
@@ -419,7 +419,7 @@ func fetchSkillsList(exec Executor) tea.Cmd {
 
 func installSkillCmd(exec Executor, repo string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw skills install " + shellEscape(repo) + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " skills install " + shellEscape(repo) + " 2>&1"
 		out, _ := exec.ExecShell(30*time.Second, cmd)
 		return actionDoneMsg{output: "Skill install: " + strings.TrimSpace(out)}
 	}
@@ -427,7 +427,7 @@ func installSkillCmd(exec Executor, repo string) tea.Cmd {
 
 func removeSkillCmd(exec Executor, name string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw skills remove " + shellEscape(name) + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " skills remove " + shellEscape(name) + " 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Removed skill " + name}
 	}
@@ -442,11 +442,11 @@ func baselineInstallCmd(exec Executor) tea.Cmd {
 			"drpedapati/sciclaw-skills/web-search",
 		}
 		for _, repo := range baseline {
-			cmd := "HOME=" + home + " sciclaw skills install " + shellEscape(repo) + " 2>&1"
+			cmd := "HOME=" + home + " " + shellEscape(exec.BinaryPath()) + " skills install " + shellEscape(repo) + " 2>&1"
 			exec.ExecShell(30*time.Second, cmd)
 		}
 		// Return skills list to refresh the display.
-		listCmd := "HOME=" + home + " sciclaw skills list 2>&1"
+		listCmd := "HOME=" + home + " " + shellEscape(exec.BinaryPath()) + " skills list 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, listCmd)
 		return skillsListMsg{output: out, fromBaseline: true}
 	}

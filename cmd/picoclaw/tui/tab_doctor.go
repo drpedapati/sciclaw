@@ -238,7 +238,7 @@ func doctorIcon(status doctorCheckStatus) string {
 
 func runDoctorCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw doctor --json 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " doctor --json 2>&1"
 		out, err := exec.ExecShell(90*time.Second, cmd)
 		if err != nil {
 			return doctorDoneMsg{err: fmt.Errorf("command failed: %w", err)}

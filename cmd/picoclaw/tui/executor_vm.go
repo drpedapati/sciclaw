@@ -35,6 +35,7 @@ func (e *VMExecutor) WriteFile(path string, data []byte, perm os.FileMode) error
 func (e *VMExecutor) ConfigPath() string { return "/home/ubuntu/.picoclaw/config.json" }
 func (e *VMExecutor) AuthPath() string   { return "/home/ubuntu/.picoclaw/auth.json" }
 func (e *VMExecutor) HomePath() string   { return "/home/ubuntu" }
+func (e *VMExecutor) BinaryPath() string { return "sciclaw" } // VM always uses PATH
 
 func (e *VMExecutor) AgentVersion() string {
 	return VMAgentVersion()

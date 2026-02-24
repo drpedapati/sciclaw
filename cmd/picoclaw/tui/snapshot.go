@@ -30,6 +30,10 @@ type VMSnapshot struct {
 	OpenAI    string // "ready" or "missing"
 	Anthropic string // "ready" or "missing"
 
+	// Model/provider from config
+	ActiveModel    string
+	ActiveProvider string
+
 	// Channel state
 	Discord  ChannelSnapshot
 	Telegram ChannelSnapshot
@@ -63,6 +67,8 @@ type configJSON struct {
 	Agents struct {
 		Defaults struct {
 			Workspace string `json:"workspace"`
+			Model     string `json:"model"`
+			Provider  string `json:"provider"`
 		} `json:"defaults"`
 	} `json:"agents"`
 	Providers struct {
@@ -174,6 +180,10 @@ func collectVMSnapshot(exec Executor) VMSnapshot {
 		snap.HostTelegram = channelState(hostCfg.Channels.Telegram)
 	}
 
+	// Model/provider.
+	snap.ActiveModel = cfg.Agents.Defaults.Model
+	snap.ActiveProvider = cfg.Agents.Defaults.Provider
+
 	// Workspace.
 	snap.WorkspacePath = cfg.Agents.Defaults.Workspace
 	if snap.WorkspacePath != "" {
@@ -225,6 +235,10 @@ func collectLocalSnapshot(exec Executor) VMSnapshot {
 		_ = json.Unmarshal([]byte(authRaw), &auth)
 	}
 
+	// Model/provider.
+	snap.ActiveModel = cfg.Agents.Defaults.Model
+	snap.ActiveProvider = cfg.Agents.Defaults.Provider
+
 	// Workspace.
 	snap.WorkspacePath = cfg.Agents.Defaults.Workspace
 	if snap.WorkspacePath != "" {
@@ -259,7 +273,7 @@ func providerState(prov providerJSON, cred authCredJSON) string {
 }
 
 func collectServiceState(exec Executor) (installed, running, autoStart bool) {
-	cmd := "HOME=" + exec.HomePath() + " sciclaw service status 2>&1"
+	cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " service status 2>&1"
 	out, err := exec.ExecShell(8*time.Second, cmd)
 	if err != nil {
 		installed = exec.ServiceInstalled()

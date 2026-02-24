@@ -40,6 +40,9 @@ type Executor interface {
 	// HomePath returns the home directory.
 	HomePath() string
 
+	// BinaryPath returns the resolved path to the sciclaw binary.
+	BinaryPath() string
+
 	// AgentVersion returns the sciclaw version string.
 	AgentVersion() string
 

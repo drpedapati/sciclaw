@@ -27,6 +27,8 @@ func (e *skillsTestExec) AuthPath() string { return "/tmp/auth.json" }
 
 func (e *skillsTestExec) HomePath() string { return "/Users/tester" }
 
+func (e *skillsTestExec) BinaryPath() string { return "sciclaw" }
+
 func (e *skillsTestExec) AgentVersion() string { return "vtest" }
 
 func (e *skillsTestExec) ServiceInstalled() bool { return false }

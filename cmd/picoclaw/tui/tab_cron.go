@@ -269,7 +269,7 @@ func (m CronModel) View(snap *VMSnapshot, width int) string {
 
 func fetchCronList(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw cron list 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " cron list 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
 		return cronListMsg{output: out}
 	}
@@ -277,7 +277,7 @@ func fetchCronList(exec Executor) tea.Cmd {
 
 func cronToggle(exec Executor, jobID, action string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw cron " + action + " " + shellEscape(jobID) + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " cron " + action + " " + shellEscape(jobID) + " 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Job " + action + "d"}
 	}
@@ -285,7 +285,7 @@ func cronToggle(exec Executor, jobID, action string) tea.Cmd {
 
 func addCronNatural(exec Executor, description string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw cron add-natural " + shellEscape(description) + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " cron add-natural " + shellEscape(description) + " 2>&1"
 		out, err := exec.ExecShell(30*time.Second, cmd)
 		if err != nil {
 			return actionDoneMsg{output: "Failed to add task: " + strings.TrimSpace(out)}
@@ -296,7 +296,7 @@ func addCronNatural(exec Executor, description string) tea.Cmd {
 
 func removeCronJob(exec Executor, jobID string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw cron remove " + shellEscape(jobID) + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " cron remove " + shellEscape(jobID) + " 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, cmd)
 		return actionDoneMsg{output: "Job removed"}
 	}

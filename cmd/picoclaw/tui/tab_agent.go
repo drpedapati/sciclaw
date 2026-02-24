@@ -257,7 +257,7 @@ func serviceBackendLabel(mode Mode) string {
 func serviceAction(exec Executor, action string) tea.Cmd {
 	return func() tea.Msg {
 		started := time.Now()
-		cmd := "HOME=" + exec.HomePath() + " sciclaw service " + action + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " service " + action + " 2>&1"
 		out, err := exec.ExecShell(20*time.Second, cmd)
 		if strings.TrimSpace(out) == "" {
 			out = "No output."
@@ -303,7 +303,7 @@ func serviceAction(exec Executor, action string) tea.Cmd {
 }
 
 func serviceStatusSnapshot(exec Executor) (installed, running, statusKnown bool, raw string) {
-	cmd := "HOME=" + exec.HomePath() + " sciclaw service status 2>&1"
+	cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " service status 2>&1"
 	out, err := exec.ExecShell(8*time.Second, cmd)
 	if err != nil {
 		return false, false, false, out
@@ -421,7 +421,7 @@ func yesNoPlain(v bool) string {
 
 func fetchLogs(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw service logs --lines 50 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " service logs --lines 50 2>&1"
 		out, err := exec.ExecShell(10*time.Second, cmd)
 		if err != nil {
 			return logsMsg{content: fmt.Sprintf("Error fetching logs: %v", err)}

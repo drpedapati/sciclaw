@@ -1674,7 +1674,7 @@ func (m RoutingModel) renderStatusPanel(panelW int) string {
 
 func fetchRoutingStatus(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw routing status 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " routing status 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
 		return routingStatusMsg{output: out}
 	}
@@ -1682,7 +1682,7 @@ func fetchRoutingStatus(exec Executor) tea.Cmd {
 
 func fetchRoutingListCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw routing list 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " routing list 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
 		return routingListMsg{output: out}
 	}
@@ -1694,7 +1694,7 @@ func routingToggleCmd(exec Executor, enable bool) tea.Cmd {
 		if enable {
 			action = "enable"
 		}
-		cmd := "HOME=" + exec.HomePath() + " sciclaw routing " + action + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " routing " + action + " 2>&1"
 		out, err := exec.ExecShell(10*time.Second, cmd)
 		out = strings.TrimSpace(out)
 		if err != nil {
@@ -1712,7 +1712,7 @@ func routingToggleCmd(exec Executor, enable bool) tea.Cmd {
 
 func routingRemoveCmd(exec Executor, channel, chatID string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw routing remove --channel " +
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " routing remove --channel " +
 			shellEscape(channel) + " --chat-id " + shellEscape(chatID) + " 2>&1"
 		out, err := exec.ExecShell(10*time.Second, cmd)
 		out = strings.TrimSpace(out)
@@ -1731,7 +1731,7 @@ func routingRemoveCmd(exec Executor, channel, chatID string) tea.Cmd {
 
 func routingValidateCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw routing validate 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " routing validate 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
 		return routingValidateMsg{output: out}
 	}
@@ -1739,7 +1739,7 @@ func routingValidateCmd(exec Executor) tea.Cmd {
 
 func routingReloadCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw routing reload 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " routing reload 2>&1"
 		out, _ := exec.ExecShell(10*time.Second, cmd)
 		return routingReloadMsg{output: out}
 	}
@@ -1748,8 +1748,9 @@ func routingReloadCmd(exec Executor) tea.Cmd {
 func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, label string) tea.Cmd {
 	return func() tea.Msg {
 		workspace = expandHomeForExecPath(workspace, exec.HomePath())
-		cmd := fmt.Sprintf("HOME=%s sciclaw routing add --channel %s --chat-id %s --workspace %s --allow %s",
+		cmd := fmt.Sprintf("HOME=%s %s routing add --channel %s --chat-id %s --workspace %s --allow %s",
 			exec.HomePath(),
+			shellEscape(exec.BinaryPath()),
 			shellEscape(channel),
 			shellEscape(chatID),
 			shellEscape(workspace),
@@ -1773,8 +1774,9 @@ func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, l
 
 func routingSetUsersCmd(exec Executor, channel, chatID, allowCSV string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := fmt.Sprintf("HOME=%s sciclaw routing set-users --channel %s --chat-id %s --allow %s 2>&1",
+		cmd := fmt.Sprintf("HOME=%s %s routing set-users --channel %s --chat-id %s --allow %s 2>&1",
 			exec.HomePath(),
+			shellEscape(exec.BinaryPath()),
 			shellEscape(channel),
 			shellEscape(chatID),
 			shellEscape(allowCSV),
@@ -1793,8 +1795,9 @@ func routingSetUsersCmd(exec Executor, channel, chatID, allowCSV string) tea.Cmd
 
 func routingExplainCmd(exec Executor, channel, chatID, sender string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := fmt.Sprintf("HOME=%s sciclaw routing explain --channel %s --chat-id %s --sender %s 2>&1",
+		cmd := fmt.Sprintf("HOME=%s %s routing explain --channel %s --chat-id %s --sender %s 2>&1",
 			exec.HomePath(),
+			shellEscape(exec.BinaryPath()),
 			shellEscape(channel),
 			shellEscape(chatID),
 			shellEscape(sender),
@@ -1860,7 +1863,7 @@ func expandHomeForExecPath(path, home string) string {
 
 func fetchDiscordRoomsCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw channels list-rooms --channel discord 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " channels list-rooms --channel discord 2>&1"
 		out, err := exec.ExecShell(15*time.Second, cmd)
 		if err != nil || strings.TrimSpace(out) == "" {
 			errMsg := "Failed to list Discord channels"
@@ -1894,7 +1897,7 @@ func fetchDiscordRoomsCmd(exec Executor) tea.Cmd {
 
 func startTelegramPairCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " sciclaw channels pair-telegram --timeout 15 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " channels pair-telegram --timeout 15 2>&1"
 		out, err := exec.ExecShell(20*time.Second, cmd)
 		if err != nil || strings.TrimSpace(out) == "" {
 			errMsg := "Pairing timed out — no message received"

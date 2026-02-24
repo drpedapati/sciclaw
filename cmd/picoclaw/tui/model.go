@@ -570,6 +570,9 @@ func (m Model) renderStatusBar() string {
 		} else {
 			left = fmt.Sprintf(" Mode: %s", lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("Local"))
 		}
+		if m.snapshot.ActiveModel != "" {
+			left += fmt.Sprintf("  Model: %s", styleDim.Render(m.snapshot.ActiveModel))
+		}
 		if m.loading {
 			left += fmt.Sprintf("  %s", m.spinner.View())
 		}

@@ -265,11 +265,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				return createClaudeAuthProvider()
 			}
 			if cfg.Providers.Anthropic.APIKey != "" {
-				apiKey = cfg.Providers.Anthropic.APIKey
-				apiBase = cfg.Providers.Anthropic.APIBase
-				if apiBase == "" {
-					apiBase = "https://api.anthropic.com/v1"
-				}
+				return NewClaudeProvider(cfg.Providers.Anthropic.APIKey), nil
 			}
 		case "openrouter":
 			if cfg.Providers.OpenRouter.APIKey != "" {
@@ -357,11 +353,8 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" || (cfg.Providers.Anthropic.APIKey == "" && hasStoredCredential("anthropic")) {
 				return createClaudeAuthProvider()
 			}
-			apiKey = cfg.Providers.Anthropic.APIKey
-			apiBase = cfg.Providers.Anthropic.APIBase
-			proxy = cfg.Providers.Anthropic.Proxy
-			if apiBase == "" {
-				apiBase = "https://api.anthropic.com/v1"
+			if cfg.Providers.Anthropic.APIKey != "" {
+				return NewClaudeProvider(cfg.Providers.Anthropic.APIKey), nil
 			}
 
 		case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && (cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != "" || hasStoredCredential("openai")):

@@ -37,6 +37,8 @@ func (e *routingTestExec) AuthPath() string { return "/tmp/auth.json" }
 
 func (e *routingTestExec) HomePath() string { return e.home }
 
+func (e *routingTestExec) BinaryPath() string { return "sciclaw" }
+
 func (e *routingTestExec) AgentVersion() string { return "vtest" }
 
 func (e *routingTestExec) ServiceInstalled() bool { return false }
@@ -280,7 +282,7 @@ func TestRoutingExplain_UsesFirstAllowedSenderAndShowsDetails(t *testing.T) {
 	if msg.action != "explain" || !msg.ok {
 		t.Fatalf("unexpected explain action msg: %#v", msg)
 	}
-	if !strings.Contains(execStub.lastShell, "sciclaw routing explain") {
+	if !strings.Contains(execStub.lastShell, "routing explain") {
 		t.Fatalf("expected explain command, got %q", execStub.lastShell)
 	}
 	if !strings.Contains(execStub.lastShell, "--sender '111'") {

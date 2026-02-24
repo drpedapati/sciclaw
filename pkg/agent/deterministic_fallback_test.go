@@ -64,7 +64,7 @@ func TestDeterministicFallback_ListProjects(t *testing.T) {
 		result: tools.NewToolResult(`{"status":"success","data":{"projects":[{"name":"sciclaw-manuscript","path":"/tmp/sciclaw-manuscript","template":"default"}]}}`),
 	})
 
-	resp, err := al.ProcessDirectWithChannel(context.Background(), "list projects", "test-session", "telegram", "chat-1")
+	resp, err := al.ProcessDirectWithChannel(context.Background(), "list projects", "test-session", "telegram", "chat-1", "test-user")
 	if err != nil {
 		t.Fatalf("ProcessDirectWithChannel error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestDeterministicFallback_NonIntentUsesDefaultResponse(t *testing.T) {
 		result: tools.NewToolResult(`{"status":"success","data":{"projects":[{"name":"ignored","path":"/tmp/ignored"}]}}`),
 	})
 
-	resp, err := al.ProcessDirectWithChannel(context.Background(), "hello there", "test-session", "telegram", "chat-1")
+	resp, err := al.ProcessDirectWithChannel(context.Background(), "hello there", "test-session", "telegram", "chat-1", "test-user")
 	if err != nil {
 		t.Fatalf("ProcessDirectWithChannel error: %v", err)
 	}
