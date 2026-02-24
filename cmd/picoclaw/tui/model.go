@@ -498,6 +498,7 @@ func (m Model) View() string {
 
 	// Pad to push status bar to bottom
 	rendered := b.String()
+	rendered = addDebugRowNumbers(rendered)
 	lines := strings.Count(rendered, "\n") + 1
 	for lines < m.height-1 {
 		rendered += "\n"
@@ -507,6 +508,20 @@ func (m Model) View() string {
 	rendered += m.renderStatusBar()
 
 	return rendered
+}
+
+func addDebugRowNumbers(input string) string {
+	lines := strings.Split(input, "\n")
+	var out strings.Builder
+	for i, line := range lines {
+		num := fmt.Sprintf("%3d ", i+1)
+		out.WriteString(styleRowNumber.Render(num))
+		out.WriteString(line)
+		if i < len(lines)-1 {
+			out.WriteString("\n")
+		}
+	}
+	return out.String()
 }
 
 func (m Model) renderTabBar() string {

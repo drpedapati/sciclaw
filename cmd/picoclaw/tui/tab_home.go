@@ -55,6 +55,8 @@ func (m HomeModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (HomeModel, tea.Cmd)
 	case "t":
 		// Smoke test from normal Home view.
 		if snap != nil && snap.ConfigExists {
+			m.onboardLoading = true
+			m.onboardResult = ""
 			return m, m.runSmokeTest()
 		}
 	}
@@ -297,9 +299,9 @@ func (m HomeModel) viewNormal(snap *VMSnapshot, width int) string {
 	b.WriteString("\n")
 
 	// Keybindings
-	b.WriteString(fmt.Sprintf("  %s Navigate to suggested step   %s Test connection\n",
+	b.WriteString(fmt.Sprintf("  %s Navigate to suggested step   %s\n",
 		styleKey.Render("[Enter]"),
-		styleKey.Render("[t]"),
+		renderTestConnectionHint(m),
 	))
 
 	return b.String()
@@ -440,6 +442,21 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 	return b.String()
 }
 
+func renderTestConnectionHint(m HomeModel) string {
+	frames := []string{"◐", "◓", "◑", "◒"}
+	if m.onboardLoading {
+		frame := frames[int(time.Now().UnixMilli()/120)%len(frames)]
+		return fmt.Sprintf("%s %s %s", styleKey.Render("[t]"), frame, styleDim.Render("Testing connection"))
+	}
+	if m.onboardResult == "" {
+		return fmt.Sprintf("%s %s", styleKey.Render("[t]"), styleDim.Render("Test connection"))
+	}
+	if m.onboardSmokePass {
+		return styleOK.Render("✅ [t]") + " " + styleDim.Render("Connection: alive")
+	}
+	return styleErr.Render("❌ [t]") + " " + styleDim.Render("Connection: fail")
+}
+
 func (m HomeModel) wizardFrame(w int, title, content string) string {
 	panel := stylePanel.Width(w).Render(content)
 	titleStyled := stylePanelTitle.Render("Setup: " + title)
@@ -491,12 +508,12 @@ func renderSystemInfoPanel(snap *VMSnapshot, w int) string {
 	}
 
 	content := fmt.Sprintf(
-		"%s %s\n%s %s\n%s %s\n%s %s\n%s %s",
+		"%s %s    %s %s\n%s %s\n%s %s    %s %s",
 		styleLabel.Render("Mode:"), styleOK.Render("Local"),
 		styleLabel.Render("System:"), styleValue.Render(osStr),
+		styleLabel.Render("Agent:"), styleValue.Render(verStr),
 		styleLabel.Render("Workspace:"), wsPath,
 		styleLabel.Render("Service:"), styleValue.Render(backend),
-		styleLabel.Render("Agent:"), styleValue.Render(verStr),
 	)
 
 	panel := stylePanel.Width(w).Render(content)

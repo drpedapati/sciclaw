@@ -29,7 +29,7 @@ var (
 			BorderBottom(true).
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderBottomForeground(colorBorder).
-			MarginBottom(1)
+			MarginBottom(0)
 )
 
 // Panel styles.
@@ -38,7 +38,7 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorBorder).
 			Padding(0, 1).
-			MarginBottom(1)
+			MarginBottom(0)
 
 	stylePanelTitle = lipgloss.NewStyle().
 			Bold(true).
@@ -54,6 +54,11 @@ var (
 
 // Status indicator styles.
 var (
+	styleRowNumber = lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Align(lipgloss.Right).
+		Width(4)
+
 	styleOK   = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
 	styleWarn = lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
 	styleErr  = lipgloss.NewStyle().Foreground(colorError).Bold(true)

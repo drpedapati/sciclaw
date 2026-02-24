@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 type Channel interface {
@@ -47,7 +48,10 @@ func (c *BaseChannel) IsRunning() bool {
 
 func (c *BaseChannel) IsAllowed(senderID string) bool {
 	if len(c.allowList) == 0 {
-		return false // no approved users → reject all messages
+		// Backward-compatible behavior: empty allowlists allow all senders.
+		// Routing and channel-level validation enforce explicit sender restrictions
+		// only when the user configures them.
+		return true
 	}
 
 	// Extract parts from compound senderID like "123456|username"
@@ -86,6 +90,12 @@ func (c *BaseChannel) IsAllowed(senderID string) bool {
 
 func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []string, metadata map[string]string) {
 	if !c.IsAllowed(senderID) {
+		logger.InfoCF(c.name, "Message rejected by allowlist",
+			map[string]interface{}{
+				"channel": c.name,
+				"sender":  senderID,
+				"chat_id": chatID,
+			})
 		return
 	}
 

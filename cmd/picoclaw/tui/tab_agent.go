@@ -198,20 +198,28 @@ func (m AgentModel) renderServicePanel(snap *VMSnapshot, w int) string {
 		}
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("  %s Start   %s Stop   %s Restart",
-		styleKey.Render("[s]"),
-		styleKey.Render("[t]"),
-		styleKey.Render("[r]"),
-	))
-	lines = append(lines, fmt.Sprintf("  %s Install/Reinstall   %s Refresh   %s Uninstall",
-		styleKey.Render("[i]"),
-		styleKey.Render("[f]"),
-		styleKey.Render("[u]"),
-	))
-	lines = append(lines, fmt.Sprintf("  %s Fetch latest logs",
-		styleKey.Render("[l]"),
-	))
+	if !m.actionBusy {
+		lines = append(lines, "")
+		if snap.ServiceRunning {
+			lines = append(lines, fmt.Sprintf("  %s Stop   %s Restart   %s Fetch latest logs",
+				styleKey.Render("[t]"),
+				styleKey.Render("[r]"),
+				styleKey.Render("[l]"),
+			))
+		} else if snap.ServiceInstalled {
+			lines = append(lines, fmt.Sprintf("  %s Start   %s Reinstall   %s Uninstall   %s Fetch latest logs",
+				styleKey.Render("[s]"),
+				styleKey.Render("[i]"),
+				styleKey.Render("[u]"),
+				styleKey.Render("[l]"),
+			))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s Install   %s Fetch latest logs",
+				styleKey.Render("[i]"),
+				styleKey.Render("[l]"),
+			))
+		}
+	}
 
 	content := strings.Join(lines, "\n")
 	panel := stylePanel.Width(w).Render(content)
@@ -253,6 +261,14 @@ func serviceAction(exec Executor, action string) tea.Cmd {
 		out, err := exec.ExecShell(20*time.Second, cmd)
 		if strings.TrimSpace(out) == "" {
 			out = "No output."
+		}
+
+		// Give the service process time to settle before checking status.
+		// start/restart/refresh all kill and relaunch the process; checking
+		// too quickly catches the brief window where it is dead.
+		switch strings.TrimSpace(action) {
+		case "start", "restart", "refresh":
+			time.Sleep(2 * time.Second)
 		}
 
 		installed, running, statusKnown, statusOut := serviceStatusSnapshot(exec)
