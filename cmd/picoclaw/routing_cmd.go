@@ -59,11 +59,11 @@ func routingHelp() {
 	fmt.Printf("\nRouting commands:\n")
 	fmt.Printf("  %s routing status\n", commandName)
 	fmt.Printf("  %s routing list\n", commandName)
-	fmt.Printf("  %s routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>]\n", commandName)
+	fmt.Printf("  %s routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention]\n", commandName)
 	fmt.Printf("  %s routing remove --channel <channel> --chat-id <id>\n", commandName)
 	fmt.Printf("  %s routing set-users --channel <channel> --chat-id <id> --allow <id1,id2>\n", commandName)
 	fmt.Printf("  %s routing validate\n", commandName)
-	fmt.Printf("  %s routing explain --channel <channel> --chat-id <id> --sender <id>\n", commandName)
+	fmt.Printf("  %s routing explain --channel <channel> --chat-id <id> --sender <id> [--mention] [--dm]\n", commandName)
 	fmt.Printf("  %s routing enable|disable\n", commandName)
 	fmt.Printf("  %s routing export --out <file>\n", commandName)
 	fmt.Printf("  %s routing import --in <file> [--replace]\n", commandName)
@@ -135,6 +135,7 @@ func routingListCmd() {
 
 func routingAddCmd() {
 	channel, chatID, workspace, allowCSV, label := "", "", "", "", ""
+	noMention := false
 	args := os.Args[3:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -163,11 +164,13 @@ func routingAddCmd() {
 				label = args[i+1]
 				i++
 			}
+		case "--no-mention":
+			noMention = true
 		}
 	}
 
 	if strings.TrimSpace(channel) == "" || strings.TrimSpace(chatID) == "" || strings.TrimSpace(workspace) == "" || strings.TrimSpace(allowCSV) == "" {
-		fmt.Println("Usage: routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>]")
+		fmt.Println("Usage: routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention]")
 		return
 	}
 
@@ -189,6 +192,10 @@ func routingAddCmd() {
 		Workspace:      workspace,
 		AllowedSenders: allowed,
 		Label:          label,
+	}
+	if noMention {
+		f := false
+		m.RequireMention = &f
 	}
 
 	key := routingMappingKey(channel, chatID)
@@ -343,6 +350,8 @@ func routingValidateCmd() {
 
 func routingExplainCmd() {
 	channel, chatID, sender := "", "", ""
+	mention := false
+	dm := false
 	args := os.Args[3:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -361,10 +370,14 @@ func routingExplainCmd() {
 				sender = args[i+1]
 				i++
 			}
+		case "--mention":
+			mention = true
+		case "--dm":
+			dm = true
 		}
 	}
 	if channel == "" || chatID == "" || sender == "" {
-		fmt.Println("Usage: routing explain --channel <channel> --chat-id <id> --sender <id>")
+		fmt.Println("Usage: routing explain --channel <channel> --chat-id <id> --sender <id> [--mention] [--dm]")
 		return
 	}
 
@@ -380,10 +393,15 @@ func routingExplainCmd() {
 		return
 	}
 
+	metadata := map[string]string{
+		"is_mention": fmt.Sprintf("%t", mention),
+		"is_dm":      fmt.Sprintf("%t", dm),
+	}
 	d := resolver.Resolve(bus.InboundMessage{
 		Channel:  channel,
 		ChatID:   chatID,
 		SenderID: sender,
+		Metadata: metadata,
 	})
 
 	fmt.Println("Routing explain:")

@@ -236,7 +236,9 @@ Platform notes:
 
 ## Collaborative Routing (Channel -> Workspace)
 
-For team deployments, route each chat room/thread to its own workspace with per-room sender ACLs.
+Give each project its own chat room. Routing maps a Discord or Telegram channel to a specific data folder so the agent only sees that project's files — while still having access to your shared personality, skills, and memory from `~/sciclaw`.
+
+**Mention to activate.** In routed channels the bot stays quiet unless someone `@mention`s it, so collaborators can talk freely without triggering responses. DMs always work without a mention.
 
 Example:
 
@@ -253,15 +255,26 @@ sciclaw routing validate
 sciclaw routing reload
 ```
 
+To let the bot respond to every message (no `@mention` needed), add `--no-mention`:
+
+```bash
+sciclaw routing add \
+  --channel discord \
+  --chat-id 1467290563052048476 \
+  --workspace /absolute/path/to/project-a \
+  --allow 8535331528 \
+  --no-mention
+```
+
 Useful operations:
 - `sciclaw routing status`
 - `sciclaw routing list`
-- `sciclaw routing explain --channel <channel> --chat-id <id> --sender <id>`
+- `sciclaw routing explain --channel <channel> --chat-id <id> --sender <id> [--mention] [--dm]`
 - `sciclaw routing set-users --channel <channel> --chat-id <id> --allow <id1,id2>`
 - `sciclaw routing remove --channel <channel> --chat-id <id>`
 - `sciclaw routing export --out routing.json` / `sciclaw routing import --in routing.json [--replace]`
 
-Session isolation is namespaced as `<channel>:<chat_id>@<workspace_hash>` to prevent cross-workspace context bleed.
+Session isolation is namespaced as `<channel>:<chat_id>@<workspace_hash>` to prevent cross-workspace context bleed. Each routed workspace gets its own sessions, memory, and state, but inherits your personality files (`AGENTS.md`, `SOUL.md`, etc.) and skills from the shared workspace (`~/sciclaw`).
 
 ## IRL Integration
 

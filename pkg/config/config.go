@@ -90,6 +90,14 @@ type RoutingMapping struct {
 	Workspace      string              `json:"workspace"`
 	AllowedSenders FlexibleStringSlice `json:"allowed_senders"`
 	Label          string              `json:"label,omitempty"`
+	RequireMention *bool               `json:"require_mention,omitempty"`
+}
+
+func (m RoutingMapping) MentionRequired() bool {
+	if m.RequireMention == nil {
+		return true
+	}
+	return *m.RequireMention
 }
 
 type ChannelsConfig struct {

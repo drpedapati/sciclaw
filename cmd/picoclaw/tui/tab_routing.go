@@ -1007,6 +1007,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 				m.wizardStep = addStepLabel
 				m.wizardInput.SetValue("")
 				m.wizardInput.Placeholder = "(optional label)"
+				m.wizardInput.Focus()
 				return m, nil
 			case "p":
 				if len(users) > 0 {
@@ -1071,6 +1072,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 			m.wizardStep = addStepLabel
 			m.wizardInput.SetValue("")
 			m.wizardInput.Placeholder = "(optional label)"
+			m.wizardInput.Focus()
 			return m, nil
 		}
 		return m, nil
@@ -1795,7 +1797,7 @@ func routingSetUsersCmd(exec Executor, channel, chatID, allowCSV string) tea.Cmd
 
 func routingExplainCmd(exec Executor, channel, chatID, sender string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := fmt.Sprintf("HOME=%s %s routing explain --channel %s --chat-id %s --sender %s 2>&1",
+		cmd := fmt.Sprintf("HOME=%s %s routing explain --channel %s --chat-id %s --sender %s --mention 2>&1",
 			exec.HomePath(),
 			shellEscape(exec.BinaryPath()),
 			shellEscape(channel),

@@ -1544,7 +1544,11 @@
       <!-- ─── Collaborative Routing ─── -->
       <div class="section" id="routing">
         <h3>Collaborative Routing</h3>
-        <p>Use routing when multiple chat rooms or teams should map to separate workspaces with separate sender ACLs.</p>
+        <p>Give each project its own chat room. Routing maps a Discord or Telegram channel to a specific data folder so the agent only sees that project's files &mdash; while still having access to your shared personality, skills, and memory from <code>~/sciclaw</code>.</p>
+
+        <div class="callout" style="background:#f0f7ff;border-left:4px solid #3b82f6;padding:0.8em 1em;margin:1em 0;border-radius:4px;">
+          <strong>Mention to activate.</strong> In routed channels the bot stays quiet unless someone <code>@mention</code>s it, so collaborators can discuss freely without triggering responses. DMs always work without a mention.
+        </div>
 
         <p><strong>1. Add mapping</strong></p>
         <pre><code><span class="hl-cmd">sciclaw</span> routing add \
@@ -1554,6 +1558,14 @@
   <span class="hl-flag">--allow</span> 8535331528,1467290563052048476 \
   <span class="hl-flag">--label</span> project-a</code></pre>
 
+        <p>To let the bot respond to <em>every</em> message (no <code>@mention</code> needed), add <code>--no-mention</code>:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> routing add \
+  <span class="hl-flag">--channel</span> discord \
+  <span class="hl-flag">--chat-id</span> 1467290563052048476 \
+  <span class="hl-flag">--workspace</span> /absolute/path/to/solo-project \
+  <span class="hl-flag">--allow</span> 8535331528 \
+  <span class="hl-flag">--no-mention</span></code></pre>
+
         <p><strong>2. Enable + validate + apply live</strong></p>
         <pre><code><span class="hl-cmd">sciclaw</span> routing enable
 <span class="hl-cmd">sciclaw</span> routing validate
@@ -1562,7 +1574,14 @@
         <p><strong>3. Inspect / troubleshoot decisions</strong></p>
         <pre><code><span class="hl-cmd">sciclaw</span> routing status
 <span class="hl-cmd">sciclaw</span> routing list
-<span class="hl-cmd">sciclaw</span> routing explain <span class="hl-flag">--channel</span> discord <span class="hl-flag">--chat-id</span> 1467290563052048476 <span class="hl-flag">--sender</span> 8535331528</code></pre>
+<span class="hl-cmd">sciclaw</span> routing explain <span class="hl-flag">--channel</span> discord <span class="hl-flag">--chat-id</span> 1467290563052048476 <span class="hl-flag">--sender</span> 8535331528 <span class="hl-flag">--mention</span></code></pre>
+
+        <p><strong>What the routed agent can access:</strong></p>
+        <ul>
+          <li><strong>Project workspace</strong> &mdash; the data folder you mapped (read/write)</li>
+          <li><strong>Shared workspace</strong> (<code>~/sciclaw</code>) &mdash; your personality files (<code>AGENTS.md</code>, <code>SOUL.md</code>, etc.) and all installed skills</li>
+          <li><strong>Isolated sessions</strong> &mdash; conversation history, memory, and state are kept per-workspace so projects never cross-contaminate</li>
+        </ul>
 
         <p>Session keys are namespaced as <code>&lt;channel&gt;:&lt;chat_id&gt;@&lt;workspace_hash&gt;</code> to isolate context across workspaces.</p>
       </div>

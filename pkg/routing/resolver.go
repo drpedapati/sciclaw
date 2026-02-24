@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	EventRouteMatch    = "route_match"
-	EventRouteUnmapped = "route_unmapped"
-	EventRouteDeny     = "route_deny"
-	EventRouteInvalid  = "route_invalid"
+	EventRouteMatch       = "route_match"
+	EventRouteUnmapped    = "route_unmapped"
+	EventRouteDeny        = "route_deny"
+	EventRouteInvalid     = "route_invalid"
+	EventRouteMentionSkip = "route_mention_skip"
 )
 
 type Decision struct {
@@ -112,6 +113,18 @@ func (r *Resolver) Resolve(msg bus.InboundMessage) Decision {
 		}
 	}
 
+	if enforceSender && mapping.MentionRequired() && !isMentionOrDM(msg.Metadata) {
+		return Decision{
+			Event:        EventRouteMentionSkip,
+			Allowed:      false,
+			Channel:      channel,
+			ChatID:       chatID,
+			SenderID:     msg.SenderID,
+			Reason:       "mention required",
+			MappingLabel: mapping.Label,
+		}
+	}
+
 	if err := ensureReadableWorkspace(mapping.Workspace); err != nil {
 		return Decision{
 			Event:        EventRouteInvalid,
@@ -191,6 +204,13 @@ func ensureReadableWorkspace(path string) error {
 	}
 	_, err = os.ReadDir(path)
 	return err
+}
+
+func isMentionOrDM(metadata map[string]string) bool {
+	if metadata["is_dm"] == "true" {
+		return true
+	}
+	return metadata["is_mention"] == "true"
 }
 
 func isSenderAllowed(senderID string, allowlist []string) bool {

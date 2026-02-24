@@ -30,6 +30,7 @@ type TelegramChannel struct {
 	config       config.TelegramConfig
 	chatIDs      map[string]int64
 	transcriber  *voice.GroqTranscriber
+	botUsername   string
 	placeholders sync.Map // chatID -> messageID
 	stopThinking sync.Map // chatID -> thinkingCancel
 	sendFileFn   func(ctx context.Context, chatID int64, attachment bus.OutboundAttachment) error
@@ -96,8 +97,9 @@ func (c *TelegramChannel) Start(ctx context.Context) error {
 	}
 
 	c.setRunning(true)
+	c.botUsername = c.bot.Username()
 	logger.InfoCF("telegram", "Telegram bot connected", map[string]interface{}{
-		"username": c.bot.Username(),
+		"username": c.botUsername,
 	})
 
 	go func() {
@@ -238,6 +240,20 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 	chatID := message.Chat.ID
 	c.chatIDs[senderID] = chatID
 
+	// Detect @bot mention
+	isMention := message.Chat.Type == "private"
+	if !isMention && c.botUsername != "" {
+		for _, entity := range message.Entities {
+			if entity.Type == "mention" {
+				mentionText := extractEntityText(message.Text, entity)
+				if strings.EqualFold(mentionText, "@"+c.botUsername) {
+					isMention = true
+					break
+				}
+			}
+		}
+	}
+
 	content := ""
 	mediaPaths := []string{}
 	localFiles := []string{} // 跟踪需要清理的本地文件
@@ -255,7 +271,11 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 	}()
 
 	if message.Text != "" {
-		content += message.Text
+		text := message.Text
+		if isMention && c.botUsername != "" {
+			text = stripBotMention(text, c.botUsername)
+		}
+		content += text
 	}
 
 	if message.Caption != "" {
@@ -347,30 +367,33 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 		"preview":   utils.Truncate(content, 50),
 	})
 
-	// Thinking indicator
-	err := c.bot.SendChatAction(ctx, tu.ChatAction(tu.ID(chatID), telego.ChatActionTyping))
-	if err != nil {
-		logger.ErrorCF("telegram", "Failed to send chat action", map[string]interface{}{
-			"error": err.Error(),
-		})
-	}
-
-	// Stop any previous thinking animation
 	chatIDStr := fmt.Sprintf("%d", chatID)
-	if prevStop, ok := c.stopThinking.Load(chatIDStr); ok {
-		if cf, ok := prevStop.(*thinkingCancel); ok && cf != nil {
-			cf.Cancel()
+
+	if isMention {
+		// Thinking indicator
+		err := c.bot.SendChatAction(ctx, tu.ChatAction(tu.ID(chatID), telego.ChatActionTyping))
+		if err != nil {
+			logger.ErrorCF("telegram", "Failed to send chat action", map[string]interface{}{
+				"error": err.Error(),
+			})
 		}
-	}
 
-	// Keep a cancel function for thinking state.
-	_, thinkCancel := context.WithTimeout(ctx, 5*time.Minute)
-	c.stopThinking.Store(chatIDStr, &thinkingCancel{fn: thinkCancel})
+		// Stop any previous thinking animation
+		if prevStop, ok := c.stopThinking.Load(chatIDStr); ok {
+			if cf, ok := prevStop.(*thinkingCancel); ok && cf != nil {
+				cf.Cancel()
+			}
+		}
 
-	pMsg, err := c.bot.SendMessage(ctx, tu.Message(tu.ID(chatID), "Thinking... 💭"))
-	if err == nil {
-		pID := pMsg.MessageID
-		c.placeholders.Store(chatIDStr, pID)
+		// Keep a cancel function for thinking state.
+		_, thinkCancel := context.WithTimeout(ctx, 5*time.Minute)
+		c.stopThinking.Store(chatIDStr, &thinkingCancel{fn: thinkCancel})
+
+		pMsg, err := c.bot.SendMessage(ctx, tu.Message(tu.ID(chatID), "Thinking... 💭"))
+		if err == nil {
+			pID := pMsg.MessageID
+			c.placeholders.Store(chatIDStr, pID)
+		}
 	}
 
 	metadata := map[string]string{
@@ -379,6 +402,8 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 		"username":   user.Username,
 		"first_name": user.FirstName,
 		"is_group":   fmt.Sprintf("%t", message.Chat.Type != "private"),
+		"is_dm":      fmt.Sprintf("%t", message.Chat.Type == "private"),
+		"is_mention": fmt.Sprintf("%t", isMention),
 	}
 
 	c.HandleMessage(fmt.Sprintf("%d", user.ID), fmt.Sprintf("%d", chatID), content, mediaPaths, metadata)
@@ -493,6 +518,22 @@ func (c *TelegramChannel) downloadFile(ctx context.Context, fileID, ext string) 
 	}
 
 	return c.downloadFileWithInfo(file, ext)
+}
+
+func extractEntityText(text string, entity telego.MessageEntity) string {
+	runes := []rune(text)
+	start := entity.Offset
+	end := entity.Offset + entity.Length
+	if start < 0 || end > len(runes) {
+		return ""
+	}
+	return string(runes[start:end])
+}
+
+func stripBotMention(text, botUsername string) string {
+	re := regexp.MustCompile(`(?i)@` + regexp.QuoteMeta(botUsername))
+	text = re.ReplaceAllString(text, "")
+	return strings.TrimSpace(text)
 }
 
 func parseChatID(chatIDStr string) (int64, error) {

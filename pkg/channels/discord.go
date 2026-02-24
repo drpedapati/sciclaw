@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ type DiscordChannel struct {
 	config      config.DiscordConfig
 	transcriber *voice.GroqTranscriber
 	ctx         context.Context
+	botUserID   string
 
 	typingMu      sync.Mutex
 	typing        map[string]*typingState
@@ -101,6 +103,7 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get bot user: %w", err)
 	}
+	c.botUserID = botUser.ID
 	logger.InfoCF("discord", "Discord bot connected", map[string]any{
 		"username": botUser.Username,
 		"user_id":  botUser.ID,
@@ -227,7 +230,22 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		senderName += "#" + m.Author.Discriminator
 	}
 
+	// Detect @bot mention
+	isMention := m.GuildID == "" // DMs are always "mentions"
+	if !isMention {
+		for _, u := range m.Mentions {
+			if u.ID == c.botUserID {
+				isMention = true
+				break
+			}
+		}
+	}
+
 	content := m.Content
+	if isMention && c.botUserID != "" {
+		content = regexp.MustCompile(`<@!?`+regexp.QuoteMeta(c.botUserID)+`>`).ReplaceAllString(content, "")
+		content = strings.TrimSpace(content)
+	}
 	mediaPaths := make([]string, 0, len(m.Attachments))
 	localFiles := make([]string, 0, len(m.Attachments))
 
@@ -300,7 +318,9 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		"sender_id":   senderID,
 		"preview":     utils.Truncate(content, 50),
 	})
-	c.startTyping(m.ChannelID)
+	if isMention {
+		c.startTyping(m.ChannelID)
+	}
 
 	metadata := map[string]string{
 		"message_id":   m.ID,
@@ -310,6 +330,7 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		"guild_id":     m.GuildID,
 		"channel_id":   m.ChannelID,
 		"is_dm":        fmt.Sprintf("%t", m.GuildID == ""),
+		"is_mention":   fmt.Sprintf("%t", isMention),
 	}
 
 	c.HandleMessage(senderID, m.ChannelID, content, mediaPaths, metadata)

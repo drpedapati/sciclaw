@@ -33,6 +33,7 @@ func TestResolve_Match(t *testing.T) {
 		Channel:  "discord",
 		ChatID:   "123",
 		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "true"},
 	})
 
 	if !d.Allowed {
@@ -159,6 +160,7 @@ func TestResolve_InvalidWorkspace(t *testing.T) {
 		Channel:  "discord",
 		ChatID:   "123",
 		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "true"},
 	})
 	if d.Allowed {
 		t.Fatalf("expected invalid mapping to block, got %+v", d)
@@ -198,6 +200,127 @@ func TestResolve_SystemMessageUsesOriginMapping(t *testing.T) {
 	}
 }
 
+func TestResolve_MentionRequired_SkipsWithoutMention(t *testing.T) {
+	ws := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "123",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+		},
+	}
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "123",
+		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "false", "is_dm": "false"},
+	})
+	if d.Allowed {
+		t.Fatalf("expected mention skip, got %+v", d)
+	}
+	if d.Event != EventRouteMentionSkip {
+		t.Fatalf("expected event %s, got %s", EventRouteMentionSkip, d.Event)
+	}
+}
+
+func TestResolve_MentionRequired_AllowsWithMention(t *testing.T) {
+	ws := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "123",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+		},
+	}
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "123",
+		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "true", "is_dm": "false"},
+	})
+	if !d.Allowed {
+		t.Fatalf("expected allowed with mention, got %+v", d)
+	}
+}
+
+func TestResolve_MentionRequired_DMBypass(t *testing.T) {
+	ws := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "123",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+		},
+	}
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "123",
+		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "false", "is_dm": "true"},
+	})
+	if !d.Allowed {
+		t.Fatalf("expected DM bypass, got %+v", d)
+	}
+}
+
+func TestResolve_NoMentionOverride(t *testing.T) {
+	ws := t.TempDir()
+	noMention := false
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "123",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+			RequireMention: &noMention,
+		},
+	}
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "123",
+		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "false", "is_dm": "false"},
+	})
+	if !d.Allowed {
+		t.Fatalf("expected --no-mention override to allow, got %+v", d)
+	}
+}
+
 func TestResolve_SessionNamespaceChangesWhenWorkspaceChanges(t *testing.T) {
 	ws1 := t.TempDir()
 	ws2 := t.TempDir()
@@ -232,7 +355,7 @@ func TestResolve_SessionNamespaceChangesWhenWorkspaceChanges(t *testing.T) {
 		t.Fatalf("NewResolver cfg2 error: %v", err)
 	}
 
-	msg := bus.InboundMessage{Channel: "telegram", ChatID: "555", SenderID: "u1"}
+	msg := bus.InboundMessage{Channel: "telegram", ChatID: "555", SenderID: "u1", Metadata: map[string]string{"is_mention": "true"}}
 	d1 := r1.Resolve(msg)
 	d2 := r2.Resolve(msg)
 	if d1.SessionKey == d2.SessionKey {

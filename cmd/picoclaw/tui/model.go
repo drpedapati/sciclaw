@@ -348,13 +348,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case routingActionMsg:
 		m.routing.HandleAction(msg)
 		m.loading = true
-		return m, tea.Batch(
+		cmds := []tea.Cmd{
 			m.spinner.Tick,
 			fetchSnapshotCmd(m.exec),
 			fetchSettingsData(m.exec),
 			fetchRoutingStatus(m.exec),
 			fetchRoutingListCmd(m.exec),
-		)
+		}
+		if msg.ok && msg.action != "explain" {
+			cmds = append(cmds, routingReloadCmd(m.exec))
+		}
+		return m, tea.Batch(cmds...)
 
 	case actionDoneMsg:
 		if trimmed := strings.TrimSpace(msg.output); trimmed != "" {

@@ -86,6 +86,9 @@ func (d *Dispatcher) logDecision(decision Decision) {
 }
 
 func (d *Dispatcher) sendBlockNotice(msg bus.InboundMessage, decision Decision) {
+	if decision.Event == EventRouteMentionSkip {
+		return
+	}
 	if constants.IsInternalChannel(msg.Channel) {
 		return
 	}
