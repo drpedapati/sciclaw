@@ -71,6 +71,36 @@ func TestHomeWizard_UpdateAuthStartsExecAndSetsLoading(t *testing.T) {
 	}
 }
 
+func TestHomeWizard_AnthropicAuthUsesInlineInput(t *testing.T) {
+	m := NewHomeModel(&homeTestExec{})
+	m.onboardActive = true
+	m.onboardStep = wizardAuth
+
+	// Enter inline token mode for Anthropic.
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}, nil)
+	if next.anthropicMode != homeAuthAnthropicAPIKey {
+		t.Fatalf("expected anthropic inline mode, got %d", next.anthropicMode)
+	}
+	if cmd == nil {
+		t.Fatal("expected blink cmd for token input focus")
+	}
+	m = next
+
+	// Simulate typing token and submitting.
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("sk-TEST")}, nil)
+	m = next
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, nil)
+	if cmd != nil {
+		t.Fatalf("did not expect external command for inline save, got %v", cmd)
+	}
+	if next.anthropicMode != homeAuthNormal {
+		t.Fatalf("expected inline mode to exit after save, got %d", next.anthropicMode)
+	}
+	if next.onboardStep != wizardSmoke {
+		t.Fatalf("expected wizard step to advance to smoke test, got %d", next.onboardStep)
+	}
+}
+
 func TestHomeWizard_HandleExecDone_DoesNotAdvanceOnFailures(t *testing.T) {
 	t.Run("auth failure stays on auth step", func(t *testing.T) {
 		m := NewHomeModel(&homeTestExec{})

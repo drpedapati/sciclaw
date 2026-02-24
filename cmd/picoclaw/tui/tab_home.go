@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -22,8 +23,10 @@ const (
 
 // HomeModel handles the Home tab.
 type HomeModel struct {
-	exec         Executor
-	selectedItem int // 0 = suggested action
+	exec           Executor
+	selectedItem   int // 0 = suggested action
+	anthropicMode  homeAuthMode
+	anthropicInput textinput.Model
 
 	// Onboard wizard state
 	wizardChecked    bool   // whether the first snapshot was checked
@@ -34,8 +37,23 @@ type HomeModel struct {
 	onboardSmokePass bool   // smoke test passed
 }
 
+type homeAuthMode int
+
+const (
+	homeAuthNormal homeAuthMode = iota
+	homeAuthAnthropicAPIKey
+)
+
 func NewHomeModel(exec Executor) HomeModel {
-	return HomeModel{exec: exec}
+	ti := textinput.New()
+	ti.CharLimit = 2048
+	ti.Width = 54
+	ti.EchoMode = textinput.EchoPassword
+	return HomeModel{
+		exec:           exec,
+		anthropicInput: ti,
+		anthropicMode:  homeAuthNormal,
+	}
 }
 
 func (m HomeModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (HomeModel, tea.Cmd) {
@@ -68,6 +86,35 @@ func (m HomeModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (HomeModel, tea.Cmd)
 func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 	key := msg.String()
 
+	if m.anthropicMode == homeAuthAnthropicAPIKey {
+		switch key {
+		case "esc":
+			m.anthropicMode = homeAuthNormal
+			m.anthropicInput.Blur()
+			m.anthropicInput.SetValue("")
+			return m, nil
+		case "enter":
+			keyText := strings.TrimSpace(m.anthropicInput.Value())
+			m.anthropicMode = homeAuthNormal
+			m.anthropicInput.Blur()
+			m.anthropicInput.SetValue("")
+			if keyText == "" {
+				return m, nil
+			}
+			if err := saveAPIKey(m.exec, "anthropic", keyText); err != nil {
+				m.onboardResult = "Failed to save Anthropic token: " + err.Error()
+				return m, nil
+			}
+			m.onboardResult = ""
+			m.onboardStep = wizardSmoke
+			return m, nil
+		default:
+			var cmd tea.Cmd
+			m.anthropicInput, cmd = m.anthropicInput.Update(msg)
+			return m, cmd
+		}
+	}
+
 	switch m.onboardStep {
 	case wizardWelcome:
 		if key == "enter" {
@@ -78,16 +125,19 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 	case wizardAuth:
 		switch key {
 		case "enter":
+			m.anthropicMode = homeAuthNormal
 			m.onboardLoading = true
 			m.onboardResult = ""
 			c := m.exec.InteractiveProcess("sciclaw", "auth", "login", "--provider", "openai")
 			return m, tea.ExecProcess(c, onboardExecCallback(wizardAuth))
 		case "a":
-			m.onboardLoading = true
 			m.onboardResult = ""
-			c := m.exec.InteractiveProcess("sciclaw", "auth", "login", "--provider", "anthropic")
-			return m, tea.ExecProcess(c, onboardExecCallback(wizardAuth))
+			m.anthropicMode = homeAuthAnthropicAPIKey
+			m.anthropicInput.SetValue("")
+			m.anthropicInput.Focus()
+			return m, m.anthropicInput.Cursor.BlinkCmd()
 		case "esc":
+			m.anthropicMode = homeAuthNormal
 			m.onboardStep = wizardSmoke
 		}
 
@@ -164,6 +214,8 @@ func onboardExecCallback(step int) func(error) tea.Msg {
 // HandleExecDone processes async wizard command results.
 func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 	m.onboardLoading = false
+	m.anthropicMode = homeAuthNormal
+	m.onboardResult = ""
 
 	switch msg.step {
 	case wizardWelcome:
@@ -339,8 +391,19 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 			"  Choose your AI provider:\n" +
 			"\n" +
 			"  " + styleKey.Render("[Enter]") + " Log in with OpenAI (recommended)\n" +
-			"  " + styleKey.Render("[a]") + "     Log in with Anthropic\n" +
+			"  " + styleKey.Render("[a]") + "     Paste Anthropic API key\n" +
 			"  " + styleKey.Render("[Esc]") + "   Skip for now\n"
+
+		if m.anthropicMode == homeAuthAnthropicAPIKey {
+			content = "\n" +
+				"  " + styleOK.Render("✓") + " Configuration file created.\n" +
+				"\n" +
+				"  Paste your Anthropic token:\n" +
+				"\n" +
+				"  " + styleBold.Render("Anthropic key:") + " " + m.anthropicInput.View() + "\n" +
+				"  " + styleDim.Render("Enter to save, Esc to cancel") + "\n"
+		}
+
 		if m.onboardLoading {
 			content += "\n  " + styleDim.Render("Waiting for login flow to complete...") + "\n"
 		} else if m.onboardResult != "" {
