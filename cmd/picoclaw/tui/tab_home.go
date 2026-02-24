@@ -265,25 +265,11 @@ func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 func (m HomeModel) createDefaultConfig() tea.Cmd {
 	exec := m.exec
 	return func() tea.Msg {
-		// Ensure ~/.picoclaw/ directory exists.
-		home := exec.HomePath()
-		mkdirCmd := "mkdir -p " + shellEscape(home+"/.picoclaw/workspace")
-		_, _ = exec.ExecShell(5*time.Second, mkdirCmd)
-
-		// Create default config.
-		cfg := map[string]interface{}{
-			"agents": map[string]interface{}{
-				"defaults": map[string]interface{}{
-					"model":     "gpt-5.2",
-					"workspace": "~/.picoclaw/workspace",
-				},
-			},
-			"channels": map[string]interface{}{
-				"discord":  map[string]interface{}{"enabled": false},
-				"telegram": map[string]interface{}{"enabled": false},
-			},
-		}
-		err := writeConfigMap(exec, cfg)
+		// Run the full onboard pipeline (idempotent, non-interactive).
+		// This creates config.json, workspace dirs, TOOLS.md, IDENTITY.md,
+		// baseline skills, and everything else the doctor check expects.
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " onboard -y 2>&1"
+		_, err := exec.ExecShell(30*time.Second, cmd)
 		return onboardExecDoneMsg{step: wizardWelcome, err: err}
 	}
 }
@@ -486,17 +472,17 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 				icon = styleErr.Render("✗ Fail")
 			}
 			content = "\n" +
-				"  Smoke test: " + icon + "\n" +
+				"  Connection test: " + icon + "\n" +
 				"\n" +
 				"  " + styleDim.Render("Press Enter to continue.") + "\n"
 		} else {
 			content = "\n" +
 				"  Test your AI connection?\n" +
 				"\n" +
-				"  " + styleKey.Render("[Enter]") + " Run smoke test\n" +
+				"  " + styleKey.Render("[Enter]") + " Test connection\n" +
 				"  " + styleKey.Render("[Esc]") + "   Skip\n"
 		}
-		b.WriteString(m.wizardFrame(panelW, "Smoke Test (optional)", content))
+		b.WriteString(m.wizardFrame(panelW, "Test Connection (optional)", content))
 
 	case wizardChannel:
 		content := "\n" +
