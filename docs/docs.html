@@ -301,6 +301,38 @@
     .hl-flag { color: #d2a8ff; }
     .hl-cmd { color: #79c0ff; }
 
+    /* ── TUI mockups ── */
+    .tui-mockup {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 0 0 20px;
+      line-height: 1.4;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      border: 1px solid #3A3A5C;
+    }
+    .tui-mockup .tui-accent { color: #7B68EE; }
+    .tui-mockup .tui-ok { color: #50C878; }
+    .tui-mockup .tui-warn { color: #FFB347; }
+    .tui-mockup .tui-err { color: #FF6961; }
+    .tui-mockup .tui-dim { color: #808080; }
+    .tui-mockup .tui-title { color: #C4B5FD; font-weight: bold; }
+    .tui-mockup .tui-tab-active { color: #fff; background: #7B68EE; padding: 1px 6px; border-radius: 3px; font-weight: bold; }
+    .tui-mockup .tui-tab { color: #808080; }
+    .tui-mockup .tui-key { color: #7B68EE; }
+    .tui-mockup .tui-border { color: #3A3A5C; }
+
+    .tui-screenshot {
+      display: block;
+      max-width: 100%;
+      border-radius: 8px;
+      border: 1px solid #3A3A5C;
+      margin: 0 0 20px;
+    }
+
     /* ── Tables ── */
     table {
       width: 100%;
@@ -515,6 +547,15 @@
       <a class="sidebar-link" href="#updating">Updating</a>
       <a class="sidebar-link" href="#quick-start">Quick Start</a>
       <a class="sidebar-link" href="#scientist-setup">Scientist Setup</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">TUI Interface</div>
+      <a class="sidebar-link" href="#tui-overview">Overview</a>
+      <a class="sidebar-link nested" href="#tui-onboarding">Onboarding Wizard</a>
+      <a class="sidebar-link nested" href="#tui-home">Home Dashboard</a>
+      <a class="sidebar-link nested" href="#tui-channels">Channels</a>
+      <a class="sidebar-link nested" href="#tui-routing">Routing</a>
+      <a class="sidebar-link nested" href="#tui-settings">Settings</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Configuration</div>
@@ -745,6 +786,154 @@
 <span class="hl-comment"># Interactive mode</span>
 <span class="hl-cmd">sciclaw</span> agent</code></pre>
         <p>That's it. You have a working paired-scientist assistant.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ TUI INTERFACE ━━━━━ -->
+      <div class="section" id="tui-overview">
+        <h2>TUI Interface</h2>
+        <p class="page-subtitle">A visual dashboard for managing sciClaw without typing CLI commands.</p>
+
+        <p>Launch the TUI:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> tui</code></pre>
+        <p>The interface opens in your terminal with a tabbed layout. Use <strong>Tab</strong> / <strong>Shift+Tab</strong> to switch between tabs, <strong>arrow keys</strong> to navigate within a tab, and <strong>q</strong> to quit. There are 12 tabs: <strong>Home</strong>, <strong>Chat</strong>, <strong>Channels</strong>, <strong>Routing</strong>, <strong>Users</strong>, <strong>Models</strong>, <strong>Skills</strong>, <strong>Schedule</strong>, <strong>Gateway</strong>, <strong>Settings</strong>, <strong>Login</strong>, and <strong>Health</strong>.</p>
+
+        <img src="assets/tui/tui-home.png" alt="sciClaw TUI — Home tab showing system info, setup checklist, and suggested next step" class="tui-screenshot" />
+
+        <p>On first launch the TUI detects that setup is incomplete and automatically starts the <strong>onboarding wizard</strong>.</p>
+      </div>
+
+      <div class="section" id="tui-onboarding">
+        <h3>Onboarding Wizard</h3>
+        <p>The wizard walks through five steps. Every step can be skipped with <strong>Esc</strong> and revisited later from the Settings or Login tabs.</p>
+
+        <h3>Step 1 &mdash; Welcome</h3>
+        <p>The opening screen confirms you&rsquo;re about to start setup.</p>
+<div class="tui-mockup"><span class="tui-title"> Setup: Welcome</span>
+<span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span>  Welcome to sciClaw setup.                            <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span>  This wizard will walk you through the initial        <span class="tui-border">│</span>
+<span class="tui-border">│</span>  configuration. It takes about 2 minutes.             <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span>  Press Enter to begin.                                <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
+                        <span class="tui-dim">Step 1 of 5</span></div>
+
+        <h3>Step 2 &mdash; Authentication</h3>
+        <p>Choose an AI provider. OpenAI device-code login works with any ChatGPT Plus or Team subscription &mdash; no API key needed. You can also enter an Anthropic API key directly.</p>
+<div class="tui-mockup"><span class="tui-title"> Setup: Authentication</span>
+<span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Configuration file created.                       <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> Choose your AI provider:                              <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[Enter]</span>  Log in with OpenAI (recommended)           <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[a]</span>      Use Anthropic API key                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[Esc]</span>    Skip for now                               <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
+                        <span class="tui-dim">Step 2 of 5</span></div>
+
+        <p>After logging in, the wizard runs a quick smoke test. If successful, you see the AI&rsquo;s first reply:</p>
+<div class="tui-mockup"><span class="tui-title"> Setup: Authentication</span>
+<span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Configuration file created.                       <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Connected!                                        <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> Your AI responded:                                    <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-accent">│</span> Hello! I'm ready to help with your research.       <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> Press Enter to continue.                              <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
+                        <span class="tui-dim">Step 2 of 5</span></div>
+
+        <h3>Step 3 &mdash; Chat Channel</h3>
+        <p>Optionally connect a messaging app so you can talk to sciClaw from Telegram or Discord instead of the terminal. The inline wizard collects the bot token, your user ID, and an optional display name.</p>
+<div class="tui-mockup"><span class="tui-title"> Setup: Chat Channel</span>
+<span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> AI provider connected!                             <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> Connect a messaging app?                              <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[t]</span>  Set up Telegram                                <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[d]</span>  Set up Discord                                 <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[s]</span>  Skip for now                                   <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
+                        <span class="tui-dim">Step 3 of 5</span></div>
+
+        <h3>Step 4 &mdash; Gateway Service</h3>
+        <p>The gateway runs sciClaw as a background service so it stays connected to your chat channels even when the TUI is closed.</p>
+<div class="tui-mockup"><span class="tui-title"> Setup: Gateway Service</span>
+<span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span> Install the background gateway service?               <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> This lets your agent run continuously and respond     <span class="tui-border">│</span>
+<span class="tui-border">│</span> to messages even when the TUI is closed.              <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[Enter]</span>  Install and start service                  <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[Esc]</span>    Skip for now                               <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
+                        <span class="tui-dim">Step 4 of 5</span></div>
+
+        <h3>Step 5 &mdash; All Set</h3>
+        <p>A final checklist confirms what was configured. Press Enter to close the wizard and enter the Home dashboard.</p>
+<div class="tui-mockup"><span class="tui-title"> Setup: All Set</span>
+<span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Setup complete!                                    <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Configuration file                                 <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Workspace folder                                   <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> AI provider (OpenAI: ready)                        <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Channel (Discord: ready)                           <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Gateway service installed                          <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Gateway service running                            <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                      <span class="tui-border">│</span>
+<span class="tui-border">│</span> Press Enter to go to the Home tab.                    <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
+                        <span class="tui-dim">Step 5 of 5</span></div>
+      </div>
+
+      <div class="section" id="tui-home">
+        <h3>Home Dashboard</h3>
+        <p>After setup completes (or on subsequent launches), the Home tab shows three panels: <strong>System</strong> info (mode, version, workspace), a <strong>Setup Checklist</strong> with green/orange/red status icons, and a <strong>Suggested Next Step</strong> with a one-click fix when something needs attention.</p>
+
+        <img src="assets/tui/tui-home.png" alt="sciClaw TUI — Home dashboard with system info, checklist, and suggested next step" class="tui-screenshot" />
+
+        <p>Press <strong>[t]</strong> to test the AI connection. If any checklist item shows <span style="color:#FFB347;">!</span> or <span style="color:#FF6961;">✗</span>, the Suggested Next Step panel highlights a fix. Press <strong>Enter</strong> to apply it.</p>
+      </div>
+
+      <div class="section" id="tui-channels">
+        <h3>Channels Tab</h3>
+        <p>View and manage your connected messaging apps. Both Discord and Telegram are shown on the same screen. Use <strong>[a]</strong> to add approved users, <strong>[d]</strong> to remove, and <strong>[s]</strong> to reconfigure a channel&rsquo;s bot token.</p>
+
+        <img src="assets/tui/tui-channels.png" alt="sciClaw TUI — Channels tab showing Discord connected with approved users and Telegram not configured" class="tui-screenshot" />
+
+        <p>Adding a user requires only their numeric user ID (right-click their profile in Discord or Telegram to copy it) and an optional display name.</p>
+      </div>
+
+      <div class="section" id="tui-routing">
+        <h3>Routing Tab</h3>
+        <p>Map chat rooms to project folders so each conversation sees only its own data. The routing tab shows the current status, a list of all mappings, and details for the selected mapping.</p>
+
+        <img src="assets/tui/tui-routing.png" alt="sciClaw TUI — Routing tab showing status, mapping list, and detail panel" class="tui-screenshot" />
+
+        <p>The <strong>[a] Add</strong> wizard walks you through selecting a channel, chat room, workspace folder, allowed users, and a label &mdash; six steps total. Use <strong>[e]</strong> to explain routing decisions, <strong>[f]</strong> to edit a folder, <strong>[u]</strong> to edit users, and <strong>[R]</strong> to apply changes. The gateway hot-reloads automatically.</p>
+        <div class="callout">
+          <div class="callout-title">Tip</div>
+          <p>By default, routed channels require an <code>@mention</code> to activate the bot. This lets collaborators discuss freely without triggering responses. See <a href="#routing">Collaborative Routing</a> for details and the <code>--no-mention</code> override.</p>
+        </div>
+      </div>
+
+      <div class="section" id="tui-settings">
+        <h3>Settings Tab</h3>
+        <p>View and toggle all configuration options from a single screen. Navigate with <strong>arrow keys</strong>, press <strong>Enter</strong> to toggle or edit a value.</p>
+
+        <img src="assets/tui/tui-settings.png" alt="sciClaw TUI — Settings tab showing channels, routing, agent, integrations, service, and general sections" class="tui-screenshot" />
+
+        <p>Settings are grouped into sections: <strong>Channels</strong>, <strong>Routing</strong>, <strong>Agent</strong> (model and reasoning effort), <strong>Integrations</strong> (PubMed API key), <strong>Service</strong>, and <strong>General</strong>. Service controls (<strong>[s]</strong> start, <strong>[t]</strong> stop) are available directly from this tab.</p>
       </div>
 
       <hr />
