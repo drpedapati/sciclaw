@@ -328,10 +328,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case onboardExecDoneMsg:
-		m.home.HandleExecDone(msg)
+		chainedCmd := m.home.HandleExecDone(msg)
 		// Refresh snapshot after wizard actions.
 		m.loading = true
-		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec))
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec), chainedCmd)
 
 	case tickMsg:
 		if !m.loading && time.Since(m.lastRefresh) > 10*time.Second {

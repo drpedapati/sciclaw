@@ -250,6 +250,27 @@ func TestShellTool_BlocksMutatingInSharedCWDWhenReadOnly(t *testing.T) {
 	}
 }
 
+func TestShellTool_AllowsMutatingWhenSharedEqualsWorkspaceAndNotReadOnly(t *testing.T) {
+	// When workspace == shared_workspace, the runtime override in
+	// createToolRegistry sets readOnly=false so the agent can exec
+	// mutating commands (e.g. pandoc) in its own workspace.
+	dir := t.TempDir()
+	tool := NewExecTool(dir, false)
+	tool.SetRestrictToWorkspace(true)
+	tool.SetSharedWorkspacePolicy(dir, false) // same dir, read-only disabled
+
+	cmds := []string{
+		"pandoc test.md -o test.docx",
+		"touch note.txt",
+		"cp file.md file_backup.md",
+	}
+	for _, cmd := range cmds {
+		if blocked := tool.guardCommand(cmd, dir); blocked != "" {
+			t.Fatalf("expected %q to be allowed when workspace==shared and not read-only, got: %q", cmd, blocked)
+		}
+	}
+}
+
 func TestShellTool_PubMedFieldTagsNotBlockedByPathGuard(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewExecTool(tmpDir, false)

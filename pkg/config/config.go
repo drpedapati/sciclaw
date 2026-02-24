@@ -241,7 +241,7 @@ func DefaultConfig() *Config {
 				Workspace:               "~/sciclaw",
 				RestrictToWorkspace:     true,
 				SharedWorkspace:         "~/sciclaw",
-				SharedWorkspaceReadOnly: true,
+				SharedWorkspaceReadOnly: false,
 				Provider:                "",
 				Model:                   "gpt-5.2",
 				MaxTokens:               8192,

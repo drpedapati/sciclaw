@@ -73,6 +73,16 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry := tools.NewToolRegistry()
 	sharedWorkspace := cfg.SharedWorkspacePath()
 	sharedReadOnly := cfg.Agents.Defaults.SharedWorkspaceReadOnly
+	// When workspace and shared workspace resolve to the same directory,
+	// the read-only restriction makes no sense — the agent must be able
+	// to exec in its own workspace (e.g. pandoc, cp).
+	if sharedWorkspace != "" && workspace != "" {
+		absW, errW := filepath.Abs(workspace)
+		absS, errS := filepath.Abs(sharedWorkspace)
+		if errW == nil && errS == nil && absW == absS {
+			sharedReadOnly = false
+		}
+	}
 
 	// File system tools
 	readFileTool := tools.NewReadFileTool(workspace, restrict)

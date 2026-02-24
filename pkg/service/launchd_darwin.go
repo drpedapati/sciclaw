@@ -42,6 +42,11 @@ func newLaunchdManager(exePath string, runner commandRunner) Manager {
 func (m *launchdManager) Backend() string { return BackendLaunchd }
 
 func (m *launchdManager) Install() error {
+	// Fully tear down any prior registration so bootstrap starts from a
+	// clean slate. This is idempotent — Uninstall is a no-op when the
+	// service was never installed.
+	_ = m.Uninstall()
+
 	if err := os.MkdirAll(filepath.Dir(m.plistPath), 0755); err != nil {
 		return err
 	}
@@ -51,20 +56,31 @@ func (m *launchdManager) Install() error {
 
 	pathEnv := buildSystemdPath(os.Getenv("PATH"), m.detectBrewPrefix())
 	plist := renderLaunchdPlist(m.label, m.exePath, m.stdoutPath, m.stderrPath, pathEnv)
-	if err := writeFileIfChanged(m.plistPath, []byte(plist), 0644); err != nil {
+	if err := os.WriteFile(m.plistPath, []byte(plist), 0644); err != nil {
 		return err
 	}
 
-	// Clear any stale disabled state before bootstrap — a previous uninstall
-	// may have left the label in launchd's disabled overrides database, which
-	// causes bootstrap to fail with "Input/output error".
-	_, _ = runCommand(m.runner, 5*time.Second, "launchctl", "enable", m.serviceTarget)
-	_, _ = runCommand(m.runner, 10*time.Second, "launchctl", "bootout", m.serviceTarget)
-	if out, err := runCommand(m.runner, 10*time.Second, "launchctl", "bootstrap", m.domainTarget, m.plistPath); err != nil {
-		msg := strings.ToLower(string(out))
-		if !strings.Contains(msg, "already bootstrapped") {
-			return fmt.Errorf("bootstrap failed: %s", oneLine(string(out)))
+	// Bootstrap with retry — launchd may need a moment after the bootout
+	// in Uninstall to fully release the old service registration.
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Second)
 		}
+		out, err := runCommand(m.runner, 10*time.Second, "launchctl", "bootstrap", m.domainTarget, m.plistPath)
+		if err == nil {
+			lastErr = nil
+			break
+		}
+		msg := strings.ToLower(string(out))
+		if strings.Contains(msg, "already bootstrapped") {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("bootstrap failed: %s", oneLine(string(out)))
+	}
+	if lastErr != nil {
+		return lastErr
 	}
 	if out, err := runCommand(m.runner, 5*time.Second, "launchctl", "enable", m.serviceTarget); err != nil {
 		return fmt.Errorf("enable failed: %s", oneLine(string(out)))

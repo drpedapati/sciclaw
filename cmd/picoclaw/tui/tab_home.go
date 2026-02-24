@@ -34,7 +34,17 @@ type HomeModel struct {
 	onboardStep      int    // current wizard step
 	onboardLoading   bool   // async command in progress
 	onboardResult    string // result text from last async op
-	onboardSmokePass bool   // smoke test passed
+	onboardSmokePass   bool   // smoke test passed
+	onboardTesting     bool   // connection test running after auth
+	onboardSmokeOutput string // AI response from connection test
+
+	// Inline channel setup state (wizard channel step)
+	chSetup   bool   // inline setup active
+	chChannel string // "discord" or "telegram"
+	chStep    int    // 0=token, 1=userID, 2=name, 3=confirm
+	chToken   string
+	chUserID  string
+	chInput   textinput.Model
 }
 
 type homeAuthMode int
@@ -49,10 +59,16 @@ func NewHomeModel(exec Executor) HomeModel {
 	ti.CharLimit = 2048
 	ti.Width = 54
 	ti.EchoMode = textinput.EchoPassword
+
+	chi := textinput.New()
+	chi.CharLimit = 256
+	chi.Width = 50
+
 	return HomeModel{
 		exec:           exec,
 		anthropicInput: ti,
 		anthropicMode:  homeAuthNormal,
+		chInput:        chi,
 	}
 }
 
@@ -102,12 +118,15 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 				return m, nil
 			}
 			if err := saveAPIKey(m.exec, "anthropic", keyText); err != nil {
-				m.onboardResult = "Failed to save Anthropic token: " + err.Error()
+				m.onboardResult = "Failed to save key: " + err.Error()
 				return m, nil
 			}
+			// Key saved — immediately test the connection.
+			m.onboardLoading = true
+			m.onboardTesting = true
 			m.onboardResult = ""
-			m.onboardStep = wizardSmoke
-			return m, nil
+			return m, m.runSmokeTest()
+
 		default:
 			var cmd tea.Cmd
 			m.anthropicInput, cmd = m.anthropicInput.Update(msg)
@@ -123,6 +142,33 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 		}
 
 	case wizardAuth:
+		// Block input while connection test is running.
+		if m.onboardTesting {
+			return m, nil
+		}
+		// Handle connection test results.
+		if !m.onboardLoading && (m.onboardResult == "connected" || strings.Contains(m.onboardResult, "Connection test")) {
+			switch key {
+			case "enter":
+				if m.onboardSmokePass {
+					m.onboardResult = ""
+					m.onboardSmokeOutput = ""
+					m.onboardStep = wizardChannel
+					return m, nil
+				}
+				// Retry failed test.
+				m.onboardLoading = true
+				m.onboardTesting = true
+				m.onboardResult = ""
+				m.onboardSmokeOutput = ""
+				return m, m.runSmokeTest()
+			case "esc":
+				m.onboardResult = ""
+				m.onboardSmokeOutput = ""
+				m.onboardStep = wizardChannel
+			}
+			return m, nil
+		}
 		switch key {
 		case "enter":
 			m.anthropicMode = homeAuthNormal
@@ -138,7 +184,7 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 			return m, m.anthropicInput.Cursor.BlinkCmd()
 		case "esc":
 			m.anthropicMode = homeAuthNormal
-			m.onboardStep = wizardSmoke
+			m.onboardStep = wizardChannel
 		}
 
 	case wizardSmoke:
@@ -162,17 +208,30 @@ func (m HomeModel) updateWizard(msg tea.KeyMsg) (HomeModel, tea.Cmd) {
 		}
 
 	case wizardChannel:
+		// Inline channel setup wizard.
+		if m.chSetup {
+			switch key {
+			case "esc":
+				m.chSetup = false
+				m.chInput.Blur()
+				m.chInput.EchoMode = textinput.EchoNormal
+				return m, nil
+			case "enter":
+				return m.handleChSetupSubmit()
+			default:
+				if m.chStep < 3 {
+					var cmd tea.Cmd
+					m.chInput, cmd = m.chInput.Update(msg)
+					return m, cmd
+				}
+			}
+			return m, nil
+		}
 		switch key {
 		case "t":
-			m.onboardLoading = true
-			m.onboardResult = ""
-			c := m.exec.InteractiveProcess(m.exec.BinaryPath(), "channels", "setup", "telegram")
-			return m, tea.ExecProcess(c, onboardExecCallback(wizardChannel))
+			return m.startChSetup("telegram")
 		case "d":
-			m.onboardLoading = true
-			m.onboardResult = ""
-			c := m.exec.InteractiveProcess(m.exec.BinaryPath(), "channels", "setup", "discord")
-			return m, tea.ExecProcess(c, onboardExecCallback(wizardChannel))
+			return m.startChSetup("discord")
 		case "s", "esc":
 			m.onboardStep = wizardService
 		}
@@ -212,7 +271,8 @@ func onboardExecCallback(step int) func(error) tea.Msg {
 }
 
 // HandleExecDone processes async wizard command results.
-func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
+// Returns an optional tea.Cmd to chain (e.g. run connection test after auth).
+func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) tea.Cmd {
 	m.onboardLoading = false
 	m.anthropicMode = homeAuthNormal
 	m.onboardResult = ""
@@ -228,22 +288,43 @@ func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 	case wizardAuth:
 		if msg.err != nil {
 			m.onboardResult = "Login was not completed. Retry or press Esc to skip."
-			return
+			return nil
 		}
+		// Login succeeded — immediately test the connection.
+		m.onboardLoading = true
+		m.onboardTesting = true
 		m.onboardResult = ""
-		m.onboardStep = wizardSmoke
+		return m.runSmokeTest()
 	case wizardSmoke:
+		m.onboardTesting = false
+		m.onboardSmokeOutput = strings.TrimSpace(msg.output)
 		if msg.err != nil {
-			m.onboardResult = "fail"
 			m.onboardSmokePass = false
 		} else {
-			m.onboardResult = "pass"
 			m.onboardSmokePass = true
 		}
+		// If auto-triggered from auth screen, show result inline (don't auto-advance).
+		if m.onboardStep == wizardAuth {
+			if m.onboardSmokePass {
+				m.onboardResult = "connected"
+			} else {
+				m.onboardResult = "Connection test failed."
+			}
+			return nil
+		}
+		// Standalone test screen.
+		if m.onboardSmokePass {
+			m.onboardResult = "pass"
+		} else {
+			m.onboardResult = "fail"
+		}
 	case wizardChannel:
+		m.chSetup = false
+		m.chInput.Blur()
+		m.chInput.EchoMode = textinput.EchoNormal
 		if msg.err != nil {
-			m.onboardResult = "Channel setup was not completed. Retry or press [s] to skip."
-			return
+			m.onboardResult = "Channel setup failed. Try again or press [s] to skip."
+			return nil
 		}
 		m.onboardResult = ""
 		m.onboardStep = wizardService
@@ -253,11 +334,17 @@ func (m *HomeModel) HandleExecDone(msg onboardExecDoneMsg) {
 			if detail == "" {
 				detail = msg.err.Error()
 			}
-			m.onboardResult = "err:Service install failed: " + detail
+			// The CLI output may already contain "Service install failed:".
+			if strings.Contains(strings.ToLower(detail), "service install failed") {
+				m.onboardResult = "err:" + detail
+			} else {
+				m.onboardResult = "err:Service install failed: " + detail
+			}
 		} else {
 			m.onboardResult = "Service installed and started."
 		}
 	}
+	return nil
 }
 
 // --- Wizard Commands ---
@@ -281,7 +368,7 @@ func (m HomeModel) runSmokeTest() tea.Cmd {
 		if smokeModel, err := resolveSmokeTestModel(exec); err == nil && smokeModel != "" {
 			modelFlag = " --model " + shellEscape(smokeModel)
 		}
-		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " agent -m 'Hello, are you there?'" + modelFlag + " 2>&1"
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " agent -m 'Hello, are you there?'" + modelFlag + " 2>/dev/null"
 		out, err := exec.ExecShell(30*time.Second, cmd)
 		output := strings.TrimSpace(out)
 		if output == "" && err != nil {
@@ -355,6 +442,85 @@ func (m HomeModel) installService() tea.Cmd {
 		cmd := "HOME=" + exec.HomePath() + " " + bin + " service install 2>&1 && HOME=" + exec.HomePath() + " " + bin + " service start 2>&1"
 		out, err := exec.ExecShell(20*time.Second, cmd)
 		return onboardExecDoneMsg{step: wizardService, output: strings.TrimSpace(out), err: err}
+	}
+}
+
+// --- Inline channel setup (mirrors Channels tab pattern) ---
+
+func (m HomeModel) startChSetup(channel string) (HomeModel, tea.Cmd) {
+	m.chSetup = true
+	m.chChannel = channel
+	m.chStep = 0
+	m.chToken = ""
+	m.chUserID = ""
+	m.chInput.SetValue("")
+	m.chInput.Placeholder = "paste bot token here"
+	m.chInput.CharLimit = 256
+	m.chInput.EchoMode = textinput.EchoPassword
+	m.chInput.Focus()
+	m.onboardResult = ""
+	return m, m.chInput.Cursor.BlinkCmd()
+}
+
+func (m HomeModel) handleChSetupSubmit() (HomeModel, tea.Cmd) {
+	val := strings.TrimSpace(m.chInput.Value())
+
+	switch m.chStep {
+	case 0: // Token
+		if val == "" {
+			m.chSetup = false
+			m.chInput.Blur()
+			m.chInput.EchoMode = textinput.EchoNormal
+			return m, nil
+		}
+		m.chToken = val
+		m.chStep = 1
+		m.chInput.SetValue("")
+		m.chInput.Placeholder = "e.g. 123456789012345678"
+		m.chInput.EchoMode = textinput.EchoNormal
+		m.chInput.CharLimit = 64
+		return m, nil
+
+	case 1: // User ID
+		if val == "" {
+			m.chSetup = false
+			m.chInput.Blur()
+			return m, nil
+		}
+		m.chUserID = val
+		m.chStep = 2
+		m.chInput.SetValue("")
+		m.chInput.Placeholder = "(optional display name)"
+		return m, nil
+
+	case 2: // Display name (optional)
+		if m.chUserID != "" && val != "" {
+			m.chUserID = FormatEntry(m.chUserID, val)
+		}
+		m.chStep = 3
+		m.chInput.Blur()
+		return m, nil
+
+	case 3: // Confirm → save
+		m.chSetup = false
+		m.chInput.EchoMode = textinput.EchoNormal
+		m.chInput.CharLimit = 256
+		m.onboardLoading = true
+		return m, m.wizardSaveChannel()
+	}
+	return m, nil
+}
+
+func (m HomeModel) wizardSaveChannel() tea.Cmd {
+	exec := m.exec
+	channel := m.chChannel
+	token := m.chToken
+	userEntry := m.chUserID
+	return func() tea.Msg {
+		if err := saveChannelSetupConfig(exec, channel, token, userEntry); err != nil {
+			return onboardExecDoneMsg{step: wizardChannel, err: err}
+		}
+		return onboardExecDoneMsg{step: wizardChannel}
 	}
 }
 
@@ -433,30 +599,7 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 		))
 
 	case wizardAuth:
-		content := "\n" +
-			"  " + styleOK.Render("✓") + " Configuration file created.\n" +
-			"\n" +
-			"  Choose your AI provider:\n" +
-			"\n" +
-			"  " + styleKey.Render("[Enter]") + " Log in with OpenAI (recommended)\n" +
-			"  " + styleKey.Render("[a]") + "     Paste Anthropic API key\n" +
-			"  " + styleKey.Render("[Esc]") + "   Skip for now\n"
-
-		if m.anthropicMode == homeAuthAnthropicAPIKey {
-			content = "\n" +
-				"  " + styleOK.Render("✓") + " Configuration file created.\n" +
-				"\n" +
-				"  Paste your Anthropic token:\n" +
-				"\n" +
-				"  " + styleBold.Render("Anthropic key:") + " " + m.anthropicInput.View() + "\n" +
-				"  " + styleDim.Render("Enter to save, Esc to cancel") + "\n"
-		}
-
-		if m.onboardLoading {
-			content += "\n  " + styleDim.Render("Waiting for login flow to complete...") + "\n"
-		} else if m.onboardResult != "" {
-			content += "\n  " + styleWarn.Render("! "+m.onboardResult) + "\n"
-		}
+		content := m.renderWizardAuthContent()
 		b.WriteString(m.wizardFrame(panelW, "Authentication", content))
 
 	case wizardSmoke:
@@ -485,16 +628,25 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 		b.WriteString(m.wizardFrame(panelW, "Test Connection (optional)", content))
 
 	case wizardChannel:
-		content := "\n" +
-			"  Connect a messaging app?\n" +
-			"\n" +
-			"  " + styleKey.Render("[t]") + " Set up Telegram\n" +
-			"  " + styleKey.Render("[d]") + " Set up Discord\n" +
-			"  " + styleKey.Render("[s]") + " Skip for now\n"
-		if m.onboardLoading {
-			content += "\n  " + styleDim.Render("Waiting for channel setup to complete...") + "\n"
-		} else if m.onboardResult != "" {
-			content += "\n  " + styleWarn.Render("! "+m.onboardResult) + "\n"
+		var content string
+		if m.chSetup {
+			content = m.renderChSetupView()
+		} else {
+			content = "\n"
+			if m.onboardSmokePass {
+				content += "  " + styleOK.Render("✓") + " AI provider connected!\n\n"
+			}
+			content +=
+				"  Connect a messaging app?\n" +
+				"\n" +
+				"  " + styleKey.Render("[t]") + " Set up Telegram\n" +
+				"  " + styleKey.Render("[d]") + " Set up Discord\n" +
+				"  " + styleKey.Render("[s]") + " Skip for now\n"
+			if m.onboardLoading {
+				content += "\n  " + styleDim.Render("Saving channel settings...") + "\n"
+			} else if m.onboardResult != "" {
+				content += "\n  " + styleWarn.Render("! "+m.onboardResult) + "\n"
+			}
 		}
 		b.WriteString(m.wizardFrame(panelW, "Chat Channel", content))
 
@@ -541,13 +693,20 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 		b.WriteString(m.wizardFrame(panelW, "All Set", content))
 	}
 
-	// Progress indicator
-	total := 6
-	step := m.onboardStep + 1
-	if step > total {
-		step = total
+	// Progress indicator — auth and connection test are combined.
+	displayStep := map[int]int{
+		wizardWelcome: 1,
+		wizardAuth:    2,
+		wizardSmoke:   2,
+		wizardChannel: 3,
+		wizardService: 4,
+		wizardDone:    5,
 	}
-	progress := fmt.Sprintf("  Step %d of %d", step, total)
+	step := displayStep[m.onboardStep]
+	if step == 0 {
+		step = 1
+	}
+	progress := fmt.Sprintf("  Step %d of %d", step, 5)
 	b.WriteString(styleDim.Render(progress) + "\n")
 
 	return b.String()
@@ -568,6 +727,156 @@ func renderTestConnectionHint(m HomeModel) string {
 	return styleErr.Render("❌ [t]") + " " + styleDim.Render("Connection: fail")
 }
 
+func (m HomeModel) renderWizardAuthContent() string {
+	// Connection test running — animated spinner.
+	if m.onboardTesting {
+		frames := []string{"◐", "◓", "◑", "◒"}
+		frame := frames[int(time.Now().UnixMilli()/200)%len(frames)]
+		return "\n" +
+			"  " + styleOK.Render("✓") + " Configuration file created.\n" +
+			"\n" +
+			"  " + styleWarn.Render(frame) + " " + styleBold.Render("Testing connection...") + "\n" +
+			"\n" +
+			"  " + styleDim.Render("Sending a quick hello to your AI provider.") + "\n"
+	}
+
+	// Connection test passed — show the AI response.
+	if m.onboardResult == "connected" {
+		s := "\n" +
+			"  " + styleOK.Render("✓") + " Configuration file created.\n" +
+			"  " + styleOK.Render("✓") + " " + styleBold.Render("Connected!") + "\n"
+		if preview := responsePreview(m.onboardSmokeOutput); preview != "" {
+			s += "\n" +
+				"  " + styleDim.Render("Your AI responded:") + "\n" +
+				"  " + styleDim.Render("│") + " " + preview + "\n"
+		}
+		s += "\n" +
+			"  " + styleDim.Render("Press Enter to continue.") + "\n"
+		return s
+	}
+
+	// Connection test failed — show error with retry.
+	if strings.Contains(m.onboardResult, "Connection test") {
+		s := "\n" +
+			"  " + styleErr.Render("✗") + " " + styleBold.Render("Connection test failed.") + "\n"
+		if preview := responsePreview(m.onboardSmokeOutput); preview != "" {
+			s += "\n  " + styleDim.Render(preview) + "\n"
+		}
+		s += "\n" +
+			"  " + styleKey.Render("[Enter]") + " Retry test\n" +
+			"  " + styleKey.Render("[Esc]") + "   Skip to next step\n"
+		return s
+	}
+
+	// Anthropic API key entry.
+	if m.anthropicMode == homeAuthAnthropicAPIKey {
+		return "\n" +
+			"  " + styleOK.Render("✓") + " Configuration file created.\n" +
+			"\n" +
+			"  Enter your Anthropic API key.\n" +
+			"  " + styleDim.Render("Get one at console.anthropic.com, or run:") + "\n" +
+			"  " + styleDim.Render("  claude setup-token") + "\n" +
+			"\n" +
+			"  " + styleBold.Render("API key:") + " " + m.anthropicInput.View() + "\n" +
+			"  " + styleDim.Render("Enter to save, Esc to cancel") + "\n"
+	}
+
+	// Waiting for interactive login to return.
+	if m.onboardLoading {
+		return "\n" +
+			"  " + styleDim.Render("Waiting for login flow to complete...") + "\n"
+	}
+
+	// Normal provider selection.
+	s := "\n" +
+		"  " + styleOK.Render("✓") + " Configuration file created.\n" +
+		"\n" +
+		"  Choose your AI provider:\n" +
+		"\n" +
+		"  " + styleKey.Render("[Enter]") + " Log in with OpenAI (recommended)\n" +
+		"  " + styleKey.Render("[a]") + "     Use Anthropic API key\n" +
+		"  " + styleKey.Render("[Esc]") + "   Skip for now\n"
+	if m.onboardResult != "" {
+		s += "\n  " + styleWarn.Render("! "+m.onboardResult) + "\n"
+	}
+	return s
+}
+
+// responsePreview returns a trimmed, single-line preview of AI output.
+func responsePreview(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	// Take first non-empty line.
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			if len(line) > 100 {
+				line = line[:97] + "..."
+			}
+			return line
+		}
+	}
+	return ""
+}
+
+func (m HomeModel) renderChSetupView() string {
+	name := "Discord"
+	if m.chChannel == "telegram" {
+		name = "Telegram"
+	}
+
+	var lines []string
+	lines = append(lines, "")
+	if m.onboardSmokePass {
+		lines = append(lines, "  "+styleOK.Render("✓")+" AI provider connected!")
+	}
+	lines = append(lines, "  "+styleBold.Render("Set up "+name))
+	lines = append(lines, "")
+
+	switch m.chStep {
+	case 0:
+		lines = append(lines, fmt.Sprintf("  Paste your %s bot token: %s", name, m.chInput.View()))
+		if name == "Discord" {
+			lines = append(lines, styleHint.Render("    Get this from Discord Developer Portal → Bot → Token"))
+		} else {
+			lines = append(lines, styleHint.Render("    Get this from @BotFather on Telegram"))
+		}
+		lines = append(lines, "")
+		lines = append(lines, styleDim.Render("    Esc to cancel"))
+	case 1:
+		lines = append(lines, "  "+styleOK.Render("✓")+" Bot token saved.")
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  Enter your %s User ID: %s", name, m.chInput.View()))
+		if name == "Discord" {
+			lines = append(lines, styleHint.Render("    Discord Settings → Advanced → Developer Mode"))
+			lines = append(lines, styleHint.Render("    → Right-click your avatar → Copy User ID"))
+		} else {
+			lines = append(lines, styleHint.Render("    Message @userinfobot on Telegram to get your ID"))
+		}
+		lines = append(lines, "")
+		lines = append(lines, styleDim.Render("    Esc to cancel"))
+	case 2:
+		lines = append(lines, "  "+styleOK.Render("✓")+" Bot token saved.")
+		lines = append(lines, "  "+styleOK.Render("✓")+" User ID: "+m.chUserID)
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  Add a display name (optional): %s", m.chInput.View()))
+		lines = append(lines, styleHint.Render("    Press Enter to skip"))
+	case 3:
+		lines = append(lines, fmt.Sprintf("  %s  Enabled: %s", styleDim.Render("Review:"), styleOK.Render("true")))
+		lines = append(lines, fmt.Sprintf("           Token: %s", styleOK.Render("set")))
+		if m.chUserID != "" {
+			lines = append(lines, fmt.Sprintf("           User:  %s", styleValue.Render(m.chUserID)))
+		}
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  Press %s to save, %s to cancel",
+			styleKey.Render("Enter"), styleKey.Render("Esc")))
+	}
+
+	return strings.Join(lines, "\n") + "\n"
+}
+
 func (m HomeModel) wizardFrame(w int, title, content string) string {
 	panel := stylePanel.Width(w).Render(content)
 	titleStyled := stylePanelTitle.Render("Setup: " + title)
@@ -584,7 +893,6 @@ func renderInlineChecklist(snap *VMSnapshot) string {
 	items := []checkItem{
 		{boolStatus(snap.ConfigExists), "Configuration file"},
 		{boolStatus(snap.WorkspaceExists), "Workspace folder"},
-		{boolStatus(snap.AuthStoreExists), "Login credentials"},
 		{providerCheckStatus(snap.OpenAI, snap.Anthropic), providerCheckLabel(snap.OpenAI, snap.Anthropic)},
 		{channelCheckStatus(snap.Discord.Status, snap.Telegram.Status), channelCheckLabel(snap.Discord, snap.Telegram)},
 		{boolStatus(snap.ServiceInstalled), "Gateway service installed"},
@@ -689,7 +997,6 @@ func renderChecklistPanel(snap *VMSnapshot, w int) string {
 	items := []checkItem{
 		{boolStatus(snap.ConfigExists), "Configuration file"},
 		{boolStatus(snap.WorkspaceExists), "Workspace folder"},
-		{boolStatus(snap.AuthStoreExists), "Login credentials"},
 		{providerCheckStatus(snap.OpenAI, snap.Anthropic), providerCheckLabel(snap.OpenAI, snap.Anthropic)},
 		{channelCheckStatus(snap.Discord.Status, snap.Telegram.Status), channelCheckLabel(snap.Discord, snap.Telegram)},
 		{boolStatus(snap.ServiceInstalled), "Gateway service installed"},

@@ -92,14 +92,17 @@ func TestHomeWizard_AnthropicAuthUsesInlineInput(t *testing.T) {
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("sk-TEST")}, nil)
 	m = next
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter}, nil)
-	if cmd != nil {
-		t.Fatalf("did not expect external command for inline save, got %v", cmd)
+	if cmd == nil {
+		t.Fatal("expected connection test command after saving API key")
 	}
 	if next.anthropicMode != homeAuthNormal {
 		t.Fatalf("expected inline mode to exit after save, got %d", next.anthropicMode)
 	}
-	if next.onboardStep != wizardSmoke {
-		t.Fatalf("expected wizard step to advance to smoke test, got %d", next.onboardStep)
+	if !next.onboardTesting {
+		t.Fatalf("expected onboardTesting=true after saving key")
+	}
+	if next.onboardStep != wizardAuth {
+		t.Fatalf("expected step to stay on auth during inline test, got %d", next.onboardStep)
 	}
 }
 
@@ -127,7 +130,7 @@ func TestHomeWizard_HandleExecDone_DoesNotAdvanceOnFailures(t *testing.T) {
 		if m.onboardStep != wizardChannel {
 			t.Fatalf("expected wizard step to remain channel, got %d", m.onboardStep)
 		}
-		if !strings.Contains(strings.ToLower(m.onboardResult), "not completed") {
+		if !strings.Contains(strings.ToLower(m.onboardResult), "failed") {
 			t.Fatalf("expected retry guidance in onboarding result, got %q", m.onboardResult)
 		}
 	})

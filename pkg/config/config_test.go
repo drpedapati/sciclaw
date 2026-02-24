@@ -29,8 +29,8 @@ func TestDefaultConfig_WorkspacePath(t *testing.T) {
 	if cfg.Agents.Defaults.SharedWorkspace == "" {
 		t.Error("SharedWorkspace should not be empty")
 	}
-	if !cfg.Agents.Defaults.SharedWorkspaceReadOnly {
-		t.Error("SharedWorkspaceReadOnly should default to true")
+	if cfg.Agents.Defaults.SharedWorkspaceReadOnly {
+		t.Error("SharedWorkspaceReadOnly should default to false")
 	}
 }
 
