@@ -37,14 +37,7 @@ You:      "Draft a methods section using the attached protocol"
 sciClaw:  [produces a Word doc with tracked changes you review in Microsoft Word]
 ```
 
-After install, connect a chat app and start the gateway:
-
-```bash
-sciclaw channels setup telegram    # or: sciclaw channels setup discord
-sciclaw service install && sciclaw service start
-```
-
-That's it. sciClaw runs in the background and responds to your messages. See the [Scientist Setup Guide](https://sciclaw.dev/docs.html#scientist-setup) for a walkthrough.
+New users should follow [Quick Start](#quick-start) below for the canonical setup path (install -> initialize -> authenticate -> connect chat).
 
 > **Prefer a visual interface?** Run `sciclaw app` to open an interactive dashboard in your terminal — no CLI knowledge needed. A CLI is also available for power users: `sciclaw agent -m "your question"` or `sciclaw agent` for interactive mode.
 
@@ -63,11 +56,6 @@ brew tap drpedapati/tap && brew install sciclaw-dev
 ```
 
 `sciclaw-dev` tracks development branch releases. If stable `sciclaw` is already installed, uninstall it first to avoid binary name collisions.
-
-Then run the interactive setup wizard:
-```bash
-sciclaw onboard
-```
 
 macOS only:
 ```bash
@@ -88,11 +76,24 @@ make deps && make install
 
 Homebrew pulls companion tools automatically (ImageMagick, IRL, ripgrep, docx-review, pubmed-cli). For binary/source installs, run `sciclaw doctor` for hints.
 
+After any install method, initialize once:
+```bash
+# Recommended: interactive app with first-run setup wizard
+sciclaw app
+
+# CLI alternative (headless/non-TUI)
+sciclaw onboard
+```
+
 ## Quick Start
 
-**1. Initialize** — the wizard walks you through everything:
+**1. Initialize** — choose one:
 
 ```bash
+# Recommended: launches the app and starts first-run setup
+sciclaw app
+
+# CLI alternative (headless/non-TUI)
 sciclaw onboard
 ```
 

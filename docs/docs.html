@@ -611,15 +611,22 @@
       <div class="section" id="quick-start">
         <h1>Quick Start</h1>
         <p class="page-subtitle">From zero to your first research deliverable in five minutes.</p>
+        <div class="callout">
+          <div class="callout-title">Two paths</div>
+          <p><strong>Beginner path:</strong> install, run <code>sciclaw app</code>, connect a provider, then pair Telegram/Discord in the wizard.</p>
+          <p><strong>Advanced path:</strong> use <a href="#installation">Installation</a>, then jump to <a href="#configuration">Configuration</a>, <a href="#cli-reference">CLI Reference</a>, and <a href="#service">Service</a>.</p>
+        </div>
 
         <h3>1. Install</h3>
-        <p>Open Terminal (macOS) or your shell (Linux) and run:</p>
-        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap && <span class="hl-cmd">brew</span> install sciclaw</code></pre>
-        <p>Don't have Homebrew? See <a href="#installation">Installation</a> for full setup instructions and alternative install methods.</p>
+        <p>Follow <a href="#installation">Installation</a> for the maintained install commands (Homebrew, binary, or source). Install commands live there so this page stays consistent as release channels evolve.</p>
 
-        <h3>2. Launch the app</h3>
-        <pre><code><span class="hl-cmd">sciclaw</span> app</code></pre>
-        <p>This opens the sciClaw dashboard in your terminal. On first launch, a setup wizard starts automatically.</p>
+        <h3>2. Initialize (app recommended)</h3>
+        <pre><code><span class="hl-comment"># Recommended: opens the dashboard and starts first-run setup</span>
+<span class="hl-cmd">sciclaw</span> app
+
+<span class="hl-comment"># CLI alternative for headless/non-TUI environments</span>
+<span class="hl-cmd">sciclaw</span> onboard</code></pre>
+        <p>Both paths create your config and workspace. <code>sciclaw app</code> starts the same setup wizard inside the dashboard.</p>
 
         <h3>3. Connect an AI provider</h3>
         <p>The wizard asks you to choose a provider. Pick whichever you have:</p>
@@ -635,8 +642,8 @@
 <span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
 <span class="tui-dim">                    Step 2 of 5</span></pre></div>
         <ul>
-          <li><strong>OpenAI</strong> (press Enter) &mdash; Uses your ChatGPT Plus or Team subscription. A browser link opens for device-code login. No API key needed.</li>
-          <li><strong>Anthropic</strong> (press <code>a</code>) &mdash; Paste your API key from <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.</li>
+          <li><strong>OpenAI</strong> (press Enter) &mdash; Uses ChatGPT Plus, Team, or Enterprise via device-code login. No API key needed.</li>
+          <li><strong>Anthropic</strong> (press <code>a</code>) &mdash; Paste an Anthropic API key from <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.</li>
         </ul>
         <p>After connecting, the wizard runs a quick smoke test to confirm everything works:</p>
         <div class="tui-mockup"><pre><span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
@@ -691,11 +698,15 @@
         <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw</code></pre>
         <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>pandoc</code>, <code>rg</code>, <code>uv</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
 
-        <h3>Step 2 &mdash; Onboard</h3>
-        <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>The onboard wizard walks you through first-time setup. It starts by creating your config (<code>~/.picoclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. On Linux it also bootstraps a managed workspace Python venv at <code>~/sciclaw/.venv</code> (prefers <code>uv</code>, falls back to <code>python3 -m venv</code>) and installs required packages used by scientific workflows. Then it asks optional questions:</p>
+        <h3>Step 2 &mdash; Initialize (app or onboard)</h3>
+        <pre><code><span class="hl-comment"># Recommended: opens dashboard + starts setup wizard</span>
+<span class="hl-cmd">sciclaw</span> app
+
+<span class="hl-comment"># CLI alternative</span>
+<span class="hl-cmd">sciclaw</span> onboard</code></pre>
+        <p>Both commands run the same first-time setup flow. It creates your config (<code>~/.picoclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. On Linux it also bootstraps a managed workspace Python venv at <code>~/sciclaw/.venv</code> (prefers <code>uv</code>, falls back to <code>python3 -m venv</code>) and installs required packages used by scientific workflows. Then it asks optional questions:</p>
         <ol>
-          <li><strong>OpenAI login</strong> &mdash; Authenticates with OpenAI using a device-code flow (a link opens in your browser). Skip this if you plan to use a different provider.</li>
+          <li><strong>OpenAI login</strong> &mdash; Uses device-code login for ChatGPT Plus, Team, or Enterprise (a link opens in your browser). Skip this if you plan to use a different provider.</li>
           <li><strong>Chat smoke test</strong> &mdash; If authentication succeeds, a single test message is sent automatically to confirm your AI provider is connected and responding.</li>
           <li><strong>PubMed API key</strong> &mdash; An <a href="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/" target="_blank" rel="noopener">NCBI API key</a> removes rate limits on literature searches. Recommended but not required; you can add one later.</li>
           <li><strong>TinyTeX</strong> &mdash; If Quarto is installed, offers to install TinyTeX (~250&nbsp;MB) for PDF rendering. Skipped automatically when Quarto is not detected.</li>
@@ -860,7 +871,7 @@
                         <span class="tui-dim">Step 1 of 5</span></div>
 
         <h3>Step 2 &mdash; Authentication</h3>
-        <p>Choose an AI provider. OpenAI device-code login works with any ChatGPT Plus or Team subscription &mdash; no API key needed. You can also enter an Anthropic API key directly.</p>
+        <p>Choose an AI provider. OpenAI device-code login works with ChatGPT Plus, Team, or Enterprise &mdash; no API key needed. You can also enter an Anthropic API key directly.</p>
 <div class="tui-mockup"><span class="tui-title"> Setup: Authentication</span>
 <span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
 <span class="tui-border">│</span> <span class="tui-ok">✓</span> Configuration file created.                       <span class="tui-border">│</span>
@@ -984,30 +995,16 @@
 
         <h3>Recommended setup (Telegram)</h3>
         <ol>
-          <li><strong>Install</strong> (Homebrew recommended)</li>
+          <li><strong>Complete Quick Start first</strong> (install + initialize + provider auth): <a href="#quick-start">Quick Start</a></li>
         </ol>
-        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw</code></pre>
+        <p>If you skipped provider login during setup, use <a href="#authentication">Authentication</a> to connect OpenAI or Anthropic before pairing chat channels.</p>
 
         <ol start="2">
-          <li><strong>Initialize</strong> (creates config + workspace + baseline skills)</li>
-        </ol>
-        <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-
-        <ol start="3">
-          <li><strong>Connect a provider</strong> (ChatGPT subscribers: device-code login; or paste an API key)</li>
-        </ol>
-        <pre><code><span class="hl-comment"># ChatGPT subscribers: device-code login (no API key needed)</span>
-<span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
-
-<span class="hl-comment"># Optional: PubMed rate limits (the onboard wizard can save this too)</span>
-<span class="hl-cmd">export</span> NCBI_API_KEY=<span class="hl-string">"your-key"</span></code></pre>
-
-        <ol start="4">
           <li><strong>Pair Telegram</strong> (writes an allowlist so only you can talk to the bot)</li>
         </ol>
         <pre><code><span class="hl-cmd">sciclaw</span> channels setup telegram</code></pre>
 
-        <ol start="5">
+        <ol start="3">
           <li><strong>Start the gateway</strong> (background mode recommended for daily use)</li>
         </ol>
         <pre><code><span class="hl-comment"># Background mode</span>
@@ -1140,7 +1137,7 @@
           <p style="margin-top:8px;">Terms around using an Anthropic Claude subscription (claude.ai consumer plan) for programmatic or agent-based access are currently unclear. We are seeking clarification from Anthropic. In the meantime, use Anthropic&rsquo;s API keys if you intend to use Claude with sciClaw.</p>
         </div>
 
-        <h4>Easy login: ChatGPT subscribers (device code)</h4>
+        <h4>Easy login: OpenAI device code (ChatGPT Plus/Team/Enterprise)</h4>
         <p>If you have a <strong>ChatGPT Plus, Team, or Enterprise</strong> subscription, the fastest path is device-code login. No API key needed &mdash; sciClaw authenticates directly with your OpenAI account:</p>
 
         <pre><code><span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai</code></pre>
