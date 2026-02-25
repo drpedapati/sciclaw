@@ -128,6 +128,14 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		}
 	}
 
+	if t.restrictToWorkspace && strings.TrimSpace(cwd) != "" {
+		resolvedCWD, err := validatePathWithPolicy(cwd, t.workingDir, true, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
+		if err != nil {
+			return ErrorResult("Command blocked by safety guard (" + err.Error() + ")")
+		}
+		cwd = resolvedCWD
+	}
+
 	if guardError := t.guardCommand(command, cwd); guardError != "" {
 		return ErrorResult(guardError)
 	}
