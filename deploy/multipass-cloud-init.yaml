@@ -102,13 +102,17 @@ runcmd:
     # sciclaw binary + matching skills from same release tag
     curl -fsSL -o /tmp/sciclaw \
       "https://github.com/drpedapati/sciclaw/releases/download/v${SCICLAW_VERSION}/sciclaw-linux-${ARCH}"
-    printf '%s  %s\n' "$SCICLAW_SHA256" "/tmp/sciclaw" | sha256sum -c -
+    if [ -n "$SCICLAW_SHA256" ]; then
+      printf '%s  %s\n' "$SCICLAW_SHA256" "/tmp/sciclaw" | sha256sum -c -
+    fi
     install -m 0755 /tmp/sciclaw /usr/local/bin/sciclaw
     ln -sf /usr/local/bin/sciclaw /usr/local/bin/picoclaw
 
     curl -fsSL -o /tmp/sciclaw-source.tgz \
       "https://github.com/drpedapati/sciclaw/archive/refs/tags/v${SCICLAW_VERSION}.tar.gz"
-    printf '%s  %s\n' "$SCICLAW_SOURCE_SHA256" "/tmp/sciclaw-source.tgz" | sha256sum -c -
+    if [ -n "$SCICLAW_SOURCE_SHA256" ]; then
+      printf '%s  %s\n' "$SCICLAW_SOURCE_SHA256" "/tmp/sciclaw-source.tgz" | sha256sum -c -
+    fi
     tar -xzf /tmp/sciclaw-source.tgz -C /tmp
     mkdir -p /usr/local/share/sciclaw
     cp -r "/tmp/sciclaw-${SCICLAW_VERSION}/skills" /usr/local/share/sciclaw/skills

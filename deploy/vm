@@ -135,6 +135,20 @@ render_cloud_init() {
     die "failed to render cloud-init template"
   }
 
+  # If the host binary provides its version, override toolchain.env's pinned
+  # version so the VM always matches the host. Clear SHA checksums so
+  # cloud-init skips verification (the host already trusts this release).
+  if [ -n "${SCICLAW_HOST_VERSION:-}" ]; then
+    local hv="${SCICLAW_HOST_VERSION#v}"   # strip leading v
+    sed -i.bak \
+      -e "s/^\\([[:space:]]*\\)SCICLAW_VERSION=.*/\\1SCICLAW_VERSION=${hv}/" \
+      -e "s/^\\([[:space:]]*\\)SCICLAW_SHA256_AMD64=.*/\\1SCICLAW_SHA256_AMD64=/" \
+      -e "s/^\\([[:space:]]*\\)SCICLAW_SHA256_ARM64=.*/\\1SCICLAW_SHA256_ARM64=/" \
+      -e "s/^\\([[:space:]]*\\)SCICLAW_SOURCE_SHA256=.*/\\1SCICLAW_SOURCE_SHA256=/" \
+      "$rendered"
+    rm -f "${rendered}.bak"
+  fi
+
   echo "$rendered"
 }
 

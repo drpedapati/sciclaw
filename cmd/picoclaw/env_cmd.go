@@ -52,6 +52,7 @@ func vmCmd() {
 		"SCICLAW_VM_CLOUD_INIT_TEMPLATE="+helper.templatePath,
 		"SCICLAW_VM_TOOLCHAIN_ENV="+helper.toolchainPath,
 		"SCICLAW_VM_CMD_LABEL="+invokedCLIName()+" vm",
+		"SCICLAW_HOST_VERSION="+version, // override toolchain.env so VM matches host
 	)
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
