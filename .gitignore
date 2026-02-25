@@ -8,6 +8,7 @@ build/
 *.dylib
 *.test
 *.out
+/sciclaw
 /picoclaw
 /picoclaw-test
 

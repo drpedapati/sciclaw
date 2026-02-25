@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
+	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
 	"github.com/sipeed/picoclaw/pkg/agent"
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/bus"
@@ -51,6 +52,7 @@ func init() {
 	// Strip leading "v" set by ldflags so format strings can add their own.
 	version = strings.TrimPrefix(version, "v")
 	agent.Version = version
+	tui.Version = version
 }
 
 const logo = "🔬"
@@ -260,7 +262,7 @@ func printHelp() {
 	fmt.Println("  doctor      Check deployment health and dependencies")
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  routing     Manage channel->workspace routing and ACLs")
-	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw (PicoClaw-compatible)")
+	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  backup      Backup key sciClaw config/workspace files")
 	fmt.Println("  version     Show version information")
@@ -958,7 +960,7 @@ func migrateCmd() {
 
 func migrateHelp() {
 	commandName := invokedCLIName()
-	fmt.Println("\nMigrate from OpenClaw to sciClaw (PicoClaw-compatible)")
+	fmt.Println("\nMigrate from OpenClaw to sciClaw")
 	fmt.Println()
 	fmt.Printf("Usage: %s migrate [options]\n", commandName)
 	fmt.Println()
@@ -1222,6 +1224,17 @@ func gatewayCmd() {
 			"skills_available": skillsInfo["available"],
 		})
 
+	// Write gateway status file for TUI version mismatch detection.
+	gwHome, _ := os.UserHomeDir()
+	gatewayStatusPath := filepath.Join(gwHome, ".picoclaw", "gateway.status.json")
+	if statusJSON, err := json.Marshal(map[string]interface{}{
+		"version":    version,
+		"pid":        os.Getpid(),
+		"started_at": time.Now().UTC().Format(time.RFC3339),
+	}); err == nil {
+		_ = os.WriteFile(gatewayStatusPath, statusJSON, 0644)
+	}
+
 	// Setup cron tool and service
 	cronService := setupCronTool(agentLoop, msgBus, cfg.WorkspacePath(), cfg.Agents.Defaults.RestrictToWorkspace)
 
@@ -1342,6 +1355,7 @@ func gatewayCmd() {
 	}
 	agentLoop.Stop()
 	channelManager.StopAll(ctx)
+	_ = os.Remove(gatewayStatusPath)
 	fmt.Println("✓ Gateway stopped")
 }
 
@@ -2278,7 +2292,7 @@ func skillsHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Printf("  %s skills list\n", commandName)
-	fmt.Printf("  %s skills install sipeed/picoclaw-skills/weather\n", commandName)
+	fmt.Printf("  %s skills install drpedapati/sciclaw-skills/weather\n", commandName)
 	fmt.Printf("  %s skills install-builtin\n", commandName)
 	fmt.Printf("  %s skills list-builtin\n", commandName)
 	fmt.Printf("  %s skills remove weather\n", commandName)
@@ -2307,7 +2321,7 @@ func skillsInstallCmd(installer *skills.SkillInstaller) {
 	if len(os.Args) < 4 {
 		commandName := invokedCLIName()
 		fmt.Printf("Usage: %s skills install <github-repo>\n", commandName)
-		fmt.Printf("Example: %s skills install sipeed/picoclaw-skills/weather\n", commandName)
+		fmt.Printf("Example: %s skills install drpedapati/sciclaw-skills/weather\n", commandName)
 		return
 	}
 

@@ -10,6 +10,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Version is set by main.init() before the TUI launches.
+var Version string
+
 // Tab logical IDs — stable regardless of which tabs are visible.
 const (
 	tabHome     = 0
@@ -446,11 +449,22 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Header
-	title := "🦞🧪 sciClaw Control Center"
+	ver := Version
+	if ver == "" {
+		ver = "dev"
+	}
+	title := fmt.Sprintf("🦞🧪 sciClaw v%s", ver)
 	if m.exec.Mode() == ModeVM {
-		title = "🦞🧪 sciClaw VM Control Center"
+		title = fmt.Sprintf("🦞🧪 sciClaw VM v%s", ver)
 	}
 	header := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render(title)
+	if m.snapshot != nil && m.snapshot.GatewayVersion != "" &&
+		m.snapshot.GatewayVersion != ver &&
+		m.snapshot.ServiceRunning &&
+		ver != "dev" && m.snapshot.GatewayVersion != "dev" {
+		mismatch := fmt.Sprintf("  ⚠ Gateway running v%s — restart service to update", m.snapshot.GatewayVersion)
+		header += lipgloss.NewStyle().Foreground(colorWarning).Render(mismatch)
+	}
 	b.WriteString(header)
 	b.WriteString("\n")
 

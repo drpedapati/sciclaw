@@ -178,6 +178,10 @@ deps:
 	@$(GO) mod vendor
 	@echo "Dependencies updated and vendored"
 
+## app: Build and launch the TUI dashboard
+app: build
+	@$(BUILD_DIR)/$(PRIMARY_BINARY_NAME) app
+
 ## run: Build and run sciclaw (picoclaw-compatible)
 run: build
 	@$(BUILD_DIR)/$(PRIMARY_BINARY_NAME) $(ARGS)

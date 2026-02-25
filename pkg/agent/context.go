@@ -133,7 +133,7 @@ func (cb *ContextBuilder) getIdentity() string {
 
 	return fmt.Sprintf(`# sciClaw v%s
 
-You are sciClaw v%s, a paired-scientist assistant built as a PicoClaw-compatible fork.
+You are sciClaw v%s, an autonomous paired-scientist execution assistant.
 
 ## Current Time
 %s

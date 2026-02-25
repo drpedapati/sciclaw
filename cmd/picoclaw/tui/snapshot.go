@@ -19,6 +19,8 @@ type VMSnapshot struct {
 
 	// Agent version
 	AgentVersion string
+	// Gateway version from ~/.picoclaw/gateway.status.json
+	GatewayVersion string
 
 	// Config/workspace state
 	ConfigExists    bool
@@ -139,12 +141,13 @@ func collectVMSnapshot(exec Executor) VMSnapshot {
 	var cfgRaw, authRaw, hostCfgRaw string
 	var cfgErr, authErr, hostCfgErr error
 
-	wg.Add(5)
+	wg.Add(6)
 	go func() { defer wg.Done(); vmInfo = GetVMInfo() }()
 	go func() { defer wg.Done(); cfgRaw, cfgErr = exec.ReadFile(exec.ConfigPath()) }()
 	go func() { defer wg.Done(); authRaw, authErr = exec.ReadFile(exec.AuthPath()) }()
 	go func() { defer wg.Done(); hostCfgRaw, hostCfgErr = hostConfigRaw() }()
 	go func() { defer wg.Done(); snap.AgentVersion = exec.AgentVersion() }()
+	go func() { defer wg.Done(); snap.GatewayVersion = readGatewayVersion(exec) }()
 	wg.Wait()
 
 	snap.State = vmInfo.State
@@ -215,10 +218,11 @@ func collectLocalSnapshot(exec Executor) VMSnapshot {
 	var cfgRaw, authRaw string
 	var cfgErr, authErr error
 
-	wg.Add(3)
+	wg.Add(4)
 	go func() { defer wg.Done(); cfgRaw, cfgErr = exec.ReadFile(exec.ConfigPath()) }()
 	go func() { defer wg.Done(); authRaw, authErr = exec.ReadFile(exec.AuthPath()) }()
 	go func() { defer wg.Done(); snap.AgentVersion = exec.AgentVersion() }()
+	go func() { defer wg.Done(); snap.GatewayVersion = readGatewayVersion(exec) }()
 	wg.Wait()
 
 	// Parse config.
@@ -260,6 +264,21 @@ func collectLocalSnapshot(exec Executor) VMSnapshot {
 	snap.ServiceInstalled, snap.ServiceRunning, snap.ServiceAutoStart = collectServiceState(exec)
 
 	return snap
+}
+
+func readGatewayVersion(exec Executor) string {
+	path := filepath.Join(filepath.Dir(exec.ConfigPath()), "gateway.status.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var status struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(data, &status) != nil {
+		return ""
+	}
+	return status.Version
 }
 
 func providerState(prov providerJSON, cred authCredJSON) string {

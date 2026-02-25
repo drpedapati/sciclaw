@@ -4,15 +4,10 @@
 sciClaw
 
 ## Description
-Autonomous paired-scientist execution assistant, implemented as a compatible PicoClaw-derived fork.
+Autonomous paired-scientist execution assistant.
 
 ## Version
 0.1.0
-
-## Brand Mapping
-- Upstream canonical identity: PicoClaw
-- Project identity: sciClaw
-- Localization/display aliases may vary by user context without changing core identifiers.
 
 ## Purpose
 - Support reproducible workflows end-to-end

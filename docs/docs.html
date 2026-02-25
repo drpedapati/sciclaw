@@ -542,10 +542,10 @@
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-section">
       <div class="sidebar-heading">Getting Started</div>
-      <a class="sidebar-link active" href="#installation">Installation</a>
+      <a class="sidebar-link active" href="#quick-start">Quick Start</a>
+      <a class="sidebar-link" href="#installation">Installation</a>
       <a class="sidebar-link nested" href="#pdf-quarto">PDF &amp; Quarto Setup</a>
       <a class="sidebar-link" href="#updating">Updating</a>
-      <a class="sidebar-link" href="#quick-start">Quick Start</a>
       <a class="sidebar-link" href="#scientist-setup">Scientist Setup</a>
     </div>
     <div class="sidebar-section">
@@ -606,6 +606,74 @@
   <!-- ─── Content ─── -->
   <main class="content">
     <div class="content-inner">
+
+      <!-- ━━━━━ QUICK START ━━━━━ -->
+      <div class="section" id="quick-start">
+        <h1>Quick Start</h1>
+        <p class="page-subtitle">From zero to your first research deliverable in five minutes.</p>
+
+        <h3>1. Install</h3>
+        <p>Open Terminal (macOS) or your shell (Linux) and run:</p>
+        <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap && <span class="hl-cmd">brew</span> install sciclaw</code></pre>
+        <p>Don't have Homebrew? See <a href="#installation">Installation</a> for full setup instructions and alternative install methods.</p>
+
+        <h3>2. Launch the app</h3>
+        <pre><code><span class="hl-cmd">sciclaw</span> app</code></pre>
+        <p>This opens the sciClaw dashboard in your terminal. On first launch, a setup wizard starts automatically.</p>
+
+        <h3>3. Connect an AI provider</h3>
+        <p>The wizard asks you to choose a provider. Pick whichever you have:</p>
+        <div class="tui-mockup"><pre><span class="tui-title"> Setup: Authentication</span>
+<span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Configuration file created.                        <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                       <span class="tui-border">│</span>
+<span class="tui-border">│</span> Choose your AI provider:                              <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                       <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[Enter]</span>  Log in with OpenAI (recommended)             <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[a]</span>      Use Anthropic API key                        <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-key">[Esc]</span>    Skip for now                                <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span>
+<span class="tui-dim">                    Step 2 of 5</span></pre></div>
+        <ul>
+          <li><strong>OpenAI</strong> (press Enter) &mdash; Uses your ChatGPT Plus or Team subscription. A browser link opens for device-code login. No API key needed.</li>
+          <li><strong>Anthropic</strong> (press <code>a</code>) &mdash; Paste your API key from <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.</li>
+        </ul>
+        <p>After connecting, the wizard runs a quick smoke test to confirm everything works:</p>
+        <div class="tui-mockup"><pre><span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Configuration file created.                        <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-ok">✓</span> Connected!                                         <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                       <span class="tui-border">│</span>
+<span class="tui-border">│</span> Your AI responded:                                    <span class="tui-border">│</span>
+<span class="tui-border">│</span> <span class="tui-accent">│</span> Hello! I'm ready to help with your research.        <span class="tui-border">│</span>
+<span class="tui-border">│</span>                                                       <span class="tui-border">│</span>
+<span class="tui-border">│</span> Press Enter to continue.                              <span class="tui-border">│</span>
+<span class="tui-border">╰──────────────────────────────────────────────────────╯</span></pre></div>
+
+        <h3>4. Finish setup</h3>
+        <p>The wizard continues with optional steps &mdash; connecting a chat app (Telegram or Discord) and installing the background gateway service. You can skip these with <code>Esc</code> and set them up later. When the wizard finishes, you land on the Home dashboard.</p>
+
+        <h3>5. Try it &mdash; write an abstract</h3>
+        <p>Switch to the <strong>Chat</strong> tab (press <code>Tab</code> once) and type your first request:</p>
+        <div class="tui-mockup"><pre><span class="tui-dim">&gt;</span> Search PubMed for papers on TDP-43 proteinopathy in ALS
+  published in the last 5 years. Then write a 250-word
+  structured abstract summarizing the key findings and save
+  it as abstract.docx in my workspace.</pre></div>
+        <p>sciClaw will:</p>
+        <ol>
+          <li>Search PubMed using the built-in <code>pubmed-cli</code> tool</li>
+          <li>Retrieve and analyze relevant papers</li>
+          <li>Draft a structured abstract with citations</li>
+          <li>Save it as a Word document at <code>~/sciclaw/abstract.docx</code></li>
+        </ol>
+        <p>Open the <code>.docx</code> file in Word or Google Docs to review. That's it &mdash; you have a working paired-scientist assistant.</p>
+
+        <div class="callout">
+          <div class="callout-title">What next?</div>
+          <p>Connect a chat app so you can message sciClaw from Telegram or Discord instead of the terminal. See the <a href="#tui-onboarding">Onboarding Wizard</a> or <a href="#channels">Chat Channels</a> for details. For CLI power-user workflows, see <a href="#cli-reference">CLI Reference</a>.</p>
+        </div>
+      </div>
+
+      <hr />
 
       <!-- ━━━━━ INSTALLATION ━━━━━ -->
       <div class="section" id="installation">
@@ -754,39 +822,6 @@
             </tbody>
           </table>
         </div>
-      </div>
-
-      <hr />
-
-      <!-- ━━━━━ QUICK START ━━━━━ -->
-      <div class="section" id="quick-start">
-        <h2>Quick Start</h2>
-        <p class="page-subtitle">From zero to a working paired-scientist assistant in four steps.</p>
-
-        <h3>1. Initialize</h3>
-        <pre><code><span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>This creates <code>~/.picoclaw/config.json</code>, scaffolds the workspace at <code>~/sciclaw/</code> by default, installs baseline scientific skills, and (on Linux) bootstraps <code>~/sciclaw/.venv</code> for Python-based tooling. It also seeds <code>TOOLS.md</code> with CLI-first guardrails (for example: use <code>pubmed</code>/<code>docx-review</code> directly, avoid scraping PubMed HTML, and avoid unnecessary Python subprocess wrappers). In interactive mode, onboard also offers a short wizard (OpenAI OAuth login, automatic smoke test, optional PubMed API key, optional TinyTeX install, optional messaging apps). Use <code>sciclaw onboard --yes</code> to skip prompts.</p>
-
-        <h3>2. Connect a provider</h3>
-        <p><strong>Easiest:</strong> If you have a ChatGPT Plus/Team subscription, log in with device code &mdash; no API key needed:</p>
-        <pre><code><span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai</code></pre>
-        <p>A link and short code appear. Open the link in any browser, enter the code, and approve. Done.</p>
-
-        <p><strong>Alternative:</strong> Use an API key from any supported provider (OpenRouter, Anthropic, Azure, Groq, etc.) by editing <code>~/.picoclaw/config.json</code>:</p>
-        <pre><code><span class="hl-key">"providers"</span>: {
-  <span class="hl-key">"openrouter"</span>: { <span class="hl-key">"api_key"</span>: <span class="hl-string">"sk-or-v1-..."</span> }
-}</code></pre>
-
-        <h3>3. Verify</h3>
-        <pre><code><span class="hl-cmd">sciclaw</span> auth status</code></pre>
-
-        <h3>4. Chat</h3>
-        <pre><code><span class="hl-comment"># One-shot</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">-m</span> <span class="hl-string">"What pathways are implicated in ALS?"</span>
-
-<span class="hl-comment"># Interactive mode</span>
-<span class="hl-cmd">sciclaw</span> agent</code></pre>
-        <p>That's it. You have a working paired-scientist assistant.</p>
       </div>
 
       <hr />
@@ -1729,6 +1764,11 @@
           <li>Generate an invite URL via OAuth2 (scopes: <code>bot</code>; permissions: Send Messages, Read Message History).</li>
           <li>Use <code>sciclaw service status</code> to confirm the gateway is running in background mode.</li>
         </ol>
+
+        <div class="callout">
+          <div class="callout-title">Warning &mdash; Host + VM conflict</div>
+          <p>Do not run the same Discord bot token on both the host and a VM gateway simultaneously. Discord delivers each message to every connected client, causing duplicate or racing replies. Run the gateway on <strong>one</strong> side only, or use separate bot tokens with non-overlapping routed channels. <code>sciclaw doctor</code> detects this conflict automatically.</p>
+        </div>
       </div>
 
       <!-- ─── Collaborative Routing ─── -->

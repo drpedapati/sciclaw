@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
 	svcmgr "github.com/sipeed/picoclaw/pkg/service"
@@ -310,6 +311,9 @@ func runDoctor(opts doctorOptions) doctorReport {
 		add(c)
 	}
 
+	// Host+VM Discord conflict detection (issue #72).
+	add(checkHostVMChannelConflict(cfg))
+
 	// Optional: Homebrew outdated status (best-effort).
 	add(checkHomebrewOutdated())
 
@@ -518,6 +522,61 @@ func checkWorkspacePythonVenv(workspace string, opts doctorOptions) doctorCheck 
 		Status:  doctorWarn,
 		Message: "workspace Python venv missing/incomplete",
 		Data:    data,
+	}
+}
+
+// checkHostVMChannelConflict detects when both host and VM gateways are
+// running with the same channel enabled, which causes duplicate replies.
+func checkHostVMChannelConflict(hostCfg *config.Config) doctorCheck {
+	name := "gateway.host_vm_conflict"
+
+	if hostCfg == nil {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "no host config"}
+	}
+
+	// Quick check: is a VM even present and running?
+	vmState := tui.VMState()
+	if vmState != "Running" {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "no VM running"}
+	}
+
+	// Is the VM gateway service active?
+	if !tui.VMServiceActive() {
+		return doctorCheck{Name: name, Status: doctorOK, Message: "VM running but gateway not active"}
+	}
+
+	// Read VM config to check which channels are enabled.
+	vmCfgRaw, err := tui.VMCatFile("/home/ubuntu/.picoclaw/config.json")
+	if err != nil {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "cannot read VM config"}
+	}
+	var vmCfg struct {
+		Channels struct {
+			Discord  struct{ Enabled bool `json:"enabled"` } `json:"discord"`
+			Telegram struct{ Enabled bool `json:"enabled"` } `json:"telegram"`
+		} `json:"channels"`
+	}
+	if json.Unmarshal([]byte(vmCfgRaw), &vmCfg) != nil {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "cannot parse VM config"}
+	}
+
+	// Check for overlapping channels.
+	var conflicts []string
+	if hostCfg.Channels.Discord.Enabled && vmCfg.Channels.Discord.Enabled {
+		conflicts = append(conflicts, "Discord")
+	}
+	if hostCfg.Channels.Telegram.Enabled && vmCfg.Channels.Telegram.Enabled {
+		conflicts = append(conflicts, "Telegram")
+	}
+
+	if len(conflicts) == 0 {
+		return doctorCheck{Name: name, Status: doctorOK, Message: "no channel overlap between host and VM"}
+	}
+
+	return doctorCheck{
+		Name:    name,
+		Status:  doctorErr,
+		Message: fmt.Sprintf("%s enabled on both host and VM gateways — duplicate replies will occur; disable on one side or use separate bot tokens with non-overlapping routed channels", strings.Join(conflicts, ", ")),
 	}
 }
 
