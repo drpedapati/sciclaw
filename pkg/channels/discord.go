@@ -53,6 +53,9 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
+	// Explicitly request message-content events for gateway delivery in guild channels.
+	// DiscordGo defaults to IntentsAllWithoutPrivileged, which excludes MessageContent.
+	session.Identify.Intents = discordgo.IntentsAllWithoutPrivileged | discordgo.IntentsMessageContent
 
 	base := NewBaseChannel("discord", cfg, messageBus, cfg.AllowFrom)
 
@@ -95,7 +98,25 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 	c.session.AddHandler(c.handleMessage)
 
 	if err := c.session.Open(); err != nil {
-		return fmt.Errorf("failed to open discord session: %w", err)
+		// Graceful fallback for deployments where Message Content intent is not granted.
+		// Keep bot online instead of hard-failing startup.
+		errText := strings.ToLower(err.Error())
+		if strings.Contains(errText, "4014") || strings.Contains(errText, "disallowed intent") {
+			fallback := discordgo.IntentsAllWithoutPrivileged
+			if c.session.Identify.Intents != fallback {
+				logger.WarnCF("discord", "Message content intent not granted; retrying without it", map[string]any{
+					"error": err.Error(),
+				})
+				c.session.Identify.Intents = fallback
+				if retryErr := c.session.Open(); retryErr != nil {
+					return fmt.Errorf("failed to open discord session (fallback without message content intent): %w", retryErr)
+				}
+			} else {
+				return fmt.Errorf("failed to open discord session: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to open discord session: %w", err)
+		}
 	}
 
 	c.setRunning(true)
@@ -307,6 +328,13 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 	}
 
 	if content == "" && len(mediaPaths) == 0 {
+		logger.InfoCF("discord", "Dropping empty inbound message payload", map[string]any{
+			"channel_id":  m.ChannelID,
+			"guild_id":    m.GuildID,
+			"sender_id":   senderID,
+			"is_mention":  isMention,
+			"attachments": len(m.Attachments),
+		})
 		return
 	}
 
