@@ -629,7 +629,7 @@
         <p>Both paths create your config and workspace. <code>sciclaw app</code> starts the same setup wizard inside the dashboard.</p>
 
         <h3>3. Connect an AI provider</h3>
-        <p>The wizard asks you to choose a provider. Pick whichever you have:</p>
+        <p>The wizard asks you to choose a provider. Pick whichever you have. For CLI auth commands and full provider details, see <a href="#authentication">Authentication</a>.</p>
         <div class="tui-mockup"><pre><span class="tui-title"> Setup: Authentication</span>
 <span class="tui-border">╭──────────────────────────────────────────────────────╮</span>
 <span class="tui-border">│</span> <span class="tui-ok">✓</span> Configuration file created.                        <span class="tui-border">│</span>
@@ -1133,7 +1133,7 @@
 
         <div class="callout">
           <div class="callout-title">Provider disclaimer</div>
-          <p>sciClaw does not endorse any specific LLM provider. We document multiple options so you can choose what works for your institution, budget, and compliance requirements. A ChatGPT Plus or Team subscription is the easiest way to get started because it requires no API key management &mdash; just log in with your existing OpenAI account. API key workflows (OpenRouter, Anthropic, Azure, etc.) are equally supported for users who prefer them.</p>
+          <p>sciClaw does not endorse any specific LLM provider. We document multiple options so you can choose what works for your institution, budget, and compliance requirements. A ChatGPT Plus, Team, or Enterprise subscription is the easiest way to get started because it requires no API key management &mdash; just log in with your existing OpenAI account. API key workflows (OpenRouter, Anthropic, Azure, etc.) are equally supported for users who prefer them.</p>
           <p style="margin-top:8px;">Terms around using an Anthropic Claude subscription (claude.ai consumer plan) for programmatic or agent-based access are currently unclear. We are seeking clarification from Anthropic. In the meantime, use Anthropic&rsquo;s API keys if you intend to use Claude with sciClaw.</p>
         </div>
 
@@ -1159,7 +1159,7 @@
 }</code></pre>
 
         <h4>Auth commands</h4>
-        <pre><code><span class="hl-comment"># OpenAI device-code login (ChatGPT subscribers)</span>
+        <pre><code><span class="hl-comment"># OpenAI device-code login (ChatGPT Plus/Team/Enterprise)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
 
 <span class="hl-comment"># Anthropic token paste</span>
