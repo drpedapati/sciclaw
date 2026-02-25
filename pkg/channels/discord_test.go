@@ -48,7 +48,7 @@ func TestNormalizeDiscordBotToken(t *testing.T) {
 	}
 }
 
-func TestDiscordTypingLifecycleReferenceCount(t *testing.T) {
+func TestDiscordTypingStopsOnFirstReply(t *testing.T) {
 	ch := newTestDiscordChannel()
 	var mu sync.Mutex
 	calls := 0
@@ -59,53 +59,42 @@ func TestDiscordTypingLifecycleReferenceCount(t *testing.T) {
 		return nil
 	}
 
+	// Simulate multiple mentions arriving before a single reply.
+	ch.startTyping("chan-1")
 	ch.startTyping("chan-1")
 	time.Sleep(25 * time.Millisecond)
 
-	ch.startTyping("chan-1")
-	ch.stopTyping("chan-1")
-
 	mu.Lock()
-	beforeFinalStop := calls
+	beforeStop := calls
 	mu.Unlock()
-
-	time.Sleep(25 * time.Millisecond)
-	mu.Lock()
-	afterSingleStop := calls
-	mu.Unlock()
-
-	if afterSingleStop <= beforeFinalStop {
-		t.Fatalf("typing should continue after one stop with pending requests, got before=%d after=%d", beforeFinalStop, afterSingleStop)
+	if beforeStop == 0 {
+		t.Fatalf("expected typing calls before stop, got 0")
 	}
 
+	// A single stopTyping (from Send) should cancel the loop entirely,
+	// even though two startTyping calls were made.
 	ch.stopTyping("chan-1")
 	time.Sleep(25 * time.Millisecond)
 
 	mu.Lock()
-	afterFinalStop := calls
+	afterStop := calls
 	mu.Unlock()
 	time.Sleep(25 * time.Millisecond)
 	mu.Lock()
 	afterWait := calls
 	mu.Unlock()
 
-	if afterWait != afterFinalStop {
-		t.Fatalf("typing should stop after final stop, got afterFinalStop=%d afterWait=%d", afterFinalStop, afterWait)
+	if afterWait != afterStop {
+		t.Fatalf("typing should stop after first stop, got afterStop=%d afterWait=%d", afterStop, afterWait)
 	}
 }
 
-func TestDiscordSendStopsTypingPerReply(t *testing.T) {
+func TestDiscordSendClearsTypingFully(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.startTyping("chan-2")
 	ch.startTyping("chan-2")
 
-	ch.typingMu.Lock()
-	if got := ch.typing["chan-2"].pending; got != 2 {
-		ch.typingMu.Unlock()
-		t.Fatalf("expected pending=2, got %d", got)
-	}
-	ch.typingMu.Unlock()
-
+	// First Send should clear typing entirely (not just decrement).
 	err := ch.Send(context.Background(), bus.OutboundMessage{
 		Channel: "discord",
 		ChatID:  "chan-2",
@@ -116,31 +105,10 @@ func TestDiscordSendStopsTypingPerReply(t *testing.T) {
 	}
 
 	ch.typingMu.Lock()
-	state, ok := ch.typing["chan-2"]
-	if !ok {
-		ch.typingMu.Unlock()
-		t.Fatalf("expected typing state to remain for one pending request")
-	}
-	if state.pending != 1 {
-		ch.typingMu.Unlock()
-		t.Fatalf("expected pending=1 after first reply, got %d", state.pending)
-	}
-	ch.typingMu.Unlock()
-
-	err = ch.Send(context.Background(), bus.OutboundMessage{
-		Channel: "discord",
-		ChatID:  "chan-2",
-		Content: "done-2",
-	})
-	if err != nil {
-		t.Fatalf("unexpected second send error: %v", err)
-	}
-
-	ch.typingMu.Lock()
-	_, ok = ch.typing["chan-2"]
+	_, ok := ch.typing["chan-2"]
 	ch.typingMu.Unlock()
 	if ok {
-		t.Fatalf("expected typing state removed after final reply")
+		t.Fatalf("expected typing state fully cleared after first send")
 	}
 }
 

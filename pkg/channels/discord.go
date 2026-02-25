@@ -434,11 +434,10 @@ func (c *DiscordChannel) stopTyping(channelID string) {
 	c.typingMu.Lock()
 	state, ok := c.typing[channelID]
 	if ok {
-		state.pending--
-		if state.pending <= 0 {
-			delete(c.typing, channelID)
-			cancel = state.cancel
-		}
+		// Always cancel on send — pending count can drift when multiple
+		// mentions arrive but only one response is sent.
+		delete(c.typing, channelID)
+		cancel = state.cancel
 	}
 	c.typingMu.Unlock()
 
