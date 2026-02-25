@@ -46,7 +46,7 @@ sciclaw service install && sciclaw service start
 
 That's it. sciClaw runs in the background and responds to your messages. See the [Scientist Setup Guide](https://sciclaw.dev/docs.html#scientist-setup) for a walkthrough.
 
-> A CLI is also available for power users: `sciclaw agent -m "your question"` or `sciclaw agent` for interactive mode.
+> **Prefer a visual interface?** Run `sciclaw app` to open an interactive dashboard in your terminal — no CLI knowledge needed. A CLI is also available for power users: `sciclaw agent -m "your question"` or `sciclaw agent` for interactive mode.
 
 ## Install
 
@@ -362,7 +362,28 @@ Source of truth:
 - `git log --oneline upstream/main..main`
 
 Last refreshed:
-- `2026-02-19`
+- `2026-02-24`
+
+### TUI Dashboard and `sciclaw app`
+
+- `42f38bd` Rewrote TUI as interactive Go control center with Charmbracelet Bubbletea (12 tabs: Home, Chat, Channels, Routing, Users, Models, Skills, Schedule, Gateway, Settings, Login, Health).
+- `e205dc5` Added first-run onboarding wizard (auth, smoke test, channel setup, service install) that triggers automatically on first launch.
+- `f52b5ad` Completed routing and settings issue backlog in TUI.
+- `b32ef47` Added pick-route-users from central list and label edits.
+- `03f852d` Added endpoint-backed model catalog and TUI model picker.
+- `d636a7e` Added routing wizard, folder browser, settings tab, and UX improvements.
+- `764b000` Aliased `sciclaw app` as the primary command for the TUI dashboard (`tui` still works).
+
+### Collaborative Routing
+
+- `899a460` Added routing config schema and validation.
+- `ae88a28` Added resolver, dispatcher, and agent-loop pool for channel→workspace routing.
+- `c9cc447` Added routing CLI control-plane commands (`add`, `remove`, `list`, `status`, `explain`, `export`, `import`, `reload`).
+- `dbb8bbf` Added runtime resolver hot-reload trigger (`sciclaw routing reload`).
+- `a3d8668` Added routing diagnostics to `sciclaw doctor`.
+- `01d77fd` Required `@mention` in routed channels by default; added auto-reload on mapping changes.
+- `9f89f9a` Changed default unmapped-channel behavior from block to default-workspace fallback.
+- `852d672` Added shared workspace policy with read-only guardrails for routed workspaces.
 
 ### Identity, Workspace, and Baseline Skilling
 
@@ -451,6 +472,7 @@ Last refreshed:
 
 | Command | Description |
 |---------|-------------|
+| `sciclaw app` | Open the graphical dashboard (alias: `tui`) |
 | `sciclaw onboard` | Initialize config, workspace, and baseline skills |
 | `sciclaw agent -m "..."` | One-shot message |
 | `sciclaw agent` | Interactive chat |
