@@ -157,7 +157,7 @@ func main() {
 		gatewayCmd()
 	case "service":
 		serviceCmd()
-	case "tui":
+	case "app", "tui":
 		tuiCmd()
 	case "vm":
 		vmCmd()
@@ -246,6 +246,7 @@ func printHelp() {
 	fmt.Printf("Usage: %s <command>\n", commandName)
 	fmt.Println()
 	fmt.Println("Commands:")
+	fmt.Println("  app         Open the graphical dashboard (alias: tui)")
 	fmt.Println("  onboard     Initialize sciClaw configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  models      Manage models (list, set, effort, status)")
