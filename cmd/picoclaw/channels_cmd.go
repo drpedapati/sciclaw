@@ -14,6 +14,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/mymmrac/telego"
 
+	channelspkg "github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
 )
 
@@ -137,7 +138,7 @@ func setupTelegram(r *bufio.Reader, cfg *config.Config, configPath string) error
 	fmt.Println()
 	fmt.Println("Telegram setup:")
 
-	token := strings.TrimSpace(promptLine(r, "Paste bot token:"))
+	token := channelspkg.NormalizeDiscordBotToken(promptLine(r, "Paste bot token:"))
 	if token == "" {
 		return fmt.Errorf("token is required")
 	}
@@ -362,7 +363,7 @@ func listDiscordRooms() {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
 	}
-	token := strings.TrimSpace(cfg.Channels.Discord.Token)
+	token := channelspkg.NormalizeDiscordBotToken(cfg.Channels.Discord.Token)
 	if token == "" {
 		fmt.Fprintf(os.Stderr, "No Discord bot token configured\n")
 		os.Exit(1)
@@ -377,6 +378,7 @@ func listDiscordRooms() {
 	guilds, err := session.UserGuilds(200, "", "", false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to list guilds: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Hint: verify channels.discord.token is a valid bot token (no leading \"Bot \").\n")
 		os.Exit(1)
 	}
 

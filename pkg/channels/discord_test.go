@@ -26,6 +26,28 @@ func newTestDiscordChannel() *DiscordChannel {
 	return ch
 }
 
+func TestNormalizeDiscordBotToken(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "raw", in: "abc123", want: "abc123"},
+		{name: "bot prefix", in: "Bot abc123", want: "abc123"},
+		{name: "bot prefix lowercase", in: "bot abc123", want: "abc123"},
+		{name: "quoted", in: "\"abc123\"", want: "abc123"},
+		{name: "quoted with bot prefix", in: "'Bot abc123'", want: "abc123"},
+		{name: "spaces", in: "   Bot   abc123   ", want: "abc123"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NormalizeDiscordBotToken(tc.in); got != tc.want {
+				t.Fatalf("NormalizeDiscordBotToken(%q)=%q want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDiscordTypingLifecycleReferenceCount(t *testing.T) {
 	ch := newTestDiscordChannel()
 	var mu sync.Mutex
