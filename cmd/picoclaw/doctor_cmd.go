@@ -1018,7 +1018,7 @@ func checkRoutingDiagnostics(cfg *config.Config) []doctorCheck {
 	switch behavior {
 	case "", config.RoutingUnmappedBehaviorBlock, config.RoutingUnmappedBehaviorDefault:
 		if behavior == "" {
-			behavior = config.RoutingUnmappedBehaviorBlock
+			behavior = config.RoutingUnmappedBehaviorDefault
 		}
 		add(doctorCheck{Name: "routing.unmapped_behavior", Status: doctorOK, Message: behavior})
 	default:

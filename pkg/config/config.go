@@ -357,7 +357,7 @@ func DefaultConfig() *Config {
 		},
 		Routing: RoutingConfig{
 			Enabled:          false,
-			UnmappedBehavior: RoutingUnmappedBehaviorBlock,
+			UnmappedBehavior: RoutingUnmappedBehaviorDefault,
 			Mappings:         []RoutingMapping{},
 		},
 	}
@@ -385,7 +385,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Agents.Defaults.MaxToolIterations = 0
 	}
 	if strings.TrimSpace(cfg.Routing.UnmappedBehavior) == "" {
-		cfg.Routing.UnmappedBehavior = RoutingUnmappedBehaviorBlock
+		cfg.Routing.UnmappedBehavior = RoutingUnmappedBehaviorDefault
 	}
 	if err := ValidateRoutingConfig(cfg.Routing); err != nil {
 		return nil, err
@@ -491,7 +491,7 @@ func expandHome(path string) string {
 func ValidateRoutingConfig(r RoutingConfig) error {
 	behavior := strings.TrimSpace(r.UnmappedBehavior)
 	if behavior == "" {
-		behavior = RoutingUnmappedBehaviorBlock
+		behavior = RoutingUnmappedBehaviorDefault
 	}
 
 	switch behavior {

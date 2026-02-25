@@ -575,7 +575,7 @@ func decodeRoutingPayload(payload []byte) (config.RoutingConfig, error) {
 		}
 	}
 	if strings.TrimSpace(out.UnmappedBehavior) == "" {
-		out.UnmappedBehavior = config.RoutingUnmappedBehaviorBlock
+		out.UnmappedBehavior = config.RoutingUnmappedBehaviorDefault
 	}
 	return out, nil
 }

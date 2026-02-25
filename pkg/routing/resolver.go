@@ -55,7 +55,7 @@ func NewResolver(cfg *config.Config) (*Resolver, error) {
 		mappings:         make(map[string]config.RoutingMapping, len(cfg.Routing.Mappings)),
 	}
 	if r.unmappedBehavior == "" {
-		r.unmappedBehavior = config.RoutingUnmappedBehaviorBlock
+		r.unmappedBehavior = config.RoutingUnmappedBehaviorDefault
 	}
 	for _, m := range cfg.Routing.Mappings {
 		r.mappings[mappingKey(m.Channel, m.ChatID)] = m

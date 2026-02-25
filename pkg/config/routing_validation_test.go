@@ -13,7 +13,7 @@ func TestDefaultConfig_RoutingDefaults(t *testing.T) {
 	if cfg.Routing.Enabled {
 		t.Fatal("routing should be disabled by default")
 	}
-	if cfg.Routing.UnmappedBehavior != RoutingUnmappedBehaviorBlock {
+	if cfg.Routing.UnmappedBehavior != RoutingUnmappedBehaviorDefault {
 		t.Fatalf("unexpected routing unmapped_behavior: %q", cfg.Routing.UnmappedBehavior)
 	}
 	if len(cfg.Routing.Mappings) != 0 {
@@ -189,8 +189,8 @@ func TestLoadConfig_MissingRoutingSectionUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
-	if cfg.Routing.UnmappedBehavior != RoutingUnmappedBehaviorBlock {
-		t.Fatalf("expected default unmapped_behavior %q, got %q", RoutingUnmappedBehaviorBlock, cfg.Routing.UnmappedBehavior)
+	if cfg.Routing.UnmappedBehavior != RoutingUnmappedBehaviorDefault {
+		t.Fatalf("expected default unmapped_behavior %q, got %q", RoutingUnmappedBehaviorDefault, cfg.Routing.UnmappedBehavior)
 	}
 }
 
