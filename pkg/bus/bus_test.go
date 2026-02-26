@@ -57,6 +57,12 @@ func TestPublishInboundCancelled(t *testing.T) {
 	if err != context.Canceled {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
+
+	consumeCtx, consumeCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer consumeCancel()
+	if _, ok := mb.ConsumeInbound(consumeCtx); ok {
+		t.Fatal("expected no inbound message to be published for cancelled context")
+	}
 }
 
 func TestPublishOutboundCancelled(t *testing.T) {
@@ -75,6 +81,44 @@ func TestPublishOutboundCancelled(t *testing.T) {
 	err := mb.PublishOutbound(cancelCtx, OutboundMessage{Content: "x"})
 	if err != context.Canceled {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestPublishInboundCancelledDoesNotPublishWithFreeBuffer(t *testing.T) {
+	mb := NewMessageBus()
+	defer mb.Close()
+
+	for i := 0; i < 200; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := mb.PublishInbound(ctx, InboundMessage{Content: "x"}); err != context.Canceled {
+			t.Fatalf("iteration %d: expected context.Canceled, got %v", i, err)
+		}
+	}
+
+	consumeCtx, consumeCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer consumeCancel()
+	if _, ok := mb.ConsumeInbound(consumeCtx); ok {
+		t.Fatal("expected no inbound messages after cancelled publishes")
+	}
+}
+
+func TestPublishOutboundCancelledDoesNotPublishWithFreeBuffer(t *testing.T) {
+	mb := NewMessageBus()
+	defer mb.Close()
+
+	for i := 0; i < 200; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := mb.PublishOutbound(ctx, OutboundMessage{Content: "x"}); err != context.Canceled {
+			t.Fatalf("iteration %d: expected context.Canceled, got %v", i, err)
+		}
+	}
+
+	consumeCtx, consumeCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer consumeCancel()
+	if _, ok := mb.SubscribeOutbound(consumeCtx); ok {
+		t.Fatal("expected no outbound messages after cancelled publishes")
 	}
 }
 

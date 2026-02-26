@@ -24,16 +24,16 @@ func NewMessageBus() *MessageBus {
 }
 
 func (mb *MessageBus) PublishInbound(ctx context.Context, msg InboundMessage) error {
-	if mb.closed.Load() {
-		return ErrBusClosed
+	if err := mb.publishStateErr(ctx); err != nil {
+		return err
 	}
 	select {
-	case mb.inbound <- msg:
-		return nil
 	case <-mb.done:
 		return ErrBusClosed
 	case <-ctx.Done():
 		return ctx.Err()
+	case mb.inbound <- msg:
+		return nil
 	}
 }
 
@@ -49,17 +49,27 @@ func (mb *MessageBus) ConsumeInbound(ctx context.Context) (InboundMessage, bool)
 }
 
 func (mb *MessageBus) PublishOutbound(ctx context.Context, msg OutboundMessage) error {
-	if mb.closed.Load() {
-		return ErrBusClosed
+	if err := mb.publishStateErr(ctx); err != nil {
+		return err
 	}
 	select {
-	case mb.outbound <- msg:
-		return nil
 	case <-mb.done:
 		return ErrBusClosed
 	case <-ctx.Done():
 		return ctx.Err()
+	case mb.outbound <- msg:
+		return nil
 	}
+}
+
+func (mb *MessageBus) publishStateErr(ctx context.Context) error {
+	if mb.closed.Load() {
+		return ErrBusClosed
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (mb *MessageBus) SubscribeOutbound(ctx context.Context) (OutboundMessage, bool) {
