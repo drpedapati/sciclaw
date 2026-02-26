@@ -1201,28 +1201,28 @@ func gatewayCmd() {
 	// Discord/Telegram websocket.
 	if gwHome, err := os.UserHomeDir(); err == nil {
 		statusPath := filepath.Join(gwHome, ".picoclaw", "gateway.status.json")
-			if data, err := os.ReadFile(statusPath); err == nil {
-				var status struct {
-					PID int `json:"pid"`
-				}
-				if json.Unmarshal(data, &status) == nil && status.PID > 0 && status.PID != os.Getpid() {
-					if proc, err := os.FindProcess(status.PID); err == nil {
-						if proc.Signal(syscall.Signal(0)) == nil {
-							if ok, checkErr := isGatewayProcessPID(status.PID); checkErr != nil {
-								fmt.Fprintf(os.Stderr, "Skipping stale PID %d: unable to verify process owner (%v)\n", status.PID, checkErr)
-							} else if !ok {
-								fmt.Fprintf(os.Stderr, "Skipping stale PID %d: process is not a sciClaw gateway instance\n", status.PID)
-							} else {
-								fmt.Fprintf(os.Stderr, "Stopping stale gateway (PID %d)...\n", status.PID)
-								_ = proc.Signal(syscall.SIGTERM)
-								time.Sleep(2 * time.Second)
-							}
+		if data, err := os.ReadFile(statusPath); err == nil {
+			var status struct {
+				PID int `json:"pid"`
+			}
+			if json.Unmarshal(data, &status) == nil && status.PID > 0 && status.PID != os.Getpid() {
+				if proc, err := os.FindProcess(status.PID); err == nil {
+					if proc.Signal(syscall.Signal(0)) == nil {
+						if ok, checkErr := isGatewayProcessPID(status.PID); checkErr != nil {
+							fmt.Fprintf(os.Stderr, "Skipping stale PID %d: unable to verify process owner (%v)\n", status.PID, checkErr)
+						} else if !ok {
+							fmt.Fprintf(os.Stderr, "Skipping stale PID %d: process is not a sciClaw gateway instance\n", status.PID)
+						} else {
+							fmt.Fprintf(os.Stderr, "Stopping stale gateway (PID %d)...\n", status.PID)
+							_ = proc.Signal(syscall.SIGTERM)
+							time.Sleep(2 * time.Second)
 						}
 					}
 				}
-				_ = os.Remove(statusPath)
 			}
+			_ = os.Remove(statusPath)
 		}
+	}
 
 	cfg, err := loadConfig()
 	if err != nil {
