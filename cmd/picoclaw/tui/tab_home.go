@@ -853,7 +853,7 @@ func (m HomeModel) renderChSetupView() string {
 			lines = append(lines, styleHint.Render("    Discord Settings → Advanced → Developer Mode"))
 			lines = append(lines, styleHint.Render("    → Right-click your avatar → Copy User ID"))
 		} else {
-			lines = append(lines, styleHint.Render("    Message @userinfobot on Telegram to get your ID"))
+			lines = append(lines, styleHint.Render("    Search @userinfobot in Telegram, send it a message to get your ID"))
 		}
 		lines = append(lines, "")
 		lines = append(lines, styleDim.Render("    Esc to cancel"))
@@ -870,6 +870,10 @@ func (m HomeModel) renderChSetupView() string {
 			lines = append(lines, fmt.Sprintf("           User:  %s", styleValue.Render(m.chUserID)))
 		}
 		lines = append(lines, "")
+		if name == "Telegram" {
+			lines = append(lines, styleHint.Render("  For group chats: @BotFather → /mybots → Bot Settings → Group Privacy → Turn off"))
+			lines = append(lines, "")
+		}
 		lines = append(lines, fmt.Sprintf("  Press %s to save, %s to cancel",
 			styleKey.Render("Enter"), styleKey.Render("Esc")))
 	}

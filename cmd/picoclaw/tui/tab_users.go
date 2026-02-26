@@ -322,7 +322,7 @@ func (m UsersModel) renderAddOverlay() string {
 		if m.addChannel == "discord" {
 			lines = append(lines, styleHint.Render("    Discord Settings → Advanced → Developer Mode → Right-click avatar → Copy User ID"))
 		} else {
-			lines = append(lines, styleHint.Render("    Tip: Ask them to message @userinfobot on Telegram"))
+			lines = append(lines, styleHint.Render("    Tip: Have them search @userinfobot in Telegram and send it a message"))
 		}
 		lines = append(lines, styleDim.Render("    Esc to cancel"))
 	case 2:

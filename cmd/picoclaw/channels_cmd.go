@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +16,6 @@ import (
 
 	channelspkg "github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
-	svcmgr "github.com/sipeed/picoclaw/pkg/service"
 )
 
 func channelsCmd() {
@@ -172,51 +170,36 @@ func setupTelegram(r *bufio.Reader, cfg *config.Config, configPath string) error
 
 	fmt.Println("  Saved. Telegram is ready.")
 
-	// Pairing (auto-detect user ID) is optional.  The token is already saved
-	// and the bot will work.  allow_from can stay empty (allows everyone) or
-	// the user can add IDs later.
-	if !promptYesNo(r, "Auto-detect your Telegram user ID for the allowlist?", false) {
-		return nil
-	}
+	// Group privacy — Telegram enables this by default, which prevents
+	// the bot from seeing messages in group chats.
+	fmt.Println()
+	fmt.Println("Group chats:")
+	fmt.Println("  By default Telegram blocks bots from reading group messages.")
+	fmt.Println("  To use the bot in group chats, disable privacy mode:")
+	fmt.Println("    1. Open Telegram and search for @BotFather")
+	fmt.Println("    2. Send /mybots → select your bot → Bot Settings → Group Privacy")
+	fmt.Println("    3. Tap \"Turn off\"")
+	fmt.Println("  (Skip this if you only use the bot in DMs.)")
 
-	// If the gateway is running, stop it so we can poll for updates.
-	gatewayWasRunning := isGatewayRunning()
-	if gatewayWasRunning {
-		fmt.Println("  Stopping gateway temporarily...")
-		if err := runServiceSubcommand("stop"); err != nil {
-			fmt.Printf("  Could not stop gateway: %v\n", err)
-			return nil
+	// Allowlist — same approach as Discord: paste user IDs directly.
+	// Empty allowlist means everyone can message the bot.
+	fmt.Println()
+	fmt.Println("Allowlist (optional):")
+	fmt.Println("  Restrict who can message the bot. Leave blank to allow everyone.")
+	fmt.Println("  To find your Telegram user ID:")
+	fmt.Println("    1. Open Telegram and search for @userinfobot")
+	fmt.Println("    2. Send it any message — it replies with your user ID")
+	raw := strings.TrimSpace(promptLine(r, "Telegram user ID(s) (comma-separated, or blank to skip):"))
+	if raw != "" {
+		ids := parseCSV(raw)
+		for _, id := range ids {
+			cfg.Channels.Telegram.AllowFrom = appendUniqueFlexible(cfg.Channels.Telegram.AllowFrom, id)
 		}
-		time.Sleep(3 * time.Second)
-	}
-
-	fmt.Println("  Send any message to @" + bot.Username() + " in Telegram...")
-	p, pairErr := telegramPairOnce(bot, 60*time.Second)
-
-	// Always restart the gateway before handling the result.
-	if gatewayWasRunning {
-		fmt.Println("  Restarting gateway...")
-		if err := runServiceSubcommand("start"); err != nil {
-			fmt.Printf("  Warning: could not restart gateway: %v\n", err)
-			fmt.Printf("  Run manually: %s service start\n", invokedCLIName())
+		if err := config.SaveConfig(configPath, cfg); err != nil {
+			return fmt.Errorf("saving allow_from: %w", err)
 		}
+		fmt.Printf("  Saved %d user(s) to allowlist.\n", len(ids))
 	}
-
-	if pairErr != nil {
-		fmt.Printf("  Pairing skipped: %v\n", pairErr)
-		return nil
-	}
-
-	label := fmt.Sprintf("%d", p.UserID)
-	if p.Username != "" {
-		label = fmt.Sprintf("%d|%s", p.UserID, p.Username)
-	}
-	fmt.Printf("  Detected: user=%s chat_id=%d chat_type=%s\n", label, p.ChatID, p.ChatType)
-	cfg.Channels.Telegram.AllowFrom = appendUniqueFlexible(cfg.Channels.Telegram.AllowFrom, label)
-	if err := config.SaveConfig(configPath, cfg); err != nil {
-		return fmt.Errorf("saving allow_from: %w", err)
-	}
-	fmt.Println("  Saved allow_from.")
 	return nil
 }
 
@@ -229,7 +212,10 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 
 	fmt.Println()
 	fmt.Println("Allowlist (required):")
-	fmt.Println("  Paste your Discord user ID(s) (comma-separated). Type 'help' for instructions.")
+	fmt.Println("  To find your Discord user ID:")
+	fmt.Println("    1. Discord Settings -> Advanced -> Developer Mode (ON)")
+	fmt.Println("    2. Right-click your avatar -> Copy User ID")
+	fmt.Println("  Paste user ID(s) comma-separated. Type 'help' to see these instructions again.")
 
 	var allow []string
 	for {
@@ -372,14 +358,6 @@ func telegramPairOnce(bot *telego.Bot, timeout time.Duration) (*telegramPairing,
 	}
 }
 
-func sendTelegramTestMessage(bot *telego.Bot, chatID int64, text string) error {
-	_, err := bot.SendMessage(context.Background(), &telego.SendMessageParams{
-		ChatID: telego.ChatID{ID: chatID},
-		Text:   text,
-	})
-	return err
-}
-
 // channelsListRoomsCmd lists servers and text channels for a configured bot.
 // Usage: sciclaw channels list-rooms --channel discord
 // Output: one line per channel: channel_id|guild_name|#channel_name
@@ -482,47 +460,3 @@ func channelsPairTelegramCmd() {
 	fmt.Printf("%d|%s|%s\n", p.ChatID, p.ChatType, p.Username)
 }
 
-// isGatewayRunning checks if the gateway service is currently running
-// by invoking the service manager directly (works regardless of how this
-// binary was invoked).
-func isGatewayRunning() bool {
-	mgr := newServiceManagerQuiet()
-	if mgr == nil {
-		return false
-	}
-	st, err := mgr.Status()
-	if err != nil {
-		return false
-	}
-	return st.Running
-}
-
-// runServiceSubcommand invokes a service manager action (stop/start/restart).
-func runServiceSubcommand(sub string) error {
-	mgr := newServiceManagerQuiet()
-	if mgr == nil {
-		return fmt.Errorf("could not resolve service manager")
-	}
-	switch sub {
-	case "stop":
-		return mgr.Stop()
-	case "start":
-		return mgr.Start()
-	case "restart":
-		return mgr.Restart()
-	default:
-		return fmt.Errorf("unknown service subcommand: %s", sub)
-	}
-}
-
-func newServiceManagerQuiet() svcmgr.Manager {
-	exePath, err := resolveServiceExecutablePath(os.Args[0], exec.LookPath, os.Executable)
-	if err != nil {
-		return nil
-	}
-	mgr, err := svcmgr.NewManager(exePath)
-	if err != nil {
-		return nil
-	}
-	return mgr
-}

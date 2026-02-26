@@ -406,7 +406,7 @@ func renderAddUserOverlay(m ChannelsModel, channelName string) string {
 			lines = append(lines, styleHint.Render("    To find it: Discord Settings → Advanced → Developer Mode → Right-click avatar → Copy User ID"))
 		} else {
 			lines = append(lines, fmt.Sprintf("  Enter their Telegram User ID: %s", m.addInput.View()))
-			lines = append(lines, styleHint.Render("    Tip: Ask them to message @userinfobot on Telegram"))
+			lines = append(lines, styleHint.Render("    Tip: Have them search @userinfobot in Telegram and send it a message"))
 		}
 	} else {
 		lines = append(lines, fmt.Sprintf("  Add a display name (optional): %s", m.addInput.View()))
@@ -574,7 +574,7 @@ func (m ChannelsModel) renderSetupOverlay(channelName string) string {
 		if channelName == "Discord" {
 			lines = append(lines, styleHint.Render("    Discord Settings → Advanced → Developer Mode → Right-click avatar → Copy User ID"))
 		} else {
-			lines = append(lines, styleHint.Render("    Message @userinfobot on Telegram to get your ID"))
+			lines = append(lines, styleHint.Render("    Search @userinfobot in Telegram, send it a message to get your ID"))
 		}
 	case 2:
 		lines = append(lines, fmt.Sprintf("  Add a display name (optional): %s", m.addInput.View()))
