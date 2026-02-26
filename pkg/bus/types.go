@@ -21,5 +21,3 @@ type OutboundMessage struct {
 	Content     string               `json:"content"`
 	Attachments []OutboundAttachment `json:"attachments,omitempty"`
 }
-
-type MessageHandler func(InboundMessage) error

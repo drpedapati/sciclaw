@@ -37,7 +37,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 		d.logDecision(decision)
 
 		if !decision.Allowed {
-			d.sendBlockNotice(msg, decision)
+			d.sendBlockNotice(ctx, msg, decision)
 			continue
 		}
 
@@ -51,7 +51,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 				"workspace": decision.Workspace,
 				"reason":    err.Error(),
 			})
-			d.sendOperationalError(msg)
+			d.sendOperationalError(ctx, msg)
 		}
 	}
 }
@@ -85,7 +85,7 @@ func (d *Dispatcher) logDecision(decision Decision) {
 	logger.InfoCF("routing", decision.Event, fields)
 }
 
-func (d *Dispatcher) sendBlockNotice(msg bus.InboundMessage, decision Decision) {
+func (d *Dispatcher) sendBlockNotice(ctx context.Context, msg bus.InboundMessage, decision Decision) {
 	if decision.Event == EventRouteMentionSkip {
 		return
 	}
@@ -107,18 +107,18 @@ func (d *Dispatcher) sendBlockNotice(msg bus.InboundMessage, decision Decision) 
 		)
 	}
 
-	d.bus.PublishOutbound(bus.OutboundMessage{
+	d.bus.PublishOutbound(ctx, bus.OutboundMessage{
 		Channel: msg.Channel,
 		ChatID:  msg.ChatID,
 		Content: content,
 	})
 }
 
-func (d *Dispatcher) sendOperationalError(msg bus.InboundMessage) {
+func (d *Dispatcher) sendOperationalError(ctx context.Context, msg bus.InboundMessage) {
 	if constants.IsInternalChannel(msg.Channel) {
 		return
 	}
-	d.bus.PublishOutbound(bus.OutboundMessage{
+	d.bus.PublishOutbound(ctx, bus.OutboundMessage{
 		Channel: msg.Channel,
 		ChatID:  msg.ChatID,
 		Content: "Routing failed for this request due to an internal configuration error.",

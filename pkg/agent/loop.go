@@ -143,13 +143,12 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	messageTool := tools.NewMessageTool(workspace, restrict)
 	messageTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	messageTool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
-		msgBus.PublishOutbound(bus.OutboundMessage{
+		return msgBus.PublishOutbound(context.TODO(), bus.OutboundMessage{
 			Channel:     channel,
 			ChatID:      chatID,
 			Content:     content,
 			Attachments: attachments,
 		})
-		return nil
 	})
 	registry.Register(messageTool)
 
@@ -340,7 +339,7 @@ func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) 
 	}
 
 	if !alreadySent {
-		al.bus.PublishOutbound(bus.OutboundMessage{
+		al.bus.PublishOutbound(ctx, bus.OutboundMessage{
 			Channel: msg.Channel,
 			ChatID:  msg.ChatID,
 			Content: response,
@@ -571,7 +570,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	// 8. Optional: send response via bus
 	if opts.SendResponse {
-		al.bus.PublishOutbound(bus.OutboundMessage{
+		al.bus.PublishOutbound(ctx, bus.OutboundMessage{
 			Channel: opts.Channel,
 			ChatID:  opts.ChatID,
 			Content: finalContent,
@@ -819,7 +818,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {
-				al.bus.PublishOutbound(bus.OutboundMessage{
+				al.bus.PublishOutbound(ctx, bus.OutboundMessage{
 					Channel: opts.Channel,
 					ChatID:  opts.ChatID,
 					Content: toolResult.ForUser,

@@ -112,7 +112,9 @@ func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []st
 		Metadata:   metadata,
 	}
 
-	c.bus.PublishInbound(msg)
+	// context.TODO: channel event handlers don't carry a context; the bus's
+	// done channel still prevents blocking when the bus is closed.
+	c.bus.PublishInbound(context.TODO(), msg)
 }
 
 func (c *BaseChannel) setRunning(running bool) {
