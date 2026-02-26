@@ -259,9 +259,26 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 
 	// Detect @bot mention (direct user mention, role mention, or reply to bot)
 	isMention := m.GuildID == "" // DMs are always "mentions"
+
+	// DEBUG: Log all incoming messages to trace mention detection
+	logger.InfoCF("discord", "Mention detection start", map[string]any{
+		"content_preview":   utils.Truncate(m.Content, 100),
+		"mentions_count":    len(m.Mentions),
+		"mention_roles":     len(m.MentionRoles),
+		"bot_user_id":       c.botUserID,
+		"guild_id":          m.GuildID,
+		"has_msg_ref":       m.MessageReference != nil,
+		"has_ref_msg":       m.ReferencedMessage != nil,
+	})
+
 	if !isMention {
 		// Check direct user mentions
 		for _, u := range m.Mentions {
+			logger.InfoCF("discord", "Checking mention", map[string]any{
+				"mention_id": u.ID,
+				"bot_id":     c.botUserID,
+				"match":      u.ID == c.botUserID,
+			})
 			if u.ID == c.botUserID {
 				isMention = true
 				break
