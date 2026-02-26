@@ -555,6 +555,11 @@ func (m HomeModel) viewNormal(snap *VMSnapshot, width int) string {
 		b.WriteString(renderVMInfoPanel(snap, panelW))
 	}
 	b.WriteString("\n")
+	if snap.State == "Local" && snap.VMAvailable {
+		b.WriteString("  ")
+		b.WriteString(styleWarn.Render("VM detected. Use `sciclaw vm tui` to manage the VM."))
+		b.WriteString("\n\n")
+	}
 
 	// Setup Checklist panel
 	b.WriteString(renderChecklistPanel(snap, panelW))

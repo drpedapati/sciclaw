@@ -135,3 +135,29 @@ func TestHomeWizard_HandleExecDone_DoesNotAdvanceOnFailures(t *testing.T) {
 		}
 	})
 }
+
+func TestHomeViewNormal_ShowsVMHintWhenLocalAndVMExists(t *testing.T) {
+	m := NewHomeModel(&homeTestExec{})
+	snap := &VMSnapshot{
+		State:       "Local",
+		VMAvailable: true,
+	}
+
+	out := m.viewNormal(snap, 100)
+	if !strings.Contains(out, "VM detected. Use `sciclaw vm tui` to manage the VM.") {
+		t.Fatalf("expected VM hint in home view, got:\n%s", out)
+	}
+}
+
+func TestHomeViewNormal_HidesVMHintWhenNoVM(t *testing.T) {
+	m := NewHomeModel(&homeTestExec{})
+	snap := &VMSnapshot{
+		State:       "Local",
+		VMAvailable: false,
+	}
+
+	out := m.viewNormal(snap, 100)
+	if strings.Contains(out, "VM detected. Use `sciclaw vm tui` to manage the VM.") {
+		t.Fatalf("did not expect VM hint in home view, got:\n%s", out)
+	}
+}

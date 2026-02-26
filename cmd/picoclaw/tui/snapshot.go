@@ -16,6 +16,8 @@ type VMSnapshot struct {
 	IPv4   string
 	Load   string
 	Memory string
+	// VMAvailable reports whether a multipass VM exists from the host perspective.
+	VMAvailable bool
 
 	// Agent version
 	AgentVersion string
@@ -125,6 +127,8 @@ type authCredJSON struct {
 	APIKey      string `json:"api_key"`
 }
 
+var vmInfoProvider = GetVMInfo
+
 // CollectSnapshot gathers all state. Safe to call from a goroutine.
 func CollectSnapshot(exec Executor) VMSnapshot {
 	if exec.Mode() == ModeVM {
@@ -215,15 +219,18 @@ func collectLocalSnapshot(exec Executor) VMSnapshot {
 	}
 
 	var wg sync.WaitGroup
+	var vmInfo VMInfo
 	var cfgRaw, authRaw string
 	var cfgErr, authErr error
 
-	wg.Add(4)
+	wg.Add(5)
+	go func() { defer wg.Done(); vmInfo = vmInfoProvider() }()
 	go func() { defer wg.Done(); cfgRaw, cfgErr = exec.ReadFile(exec.ConfigPath()) }()
 	go func() { defer wg.Done(); authRaw, authErr = exec.ReadFile(exec.AuthPath()) }()
 	go func() { defer wg.Done(); snap.AgentVersion = exec.AgentVersion() }()
 	go func() { defer wg.Done(); snap.GatewayVersion = readGatewayVersion(exec) }()
 	wg.Wait()
+	snap.VMAvailable = vmInfo.State != "NotFound" && strings.TrimSpace(vmInfo.State) != ""
 
 	// Parse config.
 	snap.ConfigExists = cfgErr == nil && strings.TrimSpace(cfgRaw) != ""

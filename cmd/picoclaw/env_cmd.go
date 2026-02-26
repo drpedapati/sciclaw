@@ -24,8 +24,10 @@ type vmHelperFiles struct {
 	cleanupDir    string
 }
 
+var runAppTUI = tui.RunLocal
+
 func tuiCmd() {
-	tui.RunAuto()
+	runAppTUI()
 }
 
 func vmCmd() {
