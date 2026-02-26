@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -374,9 +375,20 @@ func TestRoutingEmptyState_ShowsOnboardingCommandBlock(t *testing.T) {
 	m.status.Enabled = false
 
 	view := m.View(nil, 100)
-	for _, want := range []string{"No routing mappings yet.", "Quick start:", "sciclaw routing add ...", "sciclaw routing enable"} {
+	for _, want := range []string{
+		"No routing mappings yet.",
+		"Routing connects people in chat to an AI working in the right project folder.",
+		"Start here in this screen:",
+		"Press [a] to add a mapping",
+		"Press [t] to turn routing on",
+	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("empty-state view missing %q:\n%s", want, view)
+		}
+	}
+	for _, banned := range []string{"sciclaw routing add", "sciclaw routing enable", "sciclaw routing validate", "sciclaw routing reload"} {
+		if strings.Contains(view, banned) {
+			t.Fatalf("empty-state view should not include CLI command %q:\n%s", banned, view)
 		}
 	}
 }
@@ -394,7 +406,47 @@ func TestRoutingStatusPanel_DisabledHintAndUnroutedWording(t *testing.T) {
 	if !strings.Contains(panel, "Unrouted rooms:") {
 		t.Fatalf("status panel should use unrouted wording:\n%s", panel)
 	}
-	if !strings.Contains(panel, "sciclaw routing enable") {
-		t.Fatalf("status panel should include enable helper:\n%s", panel)
+	if !strings.Contains(panel, "Press [t] to turn it on from this screen.") {
+		t.Fatalf("status panel should include TUI enable helper:\n%s", panel)
 	}
+}
+
+func TestRoutingView_SeparatesPanelTitlesAndKeybindingsIntoOwnLines(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester"}
+	m := NewRoutingModel(execStub)
+	m.loaded = true
+	m.status = routingStatusInfo{Enabled: true, MappingCount: 1, UnmappedBehavior: "default"}
+	m.mappings = []routingRow{
+		{
+			Channel:        "discord",
+			ChatID:         "123",
+			Workspace:      "/tmp/project-a",
+			AllowedSenders: "111",
+			Label:          "project-a",
+		},
+	}
+	m.rebuildListContent()
+	m.rebuildDetailContent()
+
+	view := stripANSIForRoutingTest(m.View(nil, 100))
+	if strings.Contains(view, "┘ Mappings") {
+		t.Fatalf("expected Mappings title on its own line, got:\n%s", view)
+	}
+	if strings.Contains(view, "┘ Detail") {
+		t.Fatalf("expected Detail title on its own line, got:\n%s", view)
+	}
+	if strings.Contains(view, "┘  [a] Add") {
+		t.Fatalf("expected keybindings on their own line, got:\n%s", view)
+	}
+	if !strings.Contains(view, "\n  Mappings \n") {
+		t.Fatalf("expected Mappings title block, got:\n%s", view)
+	}
+	if !strings.Contains(view, "\n  Detail \n") {
+		t.Fatalf("expected Detail title block, got:\n%s", view)
+	}
+}
+
+func stripANSIForRoutingTest(in string) string {
+	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return re.ReplaceAllString(in, "")
 }

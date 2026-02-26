@@ -479,14 +479,14 @@ func (m *RoutingModel) rebuildDetailContent() {
 		lines = append(lines, fmt.Sprintf("  %s  %s", detailLabel.Render("Allowed users:"), senders))
 	}
 	lines = append(lines, "")
-	modifyCmd := fmt.Sprintf("sciclaw routing set-users --channel %s --chat-id %s --allow <ids>", r.Channel, r.ChatID)
-	lines = append(lines, "  "+styleDim.Render("Modify: ")+styleValue.Render(modifyCmd))
+	lines = append(lines, "  "+styleBold.Render("Actions in this screen"))
+	lines = append(lines, "    "+styleKey.Render("[u]")+" Edit who can message the AI in this folder")
+	lines = append(lines, "    "+styleKey.Render("[f]")+" Change which folder this chat uses")
+	lines = append(lines, "    "+styleKey.Render("[e]")+" Explain why a sender is allowed or blocked")
+	lines = append(lines, "    "+styleKey.Render("[x]")+" Detach this mapping")
 	explainSender := firstAllowedSender(r.AllowedSenders)
 	if explainSender == "" {
-		lines = append(lines, "  "+styleDim.Render("Explain: ")+styleHint.Render("add at least one allowed sender, then press [e]"))
-	} else {
-		explainCmd := fmt.Sprintf("sciclaw routing explain --channel %s --chat-id %s --sender %s", r.Channel, r.ChatID, explainSender)
-		lines = append(lines, "  "+styleDim.Render("Explain: ")+styleValue.Render(explainCmd))
+		lines = append(lines, "    "+styleHint.Render("Tip: add at least one allowed user with [u] before using [e]."))
 	}
 	if m.explainForKey == routingRowKey(r.Channel, r.ChatID) && strings.TrimSpace(m.explainInfo.Raw) != "" {
 		lines = append(lines, "")
@@ -1500,27 +1500,17 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 		var guide []string
 		guide = append(guide, "")
 		guide = append(guide, styleBold.Render("  No routing mappings yet."))
-		guide = append(guide, styleDim.Render("  Route each chat room to a dedicated workspace folder with per-room sender rules."))
+		guide = append(guide, styleDim.Render("  Routing connects people in chat to an AI working in the right project folder."))
+		guide = append(guide, styleDim.Render("  Each mapping links one chat room to one folder and a safe allowed-user list."))
 		guide = append(guide, "")
-		guide = append(guide, styleDim.Render("  Quick start:"))
-		guide = append(guide, styleDim.Render(fmt.Sprintf("    1) Press %s and walk through Add Mapping", styleKey.Render("[a]"))))
-		guide = append(guide, styleDim.Render("    2) Enable routing in Settings tab or run:"))
-		guide = append(guide, "       "+styleValue.Render("sciclaw routing enable"))
-		guide = append(guide, styleDim.Render("    3) Validate + reload after changes"))
-		guide = append(guide, "       "+styleValue.Render("sciclaw routing validate"))
-		guide = append(guide, "       "+styleValue.Render("sciclaw routing reload"))
-		guide = append(guide, "")
-		guide = append(guide, styleDim.Render("  Example command block:"))
-		guide = append(guide, "       "+styleValue.Render("sciclaw routing add ..."))
-		guide = append(guide, "         "+styleValue.Render("--channel discord \\"))
-		guide = append(guide, "         "+styleValue.Render("--chat-id <room_id> \\"))
-		guide = append(guide, "         "+styleValue.Render("--workspace /absolute/path/to/project \\"))
-		guide = append(guide, "         "+styleValue.Render("--allow <sender_id1,sender_id2> \\"))
-		guide = append(guide, "         "+styleValue.Render("--label <friendly_name>"))
+		guide = append(guide, styleDim.Render("  Start here in this screen:"))
+		guide = append(guide, styleDim.Render(fmt.Sprintf("    1) Press %s to add a mapping", styleKey.Render("[a]"))))
+		guide = append(guide, styleDim.Render(fmt.Sprintf("    2) Press %s to turn routing on", styleKey.Render("[t]"))))
+		guide = append(guide, styleDim.Render(fmt.Sprintf("    3) Press %s to apply your changes", styleKey.Render("[R]"))))
+		guide = append(guide, styleDim.Render(fmt.Sprintf("    4) Press %s to refresh status", styleKey.Render("[l]"))))
 		if !m.status.Enabled {
 			guide = append(guide, "")
-			guide = append(guide, styleHint.Render("  Routing is currently disabled. Enable it in Settings tab or with:"))
-			guide = append(guide, "       "+styleValue.Render("sciclaw routing enable"))
+			guide = append(guide, styleHint.Render(fmt.Sprintf("  Routing is currently off. Press %s to turn it on.", styleKey.Render("[t]"))))
 		}
 
 		content := strings.Join(guide, "\n")
@@ -1556,18 +1546,21 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 
 	// Status panel.
 	b.WriteString(m.renderStatusPanel(panelW))
+	b.WriteString("\n")
 
 	// Mappings list panel.
 	listContent := m.listVP.View()
 	listPanel := stylePanel.Width(panelW).Render(listContent)
 	listTitle := stylePanelTitle.Render("Mappings")
 	b.WriteString(placePanelTitle(listPanel, listTitle))
+	b.WriteString("\n")
 
 	// Detail panel.
 	detailContent := m.detailVP.View()
 	detailPanel := stylePanel.Width(panelW).Render(detailContent)
 	detailTitle := stylePanelTitle.Render("Detail")
 	b.WriteString(placePanelTitle(detailPanel, detailTitle))
+	b.WriteString("\n")
 
 	// Keybindings.
 	b.WriteString(fmt.Sprintf("  %s Add   %s Explain   %s Edit Folder   %s Edit Users   %s Enable/Disable   %s Detach   %s Check config   %s Apply changes   %s Refresh\n",
@@ -1662,8 +1655,7 @@ func (m RoutingModel) renderStatusPanel(panelW int) string {
 	lines = append(lines, fmt.Sprintf("  %s  %s", statusLabel.Render("Unrouted rooms:"), styleBold.Render(unmappedDisplay)))
 	if !m.status.Enabled {
 		lines = append(lines, "")
-		lines = append(lines, styleHint.Render("  Routing is disabled. Enable it in Settings tab or run:"))
-		lines = append(lines, "    "+styleValue.Render("sciclaw routing enable"))
+		lines = append(lines, styleHint.Render(fmt.Sprintf("  Routing is off. Press %s to turn it on from this screen.", styleKey.Render("[t]"))))
 	}
 
 	content := strings.Join(lines, "\n")
