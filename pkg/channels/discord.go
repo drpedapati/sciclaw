@@ -257,7 +257,7 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		senderName += "#" + m.Author.Discriminator
 	}
 
-	// Detect @bot mention (direct user mention OR role mention)
+	// Detect @bot mention (direct user mention, role mention, or reply to bot)
 	isMention := m.GuildID == "" // DMs are always "mentions"
 	if !isMention {
 		// Check direct user mentions
@@ -281,6 +281,12 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 						break
 					}
 				}
+			}
+		}
+		// Check if replying to a bot message
+		if !isMention && m.MessageReference != nil && m.ReferencedMessage != nil {
+			if m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == c.botUserID {
+				isMention = true
 			}
 		}
 	}
