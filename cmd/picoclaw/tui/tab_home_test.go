@@ -13,6 +13,7 @@ import (
 
 type homeTestExec struct {
 	interactiveFails bool
+	binaryPath       string
 }
 
 func (e *homeTestExec) Mode() Mode { return ModeLocal }
@@ -31,7 +32,12 @@ func (e *homeTestExec) AuthPath() string { return "/tmp/auth.json" }
 
 func (e *homeTestExec) HomePath() string { return "/Users/tester" }
 
-func (e *homeTestExec) BinaryPath() string { return "sciclaw" }
+func (e *homeTestExec) BinaryPath() string {
+	if strings.TrimSpace(e.binaryPath) != "" {
+		return e.binaryPath
+	}
+	return "sciclaw"
+}
 
 func (e *homeTestExec) AgentVersion() string { return "vtest" }
 
@@ -146,6 +152,19 @@ func TestHomeViewNormal_ShowsVMHintWhenLocalAndVMExists(t *testing.T) {
 	out := m.viewNormal(snap, 100)
 	if !strings.Contains(out, "VM detected. Use `sciclaw vm tui` to manage the VM.") {
 		t.Fatalf("expected VM hint in home view, got:\n%s", out)
+	}
+}
+
+func TestHomeViewNormal_UsesPicoclawHintWhenBinaryIsPicoclaw(t *testing.T) {
+	m := NewHomeModel(&homeTestExec{binaryPath: "/tmp/picoclaw"})
+	snap := &VMSnapshot{
+		State:       "Local",
+		VMAvailable: true,
+	}
+
+	out := m.viewNormal(snap, 100)
+	if !strings.Contains(out, "VM detected. Use `picoclaw vm tui` to manage the VM.") {
+		t.Fatalf("expected picoclaw VM hint in home view, got:\n%s", out)
 	}
 }
 

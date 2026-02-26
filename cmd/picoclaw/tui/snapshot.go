@@ -129,6 +129,16 @@ type authCredJSON struct {
 
 var vmInfoProvider = GetVMInfo
 
+var (
+	localVMHintMu          sync.Mutex
+	localVMHintKnown       bool
+	localVMHintAvailable   bool
+	localVMHintLastChecked time.Time
+	localVMHintInFlight    bool
+)
+
+const localVMHintRefreshInterval = 15 * time.Second
+
 // CollectSnapshot gathers all state. Safe to call from a goroutine.
 func CollectSnapshot(exec Executor) VMSnapshot {
 	if exec.Mode() == ModeVM {
@@ -217,20 +227,18 @@ func collectLocalSnapshot(exec Executor) VMSnapshot {
 		State:     "Local",
 		FetchedAt: time.Now(),
 	}
+	snap.VMAvailable = localVMAvailabilityHint(time.Now())
 
 	var wg sync.WaitGroup
-	var vmInfo VMInfo
 	var cfgRaw, authRaw string
 	var cfgErr, authErr error
 
-	wg.Add(5)
-	go func() { defer wg.Done(); vmInfo = vmInfoProvider() }()
+	wg.Add(4)
 	go func() { defer wg.Done(); cfgRaw, cfgErr = exec.ReadFile(exec.ConfigPath()) }()
 	go func() { defer wg.Done(); authRaw, authErr = exec.ReadFile(exec.AuthPath()) }()
 	go func() { defer wg.Done(); snap.AgentVersion = exec.AgentVersion() }()
 	go func() { defer wg.Done(); snap.GatewayVersion = readGatewayVersion(exec) }()
 	wg.Wait()
-	snap.VMAvailable = vmInfo.State != "NotFound" && strings.TrimSpace(vmInfo.State) != ""
 
 	// Parse config.
 	snap.ConfigExists = cfgErr == nil && strings.TrimSpace(cfgRaw) != ""
@@ -271,6 +279,45 @@ func collectLocalSnapshot(exec Executor) VMSnapshot {
 	snap.ServiceInstalled, snap.ServiceRunning, snap.ServiceAutoStart = collectServiceState(exec)
 
 	return snap
+}
+
+func localVMAvailabilityHint(now time.Time) bool {
+	localVMHintMu.Lock()
+	known := localVMHintKnown
+	available := localVMHintAvailable
+	lastChecked := localVMHintLastChecked
+	shouldRefresh := !localVMHintInFlight && (!known || now.Sub(lastChecked) >= localVMHintRefreshInterval)
+	if shouldRefresh {
+		localVMHintInFlight = true
+		go refreshLocalVMAvailabilityHint()
+	}
+	localVMHintMu.Unlock()
+
+	if known {
+		return available
+	}
+	return false
+}
+
+func refreshLocalVMAvailabilityHint() {
+	info := vmInfoProvider()
+	available := info.State != "NotFound" && strings.TrimSpace(info.State) != ""
+
+	localVMHintMu.Lock()
+	localVMHintAvailable = available
+	localVMHintKnown = true
+	localVMHintLastChecked = time.Now()
+	localVMHintInFlight = false
+	localVMHintMu.Unlock()
+}
+
+func resetLocalVMHintCacheForTest() {
+	localVMHintMu.Lock()
+	defer localVMHintMu.Unlock()
+	localVMHintKnown = false
+	localVMHintAvailable = false
+	localVMHintLastChecked = time.Time{}
+	localVMHintInFlight = false
 }
 
 func readGatewayVersion(exec Executor) string {

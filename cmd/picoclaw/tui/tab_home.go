@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -556,8 +557,9 @@ func (m HomeModel) viewNormal(snap *VMSnapshot, width int) string {
 	}
 	b.WriteString("\n")
 	if snap.State == "Local" && snap.VMAvailable {
+		vmCmd := m.vmTUICommandHint()
 		b.WriteString("  ")
-		b.WriteString(styleWarn.Render("VM detected. Use `sciclaw vm tui` to manage the VM."))
+		b.WriteString(styleWarn.Render(fmt.Sprintf("VM detected. Use `%s` to manage the VM.", vmCmd)))
 		b.WriteString("\n\n")
 	}
 
@@ -576,6 +578,18 @@ func (m HomeModel) viewNormal(snap *VMSnapshot, width int) string {
 	))
 
 	return b.String()
+}
+
+func (m HomeModel) vmTUICommandHint() string {
+	base := strings.ToLower(filepath.Base(strings.TrimSpace(m.exec.BinaryPath())))
+	switch {
+	case strings.Contains(base, "picoclaw"):
+		return "picoclaw vm tui"
+	case strings.Contains(base, "sciclaw"):
+		return "sciclaw vm tui"
+	default:
+		return "sciclaw vm tui"
+	}
 }
 
 // --- Wizard View ---
