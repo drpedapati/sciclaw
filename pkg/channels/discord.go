@@ -22,6 +22,7 @@ const (
 	transcriptionTimeout = 30 * time.Second
 	sendTimeout          = 10 * time.Second
 	typingInterval       = 8 * time.Second
+	maxTypingDuration    = 3 * time.Minute // safety net: auto-cancel typing if stopTyping is never called
 	discordMaxRunes      = 2000
 	discordMaxFileBytes  = 25 * 1024 * 1024
 )
@@ -151,15 +152,19 @@ func (c *DiscordChannel) Stop(ctx context.Context) error {
 }
 
 func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
+	channelID := msg.ChatID
+
+	// Always stop typing first, even if we bail out below.
+	if channelID != "" {
+		c.stopTyping(channelID)
+	}
+
 	if !c.IsRunning() {
 		return fmt.Errorf("discord bot not running")
 	}
-
-	channelID := msg.ChatID
 	if channelID == "" {
 		return fmt.Errorf("channel ID is empty")
 	}
-	c.stopTyping(channelID)
 
 	message := msg.Content
 	if strings.TrimSpace(message) == "" {
@@ -414,7 +419,7 @@ func (c *DiscordChannel) startTyping(channelID string) {
 		return
 	}
 
-	loopCtx, cancel := context.WithCancel(c.getContext())
+	loopCtx, cancel := context.WithTimeout(c.getContext(), maxTypingDuration)
 	c.typing[channelID] = &typingState{
 		pending: 1,
 		cancel:  cancel,
@@ -466,6 +471,13 @@ func (c *DiscordChannel) runTypingLoop(ctx context.Context, channelID string, ev
 	if every <= 0 {
 		every = typingInterval
 	}
+
+	// Clean up map entry when the loop exits (covers both stopTyping and timeout).
+	defer func() {
+		c.typingMu.Lock()
+		delete(c.typing, channelID)
+		c.typingMu.Unlock()
+	}()
 
 	if err := c.sendTyping(channelID); err != nil {
 		logger.DebugCF("discord", "Typing indicator send failed", map[string]any{

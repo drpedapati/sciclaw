@@ -129,6 +129,67 @@ func TestDiscordStopCancelsAllTypingLoops(t *testing.T) {
 	}
 }
 
+func TestDiscordTypingAutoExpiresOnTimeout(t *testing.T) {
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, bus.NewMessageBus(), nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 5 * time.Millisecond,
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.sendMessageFn = func(channelID, content string) error { return nil }
+	ch.setRunning(true)
+
+	// Override the typing context to use a very short timeout for the test.
+	// We can't change maxTypingDuration, so we'll start typing with a short-lived parent context.
+	shortCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	ch.ctx = shortCtx
+
+	ch.startTyping("chan-timeout")
+
+	// Typing should be active initially.
+	ch.typingMu.Lock()
+	_, active := ch.typing["chan-timeout"]
+	ch.typingMu.Unlock()
+	if !active {
+		t.Fatalf("expected typing to be active initially")
+	}
+
+	// Wait for parent context to expire + loop cleanup.
+	time.Sleep(80 * time.Millisecond)
+
+	ch.typingMu.Lock()
+	_, still := ch.typing["chan-timeout"]
+	ch.typingMu.Unlock()
+	if still {
+		t.Fatalf("expected typing to auto-expire after context timeout")
+	}
+}
+
+func TestDiscordSendStopsTypingEvenOnError(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.startTyping("chan-err")
+
+	// Simulate bot stopped — Send returns error, but typing should still be cleared.
+	ch.setRunning(false)
+	err := ch.Send(context.Background(), bus.OutboundMessage{
+		Channel: "discord",
+		ChatID:  "chan-err",
+		Content: "test",
+	})
+	if err == nil {
+		t.Fatalf("expected error when bot not running")
+	}
+
+	ch.typingMu.Lock()
+	_, ok := ch.typing["chan-err"]
+	ch.typingMu.Unlock()
+	if ok {
+		t.Fatalf("expected typing cleared even when Send fails")
+	}
+}
+
 func TestSplitDiscordMessage_RespectsLimit(t *testing.T) {
 	msg := strings.Repeat("a", 4205)
 	chunks := splitDiscordMessage(msg, discordMaxRunes)

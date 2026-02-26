@@ -281,6 +281,8 @@ func appendUniqueFlexible(list config.FlexibleStringSlice, v string) config.Flex
 
 func newTelegramBot(token, proxy string) (*telego.Bot, error) {
 	var opts []telego.BotOption
+	// Suppress telego's internal logger so it doesn't pollute the interactive wizard.
+	opts = append(opts, telego.WithDiscardLogger())
 	if strings.TrimSpace(proxy) != "" {
 		u, err := url.Parse(proxy)
 		if err != nil {
@@ -301,7 +303,12 @@ func telegramPairOnce(bot *telego.Bot, timeout time.Duration) (*telegramPairing,
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	updates, err := bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: 30})
+	// Disable retries so the long-polling goroutine exits immediately on
+	// context deadline instead of sleeping 8s and retrying (which spews
+	// background errors into the interactive terminal).
+	updates, err := bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: 30},
+		telego.WithLongPollingRetryTimeout(0),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("long polling failed: %w", err)
 	}
