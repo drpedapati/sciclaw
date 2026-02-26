@@ -16,9 +16,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"syscall"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -48,6 +49,8 @@ var (
 	buildTime string
 	goVersion string
 )
+
+var processCommandLineForPID = readProcessCommandLine
 
 func init() {
 	// Strip leading "v" set by ldflags so format strings can add their own.
@@ -1198,22 +1201,28 @@ func gatewayCmd() {
 	// Discord/Telegram websocket.
 	if gwHome, err := os.UserHomeDir(); err == nil {
 		statusPath := filepath.Join(gwHome, ".picoclaw", "gateway.status.json")
-		if data, err := os.ReadFile(statusPath); err == nil {
-			var status struct {
-				PID int `json:"pid"`
-			}
-			if json.Unmarshal(data, &status) == nil && status.PID > 0 && status.PID != os.Getpid() {
-				if proc, err := os.FindProcess(status.PID); err == nil {
-					if proc.Signal(syscall.Signal(0)) == nil {
-						fmt.Fprintf(os.Stderr, "Stopping stale gateway (PID %d)...\n", status.PID)
-						_ = proc.Signal(syscall.SIGTERM)
-						time.Sleep(2 * time.Second)
+			if data, err := os.ReadFile(statusPath); err == nil {
+				var status struct {
+					PID int `json:"pid"`
+				}
+				if json.Unmarshal(data, &status) == nil && status.PID > 0 && status.PID != os.Getpid() {
+					if proc, err := os.FindProcess(status.PID); err == nil {
+						if proc.Signal(syscall.Signal(0)) == nil {
+							if ok, checkErr := isGatewayProcessPID(status.PID); checkErr != nil {
+								fmt.Fprintf(os.Stderr, "Skipping stale PID %d: unable to verify process owner (%v)\n", status.PID, checkErr)
+							} else if !ok {
+								fmt.Fprintf(os.Stderr, "Skipping stale PID %d: process is not a sciClaw gateway instance\n", status.PID)
+							} else {
+								fmt.Fprintf(os.Stderr, "Stopping stale gateway (PID %d)...\n", status.PID)
+								_ = proc.Signal(syscall.SIGTERM)
+								time.Sleep(2 * time.Second)
+							}
+						}
 					}
 				}
+				_ = os.Remove(statusPath)
 			}
-			_ = os.Remove(statusPath)
 		}
-	}
 
 	cfg, err := loadConfig()
 	if err != nil {
@@ -1442,6 +1451,58 @@ func modelsCmd() {
 		fmt.Printf("Unknown models command: %s\n", os.Args[2])
 		fmt.Printf("Usage: %s models [list|discover|set|effort|status]\n", commandName)
 	}
+}
+
+func isGatewayProcessPID(pid int) (bool, error) {
+	cmdline, err := processCommandLineForPID(pid)
+	if err != nil {
+		return false, err
+	}
+	return isGatewayProcessCommandLine(cmdline), nil
+}
+
+func isGatewayProcessCommandLine(cmdline string) bool {
+	fields := strings.Fields(strings.TrimSpace(strings.ToLower(cmdline)))
+	if len(fields) < 2 {
+		return false
+	}
+
+	for i := 0; i < len(fields)-1; i++ {
+		cur := strings.Trim(fields[i], "\"'")
+		next := strings.Trim(fields[i+1], "\"'")
+		base := strings.ToLower(filepath.Base(cur))
+		if (strings.Contains(base, "sciclaw") || strings.Contains(base, "picoclaw")) && next == "gateway" {
+			return true
+		}
+	}
+	return false
+}
+
+func readProcessCommandLine(pid int) (string, error) {
+	if pid <= 0 {
+		return "", fmt.Errorf("invalid pid: %d", pid)
+	}
+
+	// Linux: /proc is the most direct source and avoids locale-dependent ps output.
+	if runtime.GOOS == "linux" {
+		procPath := filepath.Join("/proc", strconv.Itoa(pid), "cmdline")
+		if data, err := os.ReadFile(procPath); err == nil {
+			line := strings.TrimSpace(strings.ReplaceAll(string(data), "\x00", " "))
+			if line != "" {
+				return line, nil
+			}
+		}
+	}
+
+	out, err := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return "", err
+	}
+	line := strings.TrimSpace(string(out))
+	if line == "" {
+		return "", fmt.Errorf("empty command line for pid %d", pid)
+	}
+	return line, nil
 }
 
 func statusCmd() {
