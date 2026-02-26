@@ -483,7 +483,7 @@ func runOnboardWizard(cfg *config.Config, configPath string) {
 
 	// 5. Chat channels (messaging apps)
 	fmt.Printf("  Help (messaging apps): %s\n", docsLink("#telegram"))
-	if promptYesNo(r, "Set up messaging apps (Telegram/Discord/Slack) now?", false) {
+	if promptYesNo(r, "Set up messaging apps (Telegram/Discord) now?", false) {
 		runChannelsWizard(r, cfg, configPath)
 	}
 }

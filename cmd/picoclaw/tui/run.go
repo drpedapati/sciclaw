@@ -32,7 +32,6 @@ func run(exec Executor) {
 	p := tea.NewProgram(
 		NewModel(exec),
 		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 	)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running Control Center: %v\n", err)

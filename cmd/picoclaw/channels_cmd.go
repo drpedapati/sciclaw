@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 
 	channelspkg "github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
+	svcmgr "github.com/sipeed/picoclaw/pkg/service"
 )
 
 func channelsCmd() {
@@ -138,16 +140,25 @@ func setupTelegram(r *bufio.Reader, cfg *config.Config, configPath string) error
 	fmt.Println()
 	fmt.Println("Telegram setup:")
 
-	token := channelspkg.NormalizeDiscordBotToken(promptLine(r, "Paste bot token:"))
-	if token == "" {
-		return fmt.Errorf("token is required")
-	}
-	proxy := strings.TrimSpace(promptLine(r, "Proxy URL (optional, leave blank for none):"))
+	var bot *telego.Bot
+	var token, proxy string
+	for {
+		token = cleanToken(promptLine(r, "Paste bot token:"))
+		if token == "" {
+			return fmt.Errorf("token is required")
+		}
+		proxy = strings.TrimSpace(promptLine(r, "Proxy URL (optional, leave blank for none):"))
 
-	// Validate token early and capture bot username for better UX.
-	bot, err := newTelegramBot(token, proxy)
-	if err != nil {
-		return err
+		// Validate token early and capture bot username for better UX.
+		var err error
+		bot, err = newTelegramBot(token, proxy)
+		if err == nil {
+			break
+		}
+		fmt.Printf("  Error: %v\n", err)
+		if !promptYesNo(r, "Try again?", true) {
+			return fmt.Errorf("aborted")
+		}
 	}
 	fmt.Printf("  Bot: @%s\n", bot.Username())
 
@@ -159,15 +170,40 @@ func setupTelegram(r *bufio.Reader, cfg *config.Config, configPath string) error
 		return fmt.Errorf("saving config: %w", err)
 	}
 
-	fmt.Println()
-	fmt.Println("Pairing:")
-	fmt.Println("  1. Open Telegram and message your bot anything (e.g., \"hi\").")
-	fmt.Println("  2. Wait here for sciClaw to detect your user ID.")
+	fmt.Println("  Saved. Telegram is ready.")
 
-	p, err := telegramPairOnce(bot, 60*time.Second)
-	if err != nil {
-		fmt.Printf("  Pairing skipped: %v\n", err)
-		fmt.Println("  Fallback: add your user ID manually in ~/.picoclaw/config.json -> channels.telegram.allow_from")
+	// Pairing (auto-detect user ID) is optional.  The token is already saved
+	// and the bot will work.  allow_from can stay empty (allows everyone) or
+	// the user can add IDs later.
+	if !promptYesNo(r, "Auto-detect your Telegram user ID for the allowlist?", false) {
+		return nil
+	}
+
+	// If the gateway is running, stop it so we can poll for updates.
+	gatewayWasRunning := isGatewayRunning()
+	if gatewayWasRunning {
+		fmt.Println("  Stopping gateway temporarily...")
+		if err := runServiceSubcommand("stop"); err != nil {
+			fmt.Printf("  Could not stop gateway: %v\n", err)
+			return nil
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+	fmt.Println("  Send any message to @" + bot.Username() + " in Telegram...")
+	p, pairErr := telegramPairOnce(bot, 60*time.Second)
+
+	// Always restart the gateway before handling the result.
+	if gatewayWasRunning {
+		fmt.Println("  Restarting gateway...")
+		if err := runServiceSubcommand("start"); err != nil {
+			fmt.Printf("  Warning: could not restart gateway: %v\n", err)
+			fmt.Printf("  Run manually: %s service start\n", invokedCLIName())
+		}
+	}
+
+	if pairErr != nil {
+		fmt.Printf("  Pairing skipped: %v\n", pairErr)
 		return nil
 	}
 
@@ -176,17 +212,11 @@ func setupTelegram(r *bufio.Reader, cfg *config.Config, configPath string) error
 		label = fmt.Sprintf("%d|%s", p.UserID, p.Username)
 	}
 	fmt.Printf("  Detected: user=%s chat_id=%d chat_type=%s\n", label, p.ChatID, p.ChatType)
-
-	if promptYesNo(r, "Add this user to allow_from (recommended)?", true) {
-		cfg.Channels.Telegram.AllowFrom = appendUniqueFlexible(cfg.Channels.Telegram.AllowFrom, label)
-		if err := config.SaveConfig(configPath, cfg); err != nil {
-			return fmt.Errorf("saving allow_from: %w", err)
-		}
-		fmt.Println("  Saved allow_from.")
+	cfg.Channels.Telegram.AllowFrom = appendUniqueFlexible(cfg.Channels.Telegram.AllowFrom, label)
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		return fmt.Errorf("saving allow_from: %w", err)
 	}
-
-	// Best-effort: send confirmation message.
-	_ = sendTelegramTestMessage(bot, p.ChatID, "sciClaw connected. You can start chatting here.")
+	fmt.Println("  Saved allow_from.")
 	return nil
 }
 
@@ -224,7 +254,7 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 	fmt.Println("Bot token:")
 	fmt.Println("  Paste your bot token (it will be saved; never printed back).")
 
-	token := strings.TrimSpace(promptLine(r, "Paste bot token:"))
+	token := cleanToken(promptLine(r, "Paste bot token:"))
 	if token == "" {
 		return fmt.Errorf("token is required")
 	}
@@ -253,6 +283,14 @@ func setupDiscord(r *bufio.Reader, cfg *config.Config, configPath string) error 
 	fmt.Printf("  3. Start sciClaw: %s gateway\n", invokedCLIName())
 	fmt.Printf("  Help: %s\n", docsLink("#discord"))
 	return nil
+}
+
+// cleanToken strips trailing backslashes, quotes, and whitespace from pasted tokens.
+func cleanToken(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, `"'`+"`")
+	s = strings.TrimRight(s, `\`)
+	return strings.TrimSpace(s)
 }
 
 func parseCSV(s string) []string {
@@ -303,12 +341,12 @@ func telegramPairOnce(bot *telego.Bot, timeout time.Duration) (*telegramPairing,
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Disable retries so the long-polling goroutine exits immediately on
-	// context deadline instead of sleeping 8s and retrying (which spews
-	// background errors into the interactive terminal).
-	updates, err := bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: 30},
-		telego.WithLongPollingRetryTimeout(0),
-	)
+	// Quick connectivity check — flush any stale updates.
+	if _, err := bot.GetUpdates(ctx, &telego.GetUpdatesParams{Timeout: 0}); err != nil {
+		return nil, fmt.Errorf("Telegram API unreachable: %w", err)
+	}
+
+	updates, err := bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: 10})
 	if err != nil {
 		return nil, fmt.Errorf("long polling failed: %w", err)
 	}
@@ -442,4 +480,49 @@ func channelsPairTelegramCmd() {
 	}
 
 	fmt.Printf("%d|%s|%s\n", p.ChatID, p.ChatType, p.Username)
+}
+
+// isGatewayRunning checks if the gateway service is currently running
+// by invoking the service manager directly (works regardless of how this
+// binary was invoked).
+func isGatewayRunning() bool {
+	mgr := newServiceManagerQuiet()
+	if mgr == nil {
+		return false
+	}
+	st, err := mgr.Status()
+	if err != nil {
+		return false
+	}
+	return st.Running
+}
+
+// runServiceSubcommand invokes a service manager action (stop/start/restart).
+func runServiceSubcommand(sub string) error {
+	mgr := newServiceManagerQuiet()
+	if mgr == nil {
+		return fmt.Errorf("could not resolve service manager")
+	}
+	switch sub {
+	case "stop":
+		return mgr.Stop()
+	case "start":
+		return mgr.Start()
+	case "restart":
+		return mgr.Restart()
+	default:
+		return fmt.Errorf("unknown service subcommand: %s", sub)
+	}
+}
+
+func newServiceManagerQuiet() svcmgr.Manager {
+	exePath, err := resolveServiceExecutablePath(os.Args[0], exec.LookPath, os.Executable)
+	if err != nil {
+		return nil
+	}
+	mgr, err := svcmgr.NewManager(exePath)
+	if err != nil {
+		return nil
+	}
+	return mgr
 }
