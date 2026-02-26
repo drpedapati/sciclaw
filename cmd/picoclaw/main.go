@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 	"runtime"
 	"strings"
 	"time"
@@ -1188,6 +1189,29 @@ func gatewayCmd() {
 					os.Exit(1)
 				}
 			}
+		}
+	}
+
+	// Kill any stale gateway process from a previous run (e.g. orphaned SSH session).
+	// The status file is written on startup and removed on clean shutdown — if it
+	// still exists with a live PID, that process is a zombie competing for the
+	// Discord/Telegram websocket.
+	if gwHome, err := os.UserHomeDir(); err == nil {
+		statusPath := filepath.Join(gwHome, ".picoclaw", "gateway.status.json")
+		if data, err := os.ReadFile(statusPath); err == nil {
+			var status struct {
+				PID int `json:"pid"`
+			}
+			if json.Unmarshal(data, &status) == nil && status.PID > 0 && status.PID != os.Getpid() {
+				if proc, err := os.FindProcess(status.PID); err == nil {
+					if proc.Signal(syscall.Signal(0)) == nil {
+						fmt.Fprintf(os.Stderr, "Stopping stale gateway (PID %d)...\n", status.PID)
+						_ = proc.Signal(syscall.SIGTERM)
+						time.Sleep(2 * time.Second)
+					}
+				}
+			}
+			_ = os.Remove(statusPath)
 		}
 	}
 
