@@ -257,13 +257,30 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		senderName += "#" + m.Author.Discriminator
 	}
 
-	// Detect @bot mention
+	// Detect @bot mention (direct user mention OR role mention)
 	isMention := m.GuildID == "" // DMs are always "mentions"
 	if !isMention {
+		// Check direct user mentions
 		for _, u := range m.Mentions {
 			if u.ID == c.botUserID {
 				isMention = true
 				break
+			}
+		}
+		// Check role mentions - if user mentioned any role, check if bot has that role
+		if !isMention && len(m.MentionRoles) > 0 && m.GuildID != "" {
+			if member, err := s.GuildMember(m.GuildID, c.botUserID); err == nil {
+				for _, mentionedRole := range m.MentionRoles {
+					for _, botRole := range member.Roles {
+						if mentionedRole == botRole {
+							isMention = true
+							break
+						}
+					}
+					if isMention {
+						break
+					}
+				}
 			}
 		}
 	}
