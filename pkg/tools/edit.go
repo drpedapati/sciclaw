@@ -76,7 +76,7 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 
 	resolvedPath, err := validatePathWithPolicy(path, t.allowedDir, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
-		return ErrorResult(err.Error())
+		return UserErrorResult(err.Error())
 	}
 
 	if _, err := os.Stat(resolvedPath); os.IsNotExist(err) {
@@ -162,7 +162,7 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 
 	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
-		return ErrorResult(err.Error())
+		return UserErrorResult(err.Error())
 	}
 
 	f, err := os.OpenFile(resolvedPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

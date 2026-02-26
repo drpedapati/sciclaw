@@ -99,6 +99,25 @@ func ErrorResult(message string) *ToolResult {
 	}
 }
 
+// UserErrorResult creates an error result that is shown to both the LLM and the user.
+// Use this for errors that the user needs to see immediately, such as:
+// - Security guard blocks
+// - Permission denied errors
+// - Critical failures that require user attention
+//
+// Example:
+//
+//	result := UserErrorResult("Command blocked by safety guard (path outside workspace)")
+func UserErrorResult(message string) *ToolResult {
+	return &ToolResult{
+		ForLLM:  message,
+		ForUser: "⚠️ " + message,
+		Silent:  false,
+		IsError: true,
+		Async:   false,
+	}
+}
+
 // UserResult creates a ToolResult with content for both LLM and user.
 // Both ForLLM and ForUser are set to the same content.
 //

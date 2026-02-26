@@ -105,7 +105,7 @@ func (t *PubMedExportTool) Execute(ctx context.Context, args map[string]interfac
 
 	outputPath, err := validatePathWithPolicy(outputFile, t.workspace, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
-		return ErrorResult(err.Error())
+		return UserErrorResult(err.Error())
 	}
 
 	overwrite := getBool(args, "overwrite")

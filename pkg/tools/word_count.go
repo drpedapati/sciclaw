@@ -64,7 +64,7 @@ func (t *WordCountTool) Execute(ctx context.Context, args map[string]interface{}
 	if strings.TrimSpace(path) != "" {
 		resolved, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 		if err != nil {
-			return ErrorResult(err.Error())
+			return UserErrorResult(err.Error())
 		}
 		data, err := os.ReadFile(resolved)
 		if err != nil {

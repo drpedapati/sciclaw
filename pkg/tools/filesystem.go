@@ -206,7 +206,7 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 
 	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
-		return ErrorResult(err.Error())
+		return UserErrorResult(err.Error())
 	}
 
 	content, err := os.ReadFile(resolvedPath)
@@ -271,7 +271,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 
 	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
-		return ErrorResult(err.Error())
+		return UserErrorResult(err.Error())
 	}
 
 	dir := filepath.Dir(resolvedPath)
@@ -331,7 +331,7 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
-		return ErrorResult(err.Error())
+		return UserErrorResult(err.Error())
 	}
 
 	entries, err := os.ReadDir(resolvedPath)

@@ -415,6 +415,29 @@ func TestShellTool_AllowsDevNullRedirection(t *testing.T) {
 	}
 }
 
+func TestShellTool_RelativePathsNotBlockedByPathGuard(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	// These commands use relative paths like ./ and should not be blocked.
+	// The key issue is that './backups/*' should NOT extract '/backups/*' as
+	// a separate absolute path to check.
+	testCases := []string{
+		"find . -name '*.txt'",
+		"find . -not -path './backups/*' -not -path './sessions/*'",
+		"ls ./subdir",
+		"grep -r 'pattern' ./src",
+		"find . -path './*' -type f",
+	}
+
+	for _, cmd := range testCases {
+		if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
+			t.Errorf("expected relative path command to pass guard:\n  cmd: %s\n  blocked: %s", cmd, blocked)
+		}
+	}
+}
+
 func TestShellTool_BlocksPythonSubprocessWrapperForPubMed(t *testing.T) {
 	tool := NewExecTool("", false)
 	cmd := "python3 - <<'PY'\nimport subprocess\nsubprocess.check_output(['pubmed','search','schizophrenia','--json'], text=True)\nPY"

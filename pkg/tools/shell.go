@@ -28,7 +28,7 @@ type ExecTool struct {
 }
 
 var (
-	shellPathPattern             = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
+	shellPathPattern = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
 	shellURLPattern              = regexp.MustCompile("https?://[^\\s\"'`]+")
 	shellMutatingCommandPattern  = regexp.MustCompile(`(?i)(^|[;&|()\s])(touch|mkdir|rmdir|rm|mv|cp|install|chmod|chown|truncate|tee|sed\s+-i|perl\s+-i|pandoc)([;&|()\s]|$)`)
 	shellWriteRedirectPattern    = regexp.MustCompile(`(^|[^0-9])>>?`)
@@ -131,13 +131,13 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	if t.restrictToWorkspace && strings.TrimSpace(cwd) != "" {
 		resolvedCWD, err := validatePathWithPolicy(cwd, t.workingDir, true, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 		if err != nil {
-			return ErrorResult("Command blocked by safety guard (" + err.Error() + ")")
+			return UserErrorResult("Command blocked by safety guard (" + err.Error() + ")")
 		}
 		cwd = resolvedCWD
 	}
 
 	if guardError := t.guardCommand(command, cwd); guardError != "" {
-		return ErrorResult(guardError)
+		return UserErrorResult(guardError)
 	}
 	withPandocDefaults, pandocErr := t.commandWithPandocDefaults(command)
 	if pandocErr != nil {
@@ -542,6 +542,9 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		// URL literals are not filesystem paths and should not trigger
 		// workspace path checks.
 		pathScanInput = stripURLSegments(pathScanInput)
+		// Also strip relative path patterns like ./ and ../ which can cause
+		// false positives (e.g., './backups/*' would extract '/backups/*')
+		pathScanInput = stripRelativePathPrefixes(pathScanInput)
 		matches := shellPathPattern.FindAllString(pathScanInput, -1)
 		type guardRoot struct {
 			path     string
@@ -662,6 +665,18 @@ func stripBracketSegments(s string) string {
 
 func stripURLSegments(s string) string {
 	return shellURLPattern.ReplaceAllString(s, " ")
+}
+
+// stripRelativePathPrefixes replaces relative path patterns like ./ and ../
+// with spaces to prevent false positive path detection. For example,
+// './backups/*' would otherwise match '/backups/*' as an absolute path.
+func stripRelativePathPrefixes(s string) string {
+	// Replace ./ and ../ patterns (with their following path) with spaces
+	// This handles cases like './foo', '../bar', './*', etc.
+	result := regexp.MustCompile(`\.\.?/[^\s\"']*`).ReplaceAllStringFunc(s, func(match string) string {
+		return strings.Repeat(" ", len(match))
+	})
+	return result
 }
 
 func isAllowedOutsideWorkspacePath(path string) bool {

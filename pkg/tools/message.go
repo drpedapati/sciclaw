@@ -121,6 +121,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if err != nil {
 		return &ToolResult{
 			ForLLM:  err.Error(),
+			ForUser: "⚠️ " + err.Error(),
 			IsError: true,
 			Err:     err,
 		}
