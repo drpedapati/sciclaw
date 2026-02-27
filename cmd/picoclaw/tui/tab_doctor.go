@@ -240,15 +240,19 @@ func runDoctorCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
 		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " doctor --json 2>&1"
 		out, err := exec.ExecShell(90*time.Second, cmd)
-		if err != nil {
-			return doctorDoneMsg{err: fmt.Errorf("command failed: %w", err)}
+		var rep doctorReport
+		if parseErr := json.Unmarshal([]byte(out), &rep); parseErr == nil {
+			// doctor --json exits non-zero when checks contain hard errors.
+			// If JSON parsed successfully, surface the report instead of a generic exit-status error.
+			return doctorDoneMsg{report: &rep}
+		} else if err == nil {
+			// If JSON parsing fails, the output might be plain text.
+			return doctorDoneMsg{err: fmt.Errorf("failed to parse results: %w\n\nRaw output:\n%s", parseErr, out)}
 		}
 
-		var rep doctorReport
-		if err := json.Unmarshal([]byte(out), &rep); err != nil {
-			// If JSON parsing fails, the output might be plain text.
-			return doctorDoneMsg{err: fmt.Errorf("failed to parse results: %w\n\nRaw output:\n%s", err, out)}
+		if strings.TrimSpace(out) != "" {
+			return doctorDoneMsg{err: fmt.Errorf("command failed: %w\n\nRaw output:\n%s", err, out)}
 		}
-		return doctorDoneMsg{report: &rep}
+		return doctorDoneMsg{err: fmt.Errorf("command failed: %w", err)}
 	}
 }
