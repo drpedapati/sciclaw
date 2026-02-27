@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAtomicSave(t *testing.T) {
@@ -213,4 +214,65 @@ func TestNewManager_EmptyWorkspace(t *testing.T) {
 	if !sm.GetTimestamp().IsZero() {
 		t.Error("Expected zero timestamp for new state")
 	}
+}
+
+func TestNewManager_LoadsLegacyStateFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "state-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	legacy := State{
+		LastChannel: "legacy-channel",
+		LastChatID:  "legacy-chat",
+		Timestamp:   time.Now().UTC(),
+	}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal legacy state: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "state.json"), data, 0o644); err != nil {
+		t.Fatalf("write legacy state: %v", err)
+	}
+
+	sm := NewManager(tmpDir)
+	if sm.GetLastChannel() != "legacy-channel" {
+		t.Fatalf("expected legacy channel, got %q", sm.GetLastChannel())
+	}
+	if sm.GetLastChatID() != "legacy-chat" {
+		t.Fatalf("expected legacy chat id, got %q", sm.GetLastChatID())
+	}
+}
+
+func TestNewManager_BootstrapTimeoutDoesNotBlock(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "state-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	prevRead := stateReadFile
+	prevTimeout := stateBootstrapTimeout
+	defer func() {
+		stateReadFile = prevRead
+		stateBootstrapTimeout = prevTimeout
+	}()
+
+	block := make(chan struct{})
+	stateReadFile = func(string) ([]byte, error) {
+		<-block
+		return nil, os.ErrNotExist
+	}
+	stateBootstrapTimeout = 20 * time.Millisecond
+
+	start := time.Now()
+	_ = NewManager(tmpDir)
+	elapsed := time.Since(start)
+	if elapsed > 150*time.Millisecond {
+		t.Fatalf("expected constructor to return quickly, took %v", elapsed)
+	}
+
+	close(block)
+	time.Sleep(5 * time.Millisecond)
 }

@@ -31,6 +31,11 @@ type Manager struct {
 	stateFile string
 }
 
+var (
+	stateReadFile         = os.ReadFile
+	stateBootstrapTimeout = 750 * time.Millisecond
+)
+
 // NewManager creates a new state manager for the given workspace.
 func NewManager(workspace string) *Manager {
 	stateDir := filepath.Join(workspace, "state")
@@ -46,19 +51,16 @@ func NewManager(workspace string) *Manager {
 		state:     &State{},
 	}
 
-	// Try to load from new location first
-	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
-		// New file doesn't exist, try migrating from old location
-		if data, err := os.ReadFile(oldStateFile); err == nil {
-			if err := json.Unmarshal(data, sm.state); err == nil {
-				// Migrate to new location
-				sm.saveAtomic()
-				log.Printf("[INFO] state: migrated state from %s to %s", oldStateFile, stateFile)
-			}
+	loadedState, loadedFromLegacy, err := loadBootstrapWithTimeout(stateFile, oldStateFile, stateBootstrapTimeout)
+	if err != nil {
+		log.Printf("[WARN] state: bootstrap skipped for %s: %v", workspace, err)
+	} else if loadedState != nil {
+		sm.state = loadedState
+		if loadedFromLegacy {
+			// Keep startup non-blocking on cloud-backed filesystems.
+			// The state will be persisted in the new location on next write.
+			log.Printf("[INFO] state: loaded legacy state from %s", oldStateFile)
 		}
-	} else {
-		// Load from new location
-		sm.load()
 	}
 
 	return sm
@@ -155,18 +157,73 @@ func (sm *Manager) saveAtomic() error {
 
 // load loads the state from disk.
 func (sm *Manager) load() error {
-	data, err := os.ReadFile(sm.stateFile)
+	loaded, err := loadStateFromPath(sm.stateFile)
 	if err != nil {
-		// File doesn't exist yet, that's OK
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to read state file: %w", err)
+		return err
 	}
-
-	if err := json.Unmarshal(data, sm.state); err != nil {
-		return fmt.Errorf("failed to unmarshal state: %w", err)
+	if loaded != nil {
+		sm.state = loaded
 	}
-
 	return nil
+}
+
+func loadBootstrapWithTimeout(stateFile, oldStateFile string, timeout time.Duration) (*State, bool, error) {
+	if timeout <= 0 {
+		return loadBootstrap(stateFile, oldStateFile)
+	}
+
+	type result struct {
+		state      *State
+		fromLegacy bool
+		err        error
+	}
+
+	done := make(chan result, 1)
+	go func() {
+		st, legacy, err := loadBootstrap(stateFile, oldStateFile)
+		done <- result{
+			state:      st,
+			fromLegacy: legacy,
+			err:        err,
+		}
+	}()
+
+	select {
+	case out := <-done:
+		return out.state, out.fromLegacy, out.err
+	case <-time.After(timeout):
+		return nil, false, fmt.Errorf("state load timed out")
+	}
+}
+
+func loadBootstrap(stateFile, oldStateFile string) (*State, bool, error) {
+	if st, err := loadStateFromPath(stateFile); err != nil {
+		return nil, false, err
+	} else if st != nil {
+		return st, false, nil
+	}
+
+	if st, err := loadStateFromPath(oldStateFile); err != nil {
+		return nil, false, err
+	} else if st != nil {
+		return st, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func loadStateFromPath(path string) (*State, error) {
+	data, err := stateReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read state file %s: %w", path, err)
+	}
+
+	var st State
+	if err := json.Unmarshal(data, &st); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal state %s: %w", path, err)
+	}
+	return &st, nil
 }
