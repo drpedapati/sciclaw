@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestFilesystemTool_ReadFile_Success verifies successful file reading
@@ -245,6 +246,54 @@ func TestFilesystemTool_ListDir_DefaultPath(t *testing.T) {
 	// Should use "." as default path
 	if result.IsError {
 		t.Errorf("Expected success with default path '.', got IsError=true: %s", result.ForLLM)
+	}
+}
+
+func TestFilesystemTool_ReadFile_Timeout(t *testing.T) {
+	origReadFile := fileToolReadFile
+	origTimeout := fileToolOpTimeout
+	t.Cleanup(func() {
+		fileToolReadFile = origReadFile
+		fileToolOpTimeout = origTimeout
+	})
+
+	fileToolOpTimeout = 20 * time.Millisecond
+	fileToolReadFile = func(path string) ([]byte, error) {
+		time.Sleep(200 * time.Millisecond)
+		return []byte("late"), nil
+	}
+
+	tool := &ReadFileTool{}
+	result := tool.Execute(context.Background(), map[string]interface{}{"path": "/tmp/slow-file.txt"})
+	if !result.IsError {
+		t.Fatalf("expected timeout error")
+	}
+	if !strings.Contains(result.ForLLM, "timed out") {
+		t.Fatalf("expected timeout message, got: %s", result.ForLLM)
+	}
+}
+
+func TestFilesystemTool_ListDir_Timeout(t *testing.T) {
+	origReadDir := fileToolReadDir
+	origTimeout := fileToolOpTimeout
+	t.Cleanup(func() {
+		fileToolReadDir = origReadDir
+		fileToolOpTimeout = origTimeout
+	})
+
+	fileToolOpTimeout = 20 * time.Millisecond
+	fileToolReadDir = func(path string) ([]os.DirEntry, error) {
+		time.Sleep(200 * time.Millisecond)
+		return nil, nil
+	}
+
+	tool := &ListDirTool{}
+	result := tool.Execute(context.Background(), map[string]interface{}{"path": "/tmp/slow-dir"})
+	if !result.IsError {
+		t.Fatalf("expected timeout error")
+	}
+	if !strings.Contains(result.ForLLM, "timed out") {
+		t.Fatalf("expected timeout message, got: %s", result.ForLLM)
 	}
 }
 

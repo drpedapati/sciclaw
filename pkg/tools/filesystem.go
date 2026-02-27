@@ -2,10 +2,12 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type AccessMode int
@@ -20,6 +22,15 @@ type allowedRoot struct {
 	real     string
 	readOnly bool
 }
+
+var (
+	fileToolOpTimeout = 1500 * time.Millisecond
+	fileToolReadFile  = os.ReadFile
+	fileToolReadDir   = os.ReadDir
+
+	errFileReadTimedOut = errors.New("file read timed out")
+	errDirReadTimedOut  = errors.New("directory read timed out")
+)
 
 // validatePath ensures the given path is within the workspace if restrict is true.
 func validatePath(path, workspace string, restrict bool) (string, error) {
@@ -209,8 +220,15 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 		return UserErrorResult(err.Error())
 	}
 
-	content, err := os.ReadFile(resolvedPath)
+	content, err := readFileWithTimeout(ctx, resolvedPath, fileToolOpTimeout)
 	if err != nil {
+		if errors.Is(err, errFileReadTimedOut) {
+			return ErrorResult(fmt.Sprintf(
+				"failed to read file: timed out after %dms (path=%s)",
+				fileToolOpTimeout.Milliseconds(),
+				resolvedPath,
+			))
+		}
 		return ErrorResult(fmt.Sprintf("failed to read file: %v", err))
 	}
 
@@ -334,8 +352,15 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return UserErrorResult(err.Error())
 	}
 
-	entries, err := os.ReadDir(resolvedPath)
+	entries, err := readDirWithTimeout(ctx, resolvedPath, fileToolOpTimeout)
 	if err != nil {
+		if errors.Is(err, errDirReadTimedOut) {
+			return ErrorResult(fmt.Sprintf(
+				"failed to read directory: timed out after %dms (path=%s)",
+				fileToolOpTimeout.Milliseconds(),
+				resolvedPath,
+			))
+		}
 		return ErrorResult(fmt.Sprintf("failed to read directory: %v", err))
 	}
 
@@ -349,4 +374,60 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 	}
 
 	return NewToolResult(result)
+}
+
+func readFileWithTimeout(ctx context.Context, path string, timeout time.Duration) ([]byte, error) {
+	if timeout <= 0 {
+		return fileToolReadFile(path)
+	}
+
+	type fileReadResult struct {
+		content []byte
+		err     error
+	}
+	done := make(chan fileReadResult, 1)
+	go func() {
+		content, err := fileToolReadFile(path)
+		done <- fileReadResult{content: content, err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case out := <-done:
+		return out.content, out.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, errFileReadTimedOut
+	}
+}
+
+func readDirWithTimeout(ctx context.Context, path string, timeout time.Duration) ([]os.DirEntry, error) {
+	if timeout <= 0 {
+		return fileToolReadDir(path)
+	}
+
+	type dirReadResult struct {
+		entries []os.DirEntry
+		err     error
+	}
+	done := make(chan dirReadResult, 1)
+	go func() {
+		entries, err := fileToolReadDir(path)
+		done <- dirReadResult{entries: entries, err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case out := <-done:
+		return out.entries, out.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, errDirReadTimedOut
+	}
 }
