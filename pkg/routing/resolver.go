@@ -202,8 +202,11 @@ func ensureReadableWorkspace(path string) error {
 	if !info.IsDir() {
 		return fmt.Errorf("not a directory")
 	}
-	_, err = os.ReadDir(path)
-	return err
+	// Do not call os.ReadDir() on every inbound message.
+	// On macOS cloud-backed folders (e.g. Dropbox/iCloud), ReadDir can stall for
+	// minutes and block the single routing dispatcher goroutine, which prevents
+	// otherwise valid Discord mentions from becoming active tasks.
+	return nil
 }
 
 func isMentionOrDM(metadata map[string]string) bool {

@@ -170,6 +170,49 @@ func TestResolve_InvalidWorkspace(t *testing.T) {
 	}
 }
 
+func TestResolve_WorkspaceWithoutReadPermissionStillRoutes(t *testing.T) {
+	root := t.TempDir()
+	ws := filepath.Join(root, "no-read")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Chmod(ws, 0o111); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(ws, 0o755)
+	})
+
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "123",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+		},
+	}
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "123",
+		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "true"},
+	})
+	if !d.Allowed {
+		t.Fatalf("expected allowed decision, got %+v", d)
+	}
+	if d.Event != EventRouteMatch {
+		t.Fatalf("unexpected event: %s", d.Event)
+	}
+}
+
 func TestResolve_SystemMessageUsesOriginMapping(t *testing.T) {
 	ws := t.TempDir()
 	cfg := config.DefaultConfig()

@@ -267,6 +267,9 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		"mention_roles":     len(m.MentionRoles),
 		"bot_user_id":       c.botUserID,
 		"guild_id":          m.GuildID,
+		"channel_id":        m.ChannelID,
+		"message_id":        m.ID,
+		"sender_id":         senderID,
 		"has_msg_ref":       m.MessageReference != nil,
 		"has_ref_msg":       m.ReferencedMessage != nil,
 	})
