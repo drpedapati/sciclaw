@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/archive/discordarchive"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/constants"
@@ -47,6 +48,9 @@ type AgentLoop struct {
 	state           *state.Manager
 	contextBuilder  *ContextBuilder
 	tools           *tools.ToolRegistry
+	discordArchive  *discordarchive.Manager
+	archiveEnabled  bool
+	archiveAuto     bool
 	hooks           *hooks.Dispatcher
 	hookAuditPath   string
 	turnCounter     uint64
@@ -179,6 +183,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	toolsRegistry.Register(subagentTool)
 
 	sessionsManager := session.NewSessionManager(filepath.Join(workspace, "sessions"))
+	discordArchiveMgr := discordarchive.NewManager(workspace, sessionsManager, cfg.Channels.Discord.Archive)
 
 	// Create state manager for atomic state persistence
 	stateManager := state.NewManager(workspace)
@@ -253,6 +258,9 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		state:           stateManager,
 		contextBuilder:  contextBuilder,
 		tools:           toolsRegistry,
+		discordArchive:  discordArchiveMgr,
+		archiveEnabled:  cfg.Channels.Discord.Archive.Enabled,
+		archiveAuto:     cfg.Channels.Discord.Archive.AutoArchive,
 		hooks:           hookDispatcher,
 		hookAuditPath:   hookAuditPath,
 		summarizing:     sync.Map{},
@@ -515,6 +523,18 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	if !opts.NoHistory {
 		history = al.sessions.GetHistory(opts.SessionKey)
 		summary = al.sessions.GetSummary(opts.SessionKey)
+		if opts.Channel == "discord" && al.archiveEnabled && al.archiveAuto && al.discordArchive != nil {
+			if _, err := al.discordArchive.MaybeArchiveSession(opts.SessionKey); err != nil {
+				logger.WarnCF("archive", "discord auto-archive failed: %v", map[string]interface{}{
+					"session_key": opts.SessionKey,
+					"error":       err.Error(),
+				})
+			} else {
+				// Reload post-archive state to keep prompt context bounded.
+				history = al.sessions.GetHistory(opts.SessionKey)
+				summary = al.sessions.GetSummary(opts.SessionKey)
+			}
+		}
 	}
 	messages := al.contextBuilder.BuildMessages(
 		history,
@@ -718,7 +738,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				finalContent = lastMessageToolContent
 				logger.InfoCF("agent", "Using message tool fallback content for internal channel",
 					map[string]interface{}{
-						"channel":      opts.Channel,
+						"channel":       opts.Channel,
 						"content_chars": len(finalContent),
 					})
 			}

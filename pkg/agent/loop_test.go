@@ -338,6 +338,57 @@ func TestAgentLoop_GetStartupInfo(t *testing.T) {
 	}
 }
 
+func TestProcessDirectWithChannel_DiscordAutoArchiveTrim(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-discord-archive-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Agents.Defaults.MaxTokens = 4096
+	cfg.Channels.Discord.Archive.Enabled = true
+	cfg.Channels.Discord.Archive.AutoArchive = true
+	cfg.Channels.Discord.Archive.MaxSessionMessages = 8
+	cfg.Channels.Discord.Archive.MaxSessionTokens = 60
+	cfg.Channels.Discord.Archive.KeepUserPairs = 2
+	cfg.Channels.Discord.Archive.MinTailMessages = 4
+
+	msgBus := bus.NewMessageBus()
+	provider := &mockProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	sessionKey := "discord:test-channel"
+	for i := 0; i < 8; i++ {
+		_, err := al.ProcessDirectWithChannel(context.Background(), "alpha archival pressure message", sessionKey, "discord", "test-channel", "user-1")
+		if err != nil {
+			t.Fatalf("ProcessDirectWithChannel failed at turn %d: %v", i, err)
+		}
+	}
+
+	history := al.sessions.GetHistory(sessionKey)
+	if len(history) >= 16 {
+		t.Fatalf("expected trimmed history, got %d messages", len(history))
+	}
+
+	archiveDir := filepath.Join(tmpDir, "memory", "archive", "discord", "sessions")
+	entries, err := os.ReadDir(archiveDir)
+	if err != nil {
+		t.Fatalf("expected archive directory %s: %v", archiveDir, err)
+	}
+	mdCount := 0
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".md") {
+			mdCount++
+		}
+	}
+	if mdCount == 0 {
+		t.Fatalf("expected at least one archive markdown file in %s", archiveDir)
+	}
+}
+
 func TestAgentLoop_HooksCanBeDisabledByPolicy(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "agent-test-*")
 	if err != nil {
