@@ -1,7 +1,11 @@
 package session
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
@@ -66,4 +70,64 @@ func TestSessionManagerReplaceHistory(t *testing.T) {
 	if history[0].Content != "u1" {
 		t.Fatalf("stored history mutated by caller slice change: %#v", history)
 	}
+}
+
+func TestSessionManagerPreloadFastPath(t *testing.T) {
+	dir := t.TempDir()
+	payload := Session{
+		Key: "discord:123@abc",
+		Messages: []providers.Message{
+			{Role: "user", Content: "hello"},
+			{Role: "assistant", Content: "world"},
+		},
+		Created: time.Now().UTC(),
+		Updated: time.Now().UTC(),
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, payload.Key+".json"), data, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	sm := NewSessionManager(dir)
+	history := sm.GetHistory(payload.Key)
+	if len(history) != 2 {
+		t.Fatalf("expected 2 messages preloaded, got %d", len(history))
+	}
+	if history[0].Content != "hello" || history[1].Content != "world" {
+		t.Fatalf("unexpected preloaded history: %#v", history)
+	}
+}
+
+func TestSessionManagerPreloadTimeoutDoesNotBlockConstructor(t *testing.T) {
+	dir := t.TempDir()
+
+	prevTimeout := sessionLoadTimeout
+	prevReadDir := readDir
+	prevReadFile := readFile
+	defer func() {
+		sessionLoadTimeout = prevTimeout
+		readDir = prevReadDir
+		readFile = prevReadFile
+	}()
+
+	sessionLoadTimeout = 20 * time.Millisecond
+	release := make(chan struct{})
+	readDir = func(string) ([]os.DirEntry, error) {
+		<-release
+		return nil, nil
+	}
+
+	start := time.Now()
+	_ = NewSessionManager(dir)
+	elapsed := time.Since(start)
+	if elapsed > 120*time.Millisecond {
+		t.Fatalf("constructor blocked too long: %v", elapsed)
+	}
+
+	// Let background preload goroutine finish before restoring globals.
+	close(release)
+	time.Sleep(5 * time.Millisecond)
 }

@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
@@ -26,6 +28,14 @@ type SessionManager struct {
 	storage  string
 }
 
+var (
+	// Keep gateway startup/routing responsive even if cloud-backed folders stall.
+	sessionLoadTimeout  = 750 * time.Millisecond
+	errSessionLoadTimed = errors.New("session load timed out")
+	readDir             = os.ReadDir
+	readFile            = os.ReadFile
+)
+
 func NewSessionManager(storage string) *SessionManager {
 	sm := &SessionManager{
 		sessions: make(map[string]*Session),
@@ -34,7 +44,12 @@ func NewSessionManager(storage string) *SessionManager {
 
 	if storage != "" {
 		os.MkdirAll(storage, 0755)
-		sm.loadSessions()
+		if err := sm.loadSessionsWithTimeout(sessionLoadTimeout); err != nil {
+			logger.WarnCF("session", "Session preload skipped", map[string]interface{}{
+				"storage": storage,
+				"error":   err.Error(),
+			})
+		}
 	}
 
 	return sm
@@ -282,7 +297,7 @@ func (sm *SessionManager) Save(key string) error {
 }
 
 func (sm *SessionManager) loadSessions() error {
-	files, err := os.ReadDir(sm.storage)
+	files, err := readDir(sm.storage)
 	if err != nil {
 		return err
 	}
@@ -297,7 +312,7 @@ func (sm *SessionManager) loadSessions() error {
 		}
 
 		sessionPath := filepath.Join(sm.storage, file.Name())
-		data, err := os.ReadFile(sessionPath)
+		data, err := readFile(sessionPath)
 		if err != nil {
 			continue
 		}
@@ -307,8 +322,28 @@ func (sm *SessionManager) loadSessions() error {
 			continue
 		}
 
+		sm.mu.Lock()
 		sm.sessions[session.Key] = &session
+		sm.mu.Unlock()
 	}
 
 	return nil
+}
+
+func (sm *SessionManager) loadSessionsWithTimeout(timeout time.Duration) error {
+	if timeout <= 0 {
+		return sm.loadSessions()
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sm.loadSessions()
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		return errSessionLoadTimed
+	}
 }
