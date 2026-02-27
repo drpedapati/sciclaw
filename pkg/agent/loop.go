@@ -533,6 +533,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	if opts.TurnID == "" {
 		opts.TurnID = al.nextTurnID()
 	}
+	turnStartedAt := time.Now()
 
 	// 0. Record last channel for heartbeat notifications (skip internal channels)
 	if opts.Channel != "" && opts.ChatID != "" {
@@ -605,6 +606,17 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.Channel,
 		opts.ChatID,
 	)
+	logger.InfoCF("agent", "Turn context prepared",
+		map[string]interface{}{
+			"turn_id":         opts.TurnID,
+			"channel":         opts.Channel,
+			"chat_id":         opts.ChatID,
+			"session_key":     opts.SessionKey,
+			"history_count":   len(history),
+			"summary_chars":   len(summary),
+			"user_chars":      len(opts.UserMessage),
+			"prompt_messages": len(messages),
+		})
 
 	// 3. Save user message to session
 	al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
@@ -686,6 +698,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				"session_key":       opts.SessionKey,
 				"iterations":        iteration,
 				"message_tool_sent": messageToolSent,
+				"turn_ms":           time.Since(turnStartedAt).Milliseconds(),
 			})
 	} else {
 		responsePreview := utils.Truncate(finalContent, 120)
@@ -695,6 +708,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				"iterations":        iteration,
 				"final_length":      len(finalContent),
 				"message_tool_sent": messageToolSent,
+				"turn_ms":           time.Since(turnStartedAt).Milliseconds(),
 			})
 	}
 	al.dispatchHook(ctx, hooks.EventAfterTurn, hooks.Context{
@@ -709,6 +723,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		Metadata: map[string]any{
 			"iterations":        iteration,
 			"message_tool_sent": messageToolSent,
+			"turn_ms":           time.Since(turnStartedAt).Milliseconds(),
 		},
 	})
 
@@ -796,6 +811,18 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		if al.reasoningEffort != "" {
 			llmOpts["reasoning_effort"] = al.reasoningEffort
 		}
+		llmCallStartedAt := time.Now()
+		logger.InfoCF("agent", "LLM call start",
+			map[string]interface{}{
+				"turn_id":        opts.TurnID,
+				"iteration":      iteration,
+				"model":          al.model,
+				"channel":        opts.Channel,
+				"chat_id":        opts.ChatID,
+				"session_key":    opts.SessionKey,
+				"messages_count": len(messages),
+				"tools_count":    len(providerToolDefs),
+			})
 		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, llmOpts)
 
 		if err != nil {
@@ -803,9 +830,18 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				map[string]interface{}{
 					"iteration": iteration,
 					"error":     err.Error(),
+					"duration":  time.Since(llmCallStartedAt).String(),
 				})
 			return "", iteration, fmt.Errorf("LLM call failed: %w", err)
 		}
+		logger.InfoCF("agent", "LLM call complete",
+			map[string]interface{}{
+				"turn_id":          opts.TurnID,
+				"iteration":        iteration,
+				"duration":         time.Since(llmCallStartedAt).String(),
+				"response_chars":   len(response.Content),
+				"tool_calls_count": len(response.ToolCalls),
+			})
 		al.dispatchHook(ctx, hooks.EventAfterLLM, hooks.Context{
 			Timestamp:          time.Now(),
 			TurnID:             opts.TurnID,

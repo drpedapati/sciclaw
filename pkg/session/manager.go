@@ -31,6 +31,7 @@ type SessionManager struct {
 var (
 	// Keep gateway startup/routing responsive even if cloud-backed folders stall.
 	sessionLoadTimeout  = 750 * time.Millisecond
+	sessionSaveWarnTime = 750 * time.Millisecond
 	errSessionLoadTimed = errors.New("session load timed out")
 	readDir             = os.ReadDir
 	readFile            = os.ReadFile
@@ -226,10 +227,18 @@ func (sm *SessionManager) Save(key string) error {
 	if sm.storage == "" {
 		return nil
 	}
+	saveStartedAt := time.Now()
 
 	// Validate key to avoid invalid filenames and path traversal.
 	if key == "" || key == "." || key == ".." || key != filepath.Base(key) || strings.Contains(key, "/") || strings.Contains(key, "\\") {
 		return os.ErrInvalid
+	}
+
+	if strings.HasPrefix(key, "discord:") {
+		logger.InfoCF("session", "Session save start", map[string]interface{}{
+			"session_key": key,
+			"storage":     sm.storage,
+		})
 	}
 
 	// Snapshot under read lock, then perform slow file I/O after unlock.
@@ -256,12 +265,26 @@ func (sm *SessionManager) Save(key string) error {
 
 	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
+		if strings.HasPrefix(key, "discord:") {
+			logger.WarnCF("session", "Session save marshal failed", map[string]interface{}{
+				"session_key": key,
+				"error":       err.Error(),
+				"duration_ms": time.Since(saveStartedAt).Milliseconds(),
+			})
+		}
 		return err
 	}
 
 	sessionPath := filepath.Join(sm.storage, key+".json")
 	tmpFile, err := os.CreateTemp(sm.storage, "session-*.tmp")
 	if err != nil {
+		if strings.HasPrefix(key, "discord:") {
+			logger.WarnCF("session", "Session save temp file create failed", map[string]interface{}{
+				"session_key": key,
+				"error":       err.Error(),
+				"duration_ms": time.Since(saveStartedAt).Milliseconds(),
+			})
+		}
 		return err
 	}
 
@@ -275,24 +298,73 @@ func (sm *SessionManager) Save(key string) error {
 
 	if _, err := tmpFile.Write(data); err != nil {
 		_ = tmpFile.Close()
+		if strings.HasPrefix(key, "discord:") {
+			logger.WarnCF("session", "Session save write failed", map[string]interface{}{
+				"session_key": key,
+				"error":       err.Error(),
+				"duration_ms": time.Since(saveStartedAt).Milliseconds(),
+			})
+		}
 		return err
 	}
 	if err := tmpFile.Chmod(0644); err != nil {
 		_ = tmpFile.Close()
+		if strings.HasPrefix(key, "discord:") {
+			logger.WarnCF("session", "Session save chmod failed", map[string]interface{}{
+				"session_key": key,
+				"error":       err.Error(),
+				"duration_ms": time.Since(saveStartedAt).Milliseconds(),
+			})
+		}
 		return err
 	}
 	if err := tmpFile.Sync(); err != nil {
 		_ = tmpFile.Close()
+		if strings.HasPrefix(key, "discord:") {
+			logger.WarnCF("session", "Session save fsync failed", map[string]interface{}{
+				"session_key": key,
+				"error":       err.Error(),
+				"duration_ms": time.Since(saveStartedAt).Milliseconds(),
+			})
+		}
 		return err
 	}
 	if err := tmpFile.Close(); err != nil {
+		if strings.HasPrefix(key, "discord:") {
+			logger.WarnCF("session", "Session save close failed", map[string]interface{}{
+				"session_key": key,
+				"error":       err.Error(),
+				"duration_ms": time.Since(saveStartedAt).Milliseconds(),
+			})
+		}
 		return err
 	}
 
 	if err := os.Rename(tmpPath, sessionPath); err != nil {
+		if strings.HasPrefix(key, "discord:") {
+			logger.WarnCF("session", "Session save rename failed", map[string]interface{}{
+				"session_key": key,
+				"path":        sessionPath,
+				"error":       err.Error(),
+				"duration_ms": time.Since(saveStartedAt).Milliseconds(),
+			})
+		}
 		return err
 	}
 	cleanup = false
+	if strings.HasPrefix(key, "discord:") {
+		elapsed := time.Since(saveStartedAt)
+		fields := map[string]interface{}{
+			"session_key": key,
+			"path":        sessionPath,
+			"duration_ms": elapsed.Milliseconds(),
+		}
+		if elapsed >= sessionSaveWarnTime {
+			logger.WarnCF("session", "Session save completed slowly", fields)
+		} else {
+			logger.InfoCF("session", "Session save complete", fields)
+		}
+	}
 	return nil
 }
 
