@@ -9,6 +9,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,6 +76,10 @@ type processOptions struct {
 }
 
 const defaultEmptyAssistantResponse = "I completed the turn but did not produce a user-facing reply. Ask me for a summary of what was done."
+
+var errDiscordAutoArchiveTimedOut = errors.New("discord auto-archive timed out")
+
+const discordAutoArchiveTimeout = 750 * time.Millisecond
 
 // createToolRegistry creates a tool registry with common tools.
 // This is shared between main agent and subagents.
@@ -565,23 +570,42 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		history = al.sessions.GetHistory(opts.SessionKey)
 		summary = al.sessions.GetSummary(opts.SessionKey)
 		if opts.Channel == "discord" && al.archiveEnabled && al.archiveAuto && al.discordArchive != nil {
-			if _, err := al.discordArchive.MaybeArchiveSession(opts.SessionKey); err != nil {
+			archiveStartedAt := time.Now()
+			logger.InfoCF("archive", "discord auto-archive start", map[string]interface{}{
+				"session_key": opts.SessionKey,
+			})
+			archived, err := al.maybeArchiveDiscordSession(opts.SessionKey)
+			if err != nil {
 				logger.WarnCF("archive", fmt.Sprintf("discord auto-archive failed: %v", err), map[string]interface{}{
 					"session_key": opts.SessionKey,
 					"error":       err.Error(),
+					"duration_ms": time.Since(archiveStartedAt).Milliseconds(),
 				})
 			} else {
-				// Reload post-archive state to keep prompt context bounded.
-				history = al.sessions.GetHistory(opts.SessionKey)
-				summary = al.sessions.GetSummary(opts.SessionKey)
+				logger.InfoCF("archive", "discord auto-archive complete", map[string]interface{}{
+					"session_key": opts.SessionKey,
+					"archived":    archived,
+					"duration_ms": time.Since(archiveStartedAt).Milliseconds(),
+				})
+				if archived {
+					// Reload post-archive state to keep prompt context bounded.
+					history = al.sessions.GetHistory(opts.SessionKey)
+					summary = al.sessions.GetSummary(opts.SessionKey)
+				}
 			}
 		}
 		if opts.Channel == "discord" && al.archiveEnabled && al.discordRecallFn != nil {
+			recallStartedAt := time.Now()
+			logger.InfoCF("archive", "discord auto-recall start", map[string]interface{}{
+				"session_key": opts.SessionKey,
+				"query_chars": len(opts.UserMessage),
+			})
 			recallSection, hits, err := al.buildDiscordRecallContext(opts.UserMessage, opts.SessionKey)
 			if err != nil {
 				logger.WarnCF("archive", fmt.Sprintf("discord auto-recall failed: %v", err), map[string]interface{}{
 					"session_key": opts.SessionKey,
 					"error":       err.Error(),
+					"duration_ms": time.Since(recallStartedAt).Milliseconds(),
 				})
 			} else if recallSection != "" {
 				if strings.TrimSpace(summary) == "" {
@@ -589,11 +613,18 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				} else {
 					summary = strings.TrimSpace(summary) + "\n\n" + recallSection
 				}
-				logger.DebugCF("archive", "discord auto-recall injected",
+				logger.InfoCF("archive", "discord auto-recall injected",
 					map[string]interface{}{
 						"session_key": opts.SessionKey,
 						"hits":        hits,
 						"chars":       len(recallSection),
+						"duration_ms": time.Since(recallStartedAt).Milliseconds(),
+					})
+			} else {
+				logger.InfoCF("archive", "discord auto-recall complete with no hits",
+					map[string]interface{}{
+						"session_key": opts.SessionKey,
+						"duration_ms": time.Since(recallStartedAt).Milliseconds(),
 					})
 			}
 		}
@@ -1050,6 +1081,34 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 
 	return finalContent, iteration, nil
+}
+
+func (al *AgentLoop) maybeArchiveDiscordSession(sessionKey string) (bool, error) {
+	if al == nil || al.discordArchive == nil {
+		return false, nil
+	}
+
+	done := make(chan struct {
+		archived bool
+		err      error
+	}, 1)
+	go func() {
+		result, err := al.discordArchive.MaybeArchiveSession(sessionKey)
+		done <- struct {
+			archived bool
+			err      error
+		}{
+			archived: result != nil,
+			err:      err,
+		}
+	}()
+
+	select {
+	case out := <-done:
+		return out.archived, out.err
+	case <-time.After(discordAutoArchiveTimeout):
+		return false, errDiscordAutoArchiveTimedOut
+	}
 }
 
 func (al *AgentLoop) buildDiscordRecallContext(query, sessionKey string) (string, int, error) {

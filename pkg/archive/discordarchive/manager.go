@@ -120,9 +120,8 @@ func (m *Manager) MaybeArchiveSession(sessionKey string) (*ArchiveResult, error)
 	}
 	over := len(snap.Messages) >= m.cfg.MaxSessionMessages || estimateTokens(snap.Messages) >= m.cfg.MaxSessionTokens
 	if !over {
-		_ = m.writeState(sessionKey, archiveSessionState{
-			LastOverLimitState: false,
-		})
+		// Avoid per-message disk writes on cloud-backed filesystems when session
+		// remains under limits. This metadata is not required for recall behavior.
 		return nil, nil
 	}
 	result, err := m.archiveSnapshot(sessionKey, snap.Messages, false)
