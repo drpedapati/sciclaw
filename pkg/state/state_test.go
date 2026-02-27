@@ -9,6 +9,18 @@ import (
 	"time"
 )
 
+func waitForCondition(t *testing.T, timeout time.Duration, cond func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal(msg)
+}
+
 func TestAtomicSave(t *testing.T) {
 	// Create temp workspace
 	tmpDir, err := os.MkdirTemp("", "state-test-*")
@@ -38,15 +50,16 @@ func TestAtomicSave(t *testing.T) {
 
 	// Verify state file exists
 	stateFile := filepath.Join(tmpDir, "state", "state.json")
-	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
-		t.Error("Expected state file to exist")
-	}
+	waitForCondition(t, time.Second, func() bool {
+		_, err := os.Stat(stateFile)
+		return err == nil
+	}, "expected state file to exist")
 
 	// Create a new manager to verify persistence
-	sm2 := NewManager(tmpDir)
-	if sm2.GetLastChannel() != "test-channel" {
-		t.Errorf("Expected persistent channel 'test-channel', got '%s'", sm2.GetLastChannel())
-	}
+	waitForCondition(t, time.Second, func() bool {
+		sm2 := NewManager(tmpDir)
+		return sm2.GetLastChannel() == "test-channel"
+	}, "expected persistent channel 'test-channel'")
 }
 
 func TestSetLastChatID(t *testing.T) {
@@ -76,10 +89,10 @@ func TestSetLastChatID(t *testing.T) {
 	}
 
 	// Create a new manager to verify persistence
-	sm2 := NewManager(tmpDir)
-	if sm2.GetLastChatID() != "test-chat-id" {
-		t.Errorf("Expected persistent chat ID 'test-chat-id', got '%s'", sm2.GetLastChatID())
-	}
+	waitForCondition(t, time.Second, func() bool {
+		sm2 := NewManager(tmpDir)
+		return sm2.GetLastChatID() == "test-chat-id"
+	}, "expected persistent chat ID 'test-chat-id'")
 }
 
 func TestAtomicity_NoCorruptionOnInterrupt(t *testing.T) {
@@ -157,6 +170,11 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Verify state file is valid JSON
 	stateFile := filepath.Join(tmpDir, "state", "state.json")
+	waitForCondition(t, time.Second, func() bool {
+		_, err := os.Stat(stateFile)
+		return err == nil
+	}, "expected state file to exist after concurrent writes")
+
 	data, err := os.ReadFile(stateFile)
 	if err != nil {
 		t.Fatalf("Failed to read state file: %v", err)
@@ -180,17 +198,12 @@ func TestNewManager_ExistingState(t *testing.T) {
 	sm1.SetLastChannel("existing-channel")
 	sm1.SetLastChatID("existing-chat-id")
 
-	// Create new manager with same workspace
-	sm2 := NewManager(tmpDir)
-
-	// Verify state was loaded
-	if sm2.GetLastChannel() != "existing-channel" {
-		t.Errorf("Expected channel 'existing-channel', got '%s'", sm2.GetLastChannel())
-	}
-
-	if sm2.GetLastChatID() != "existing-chat-id" {
-		t.Errorf("Expected chat ID 'existing-chat-id', got '%s'", sm2.GetLastChatID())
-	}
+	// Create new manager with same workspace once persistence catches up.
+	waitForCondition(t, time.Second, func() bool {
+		sm2 := NewManager(tmpDir)
+		return sm2.GetLastChannel() == "existing-channel" &&
+			sm2.GetLastChatID() == "existing-chat-id"
+	}, "expected existing state to be loaded")
 }
 
 func TestNewManager_EmptyWorkspace(t *testing.T) {

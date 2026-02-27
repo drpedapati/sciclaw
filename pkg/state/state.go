@@ -29,6 +29,7 @@ type Manager struct {
 	state     *State
 	mu        sync.RWMutex
 	stateFile string
+	saveQueue chan State
 }
 
 var (
@@ -49,6 +50,7 @@ func NewManager(workspace string) *Manager {
 		workspace: workspace,
 		stateFile: stateFile,
 		state:     &State{},
+		saveQueue: make(chan State, 1),
 	}
 
 	loadedState, loadedFromLegacy, err := loadBootstrapWithTimeout(stateFile, oldStateFile, stateBootstrapTimeout)
@@ -63,6 +65,8 @@ func NewManager(workspace string) *Manager {
 		}
 	}
 
+	go sm.saveLoop()
+
 	return sm
 }
 
@@ -71,34 +75,22 @@ func NewManager(workspace string) *Manager {
 // ensuring that the state file is never corrupted even if the process crashes.
 func (sm *Manager) SetLastChannel(channel string) error {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	// Update state
 	sm.state.LastChannel = channel
 	sm.state.Timestamp = time.Now()
-
-	// Atomic save using temp file + rename
-	if err := sm.saveAtomic(); err != nil {
-		return fmt.Errorf("failed to save state atomically: %w", err)
-	}
-
+	snapshot := *sm.state
+	sm.mu.Unlock()
+	sm.enqueueSave(snapshot)
 	return nil
 }
 
 // SetLastChatID atomically updates the last chat ID and saves the state.
 func (sm *Manager) SetLastChatID(chatID string) error {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	// Update state
 	sm.state.LastChatID = chatID
 	sm.state.Timestamp = time.Now()
-
-	// Atomic save using temp file + rename
-	if err := sm.saveAtomic(); err != nil {
-		return fmt.Errorf("failed to save state atomically: %w", err)
-	}
-
+	snapshot := *sm.state
+	sm.mu.Unlock()
+	sm.enqueueSave(snapshot)
 	return nil
 }
 
@@ -123,19 +115,17 @@ func (sm *Manager) GetTimestamp() time.Time {
 	return sm.state.Timestamp
 }
 
-// saveAtomic performs an atomic save using temp file + rename.
+// saveAtomicSnapshot performs an atomic save using temp file + rename.
 // This ensures that the state file is never corrupted:
 // 1. Write to a temp file
 // 2. Rename temp file to target (atomic on POSIX systems)
 // 3. If rename fails, cleanup the temp file
-//
-// Must be called with the lock held.
-func (sm *Manager) saveAtomic() error {
+func (sm *Manager) saveAtomicSnapshot(snapshot State) error {
 	// Create temp file in the same directory as the target
 	tempFile := sm.stateFile + ".tmp"
 
 	// Marshal state to JSON
-	data, err := json.MarshalIndent(sm.state, "", "  ")
+	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
@@ -153,6 +143,32 @@ func (sm *Manager) saveAtomic() error {
 	}
 
 	return nil
+}
+
+func (sm *Manager) saveLoop() {
+	for snapshot := range sm.saveQueue {
+		if err := sm.saveAtomicSnapshot(snapshot); err != nil {
+			log.Printf("[WARN] state: async save failed for %s: %v", sm.workspace, err)
+		}
+	}
+}
+
+func (sm *Manager) enqueueSave(snapshot State) {
+	select {
+	case sm.saveQueue <- snapshot:
+		return
+	default:
+	}
+
+	// Queue already has an older snapshot; drop it and enqueue the latest.
+	select {
+	case <-sm.saveQueue:
+	default:
+	}
+	select {
+	case sm.saveQueue <- snapshot:
+	default:
+	}
 }
 
 // load loads the state from disk.
