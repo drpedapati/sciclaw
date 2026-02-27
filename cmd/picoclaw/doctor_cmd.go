@@ -1032,11 +1032,14 @@ func resolveBundledSkillsDir() string {
 	if err != nil {
 		realExe = exe
 	}
-	// Typical Homebrew layout: .../Cellar/sciclaw/<ver>/bin/sciclaw
-	// Share dir: .../Cellar/sciclaw/<ver>/share/sciclaw/skills
-	share := filepath.Clean(filepath.Join(filepath.Dir(realExe), "..", "share", primaryCLIName, "skills"))
-	if fileExists(share) {
-		return share
+	return resolveBundledSkillsDirForExecutable(realExe)
+}
+
+func resolveBundledSkillsDirForExecutable(exePath string) string {
+	for _, dir := range skillSourceDirsForExecutable(exePath) {
+		if dirHasSkillMarkdown(dir) {
+			return dir
+		}
 	}
 	return ""
 }
