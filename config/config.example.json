@@ -19,7 +19,18 @@
     "discord": {
       "enabled": false,
       "token": "YOUR_DISCORD_BOT_TOKEN",
-      "allow_from": []
+      "allow_from": [],
+      "archive": {
+        "enabled": true,
+        "auto_archive": true,
+        "max_session_tokens": 24000,
+        "max_session_messages": 120,
+        "keep_user_pairs": 12,
+        "min_tail_messages": 4,
+        "recall_top_k": 6,
+        "recall_max_chars": 3000,
+        "recall_min_score": 0.2
+      }
     },
     "maixcam": {
       "enabled": false,

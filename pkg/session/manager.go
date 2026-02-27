@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +99,67 @@ func (sm *SessionManager) GetHistory(key string) []providers.Message {
 	history := make([]providers.Message, len(session.Messages))
 	copy(history, session.Messages)
 	return history
+}
+
+// ListKeys returns all known session keys in stable order.
+func (sm *SessionManager) ListKeys() []string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	keys := make([]string, 0, len(sm.sessions))
+	for key := range sm.sessions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// Snapshot returns a deep copy of one session if it exists.
+func (sm *SessionManager) Snapshot(key string) (Session, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	stored, ok := sm.sessions[key]
+	if !ok || stored == nil {
+		return Session{}, false
+	}
+
+	out := Session{
+		Key:     stored.Key,
+		Summary: stored.Summary,
+		Created: stored.Created,
+		Updated: stored.Updated,
+	}
+	if len(stored.Messages) > 0 {
+		out.Messages = make([]providers.Message, len(stored.Messages))
+		copy(out.Messages, stored.Messages)
+	} else {
+		out.Messages = []providers.Message{}
+	}
+	return out, true
+}
+
+// ReplaceHistory replaces the message history for a session.
+func (sm *SessionManager) ReplaceHistory(sessionKey string, history []providers.Message) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	stored, ok := sm.sessions[sessionKey]
+	if !ok || stored == nil {
+		stored = &Session{
+			Key:     sessionKey,
+			Created: time.Now(),
+		}
+		sm.sessions[sessionKey] = stored
+	}
+
+	if len(history) == 0 {
+		stored.Messages = []providers.Message{}
+	} else {
+		stored.Messages = make([]providers.Message, len(history))
+		copy(stored.Messages, history)
+	}
+	stored.Updated = time.Now()
 }
 
 func (sm *SessionManager) GetSummary(key string) string {

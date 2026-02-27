@@ -148,6 +148,92 @@ func TestDefaultConfig_Channels(t *testing.T) {
 	}
 }
 
+func TestDefaultConfig_DiscordArchive(t *testing.T) {
+	cfg := DefaultConfig()
+	archive := cfg.Channels.Discord.Archive
+	if !archive.Enabled {
+		t.Fatal("Discord archive should be enabled by default")
+	}
+	if !archive.AutoArchive {
+		t.Fatal("Discord auto_archive should be enabled by default")
+	}
+	if archive.MaxSessionTokens != 24000 {
+		t.Fatalf("MaxSessionTokens=%d, want 24000", archive.MaxSessionTokens)
+	}
+	if archive.MaxSessionMessages != 120 {
+		t.Fatalf("MaxSessionMessages=%d, want 120", archive.MaxSessionMessages)
+	}
+	if archive.KeepUserPairs != 12 {
+		t.Fatalf("KeepUserPairs=%d, want 12", archive.KeepUserPairs)
+	}
+	if archive.MinTailMessages != 4 {
+		t.Fatalf("MinTailMessages=%d, want 4", archive.MinTailMessages)
+	}
+	if archive.RecallTopK != 6 {
+		t.Fatalf("RecallTopK=%d, want 6", archive.RecallTopK)
+	}
+	if archive.RecallMaxChars != 3000 {
+		t.Fatalf("RecallMaxChars=%d, want 3000", archive.RecallMaxChars)
+	}
+	if archive.RecallMinScore != 0.20 {
+		t.Fatalf("RecallMinScore=%f, want 0.20", archive.RecallMinScore)
+	}
+}
+
+func TestLoadConfig_NormalizesDiscordArchive(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.json")
+
+	raw := `{
+  "channels": {
+    "discord": {
+      "archive": {
+        "enabled": true,
+        "auto_archive": true,
+        "max_session_tokens": 0,
+        "max_session_messages": -1,
+        "keep_user_pairs": 0,
+        "min_tail_messages": -5,
+        "recall_top_k": 0,
+        "recall_max_chars": -1,
+        "recall_min_score": 2.4
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	got := cfg.Channels.Discord.Archive
+	if got.MaxSessionTokens != 24000 {
+		t.Fatalf("MaxSessionTokens=%d, want 24000", got.MaxSessionTokens)
+	}
+	if got.MaxSessionMessages != 120 {
+		t.Fatalf("MaxSessionMessages=%d, want 120", got.MaxSessionMessages)
+	}
+	if got.KeepUserPairs != 12 {
+		t.Fatalf("KeepUserPairs=%d, want 12", got.KeepUserPairs)
+	}
+	if got.MinTailMessages != 4 {
+		t.Fatalf("MinTailMessages=%d, want 4", got.MinTailMessages)
+	}
+	if got.RecallTopK != 6 {
+		t.Fatalf("RecallTopK=%d, want 6", got.RecallTopK)
+	}
+	if got.RecallMaxChars != 3000 {
+		t.Fatalf("RecallMaxChars=%d, want 3000", got.RecallMaxChars)
+	}
+	if got.RecallMinScore != 0.20 {
+		t.Fatalf("RecallMinScore=%f, want 0.20", got.RecallMinScore)
+	}
+}
+
 // TestDefaultConfig_WebTools verifies web tools config
 func TestDefaultConfig_WebTools(t *testing.T) {
 	cfg := DefaultConfig()

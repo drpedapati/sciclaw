@@ -134,10 +134,23 @@ type FeishuConfig struct {
 	AllowFrom         FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_FEISHU_ALLOW_FROM"`
 }
 
+type DiscordArchiveConfig struct {
+	Enabled            bool    `json:"enabled" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_ENABLED"`
+	AutoArchive        bool    `json:"auto_archive" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_AUTO_ARCHIVE"`
+	MaxSessionTokens   int     `json:"max_session_tokens" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_MAX_SESSION_TOKENS"`
+	MaxSessionMessages int     `json:"max_session_messages" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_MAX_SESSION_MESSAGES"`
+	KeepUserPairs      int     `json:"keep_user_pairs" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_KEEP_USER_PAIRS"`
+	MinTailMessages    int     `json:"min_tail_messages" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_MIN_TAIL_MESSAGES"`
+	RecallTopK         int     `json:"recall_top_k" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_RECALL_TOP_K"`
+	RecallMaxChars     int     `json:"recall_max_chars" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_RECALL_MAX_CHARS"`
+	RecallMinScore     float64 `json:"recall_min_score" env:"PICOCLAW_CHANNELS_DISCORD_ARCHIVE_RECALL_MIN_SCORE"`
+}
+
 type DiscordConfig struct {
-	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_DISCORD_ENABLED"`
-	Token     string              `json:"token" env:"PICOCLAW_CHANNELS_DISCORD_TOKEN"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_DISCORD_ALLOW_FROM"`
+	Enabled   bool                 `json:"enabled" env:"PICOCLAW_CHANNELS_DISCORD_ENABLED"`
+	Token     string               `json:"token" env:"PICOCLAW_CHANNELS_DISCORD_TOKEN"`
+	AllowFrom FlexibleStringSlice  `json:"allow_from" env:"PICOCLAW_CHANNELS_DISCORD_ALLOW_FROM"`
+	Archive   DiscordArchiveConfig `json:"archive"`
 }
 
 type MaixCamConfig struct {
@@ -280,6 +293,17 @@ func DefaultConfig() *Config {
 				Enabled:   false,
 				Token:     "",
 				AllowFrom: FlexibleStringSlice{},
+				Archive: DiscordArchiveConfig{
+					Enabled:            true,
+					AutoArchive:        true,
+					MaxSessionTokens:   24000,
+					MaxSessionMessages: 120,
+					KeepUserPairs:      12,
+					MinTailMessages:    4,
+					RecallTopK:         6,
+					RecallMaxChars:     3000,
+					RecallMinScore:     0.20,
+				},
 			},
 			MaixCam: MaixCamConfig{
 				Enabled:   false,
@@ -381,6 +405,7 @@ func LoadConfig(path string) (*Config, error) {
 	if err := env.Parse(cfg); err != nil {
 		return nil, err
 	}
+	normalizeDiscordArchiveConfig(&cfg.Channels.Discord.Archive)
 	if cfg.Agents.Defaults.MaxToolIterations < 0 {
 		cfg.Agents.Defaults.MaxToolIterations = 0
 	}
@@ -486,6 +511,33 @@ func expandHome(path string) string {
 		return home
 	}
 	return path
+}
+
+func normalizeDiscordArchiveConfig(cfg *DiscordArchiveConfig) {
+	if cfg == nil {
+		return
+	}
+	if cfg.MaxSessionTokens <= 0 {
+		cfg.MaxSessionTokens = 24000
+	}
+	if cfg.MaxSessionMessages <= 0 {
+		cfg.MaxSessionMessages = 120
+	}
+	if cfg.KeepUserPairs <= 0 {
+		cfg.KeepUserPairs = 12
+	}
+	if cfg.MinTailMessages <= 0 {
+		cfg.MinTailMessages = 4
+	}
+	if cfg.RecallTopK <= 0 {
+		cfg.RecallTopK = 6
+	}
+	if cfg.RecallMaxChars <= 0 {
+		cfg.RecallMaxChars = 3000
+	}
+	if cfg.RecallMinScore < 0 || cfg.RecallMinScore > 1 {
+		cfg.RecallMinScore = 0.20
+	}
 }
 
 func ValidateRoutingConfig(r RoutingConfig) error {
