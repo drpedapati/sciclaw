@@ -231,7 +231,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	hookDispatcher = hooks.NewDispatcher(auditSink)
 	if hookPolicy.Enabled || hookPolicyErr != nil {
 		provenanceHandler := &builtin.ProvenanceHandler{}
-		policyHandler := builtin.NewPolicyHandler(workspace)
+		policyHandler := builtin.NewPolicyHandler(hookPolicy, hookDiag, hookPolicyErr)
 		if hookPolicyErr != nil {
 			for _, ev := range hooks.KnownEvents() {
 				hookDispatcher.Register(ev, provenanceHandler)
