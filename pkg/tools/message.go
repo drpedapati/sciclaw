@@ -6,11 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 )
 
 type SendCallback func(channel, chatID, content string, attachments []bus.OutboundAttachment) error
+
+const messageStatusPreviewRunes = 80
 
 type MessageTool struct {
 	sendCallback            SendCallback
@@ -148,9 +151,16 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 	t.sentInRound = true
 	// Silent: user already received the message directly
-	status := fmt.Sprintf("Message sent to %s:%s", channel, chatID)
+	status := fmt.Sprintf("Message sent to %s:%s (chars=%d", channel, chatID, utf8.RuneCountInString(content))
+	if preview := summarizeMessageContentForStatus(content); preview != "" {
+		status += fmt.Sprintf(", preview=%q", preview)
+	}
+	status += ")"
 	if len(attachments) > 0 {
 		status += fmt.Sprintf(" with %d attachment(s)", len(attachments))
+		if attachmentNames := summarizeAttachmentNames(attachments, 3); attachmentNames != "" {
+			status += fmt.Sprintf(" [%s]", attachmentNames)
+		}
 	}
 	return &ToolResult{
 		ForLLM: status,
@@ -212,4 +222,50 @@ func (t *MessageTool) parseAttachments(args map[string]interface{}) ([]bus.Outbo
 	}
 
 	return attachments, nil
+}
+
+func summarizeMessageContentForStatus(content string) string {
+	compact := strings.Join(strings.Fields(strings.TrimSpace(content)), " ")
+	if compact == "" {
+		return ""
+	}
+	runes := []rune(compact)
+	if len(runes) <= messageStatusPreviewRunes {
+		return compact
+	}
+	return string(runes[:messageStatusPreviewRunes]) + "..."
+}
+
+func summarizeAttachmentNames(attachments []bus.OutboundAttachment, max int) string {
+	if len(attachments) == 0 || max <= 0 {
+		return ""
+	}
+
+	names := make([]string, 0, minInt(len(attachments), max))
+	for i, attachment := range attachments {
+		if i >= max {
+			break
+		}
+		name := strings.TrimSpace(attachment.Filename)
+		if name == "" {
+			name = filepath.Base(attachment.Path)
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	if len(attachments) > max {
+		names = append(names, fmt.Sprintf("+%d more", len(attachments)-max))
+	}
+	return strings.Join(names, ", ")
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

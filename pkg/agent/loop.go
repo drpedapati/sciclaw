@@ -74,6 +74,8 @@ type processOptions struct {
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
 }
 
+const defaultEmptyAssistantResponse = "I completed the turn but did not produce a user-facing reply. Ask me for a summary of what was done."
+
 // createToolRegistry creates a tool registry with common tools.
 // This is shared between main agent and subagents.
 func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus) *tools.ToolRegistry {
@@ -345,6 +347,15 @@ func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) 
 	}
 
 	if response == "" {
+		if msg.Channel != "system" {
+			logger.InfoCF("agent", "No outbound response generated",
+				map[string]interface{}{
+					"channel":     msg.Channel,
+					"chat_id":     msg.ChatID,
+					"sender_id":   msg.SenderID,
+					"session_key": msg.SessionKey,
+				})
+		}
 		return
 	}
 
@@ -363,11 +374,29 @@ func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) 
 			ChatID:  msg.ChatID,
 			Content: response,
 		})
+	} else {
+		logger.InfoCF("agent", "Suppressing outbound response because message tool already sent content",
+			map[string]interface{}{
+				"channel":          msg.Channel,
+				"chat_id":          msg.ChatID,
+				"sender_id":        msg.SenderID,
+				"session_key":      msg.SessionKey,
+				"response_preview": utils.Truncate(response, 120),
+			})
 	}
 }
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
 	al.tools.Register(tool)
+}
+
+func (al *AgentLoop) messageToolSentInRound() bool {
+	if tool, ok := al.tools.Get("message"); ok {
+		if mt, ok := tool.(*tools.MessageTool); ok {
+			return mt.HasSentInRound()
+		}
+	}
+	return false
 }
 
 // RecordLastChannel records the last active channel for this workspace.
@@ -406,7 +435,7 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 		Channel:         channel,
 		ChatID:          chatID,
 		UserMessage:     content,
-		DefaultResponse: "I've completed processing but have no response to give.",
+		DefaultResponse: defaultEmptyAssistantResponse,
 		EnableSummary:   false,
 		SendResponse:    false,
 		NoHistory:       true, // Don't load session history for heartbeat
@@ -440,7 +469,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		Channel:         msg.Channel,
 		ChatID:          msg.ChatID,
 		UserMessage:     msg.Content,
-		DefaultResponse: "I've completed processing but have no response to give.",
+		DefaultResponse: defaultEmptyAssistantResponse,
 		EnableSummary:   true,
 		SendResponse:    false,
 	})
@@ -598,6 +627,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		})
 		return "", err
 	}
+	messageToolSent := al.messageToolSentInRound()
 
 	// If last tool had ForUser content and we already sent it, we might not need to send final response
 	// This is controlled by the tool's Silent flag and ForUser content
@@ -606,13 +636,33 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	if finalContent == "" {
 		if recovered, ok := al.tryDeterministicFallback(ctx, opts); ok {
 			finalContent = recovered
+		} else if messageToolSent {
+			// Message tool already delivered content to user; don't add placeholder noise.
+			logger.InfoCF("agent", "Suppressing default empty-response placeholder after message tool send",
+				map[string]interface{}{
+					"channel":     opts.Channel,
+					"chat_id":     opts.ChatID,
+					"session_key": opts.SessionKey,
+					"iterations":  iteration,
+				})
 		} else {
 			finalContent = opts.DefaultResponse
 		}
 	}
 
 	// 6. Save final assistant message to session
-	al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
+	if strings.TrimSpace(finalContent) != "" {
+		al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
+	} else {
+		logger.InfoCF("agent", "Skipping assistant session write for empty final content",
+			map[string]interface{}{
+				"channel":           opts.Channel,
+				"chat_id":           opts.ChatID,
+				"session_key":       opts.SessionKey,
+				"iterations":        iteration,
+				"message_tool_sent": messageToolSent,
+			})
+	}
 	al.sessions.Save(opts.SessionKey)
 
 	// 7. Optional: summarization
@@ -621,7 +671,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 8. Optional: send response via bus
-	if opts.SendResponse {
+	if opts.SendResponse && strings.TrimSpace(finalContent) != "" {
 		al.bus.PublishOutbound(ctx, bus.OutboundMessage{
 			Channel: opts.Channel,
 			ChatID:  opts.ChatID,
@@ -630,13 +680,23 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 9. Log response
-	responsePreview := utils.Truncate(finalContent, 120)
-	logger.InfoCF("agent", fmt.Sprintf("Response: %s", responsePreview),
-		map[string]interface{}{
-			"session_key":  opts.SessionKey,
-			"iterations":   iteration,
-			"final_length": len(finalContent),
-		})
+	if strings.TrimSpace(finalContent) == "" {
+		logger.InfoCF("agent", "No final assistant text emitted",
+			map[string]interface{}{
+				"session_key":       opts.SessionKey,
+				"iterations":        iteration,
+				"message_tool_sent": messageToolSent,
+			})
+	} else {
+		responsePreview := utils.Truncate(finalContent, 120)
+		logger.InfoCF("agent", fmt.Sprintf("Response: %s", responsePreview),
+			map[string]interface{}{
+				"session_key":       opts.SessionKey,
+				"iterations":        iteration,
+				"final_length":      len(finalContent),
+				"message_tool_sent": messageToolSent,
+			})
+	}
 	al.dispatchHook(ctx, hooks.EventAfterTurn, hooks.Context{
 		Timestamp:          time.Now(),
 		TurnID:             opts.TurnID,
@@ -647,7 +707,8 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		UserMessage:        sanitizeHookText(opts.UserMessage),
 		LLMResponseSummary: sanitizeHookText(finalContent),
 		Metadata: map[string]any{
-			"iterations": iteration,
+			"iterations":        iteration,
+			"message_tool_sent": messageToolSent,
 		},
 	})
 
@@ -660,7 +721,6 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	iteration := 0
 	var finalContent string
 	var lastMessageToolContent string
-	messageToolFallbackEligible := constants.IsInternalChannel(opts.Channel)
 
 	for {
 		if al.maxIterations > 0 && iteration >= al.maxIterations {
@@ -670,7 +730,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"max":        al.maxIterations,
 				})
 			if finalContent == "" {
-				if messageToolFallbackEligible && lastMessageToolContent != "" {
+				if lastMessageToolContent != "" {
 					finalContent = lastMessageToolContent
 				} else {
 					finalContent = fmt.Sprintf("Iteration limit reached (%d) before task completion. Increase `agents.defaults.max_tool_iterations` or set it to 0 for no hard cap.", al.maxIterations)
@@ -766,9 +826,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			finalContent = response.Content
 			trimmedFinal := strings.TrimSpace(finalContent)
 			trimmedDefault := strings.TrimSpace(opts.DefaultResponse)
-			if messageToolFallbackEligible && lastMessageToolContent != "" && (trimmedFinal == "" || (trimmedDefault != "" && trimmedFinal == trimmedDefault)) {
+			if lastMessageToolContent != "" && (trimmedFinal == "" || (trimmedDefault != "" && trimmedFinal == trimmedDefault)) {
 				finalContent = lastMessageToolContent
-				logger.InfoCF("agent", "Using message tool fallback content for internal channel",
+				logger.InfoCF("agent", "Using message tool fallback content",
 					map[string]interface{}{
 						"channel":       opts.Channel,
 						"content_chars": len(finalContent),
@@ -859,11 +919,23 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 
 			toolResult := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
-			if messageToolFallbackEligible && tc.Name == "message" {
+			if tc.Name == "message" {
 				if content, ok := tc.Arguments["content"].(string); ok {
 					trimmed := strings.TrimSpace(content)
 					if trimmed != "" {
 						lastMessageToolContent = trimmed
+						attachmentCount := 0
+						if rawAttachments, ok := tc.Arguments["attachments"].([]interface{}); ok {
+							attachmentCount = len(rawAttachments)
+						}
+						logger.InfoCF("agent", "Captured message tool content for fallback",
+							map[string]interface{}{
+								"channel":           opts.Channel,
+								"chat_id":           opts.ChatID,
+								"content_chars":     len(trimmed),
+								"attachments_count": attachmentCount,
+								"iteration":         iteration,
+							})
 					}
 				}
 			}
@@ -937,7 +1009,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		}
 	}
 
-	if strings.TrimSpace(finalContent) == "" && messageToolFallbackEligible && lastMessageToolContent != "" {
+	if strings.TrimSpace(finalContent) == "" && lastMessageToolContent != "" {
 		finalContent = lastMessageToolContent
 	}
 

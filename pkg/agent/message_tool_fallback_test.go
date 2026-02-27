@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
@@ -115,7 +116,7 @@ func TestProcessDirect_MessageToolFallbackWhenLLMReturnsDefaultPlaceholder(t *te
 				},
 			},
 			{
-				Content:   "I've completed processing but have no response to give.",
+				Content:   defaultEmptyAssistantResponse,
 				ToolCalls: nil,
 			},
 		},
@@ -130,5 +131,59 @@ func TestProcessDirect_MessageToolFallbackWhenLLMReturnsDefaultPlaceholder(t *te
 	want := "Still going strong!"
 	if got != want {
 		t.Fatalf("unexpected response: got %q want %q", got, want)
+	}
+}
+
+func TestProcessDirect_MessageToolFallbackForExternalChannel(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-message-fallback-external-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				Model:             "mock-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 3,
+			},
+		},
+	}
+
+	provider := &sequenceProvider{
+		responses: []*providers.LLMResponse{
+			{
+				Content: "",
+				ToolCalls: []providers.ToolCall{
+					{
+						ID:   "call-1",
+						Name: "message",
+						Arguments: map[string]interface{}{
+							"content": "The docx abstract has been saved to disk.",
+						},
+					},
+				},
+			},
+			{
+				Content:   "",
+				ToolCalls: nil,
+			},
+		},
+	}
+
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	got, err := al.ProcessDirectWithChannel(context.Background(), "save abstract", "discord:test-session", "discord", "chat-123", "user-1")
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel error: %v", err)
+	}
+
+	want := "The docx abstract has been saved to disk."
+	if got != want {
+		t.Fatalf("unexpected response: got %q want %q", got, want)
+	}
+	if strings.Contains(strings.ToLower(got), "no response to give") {
+		t.Fatalf("unexpected placeholder fallback in response: %q", got)
 	}
 }

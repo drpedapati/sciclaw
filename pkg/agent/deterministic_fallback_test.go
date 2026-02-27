@@ -86,7 +86,7 @@ func TestDeterministicFallback_NonIntentUsesDefaultResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProcessDirectWithChannel error: %v", err)
 	}
-	want := "I've completed processing but have no response to give."
+	want := defaultEmptyAssistantResponse
 	if resp != want {
 		t.Fatalf("expected default response %q, got %q", want, resp)
 	}

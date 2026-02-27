@@ -51,8 +51,14 @@ func TestMessageTool_Execute_Success(t *testing.T) {
 	}
 
 	// - ForLLM contains send status description
-	if result.ForLLM != "Message sent to test-channel:test-chat-id" {
-		t.Errorf("Expected ForLLM 'Message sent to test-channel:test-chat-id', got '%s'", result.ForLLM)
+	if !strings.Contains(result.ForLLM, "Message sent to test-channel:test-chat-id") {
+		t.Errorf("Expected channel/chat in ForLLM, got '%s'", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, "chars=13") {
+		t.Errorf("Expected char count in ForLLM, got '%s'", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, "preview=\"Hello, world!\"") {
+		t.Errorf("Expected content preview in ForLLM, got '%s'", result.ForLLM)
 	}
 
 	// - ForUser is empty (user already received message directly)
@@ -97,8 +103,8 @@ func TestMessageTool_Execute_WithCustomChannel(t *testing.T) {
 	if !result.Silent {
 		t.Error("Expected Silent=true")
 	}
-	if result.ForLLM != "Message sent to custom-channel:custom-chat-id" {
-		t.Errorf("Expected ForLLM 'Message sent to custom-channel:custom-chat-id', got '%s'", result.ForLLM)
+	if !strings.Contains(result.ForLLM, "Message sent to custom-channel:custom-chat-id") {
+		t.Errorf("Expected channel/chat in ForLLM, got '%s'", result.ForLLM)
 	}
 }
 
@@ -242,6 +248,9 @@ func TestMessageTool_Execute_WithAttachments(t *testing.T) {
 	}
 	if !strings.Contains(result.ForLLM, "with 1 attachment(s)") {
 		t.Fatalf("expected attachment status in ForLLM, got %q", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, "final-report.docx") {
+		t.Fatalf("expected attachment filename in ForLLM, got %q", result.ForLLM)
 	}
 }
 
