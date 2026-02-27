@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 type ExecTool struct {
@@ -28,7 +30,7 @@ type ExecTool struct {
 }
 
 var (
-	shellPathPattern = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
+	shellPathPattern             = regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
 	shellURLPattern              = regexp.MustCompile("https?://[^\\s\"'`]+")
 	shellMutatingCommandPattern  = regexp.MustCompile(`(?i)(^|[;&|()\s])(touch|mkdir|rmdir|rm|mv|cp|install|chmod|chown|truncate|tee|sed\s+-i|perl\s+-i|pandoc)([;&|()\s]|$)`)
 	shellWriteRedirectPattern    = regexp.MustCompile(`(^|[^0-9])>>?`)
@@ -41,6 +43,14 @@ var (
 		"/home/linuxbrew/.linuxbrew/opt/sciclaw/share/sciclaw/templates/nih-standard.docx",
 		"/usr/local/opt/sciclaw/share/sciclaw/templates/nih-standard.docx",
 	}
+)
+
+const (
+	execSlowLogThreshold   = 2 * time.Second
+	execStageLogThreshold  = 250 * time.Millisecond
+	execCommandPreviewMax  = 220
+	execStderrPreviewMax   = 320
+	execWorkingDirMaxChars = 220
 )
 
 //go:embed assets/nih-standard.docx
@@ -111,39 +121,108 @@ func (t *ExecTool) Parameters() map[string]interface{} {
 }
 
 func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+	execStartedAt := time.Now()
+	totalDuration := func() time.Duration { return time.Since(execStartedAt) }
+	commandPreview := ""
+	commandExecPreview := ""
+	requestedCWD := t.workingDir
+	resolvedCWD := ""
+	cwdSource := "tool_default"
+	var cwdResolveDuration time.Duration
+	var cwdValidateDuration time.Duration
+	var guardDuration time.Duration
+	var pandocDuration time.Duration
+	var startDuration time.Duration
+	var waitDuration time.Duration
+	var terminateDuration time.Duration
+
+	logFields := func(extra map[string]interface{}) map[string]interface{} {
+		fields := map[string]interface{}{
+			"command":          commandPreview,
+			"command_exec":     commandExecPreview,
+			"requested_cwd":    truncateForLog(requestedCWD, execWorkingDirMaxChars),
+			"resolved_cwd":     truncateForLog(resolvedCWD, execWorkingDirMaxChars),
+			"cwd_source":       cwdSource,
+			"total_ms":         totalDuration().Milliseconds(),
+			"cwd_resolve_ms":   cwdResolveDuration.Milliseconds(),
+			"cwd_validate_ms":  cwdValidateDuration.Milliseconds(),
+			"guard_ms":         guardDuration.Milliseconds(),
+			"pandoc_ms":        pandocDuration.Milliseconds(),
+			"start_ms":         startDuration.Milliseconds(),
+			"wait_ms":          waitDuration.Milliseconds(),
+			"terminate_ms":     terminateDuration.Milliseconds(),
+			"restrict_enabled": t.restrictToWorkspace,
+		}
+		for k, v := range extra {
+			fields[k] = v
+		}
+		return fields
+	}
+
 	command, ok := args["command"].(string)
 	if !ok {
 		return ErrorResult("command is required")
 	}
+	commandPreview = truncateForLog(strings.TrimSpace(command), execCommandPreviewMax)
+	commandExecPreview = commandPreview
 
 	cwd := t.workingDir
 	if wd, ok := args["working_dir"].(string); ok && wd != "" {
 		cwd = wd
+		requestedCWD = wd
+		cwdSource = "tool_arg"
 	}
 
 	if cwd == "" {
+		cwdResolveStartedAt := time.Now()
 		wd, err := os.Getwd()
+		cwdResolveDuration = time.Since(cwdResolveStartedAt)
 		if err == nil {
 			cwd = wd
+			requestedCWD = wd
+			cwdSource = "os_getwd"
+		} else {
+			logger.WarnCF("tool.exec", "Exec could not resolve default working directory", logFields(map[string]interface{}{
+				"error": err.Error(),
+			}))
 		}
 	}
+	resolvedCWD = cwd
 
 	if t.restrictToWorkspace && strings.TrimSpace(cwd) != "" {
+		cwdValidateStartedAt := time.Now()
 		resolvedCWD, err := validatePathWithPolicy(cwd, t.workingDir, true, AccessRead, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
+		cwdValidateDuration = time.Since(cwdValidateStartedAt)
 		if err != nil {
+			logger.WarnCF("tool.exec", "Exec blocked: invalid working directory", logFields(map[string]interface{}{
+				"error": err.Error(),
+			}))
 			return UserErrorResult("Command blocked by safety guard (" + err.Error() + ")")
 		}
 		cwd = resolvedCWD
+		resolvedCWD = cwd
 	}
 
-	if guardError := t.guardCommand(command, cwd); guardError != "" {
+	guardStartedAt := time.Now()
+	guardError := t.guardCommand(command, cwd)
+	guardDuration = time.Since(guardStartedAt)
+	if guardError != "" {
+		logger.WarnCF("tool.exec", "Exec blocked by safety guard", logFields(map[string]interface{}{
+			"error": guardError,
+		}))
 		return UserErrorResult(guardError)
 	}
+	pandocStartedAt := time.Now()
 	withPandocDefaults, pandocErr := t.commandWithPandocDefaults(command)
+	pandocDuration = time.Since(pandocStartedAt)
 	if pandocErr != nil {
+		logger.ErrorCF("tool.exec", "Exec failed while preparing pandoc defaults", logFields(map[string]interface{}{
+			"error": pandocErr.Error(),
+		}))
 		return ErrorResult(pandocErr.Error())
 	}
 	command = withPandocDefaults
+	commandExecPreview = truncateForLog(strings.TrimSpace(command), execCommandPreviewMax)
 
 	cmdCtx, cancel := context.WithTimeout(ctx, t.timeout)
 	defer cancel()
@@ -174,9 +253,15 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	startStartedAt := time.Now()
 	if err := cmd.Start(); err != nil {
+		startDuration = time.Since(startStartedAt)
+		logger.ErrorCF("tool.exec", "Exec failed to start process", logFields(map[string]interface{}{
+			"error": err.Error(),
+		}))
 		return ErrorResult(fmt.Sprintf("failed to start command: %v", err))
 	}
+	startDuration = time.Since(startStartedAt)
 
 	done := make(chan error, 1)
 	go func() {
@@ -184,19 +269,28 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	}()
 
 	var err error
+	waitStartedAt := time.Now()
+	timedOut := false
+	forceKilled := false
 	select {
 	case err = <-done:
 	case <-cmdCtx.Done():
+		timedOut = errors.Is(cmdCtx.Err(), context.DeadlineExceeded)
+		terminateStartedAt := time.Now()
 		_ = terminateProcessTree(cmd)
+		terminateDuration = time.Since(terminateStartedAt)
 		select {
 		case err = <-done:
 		case <-time.After(2 * time.Second):
+			forceKilled = true
 			if cmd.Process != nil {
 				_ = cmd.Process.Kill()
 			}
 			err = <-done
 		}
 	}
+	waitDuration = time.Since(waitStartedAt)
+	cmdCtxErr := cmdCtx.Err()
 
 	output := stdout.String()
 	if stderr.Len() > 0 {
@@ -205,14 +299,10 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 
 	if err != nil {
 		if errors.Is(cmdCtx.Err(), context.DeadlineExceeded) {
-			msg := fmt.Sprintf("Command timed out after %v", t.timeout)
-			return &ToolResult{
-				ForLLM:  msg,
-				ForUser: msg,
-				IsError: true,
-			}
+			output = fmt.Sprintf("Command timed out after %v", t.timeout)
+		} else {
+			output += fmt.Sprintf("\nExit code: %v", err)
 		}
-		output += fmt.Sprintf("\nExit code: %v", err)
 	}
 
 	if output == "" {
@@ -224,12 +314,40 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		output = output[:maxLen] + fmt.Sprintf("\n... (truncated, %d more chars)", len(output)-maxLen)
 	}
 
+	shouldLogSlow := totalDuration() >= execSlowLogThreshold ||
+		cwdValidateDuration >= execStageLogThreshold ||
+		guardDuration >= execStageLogThreshold
+	stderrPreview := ""
+	if stderr.Len() > 0 {
+		stderrPreview = truncateForLog(strings.TrimSpace(stderr.String()), execStderrPreviewMax)
+	}
+
 	if err != nil {
+		logMessage := "Exec command failed"
+		if timedOut {
+			logMessage = "Exec command timed out"
+		}
+		extra := map[string]interface{}{
+			"error":          err.Error(),
+			"timed_out":      timedOut,
+			"force_killed":   forceKilled,
+			"ctx_error":      "",
+			"stderr_preview": stderrPreview,
+		}
+		if cmdCtxErr != nil {
+			extra["ctx_error"] = cmdCtxErr.Error()
+		}
+		logger.ErrorCF("tool.exec", logMessage, logFields(extra))
 		return &ToolResult{
 			ForLLM:  output,
 			ForUser: output,
 			IsError: true,
 		}
+	}
+	if shouldLogSlow {
+		logger.WarnCF("tool.exec", "Exec command slow", logFields(map[string]interface{}{
+			"stderr_preview": stderrPreview,
+		}))
 	}
 
 	return &ToolResult{
@@ -237,6 +355,20 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		ForUser: output,
 		IsError: false,
 	}
+}
+
+func truncateForLog(input string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	input = strings.TrimSpace(input)
+	if len(input) <= max {
+		return input
+	}
+	if max <= 3 {
+		return input[:max]
+	}
+	return input[:max-3] + "..."
 }
 
 func mergeEnv(base []string, overrides map[string]string) []string {
