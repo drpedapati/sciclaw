@@ -686,6 +686,12 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		if sharedRoot != "" && !isWithinWorkspace(cwdPath, sharedRoot) {
 			allowedRoots = append(allowedRoots, guardRoot{path: sharedRoot, readOnly: t.sharedWorkspaceReadOnly})
 		}
+		// Also allow paths within the tool's configured workspace (for routed workspaces
+		// that differ from the shared workspace).
+		wsRoot := absCleanPath(t.workingDir)
+		if wsRoot != "" && wsRoot != cwdPath && wsRoot != sharedRoot && !isWithinWorkspace(wsRoot, sharedRoot) {
+			allowedRoots = append(allowedRoots, guardRoot{path: wsRoot, readOnly: false})
+		}
 
 		for _, raw := range matches {
 			p, err := filepath.Abs(raw)

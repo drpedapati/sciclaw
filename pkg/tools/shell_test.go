@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -452,6 +453,32 @@ func TestShellTool_AllowsDirectPubMedCLI(t *testing.T) {
 	cmd := `pubmed search "schizophrenia" --json --limit 5`
 	if blocked := tool.guardCommand(cmd, ""); blocked != "" {
 		t.Fatalf("expected direct pubmed CLI call to pass guard, got: %q", blocked)
+	}
+}
+
+func TestShellTool_AllowsRoutedWorkspacePathInCommand(t *testing.T) {
+	// Simulate a routed workspace that differs from the shared workspace.
+	// This tests the bug where commands containing absolute paths to the routed
+	// workspace were blocked because only sharedWorkspace was in allowedRoots.
+	routedWorkspace := t.TempDir()
+	sharedWorkspace := t.TempDir()
+	subdir := filepath.Join(routedWorkspace, "vecflow")
+	os.MkdirAll(subdir, 0755)
+
+	tool := NewExecTool(routedWorkspace, false)
+	tool.SetRestrictToWorkspace(true)
+	tool.SetSharedWorkspacePolicy(sharedWorkspace, false)
+
+	// Command that contains an absolute path to the routed workspace
+	cmd := fmt.Sprintf("cd %s && git status", subdir)
+	if blocked := tool.guardCommand(cmd, routedWorkspace); blocked != "" {
+		t.Fatalf("expected routed workspace path to pass guard, got: %q", blocked)
+	}
+
+	// Also test with working_dir pointing to routed workspace
+	cmd2 := fmt.Sprintf("cat %s/file.txt", subdir)
+	if blocked := tool.guardCommand(cmd2, routedWorkspace); blocked != "" {
+		t.Fatalf("expected routed workspace subdir path to pass guard, got: %q", blocked)
 	}
 }
 
