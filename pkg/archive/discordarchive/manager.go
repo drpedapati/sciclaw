@@ -189,7 +189,10 @@ func (m *Manager) Recall(query, sessionKey string, topK, maxChars int) []RecallH
 	if err != nil {
 		return nil
 	}
-	safeKey := sanitizeSessionKey(sessionKey)
+	safeKey := ""
+	if strings.TrimSpace(sessionKey) != "" {
+		safeKey = sanitizeSessionKey(sessionKey)
+	}
 
 	terms := tokenize(query)
 	type scored struct {

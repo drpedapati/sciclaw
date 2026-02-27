@@ -143,6 +143,53 @@ func TestArchiveSessionDryRunDoesNotMutateHistory(t *testing.T) {
 	}
 }
 
+func TestRecallWithoutSessionKeyScansAllArchives(t *testing.T) {
+	workspace := t.TempDir()
+	sm := session.NewSessionManager(filepath.Join(workspace, "sessions"))
+
+	keyA := "discord:alpha"
+	keyB := "discord:beta"
+	for i := 0; i < 10; i++ {
+		sm.AddMessage(keyA, "user", "alpha memory token")
+		sm.AddMessage(keyA, "assistant", "alpha assistant memory token")
+		sm.AddMessage(keyB, "user", "beta channel noise")
+		sm.AddMessage(keyB, "assistant", "beta response noise")
+	}
+	if err := sm.Save(keyA); err != nil {
+		t.Fatalf("save session A: %v", err)
+	}
+	if err := sm.Save(keyB); err != nil {
+		t.Fatalf("save session B: %v", err)
+	}
+
+	cfg := config.DiscordArchiveConfig{
+		Enabled:            true,
+		AutoArchive:        true,
+		MaxSessionTokens:   40,
+		MaxSessionMessages: 8,
+		KeepUserPairs:      3,
+		MinTailMessages:    4,
+		RecallTopK:         5,
+		RecallMaxChars:     2000,
+	}
+	mgr := NewManager(workspace, sm, cfg)
+
+	if _, err := mgr.MaybeArchiveSession(keyA); err != nil {
+		t.Fatalf("archive session A: %v", err)
+	}
+	if _, err := mgr.MaybeArchiveSession(keyB); err != nil {
+		t.Fatalf("archive session B: %v", err)
+	}
+
+	hits := mgr.Recall("alpha token", "", 5, 2000)
+	if len(hits) == 0 {
+		t.Fatal("expected recall hits without session-key filter")
+	}
+	if !strings.Contains(strings.ToLower(hits[0].Text), "alpha") {
+		t.Fatalf("expected alpha content in top hit, got %q", hits[0].Text)
+	}
+}
+
 func TestCalculateKeepStartContinuityFloor(t *testing.T) {
 	msgs := []providers.Message{
 		{Role: "user", Content: "u1"},
