@@ -51,6 +51,9 @@ type AgentLoop struct {
 	discordArchive  *discordarchive.Manager
 	archiveEnabled  bool
 	archiveAuto     bool
+	recallTopK      int
+	recallMaxChars  int
+	discordRecallFn func(query, sessionKey string, topK, maxChars int) ([]discordarchive.RecallHit, error)
 	hooks           *hooks.Dispatcher
 	hookAuditPath   string
 	turnCounter     uint64
@@ -261,9 +264,17 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		discordArchive:  discordArchiveMgr,
 		archiveEnabled:  cfg.Channels.Discord.Archive.Enabled,
 		archiveAuto:     cfg.Channels.Discord.Archive.AutoArchive,
-		hooks:           hookDispatcher,
-		hookAuditPath:   hookAuditPath,
-		summarizing:     sync.Map{},
+		recallTopK:      cfg.Channels.Discord.Archive.RecallTopK,
+		recallMaxChars:  cfg.Channels.Discord.Archive.RecallMaxChars,
+		discordRecallFn: func(query, sessionKey string, topK, maxChars int) ([]discordarchive.RecallHit, error) {
+			if discordArchiveMgr == nil {
+				return nil, nil
+			}
+			return discordArchiveMgr.Recall(query, sessionKey, topK, maxChars), nil
+		},
+		hooks:         hookDispatcher,
+		hookAuditPath: hookAuditPath,
+		summarizing:   sync.Map{},
 	}
 }
 
@@ -525,7 +536,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		summary = al.sessions.GetSummary(opts.SessionKey)
 		if opts.Channel == "discord" && al.archiveEnabled && al.archiveAuto && al.discordArchive != nil {
 			if _, err := al.discordArchive.MaybeArchiveSession(opts.SessionKey); err != nil {
-				logger.WarnCF("archive", "discord auto-archive failed: %v", map[string]interface{}{
+				logger.WarnCF("archive", fmt.Sprintf("discord auto-archive failed: %v", err), map[string]interface{}{
 					"session_key": opts.SessionKey,
 					"error":       err.Error(),
 				})
@@ -533,6 +544,27 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				// Reload post-archive state to keep prompt context bounded.
 				history = al.sessions.GetHistory(opts.SessionKey)
 				summary = al.sessions.GetSummary(opts.SessionKey)
+			}
+		}
+		if opts.Channel == "discord" && al.archiveEnabled && al.discordRecallFn != nil {
+			recallSection, hits, err := al.buildDiscordRecallContext(opts.UserMessage, opts.SessionKey)
+			if err != nil {
+				logger.WarnCF("archive", fmt.Sprintf("discord auto-recall failed: %v", err), map[string]interface{}{
+					"session_key": opts.SessionKey,
+					"error":       err.Error(),
+				})
+			} else if recallSection != "" {
+				if strings.TrimSpace(summary) == "" {
+					summary = recallSection
+				} else {
+					summary = strings.TrimSpace(summary) + "\n\n" + recallSection
+				}
+				logger.DebugCF("archive", "discord auto-recall injected",
+					map[string]interface{}{
+						"session_key": opts.SessionKey,
+						"hits":        hits,
+						"chars":       len(recallSection),
+					})
 			}
 		}
 	}
@@ -910,6 +942,114 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 
 	return finalContent, iteration, nil
+}
+
+func (al *AgentLoop) buildDiscordRecallContext(query, sessionKey string) (string, int, error) {
+	if al == nil || al.discordRecallFn == nil {
+		return "", 0, nil
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return "", 0, nil
+	}
+
+	topK := al.recallTopK
+	if topK <= 0 {
+		topK = 6
+	}
+	maxChars := al.recallMaxChars
+	if maxChars <= 0 {
+		maxChars = 3000
+	}
+	maxTokens := maxChars / 4
+	if maxTokens <= 0 {
+		maxTokens = 1
+	}
+
+	hits, err := al.discordRecallFn(query, sessionKey, topK, maxChars)
+	if err != nil {
+		return "", 0, err
+	}
+	if len(hits) == 0 {
+		return "", 0, nil
+	}
+
+	const header = "## Discord Archive Recall (Auto)\nUse this archived context only when relevant to the current user query."
+	var b strings.Builder
+	writeWithCap(&b, header, maxChars)
+	tokenEstimate := len(b.String()) / 4
+	added := 0
+
+	for i, hit := range hits {
+		entry := fmt.Sprintf(
+			"\n\n### Hit %d\n- score: %d\n- session: %s\n- source: %s\n%s",
+			i+1,
+			hit.Score,
+			strings.TrimSpace(hit.SessionKey),
+			strings.TrimSpace(hit.SourcePath),
+			strings.TrimSpace(hit.Text),
+		)
+		if entry == "" {
+			continue
+		}
+		entryChars := len(entry)
+		entryTokens := entryChars / 4
+		if entryTokens <= 0 {
+			entryTokens = 1
+		}
+
+		remainingChars := maxChars - len(b.String())
+		remainingTokens := maxTokens - tokenEstimate
+		if remainingChars <= 0 || remainingTokens <= 0 {
+			break
+		}
+		if entryChars > remainingChars || entryTokens > remainingTokens {
+			writeWithCap(&b, entry, remainingChars)
+			if strings.TrimSpace(hit.Text) != "" {
+				added++
+			}
+			break
+		}
+
+		b.WriteString(entry)
+		tokenEstimate += entryTokens
+		added++
+	}
+
+	section := strings.TrimSpace(b.String())
+	if section == "" {
+		return "", 0, nil
+	}
+	if len(section) > maxChars {
+		section = truncateRunes(section, maxChars)
+	}
+	return section, added, nil
+}
+
+func writeWithCap(b *strings.Builder, text string, maxChars int) {
+	if b == nil || maxChars <= 0 || text == "" {
+		return
+	}
+	remaining := maxChars - len(b.String())
+	if remaining <= 0 {
+		return
+	}
+	if len(text) <= remaining {
+		b.WriteString(text)
+		return
+	}
+	b.WriteString(truncateRunes(text, remaining))
+}
+
+func truncateRunes(text string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= max {
+		return text
+	}
+	return string(runes[:max])
 }
 
 // updateToolContexts updates the context for tools that need channel/chatID info.

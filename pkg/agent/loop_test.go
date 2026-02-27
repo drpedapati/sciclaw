@@ -2,12 +2,15 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/archive/discordarchive"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -389,6 +392,208 @@ func TestProcessDirectWithChannel_DiscordAutoArchiveTrim(t *testing.T) {
 	}
 }
 
+func TestProcessDirectWithChannel_DiscordAutoRecallInjectedAfterArchiveExists(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-discord-recall-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Agents.Defaults.MaxTokens = 4096
+	cfg.Channels.Discord.Archive.Enabled = true
+	cfg.Channels.Discord.Archive.AutoArchive = true
+	cfg.Channels.Discord.Archive.MaxSessionMessages = 8
+	cfg.Channels.Discord.Archive.MaxSessionTokens = 60
+	cfg.Channels.Discord.Archive.KeepUserPairs = 2
+	cfg.Channels.Discord.Archive.MinTailMessages = 4
+	cfg.Channels.Discord.Archive.RecallTopK = 3
+	cfg.Channels.Discord.Archive.RecallMaxChars = 1000
+
+	msgBus := bus.NewMessageBus()
+	provider := &captureMockProvider{response: "Mock response"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	sessionKey := "discord:test-channel"
+	marker := "rare-marker-phase2"
+	for i := 0; i < 8; i++ {
+		_, err := al.ProcessDirectWithChannel(
+			context.Background(),
+			"alpha "+marker+" archival pressure message",
+			sessionKey,
+			"discord",
+			"test-channel",
+			"user-1",
+		)
+		if err != nil {
+			t.Fatalf("ProcessDirectWithChannel failed at turn %d: %v", i, err)
+		}
+	}
+
+	_, err = al.ProcessDirectWithChannel(
+		context.Background(),
+		"please recall "+marker,
+		sessionKey,
+		"discord",
+		"test-channel",
+		"user-1",
+	)
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel recall turn failed: %v", err)
+	}
+
+	systemPrompt := provider.LastSystemPrompt()
+	if !strings.Contains(systemPrompt, "## Discord Archive Recall (Auto)") {
+		t.Fatal("expected auto recall section in system prompt for discord turn")
+	}
+	if !strings.Contains(strings.ToLower(systemPrompt), strings.ToLower(marker)) {
+		t.Fatalf("expected recall section to contain marker %q", marker)
+	}
+}
+
+func TestProcessDirectWithChannel_DiscordAutoRecallInjectionCappedByBudget(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-discord-recall-cap-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Channels.Discord.Archive.Enabled = true
+	cfg.Channels.Discord.Archive.AutoArchive = true
+	cfg.Channels.Discord.Archive.RecallTopK = 3
+	cfg.Channels.Discord.Archive.RecallMaxChars = 220
+	cfg.Channels.Discord.Archive.MaxSessionMessages = 8
+	cfg.Channels.Discord.Archive.MaxSessionTokens = 60
+
+	msgBus := bus.NewMessageBus()
+	provider := &captureMockProvider{response: "Mock response"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	al.discordRecallFn = func(query, sessionKey string, topK, maxChars int) ([]discordarchive.RecallHit, error) {
+		return []discordarchive.RecallHit{
+			{
+				SessionKey: sessionKey,
+				SourcePath: "/tmp/archive-one.md",
+				Score:      99,
+				Text:       strings.Repeat("token-heavy-recall-context ", 40),
+			},
+		}, nil
+	}
+
+	_, err = al.ProcessDirectWithChannel(
+		context.Background(),
+		"token-heavy recall test",
+		"discord:test-channel",
+		"discord",
+		"test-channel",
+		"user-1",
+	)
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel failed: %v", err)
+	}
+
+	systemPrompt := provider.LastSystemPrompt()
+	const recallHeader = "## Discord Archive Recall (Auto)"
+	start := strings.Index(systemPrompt, recallHeader)
+	if start < 0 {
+		t.Fatal("expected auto recall header in system prompt")
+	}
+	recallSection := systemPrompt[start:]
+	if len(recallSection) > cfg.Channels.Discord.Archive.RecallMaxChars {
+		t.Fatalf(
+			"expected recall section <= %d chars, got %d",
+			cfg.Channels.Discord.Archive.RecallMaxChars,
+			len(recallSection),
+		)
+	}
+}
+
+func TestProcessDirectWithChannel_DiscordAutoRecallFailureIsFailOpen(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-discord-recall-failopen-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Channels.Discord.Archive.Enabled = true
+
+	msgBus := bus.NewMessageBus()
+	provider := &captureMockProvider{response: "LLM still replied"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	al.discordRecallFn = func(query, sessionKey string, topK, maxChars int) ([]discordarchive.RecallHit, error) {
+		return nil, errors.New("synthetic recall failure")
+	}
+
+	got, err := al.ProcessDirectWithChannel(
+		context.Background(),
+		"does recall failure block chat",
+		"discord:test-channel",
+		"discord",
+		"test-channel",
+		"user-1",
+	)
+	if err != nil {
+		t.Fatalf("expected fail-open behavior, got error: %v", err)
+	}
+	if got != "LLM still replied" {
+		t.Fatalf("unexpected response after recall failure: %q", got)
+	}
+}
+
+func TestProcessDirectWithChannel_NonDiscordNoAutoRecallInjection(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-recall-nondiscord-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Channels.Discord.Archive.Enabled = true
+
+	msgBus := bus.NewMessageBus()
+	provider := &captureMockProvider{response: "Mock response"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	al.discordRecallFn = func(query, sessionKey string, topK, maxChars int) ([]discordarchive.RecallHit, error) {
+		return []discordarchive.RecallHit{
+			{
+				SessionKey: "discord:test-channel",
+				SourcePath: "/tmp/archive.md",
+				Score:      7,
+				Text:       "discord-only auto recall context",
+			},
+		}, nil
+	}
+
+	_, err = al.ProcessDirectWithChannel(
+		context.Background(),
+		"telegram turn should not inject discord archive",
+		"telegram:test-channel",
+		"telegram",
+		"test-channel",
+		"user-1",
+	)
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel failed: %v", err)
+	}
+
+	systemPrompt := provider.LastSystemPrompt()
+	if strings.Contains(systemPrompt, "## Discord Archive Recall (Auto)") {
+		t.Fatal("did not expect discord recall section for non-discord channel")
+	}
+}
+
 func TestAgentLoop_HooksCanBeDisabledByPolicy(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "agent-test-*")
 	if err != nil {
@@ -529,6 +734,53 @@ func (m *simpleMockProvider) Chat(ctx context.Context, messages []providers.Mess
 
 func (m *simpleMockProvider) GetDefaultModel() string {
 	return "mock-model"
+}
+
+type captureMockProvider struct {
+	response string
+	mu       sync.Mutex
+	last     []providers.Message
+}
+
+func (m *captureMockProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
+	m.mu.Lock()
+	m.last = cloneMessages(messages)
+	m.mu.Unlock()
+	return &providers.LLMResponse{
+		Content:   m.response,
+		ToolCalls: []providers.ToolCall{},
+	}, nil
+}
+
+func (m *captureMockProvider) GetDefaultModel() string {
+	return "mock-model"
+}
+
+func (m *captureMockProvider) LastSystemPrompt() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.last) == 0 {
+		return ""
+	}
+	if m.last[0].Role != "system" {
+		return ""
+	}
+	return m.last[0].Content
+}
+
+func cloneMessages(in []providers.Message) []providers.Message {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]providers.Message, len(in))
+	for i, msg := range in {
+		out[i] = msg
+		if len(msg.ToolCalls) > 0 {
+			out[i].ToolCalls = make([]providers.ToolCall, len(msg.ToolCalls))
+			copy(out[i].ToolCalls, msg.ToolCalls)
+		}
+	}
+	return out
 }
 
 // mockCustomTool is a simple mock tool for registration testing
