@@ -18,11 +18,20 @@ func TestJSONLAuditSinkWrite(t *testing.T) {
 	if err := sink.Write(entry); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	data, err := os.ReadFile(filepath.Join(ws, "hooks", "hook-events.jsonl"))
-	if err != nil {
-		t.Fatalf("read audit file: %v", err)
-	}
-	if !strings.Contains(string(data), "\"turn_id\":\"turn-1\"") {
-		t.Fatalf("audit content missing turn_id: %s", string(data))
+
+	auditPath := filepath.Join(ws, "hooks", "hook-events.jsonl")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, err := os.ReadFile(auditPath)
+		if err == nil && strings.Contains(string(data), "\"turn_id\":\"turn-1\"") {
+			return
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				t.Fatalf("read audit file after wait: %v", err)
+			}
+			t.Fatalf("audit content missing turn_id after wait: %s", string(data))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

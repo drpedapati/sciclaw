@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
+)
+
+const (
+	// Buffer audit writes so hook dispatch never blocks on slow filesystems.
+	auditQueueSize = 256
 )
 
 // JSONLAuditSink appends hook entries as JSONL.
 type JSONLAuditSink struct {
-	mu   sync.Mutex
-	path string
+	path  string
+	queue chan []byte
 }
 
 func NewJSONLAuditSink(workspace string) (*JSONLAuditSink, error) {
@@ -23,7 +27,12 @@ func NewJSONLAuditSinkAt(path string) (*JSONLAuditSink, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create hooks audit dir: %w", err)
 	}
-	return &JSONLAuditSink{path: path}, nil
+	sink := &JSONLAuditSink{
+		path:  path,
+		queue: make(chan []byte, auditQueueSize),
+	}
+	go sink.writeLoop()
+	return sink, nil
 }
 
 func (s *JSONLAuditSink) Path() string {
@@ -31,20 +40,44 @@ func (s *JSONLAuditSink) Path() string {
 }
 
 func (s *JSONLAuditSink) Write(entry AuditEntry) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
 
+	line := append(b, '\n')
+	select {
+	case s.queue <- line:
+		return nil
+	default:
+	}
+
+	// Queue full: drop oldest pending line so current hook event can proceed.
+	select {
+	case <-s.queue:
+	default:
+	}
+	select {
+	case s.queue <- line:
+	default:
+	}
+	return nil
+}
+
+func (s *JSONLAuditSink) writeLoop() {
+	for line := range s.queue {
+		_ = s.appendLine(line)
+	}
+}
+
+func (s *JSONLAuditSink) appendLine(line []byte) error {
 	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	b, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(append(b, '\n')); err != nil {
+	if _, err := f.Write(line); err != nil {
 		return err
 	}
 	return nil

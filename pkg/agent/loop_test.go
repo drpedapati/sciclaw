@@ -672,16 +672,23 @@ func TestAgentLoop_WritesHookAuditEvents(t *testing.T) {
 	}
 
 	auditPath := filepath.Join(tmpDir, "hooks", "hook-events.jsonl")
-	data, err := os.ReadFile(auditPath)
-	if err != nil {
-		t.Fatalf("read hook audit file: %v", err)
-	}
-	body := string(data)
-	if !strings.Contains(body, "\"event\":\"before_turn\"") {
-		t.Fatalf("expected before_turn event in audit file")
-	}
-	if !strings.Contains(body, "\"event\":\"after_turn\"") {
-		t.Fatalf("expected after_turn event in audit file")
+	deadline := time.Now().Add(2 * time.Second)
+	var body string
+	for {
+		data, readErr := os.ReadFile(auditPath)
+		if readErr == nil {
+			body = string(data)
+			if strings.Contains(body, "\"event\":\"before_turn\"") && strings.Contains(body, "\"event\":\"after_turn\"") {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			if readErr != nil {
+				t.Fatalf("read hook audit file after wait: %v", readErr)
+			}
+			t.Fatalf("expected before_turn and after_turn events in audit file, got: %s", body)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
