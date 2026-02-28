@@ -50,7 +50,9 @@ var (
 	goVersion string
 )
 
-var processCommandLineForPID = readProcessCommandLine
+var pgrepGatewayPIDs = func() ([]byte, error) {
+	return exec.Command("pgrep", "-f", "(sciclaw|picoclaw).*gateway").Output()
+}
 
 func init() {
 	// Strip leading "v" set by ldflags so format strings can add their own.
@@ -1457,11 +1459,26 @@ func modelsCmd() {
 }
 
 func isGatewayProcessPID(pid int) (bool, error) {
-	cmdline, err := processCommandLineForPID(pid)
+	// Use pgrep to find all gateway processes and check if our PID is among them.
+	// pgrep -f matches against the full command line.
+	out, err := pgrepGatewayPIDs()
 	if err != nil {
+		// pgrep exits 1 when no processes match — that's not an error for us.
+		type exitCoder interface{ ExitCode() int }
+		if exitErr, ok := err.(exitCoder); ok && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
 		return false, err
 	}
-	return isGatewayProcessCommandLine(cmdline), nil
+
+	// Check if our PID is in the list of matching PIDs.
+	pidStr := strconv.Itoa(pid)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.TrimSpace(line) == pidStr {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func isGatewayProcessCommandLine(cmdline string) bool {
@@ -1479,33 +1496,6 @@ func isGatewayProcessCommandLine(cmdline string) bool {
 		}
 	}
 	return false
-}
-
-func readProcessCommandLine(pid int) (string, error) {
-	if pid <= 0 {
-		return "", fmt.Errorf("invalid pid: %d", pid)
-	}
-
-	// Linux: /proc is the most direct source and avoids locale-dependent ps output.
-	if runtime.GOOS == "linux" {
-		procPath := filepath.Join("/proc", strconv.Itoa(pid), "cmdline")
-		if data, err := os.ReadFile(procPath); err == nil {
-			line := strings.TrimSpace(strings.ReplaceAll(string(data), "\x00", " "))
-			if line != "" {
-				return line, nil
-			}
-		}
-	}
-
-	out, err := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
-	if err != nil {
-		return "", err
-	}
-	line := strings.TrimSpace(string(out))
-	if line == "" {
-		return "", fmt.Errorf("empty command line for pid %d", pid)
-	}
-	return line, nil
 }
 
 func statusCmd() {

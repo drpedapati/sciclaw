@@ -54,15 +54,12 @@ func TestIsGatewayProcessCommandLine(t *testing.T) {
 }
 
 func TestIsGatewayProcessPID(t *testing.T) {
-	orig := processCommandLineForPID
-	t.Cleanup(func() { processCommandLineForPID = orig })
+	orig := pgrepGatewayPIDs
+	t.Cleanup(func() { pgrepGatewayPIDs = orig })
 
 	t.Run("verified gateway process", func(t *testing.T) {
-		processCommandLineForPID = func(pid int) (string, error) {
-			if pid != 1234 {
-				t.Fatalf("pid = %d, want 1234", pid)
-			}
-			return "/opt/homebrew/bin/sciclaw gateway", nil
+		pgrepGatewayPIDs = func() ([]byte, error) {
+			return []byte("1234\n5678\n"), nil
 		}
 		ok, err := isGatewayProcessPID(1234)
 		if err != nil {
@@ -74,8 +71,8 @@ func TestIsGatewayProcessPID(t *testing.T) {
 	})
 
 	t.Run("reused pid for unrelated process", func(t *testing.T) {
-		processCommandLineForPID = func(pid int) (string, error) {
-			return "/usr/bin/login -fp ernie", nil
+		pgrepGatewayPIDs = func() ([]byte, error) {
+			return []byte("5678\n9999\n"), nil
 		}
 		ok, err := isGatewayProcessPID(2222)
 		if err != nil {
@@ -86,17 +83,38 @@ func TestIsGatewayProcessPID(t *testing.T) {
 		}
 	})
 
-	t.Run("verification error bubbles up", func(t *testing.T) {
-		processCommandLineForPID = func(pid int) (string, error) {
-			return "", errors.New("ps failed")
+	t.Run("no gateway processes running", func(t *testing.T) {
+		pgrepGatewayPIDs = func() ([]byte, error) {
+			return nil, &fakeExitError{code: 1}
 		}
 		ok, err := isGatewayProcessPID(3333)
-		if err == nil {
-			t.Fatal("expected verification error")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 		if ok {
-			t.Fatal("expected false when verification fails")
+			t.Fatal("expected false when no gateway processes match")
+		}
+	})
+
+	t.Run("pgrep error bubbles up", func(t *testing.T) {
+		pgrepGatewayPIDs = func() ([]byte, error) {
+			return nil, errors.New("pgrep failed")
+		}
+		ok, err := isGatewayProcessPID(4444)
+		if err == nil {
+			t.Fatal("expected pgrep error")
+		}
+		if ok {
+			t.Fatal("expected false when pgrep fails")
 		}
 	})
 }
+
+// fakeExitError simulates an exec.ExitError for testing pgrep exit codes.
+type fakeExitError struct {
+	code int
+}
+
+func (e *fakeExitError) Error() string { return "exit status" }
+func (e *fakeExitError) ExitCode() int { return e.code }
 
