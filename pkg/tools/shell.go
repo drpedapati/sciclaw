@@ -70,7 +70,7 @@ func NewExecTool(workingDir string, restrict bool) *ExecTool {
 
 	return &ExecTool{
 		workingDir:          workingDir,
-		timeout:             60 * time.Second,
+		timeout:             300 * time.Second, // 5 min default for scientific workflows
 		denyPatterns:        denyPatterns,
 		allowPatterns:       nil,
 		restrictToWorkspace: restrict,

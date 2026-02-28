@@ -122,6 +122,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Shell execution
 	execTool := tools.NewExecTool(workspace, restrict)
 	execTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
+	if cfg.Agents.Defaults.ExecTimeout > 0 {
+		execTool.SetTimeout(time.Duration(cfg.Agents.Defaults.ExecTimeout) * time.Second)
+	}
 	pubmedExportTool := tools.NewPubMedExportTool(workspace, restrict)
 	pubmedExportTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
