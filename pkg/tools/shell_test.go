@@ -459,25 +459,32 @@ func TestShellTool_AllowsDirectPubMedCLI(t *testing.T) {
 func TestShellTool_AllowsRoutedWorkspacePathInCommand(t *testing.T) {
 	// Simulate a routed workspace that differs from the shared workspace.
 	// This tests the bug where commands containing absolute paths to the routed
-	// workspace were blocked because only sharedWorkspace was in allowedRoots.
-	routedWorkspace := t.TempDir()
-	sharedWorkspace := t.TempDir()
+	// workspace were blocked because only cwd/sharedWorkspace were in allowedRoots.
+	baseRoot := string(filepath.Separator)
+	if vol := filepath.VolumeName(os.TempDir()); vol != "" {
+		baseRoot = vol + string(filepath.Separator)
+	}
+	routedWorkspace := filepath.Join(baseRoot, "sciclaw-test-routed-workspace")
+	sharedWorkspace := filepath.Join(baseRoot, "sciclaw-test-shared-workspace")
 	subdir := filepath.Join(routedWorkspace, "vecflow")
-	os.MkdirAll(subdir, 0755)
+	if isAllowedOutsideWorkspacePath(subdir) || isAllowedOutsideWorkspacePath(sharedWorkspace) {
+		t.Fatalf("test setup must use non-temp absolute roots: routed=%q shared=%q", subdir, sharedWorkspace)
+	}
 
 	tool := NewExecTool(routedWorkspace, false)
 	tool.SetRestrictToWorkspace(true)
 	tool.SetSharedWorkspacePolicy(sharedWorkspace, false)
 
-	// Command that contains an absolute path to the routed workspace
+	// Command contains an absolute routed-workspace path while cwd is shared workspace.
+	// This specifically exercises the t.workingDir allowed root behavior.
 	cmd := fmt.Sprintf("cd %s && git status", subdir)
-	if blocked := tool.guardCommand(cmd, routedWorkspace); blocked != "" {
+	if blocked := tool.guardCommand(cmd, sharedWorkspace); blocked != "" {
 		t.Fatalf("expected routed workspace path to pass guard, got: %q", blocked)
 	}
 
-	// Also test with working_dir pointing to routed workspace
+	// Also verify another absolute routed-workspace reference from shared cwd.
 	cmd2 := fmt.Sprintf("cat %s/file.txt", subdir)
-	if blocked := tool.guardCommand(cmd2, routedWorkspace); blocked != "" {
+	if blocked := tool.guardCommand(cmd2, sharedWorkspace); blocked != "" {
 		t.Fatalf("expected routed workspace subdir path to pass guard, got: %q", blocked)
 	}
 }
