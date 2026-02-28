@@ -51,7 +51,7 @@ var (
 )
 
 var pgrepGatewayPIDs = func() ([]byte, error) {
-	return exec.Command("pgrep", "-f", "(sciclaw|picoclaw).*gateway").Output()
+	return exec.Command("pgrep", "-f", "(sciclaw|picoclaw)[[:space:]]+gateway([[:space:]]|$)").Output()
 }
 
 func init() {
