@@ -97,6 +97,7 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 
 	c.ctx = ctx
 	c.session.AddHandler(c.handleMessage)
+	c.session.AddHandler(c.handleMessageUpdate)
 
 	if err := c.session.Open(); err != nil {
 		// Graceful fallback for deployments where Message Content intent is not granted.
@@ -238,6 +239,26 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 	if m == nil || m.Author == nil {
 		return
 	}
+	c.processIncomingMessage(s, m.Message, false)
+}
+
+func (c *DiscordChannel) handleMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) {
+	// Discord fires MessageUpdate for embed unfurls, link previews, and pin
+	// updates where Author/Content may be nil. Skip those.
+	if m == nil || m.Message == nil || m.Author == nil {
+		return
+	}
+	// Only process edits that mention the bot — this lets users add a
+	// forgotten @mention without re-triggering on every typo fix.
+	c.processIncomingMessage(s, m.Message, true)
+}
+
+// processIncomingMessage is the shared handler for both new messages and edits.
+// When editOnly is true the message is silently dropped unless it mentions the bot.
+func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discordgo.Message, editOnly bool) {
+	if m.Author == nil {
+		return
+	}
 
 	if m.Author.ID == s.State.User.ID {
 		return
@@ -272,6 +293,7 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		"sender_id":         senderID,
 		"has_msg_ref":       m.MessageReference != nil,
 		"has_ref_msg":       m.ReferencedMessage != nil,
+		"is_edit":           editOnly,
 	})
 
 	if !isMention {
@@ -309,6 +331,11 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 				isMention = true
 			}
 		}
+	}
+
+	// For edits, only process if the edited message mentions the bot.
+	if editOnly && !isMention {
+		return
 	}
 
 	content := m.Content
@@ -394,6 +421,7 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		"sender_name": senderName,
 		"sender_id":   senderID,
 		"preview":     utils.Truncate(content, 50),
+		"is_edit":     editOnly,
 	})
 	if isMention {
 		c.startTyping(m.ChannelID)
@@ -408,6 +436,7 @@ func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.Messag
 		"channel_id":   m.ChannelID,
 		"is_dm":        fmt.Sprintf("%t", m.GuildID == ""),
 		"is_mention":   fmt.Sprintf("%t", isMention),
+		"is_edit":      fmt.Sprintf("%t", editOnly),
 	}
 
 	c.HandleMessage(senderID, m.ChannelID, content, mediaPaths, metadata)

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 )
@@ -347,5 +348,154 @@ func TestSendDiscordAttachment_ValidatesPathsAndSize(t *testing.T) {
 
 	if err := sendDiscordAttachment(nil, "chan", "", bus.OutboundAttachment{Path: okPath}); err == nil || !strings.Contains(err.Error(), "session is nil") {
 		t.Fatalf("expected session nil error for valid file, got %v", err)
+	}
+}
+
+// newTestSession returns a minimal discordgo.Session whose State.User is the bot.
+func newTestSession(botID string) *discordgo.Session {
+	s := &discordgo.Session{
+		State: discordgo.NewState(),
+	}
+	s.State.User = &discordgo.User{ID: botID}
+	return s
+}
+
+func TestProcessIncomingMessage_EditWithMention(t *testing.T) {
+	mb := bus.NewMessageBus()
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, mb, nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-123",
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	s := newTestSession("bot-123")
+
+	msg := &discordgo.Message{
+		ID:        "msg-1",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "hello <@bot-123> please help",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+		Mentions:  []*discordgo.User{{ID: "bot-123"}},
+	}
+
+	ch.processIncomingMessage(s, msg, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	got, ok := mb.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("expected message on bus for edit-with-mention, got nothing")
+	}
+	if got.Metadata["is_edit"] != "true" {
+		t.Fatalf("expected is_edit=true, got %q", got.Metadata["is_edit"])
+	}
+	if strings.Contains(got.Content, "<@bot-123>") {
+		t.Fatal("bot mention should be stripped from content")
+	}
+}
+
+func TestProcessIncomingMessage_EditWithoutMention(t *testing.T) {
+	mb := bus.NewMessageBus()
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, mb, nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-123",
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	s := newTestSession("bot-123")
+
+	msg := &discordgo.Message{
+		ID:        "msg-2",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "just fixing a typo",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+	}
+
+	ch.processIncomingMessage(s, msg, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, ok := mb.ConsumeInbound(ctx)
+	if ok {
+		t.Fatal("edit without mention should not produce a bus message")
+	}
+}
+
+func TestProcessIncomingMessage_EditNilAuthor(t *testing.T) {
+	mb := bus.NewMessageBus()
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, mb, nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-123",
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	s := newTestSession("bot-123")
+
+	// Embed unfurl: Author is nil
+	msg := &discordgo.Message{
+		ID:        "msg-3",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "",
+		Author:    nil,
+	}
+
+	ch.processIncomingMessage(s, msg, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, ok := mb.ConsumeInbound(ctx)
+	if ok {
+		t.Fatal("edit with nil author should not produce a bus message")
+	}
+}
+
+func TestProcessIncomingMessage_NewMessageWithoutMention(t *testing.T) {
+	mb := bus.NewMessageBus()
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, mb, nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-123",
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	s := newTestSession("bot-123")
+
+	// New messages (not edits) should still be published even without a mention.
+	msg := &discordgo.Message{
+		ID:        "msg-4",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "hello everyone",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+	}
+
+	ch.processIncomingMessage(s, msg, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	got, ok := mb.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("new message without mention should still reach bus")
+	}
+	if got.Metadata["is_edit"] != "false" {
+		t.Fatalf("expected is_edit=false, got %q", got.Metadata["is_edit"])
 	}
 }
