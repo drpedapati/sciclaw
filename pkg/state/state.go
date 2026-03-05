@@ -36,7 +36,6 @@ type Manager struct {
 	stopCh    chan struct{}
 	loopDone  chan struct{}
 	closed    bool
-	closeOnce sync.Once
 }
 
 var (
@@ -184,20 +183,13 @@ func (sm *Manager) saveLoop() {
 }
 
 func (sm *Manager) enqueueSave(snapshot State) {
-	select {
-	case sm.saveQueue <- snapshot:
-		return
-	default:
-	}
-
-	// Queue already has an older snapshot; drop it and enqueue the latest.
-	select {
-	case <-sm.saveQueue:
-	default:
-	}
-	select {
-	case sm.saveQueue <- snapshot:
-	default:
+	for {
+		select {
+		case sm.saveQueue <- snapshot:
+			return
+		case <-sm.saveQueue:
+			// Drop the stale queued snapshot and retry so latest state is queued.
+		}
 	}
 }
 
@@ -206,25 +198,15 @@ func (sm *Manager) Flush(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
 	sm.mu.RLock()
+	if sm.closed {
+		sm.mu.RUnlock()
+		return errManagerClosed
+	}
 	snapshot := *sm.state
 	sm.mu.RUnlock()
 
-	done := make(chan error, 1)
-	go func() {
-		done <- sm.persistSnapshot(snapshot)
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return sm.persistSnapshotWithContext(ctx, snapshot)
 }
 
 // Close flushes state and stops the background save loop.
@@ -239,13 +221,12 @@ func (sm *Manager) Close(ctx context.Context) error {
 		return nil
 	}
 	sm.closed = true
+	snapshot := *sm.state
 	sm.mu.Unlock()
 
-	flushErr := sm.Flush(ctx)
+	flushErr := sm.persistSnapshotWithContext(ctx, snapshot)
 
-	sm.closeOnce.Do(func() {
-		close(sm.stopCh)
-	})
+	close(sm.stopCh)
 
 	var waitErr error
 	select {
@@ -258,6 +239,36 @@ func (sm *Manager) Close(ctx context.Context) error {
 		return flushErr
 	}
 	return waitErr
+}
+
+func (sm *Manager) persistSnapshotWithContext(ctx context.Context, snapshot State) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	for {
+		if sm.saveMu.TryLock() {
+			break
+		}
+		timer := time.NewTimer(5 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	defer sm.saveMu.Unlock()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return sm.saveAtomicSnapshot(snapshot)
 }
 
 // load loads the state from disk.

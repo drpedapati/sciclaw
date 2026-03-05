@@ -1815,10 +1815,19 @@
   <span class="hl-flag">--chat-id</span> 1467290563052048476 \
   <span class="hl-flag">--workspace</span> /absolute/path/to/project-a \
   <span class="hl-flag">--allow</span> 8535331528 \
-  <span class="hl-flag">--label</span> project-a
+  <span class="hl-flag">--label</span> project-a \
+  <span class="hl-flag">--no-mention</span>
 
 <span class="hl-cmd">sciclaw</span> routing enable
-<span class="hl-cmd">sciclaw</span> routing reload</code></pre>
+<span class="hl-cmd">sciclaw</span> routing validate
+<span class="hl-cmd">sciclaw</span> routing reload
+
+<span class="hl-comment"># Debug why a user message did/didn't route</span>
+<span class="hl-cmd">sciclaw</span> routing explain \
+  <span class="hl-flag">--channel</span> discord \
+  <span class="hl-flag">--chat-id</span> 1467290563052048476 \
+  <span class="hl-flag">--sender</span> 8535331528 \
+  <span class="hl-flag">--mention</span></code></pre>
 
         <p><strong>What the routed agent can access:</strong></p>
         <ul>
@@ -1927,6 +1936,9 @@
 <span class="hl-comment"># Switch back to cloud</span>
 <span class="hl-cmd">sciclaw</span> modes set cloud
 
+<span class="hl-comment"># Switch to VM mode</span>
+<span class="hl-cmd">sciclaw</span> modes set vm
+
 <span class="hl-comment"># Re-run setup (e.g., after hardware change)</span>
 <span class="hl-cmd">sciclaw</span> modes phi-setup
 
@@ -1947,7 +1959,7 @@
           <li><strong>Slow first response</strong> &mdash; The model loads into memory on first use. Subsequent responses are much faster.</li>
           <li><strong>Room set to PHI but no answer</strong> &mdash; check <code>sciclaw modes phi-status</code>, confirm that mapping shows AI mode <code>phi</code>, then press <strong>[R]</strong> in Routing to apply.</li>
           <li><strong>Tool calling quality</strong> &mdash; Qwen 3.5 supports tool calling, but results may vary compared to cloud models. If tools behave unexpectedly, try the <strong>quality</strong> preset (9B) or switch to cloud for complex tasks.</li>
-          <li><strong>No matching hardware profile</strong> &mdash; PHI mode requires at least 8GB RAM. Machines below this threshold should use cloud mode.</li>
+          <li><strong>No matching hardware profile</strong> &mdash; PHI mode requires at least 6GB RAM or 6GB VRAM (depending on profile). Machines below this threshold should use cloud mode.</li>
         </ul>
 
         <p><strong>MLX support</strong> is planned for Apple Silicon and will be preferred when implemented. Currently all platforms use Ollama.</p>

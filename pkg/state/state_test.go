@@ -11,18 +11,6 @@ import (
 	"time"
 )
 
-func waitForCondition(t *testing.T, timeout time.Duration, cond func() bool, msg string) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal(msg)
-}
-
 func newTestManager(t *testing.T, workspace string) *Manager {
 	t.Helper()
 	sm := NewManager(workspace)
@@ -189,12 +177,18 @@ func TestConcurrentAccess(t *testing.T) {
 		t.Error("Expected non-empty channel after concurrent writes")
 	}
 
-	// Verify state file is valid JSON
+	// Flush to make persistence deterministic before reading the file.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	// Verify state file is valid JSON.
 	stateFile := filepath.Join(tmpDir, "state", "state.json")
-	waitForCondition(t, time.Second, func() bool {
-		_, err := os.Stat(stateFile)
-		return err == nil
-	}, "expected state file to exist after concurrent writes")
+	if _, err := os.Stat(stateFile); err != nil {
+		t.Fatalf("expected state file to exist after concurrent writes: %v", err)
+	}
 
 	data, err := os.ReadFile(stateFile)
 	if err != nil {
@@ -372,5 +366,22 @@ func TestSetAfterCloseReturnsClosedError(t *testing.T) {
 	}
 	if err := sm.SetLastChatID("blocked"); !errors.Is(err, errManagerClosed) {
 		t.Fatalf("expected errManagerClosed from SetLastChatID, got %v", err)
+	}
+}
+
+func TestFlushAfterCloseReturnsClosedError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sm := NewManager(tmpDir)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm.Close(ctx); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), time.Second)
+	defer flushCancel()
+	if err := sm.Flush(flushCtx); !errors.Is(err, errManagerClosed) {
+		t.Fatalf("expected errManagerClosed from Flush after Close, got %v", err)
 	}
 }

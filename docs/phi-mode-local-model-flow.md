@@ -8,7 +8,7 @@ PHI Mode runs LLM inference locally on your machine via [Ollama](https://ollama.
 - One of the following hardware configurations:
   - **macOS ARM64 (Apple Silicon)** with 16GB+ unified RAM
   - **Linux or Windows with NVIDIA GPU** and 6GB+ VRAM
-  - **CPU-only** with 8GB+ RAM (any OS)
+  - **CPU-only** with 6GB+ RAM (any OS; 8GB+ recommended)
 - **Models:** Qwen 3.5 family (2B, 4B, or 9B parameters)
 
 ## Quick Start
@@ -75,6 +75,17 @@ sciclaw routing set-runtime \
   --channel discord \
   --chat-id 1467333670787711140 \
   --mode default
+
+# Validate and reload routing after scripted changes
+sciclaw routing validate
+sciclaw routing reload
+
+# Explain why a message did or did not route
+sciclaw routing explain \
+  --channel discord \
+  --chat-id 1467333670787711140 \
+  --sender 8535331528 \
+  --mention
 ```
 
 ## CLI Commands
@@ -86,6 +97,10 @@ Show the current mode, backend, model, and hardware summary.
 ### `sciclaw modes set cloud`
 
 Switch back to cloud mode. Your PHI configuration is preserved for next time.
+
+### `sciclaw modes set vm`
+
+Switch to VM mode (for users running gateway/runtime in a managed VM instead of host or PHI local mode).
 
 ### `sciclaw modes set phi`
 
@@ -116,7 +131,7 @@ The setup command matches your hardware to one of these profiles and selects a d
 | NVIDIA 12GB+ | Linux / Windows | NVIDIA | 12GB+ VRAM | qwen3.5:4b |
 | NVIDIA 6-11GB | Linux / Windows | NVIDIA | 6-11GB VRAM | qwen3.5:4b |
 | CPU-only 16GB+ | Any | None | 16GB+ RAM | qwen3.5:4b |
-| CPU-only <16GB | Any | None | 8-15GB RAM | qwen3.5:2b |
+| CPU-only <16GB | Any | None | 6-15GB RAM | qwen3.5:2b |
 
 ## Presets
 
