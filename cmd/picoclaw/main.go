@@ -31,11 +31,11 @@ import (
 	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/cron"
+	"github.com/sipeed/picoclaw/pkg/hardware"
 	"github.com/sipeed/picoclaw/pkg/heartbeat"
 	"github.com/sipeed/picoclaw/pkg/irl"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/migrate"
-	"github.com/sipeed/picoclaw/pkg/hardware"
 	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/phi"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -1619,7 +1619,7 @@ func gatewayCmd() {
 				})
 			}
 		}
-		loopPool = routing.NewAgentLoopPool(cfg, msgBus, provider, poolSetup...)
+		loopPool = routing.NewAgentLoopPool(cfg, msgBus, poolSetup...)
 		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
 		go func() {
 			if err := dispatcher.Run(ctx); err != nil {

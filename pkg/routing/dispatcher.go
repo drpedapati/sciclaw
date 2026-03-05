@@ -3,9 +3,11 @@ package routing
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/constants"
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
@@ -43,15 +45,22 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 
 		routed := msg
 		routed.SessionKey = decision.SessionKey
-		if err := d.pool.Dispatch(ctx, decision.Workspace, routed); err != nil {
+		target := LoopTarget{
+			Workspace: decision.Workspace,
+			Runtime:   decision.Runtime,
+		}
+		if err := d.pool.Dispatch(ctx, target, routed); err != nil {
 			logger.ErrorCF("routing", "route_invalid", map[string]interface{}{
 				"channel":   msg.Channel,
 				"chat_id":   msg.ChatID,
 				"sender_id": msg.SenderID,
 				"workspace": decision.Workspace,
+				"mode":      decision.Runtime.Mode,
+				"backend":   decision.Runtime.LocalBackend,
+				"model":     decision.Runtime.LocalModel,
 				"reason":    err.Error(),
 			})
-			d.sendOperationalError(ctx, msg)
+			d.sendDispatchError(ctx, msg, decision, err)
 		}
 	}
 }
@@ -80,6 +89,9 @@ func (d *Dispatcher) logDecision(decision Decision) {
 		"reason":        decision.Reason,
 		"mapping_label": decision.MappingLabel,
 		"session_key":   decision.SessionKey,
+		"mode":          decision.Runtime.Mode,
+		"backend":       decision.Runtime.LocalBackend,
+		"model":         decision.Runtime.LocalModel,
 		"allowed":       decision.Allowed,
 	}
 	logger.InfoCF("routing", decision.Event, fields)
@@ -123,4 +135,29 @@ func (d *Dispatcher) sendOperationalError(ctx context.Context, msg bus.InboundMe
 		ChatID:  msg.ChatID,
 		Content: "Routing failed for this request due to an internal configuration error.",
 	})
+}
+
+func (d *Dispatcher) sendDispatchError(ctx context.Context, msg bus.InboundMessage, decision Decision, err error) {
+	if constants.IsInternalChannel(msg.Channel) {
+		return
+	}
+	if decision.Runtime.Mode == config.ModePhi {
+		content := "This room is set to local PHI mode, but the local runtime is not ready."
+		if decision.Runtime.LocalModel != "" {
+			content += "\nModel: " + decision.Runtime.LocalModel
+		}
+		if decision.Runtime.LocalBackend != "" {
+			content += "\nBackend: " + decision.Runtime.LocalBackend
+		}
+		if detail := strings.TrimSpace(err.Error()); detail != "" {
+			content += "\n\nDetails: " + detail
+		}
+		d.bus.PublishOutbound(ctx, bus.OutboundMessage{
+			Channel: msg.Channel,
+			ChatID:  msg.ChatID,
+			Content: content,
+		})
+		return
+	}
+	d.sendOperationalError(ctx, msg)
 }

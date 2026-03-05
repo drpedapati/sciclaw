@@ -103,6 +103,10 @@ type RoutingMapping struct {
 	AllowedSenders FlexibleStringSlice `json:"allowed_senders"`
 	Label          string              `json:"label,omitempty"`
 	RequireMention *bool               `json:"require_mention,omitempty"`
+	Mode           string              `json:"mode,omitempty"`
+	LocalBackend   string              `json:"local_backend,omitempty"`
+	LocalModel     string              `json:"local_model,omitempty"`
+	LocalPreset    string              `json:"local_preset,omitempty"`
 }
 
 func (m RoutingMapping) MentionRequired() bool {
@@ -530,13 +534,24 @@ func expandHome(path string) string {
 func (c *Config) EffectiveMode() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	switch strings.ToLower(strings.TrimSpace(c.Agents.Defaults.Mode)) {
+	if mode := NormalizeMode(c.Agents.Defaults.Mode); mode != "" {
+		return mode
+	}
+	return ModeCloud
+}
+
+// NormalizeMode canonicalizes mode aliases to a known mode value.
+// Returns empty string for unknown values.
+func NormalizeMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case ModeCloud:
+		return ModeCloud
 	case ModePhi, "local":
 		return ModePhi
 	case ModeVM:
 		return ModeVM
 	default:
-		return ModeCloud
+		return ""
 	}
 }
 
@@ -627,6 +642,26 @@ func ValidateRoutingConfig(r RoutingConfig) error {
 			if strings.TrimSpace(sender) == "" {
 				return fmt.Errorf("routing.mappings[%d].allowed_senders[%d] cannot be empty", i, j)
 			}
+		}
+
+		modeRaw := strings.TrimSpace(m.Mode)
+		mode := NormalizeMode(modeRaw)
+		if modeRaw != "" && mode == "" {
+			return fmt.Errorf("routing.mappings[%d].mode must be one of %q, %q, %q, or %q", i, ModeCloud, ModePhi, ModeVM, "local")
+		}
+
+		localBackend := strings.TrimSpace(strings.ToLower(m.LocalBackend))
+		localModel := strings.TrimSpace(m.LocalModel)
+		localPreset := strings.TrimSpace(m.LocalPreset)
+		if localBackend != "" {
+			switch localBackend {
+			case BackendOllama, BackendMLX:
+			default:
+				return fmt.Errorf("routing.mappings[%d].local_backend must be %q or %q", i, BackendOllama, BackendMLX)
+			}
+		}
+		if mode != "" && mode != ModePhi && (localBackend != "" || localModel != "" || localPreset != "") {
+			return fmt.Errorf("routing.mappings[%d].local_* overrides require mode %q", i, ModePhi)
 		}
 	}
 	return nil

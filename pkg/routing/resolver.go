@@ -29,14 +29,56 @@ type Decision struct {
 	SenderID     string
 	Workspace    string
 	SessionKey   string
+	Runtime      RuntimeProfile
 	Reason       string
 	MappingLabel string
+}
+
+type RuntimeProfile struct {
+	Mode         string
+	LocalBackend string
+	LocalModel   string
+	LocalPreset  string
+}
+
+func (p RuntimeProfile) normalized() RuntimeProfile {
+	mode := config.NormalizeMode(p.Mode)
+	if mode == "" {
+		mode = config.ModeCloud
+	}
+
+	out := RuntimeProfile{
+		Mode:         mode,
+		LocalBackend: strings.ToLower(strings.TrimSpace(p.LocalBackend)),
+		LocalModel:   strings.TrimSpace(p.LocalModel),
+		LocalPreset:  strings.TrimSpace(p.LocalPreset),
+	}
+	if out.Mode != config.ModePhi {
+		out.LocalBackend = ""
+		out.LocalModel = ""
+		out.LocalPreset = ""
+	}
+	return out
+}
+
+func (p RuntimeProfile) Key() string {
+	n := p.normalized()
+	if n.Mode != config.ModePhi {
+		return n.Mode
+	}
+	return strings.Join([]string{
+		n.Mode,
+		n.LocalBackend,
+		strings.ToLower(n.LocalModel),
+		strings.ToLower(n.LocalPreset),
+	}, "|")
 }
 
 type Resolver struct {
 	enabled          bool
 	unmappedBehavior string
 	defaultWorkspace string
+	defaultRuntime   RuntimeProfile
 	mappings         map[string]config.RoutingMapping
 }
 
@@ -52,7 +94,13 @@ func NewResolver(cfg *config.Config) (*Resolver, error) {
 		enabled:          cfg.Routing.Enabled,
 		unmappedBehavior: strings.TrimSpace(cfg.Routing.UnmappedBehavior),
 		defaultWorkspace: cfg.WorkspacePath(),
-		mappings:         make(map[string]config.RoutingMapping, len(cfg.Routing.Mappings)),
+		defaultRuntime: RuntimeProfile{
+			Mode:         cfg.EffectiveMode(),
+			LocalBackend: cfg.Agents.Defaults.LocalBackend,
+			LocalModel:   cfg.Agents.Defaults.LocalModel,
+			LocalPreset:  cfg.Agents.Defaults.LocalPreset,
+		}.normalized(),
+		mappings: make(map[string]config.RoutingMapping, len(cfg.Routing.Mappings)),
 	}
 	if r.unmappedBehavior == "" {
 		r.unmappedBehavior = config.RoutingUnmappedBehaviorDefault
@@ -133,11 +181,13 @@ func (r *Resolver) Resolve(msg bus.InboundMessage) Decision {
 			ChatID:       chatID,
 			SenderID:     msg.SenderID,
 			Workspace:    mapping.Workspace,
+			Runtime:      r.mappingRuntime(mapping),
 			Reason:       fmt.Sprintf("workspace invalid: %v", err),
 			MappingLabel: mapping.Label,
 		}
 	}
 
+	runtime := r.mappingRuntime(mapping)
 	return Decision{
 		Event:        EventRouteMatch,
 		Allowed:      true,
@@ -145,7 +195,8 @@ func (r *Resolver) Resolve(msg bus.InboundMessage) Decision {
 		ChatID:       chatID,
 		SenderID:     msg.SenderID,
 		Workspace:    mapping.Workspace,
-		SessionKey:   namespacedSessionKey(channel, chatID, mapping.Workspace),
+		SessionKey:   namespacedSessionKey(channel, chatID, mapping.Workspace, runtime),
+		Runtime:      runtime,
 		Reason:       "exact mapping match",
 		MappingLabel: mapping.Label,
 	}
@@ -159,9 +210,37 @@ func (r *Resolver) allowDefault(msg bus.InboundMessage, channel, chatID, reason 
 		ChatID:     chatID,
 		SenderID:   msg.SenderID,
 		Workspace:  r.defaultWorkspace,
-		SessionKey: namespacedSessionKey(channel, chatID, r.defaultWorkspace),
+		SessionKey: namespacedSessionKey(channel, chatID, r.defaultWorkspace, r.defaultRuntime),
+		Runtime:    r.defaultRuntime,
 		Reason:     reason,
 	}
+}
+
+func (r *Resolver) mappingRuntime(m config.RoutingMapping) RuntimeProfile {
+	rt := r.defaultRuntime
+
+	modeRaw := strings.TrimSpace(m.Mode)
+	hasLocalOverrides := strings.TrimSpace(m.LocalBackend) != "" ||
+		strings.TrimSpace(m.LocalModel) != "" ||
+		strings.TrimSpace(m.LocalPreset) != ""
+	if modeRaw != "" {
+		rt.Mode = modeRaw
+	} else if hasLocalOverrides {
+		// Treat local_* mapping overrides as an explicit request for PHI mode.
+		rt.Mode = config.ModePhi
+	}
+
+	if v := strings.TrimSpace(m.LocalBackend); v != "" {
+		rt.LocalBackend = v
+	}
+	if v := strings.TrimSpace(m.LocalModel); v != "" {
+		rt.LocalModel = v
+	}
+	if v := strings.TrimSpace(m.LocalPreset); v != "" {
+		rt.LocalPreset = v
+	}
+
+	return rt.normalized()
 }
 
 func mappingKey(channel, chatID string) string {
@@ -184,12 +263,16 @@ func parseOrigin(msg bus.InboundMessage) (string, string) {
 	return channel, chatID
 }
 
-func namespacedSessionKey(channel, chatID, workspace string) string {
+func namespacedSessionKey(channel, chatID, workspace string, runtime RuntimeProfile) string {
 	base := fmt.Sprintf("%s:%s", strings.TrimSpace(channel), strings.TrimSpace(chatID))
 	if workspace == "" {
 		return base
 	}
-	hash := sha256.Sum256([]byte(filepath.Clean(workspace)))
+	hashInput := filepath.Clean(workspace)
+	if rt := runtime.normalized(); rt.Mode != config.ModeCloud {
+		hashInput = hashInput + "|" + rt.Key()
+	}
+	hash := sha256.Sum256([]byte(hashInput))
 	// 12 hex chars keeps it compact while avoiding collisions in practice.
 	return fmt.Sprintf("%s@%s", base, hex.EncodeToString(hash[:6]))
 }

@@ -405,3 +405,56 @@ func TestResolve_SessionNamespaceChangesWhenWorkspaceChanges(t *testing.T) {
 		t.Fatalf("session key should change when workspace changes: %q", d1.SessionKey)
 	}
 }
+
+func TestResolve_SessionNamespaceChangesWhenRuntimeChanges(t *testing.T) {
+	ws := t.TempDir()
+
+	cfgCloud := config.DefaultConfig()
+	cfgCloud.Routing.Enabled = true
+	cfgCloud.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "555",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+			Mode:           config.ModeCloud,
+		},
+	}
+	rCloud, err := NewResolver(cfgCloud)
+	if err != nil {
+		t.Fatalf("NewResolver cloud error: %v", err)
+	}
+
+	cfgPhi := config.DefaultConfig()
+	cfgPhi.Routing.Enabled = true
+	cfgPhi.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "555",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+			Mode:           config.ModePhi,
+			LocalBackend:   config.BackendOllama,
+			LocalModel:     "qwen3.5:4b",
+		},
+	}
+	rPhi, err := NewResolver(cfgPhi)
+	if err != nil {
+		t.Fatalf("NewResolver phi error: %v", err)
+	}
+
+	msg := bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "555",
+		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "true"},
+	}
+	dCloud := rCloud.Resolve(msg)
+	dPhi := rPhi.Resolve(msg)
+	if dCloud.SessionKey == dPhi.SessionKey {
+		t.Fatalf("session key should change when runtime changes: %q", dCloud.SessionKey)
+	}
+	if dPhi.Runtime.Mode != config.ModePhi {
+		t.Fatalf("expected phi runtime, got %+v", dPhi.Runtime)
+	}
+}

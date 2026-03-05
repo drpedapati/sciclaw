@@ -179,6 +179,72 @@ func TestValidateRoutingConfig_EmptyAllowedSendersRejected(t *testing.T) {
 	}
 }
 
+func TestValidateRoutingConfig_LocalOverridesRequirePhiMode(t *testing.T) {
+	workspace := t.TempDir()
+	err := ValidateRoutingConfig(RoutingConfig{
+		Mappings: []RoutingMapping{
+			{
+				Channel:        "discord",
+				ChatID:         "100",
+				Workspace:      workspace,
+				AllowedSenders: FlexibleStringSlice{"u1"},
+				Mode:           ModeCloud,
+				LocalBackend:   BackendOllama,
+				LocalModel:     "qwen3.5:4b",
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected mode/local validation error")
+	}
+	if !strings.Contains(err.Error(), "local_* overrides require mode") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateRoutingConfig_LocalAliasIsAccepted(t *testing.T) {
+	workspace := t.TempDir()
+	err := ValidateRoutingConfig(RoutingConfig{
+		Mappings: []RoutingMapping{
+			{
+				Channel:        "discord",
+				ChatID:         "100",
+				Workspace:      workspace,
+				AllowedSenders: FlexibleStringSlice{"u1"},
+				Mode:           "local",
+				LocalBackend:   BackendOllama,
+				LocalModel:     "qwen3.5:4b",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected local alias to validate, got: %v", err)
+	}
+}
+
+func TestValidateRoutingConfig_InvalidLocalBackendRejected(t *testing.T) {
+	workspace := t.TempDir()
+	err := ValidateRoutingConfig(RoutingConfig{
+		Mappings: []RoutingMapping{
+			{
+				Channel:        "discord",
+				ChatID:         "100",
+				Workspace:      workspace,
+				AllowedSenders: FlexibleStringSlice{"u1"},
+				Mode:           ModePhi,
+				LocalBackend:   "bogus",
+				LocalModel:     "qwen3.5:4b",
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid local backend error")
+	}
+	if !strings.Contains(err.Error(), "local_backend") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadConfig_MissingRoutingSectionUsesDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {

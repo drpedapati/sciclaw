@@ -21,6 +21,7 @@ const (
 	routingAddWizard
 	routingEditUsers
 	routingEditWorkspace
+	routingEditRuntime
 	routingBrowseFolder
 	routingPickRoom
 	routingPairTelegram
@@ -42,6 +43,14 @@ const (
 	addStepLabel        = 4
 	addStepConfirm      = 5
 	addStepChatIDManual = 6 // manual text input fallback (both channels)
+)
+
+const (
+	editRuntimeStepMode = iota
+	editRuntimeStepBackend
+	editRuntimeStepModel
+	editRuntimeStepPreset
+	editRuntimeStepConfirm
 )
 
 // Messages for async routing operations.
@@ -94,6 +103,10 @@ type routingRow struct {
 	Workspace      string
 	AllowedSenders string
 	Label          string
+	Mode           string
+	LocalBackend   string
+	LocalModel     string
+	LocalPreset    string
 }
 
 type routingExplainInfo struct {
@@ -143,10 +156,16 @@ type RoutingModel struct {
 	// Edit-users/workspace state
 	editUsersInput     textinput.Model
 	editWorkspaceInput textinput.Model
+	editRuntimeInput   textinput.Model
 	editUsersCursor    int
 	editUsersSelected  map[string]bool
 	editUsersExtras    []string
 	editUsersManual    bool
+	editRuntimeStep    int
+	editRuntimeMode    string
+	editRuntimeBackend string
+	editRuntimeModel   string
+	editRuntimePreset  string
 
 	// Folder browser state
 	browserPath    string
@@ -191,6 +210,9 @@ func NewRoutingModel(exec Executor) RoutingModel {
 	ew := textinput.New()
 	ew.CharLimit = 300
 	ew.Width = 50
+	er := textinput.New()
+	er.CharLimit = 200
+	er.Width = 50
 
 	return RoutingModel{
 		exec:               exec,
@@ -199,6 +221,7 @@ func NewRoutingModel(exec Executor) RoutingModel {
 		wizardInput:        wi,
 		editUsersInput:     ei,
 		editWorkspaceInput: ew,
+		editRuntimeInput:   er,
 	}
 }
 
@@ -280,6 +303,8 @@ func (m *RoutingModel) HandleAction(msg routingActionMsg) {
 		defaultLabel = "Mapping detached"
 	case "set-users":
 		defaultLabel = "Allowed users updated"
+	case "set-runtime":
+		defaultLabel = "AI mode updated"
 	case "enable":
 		defaultLabel = "Routing enabled"
 	case "disable":
@@ -433,6 +458,19 @@ func truncateValue(s string, maxLen int) string {
 	return s[:maxLen-1] + "\u2026"
 }
 
+func mappingRuntimeMode(row routingRow) string {
+	mode := strings.ToLower(strings.TrimSpace(row.Mode))
+	if mode == "" {
+		if strings.TrimSpace(row.LocalBackend) != "" ||
+			strings.TrimSpace(row.LocalModel) != "" ||
+			strings.TrimSpace(row.LocalPreset) != "" {
+			return "phi"
+		}
+		return "default"
+	}
+	return mode
+}
+
 func routingRowKey(channel, chatID string) string {
 	return strings.ToLower(strings.TrimSpace(channel)) + ":" + strings.TrimSpace(chatID)
 }
@@ -478,10 +516,22 @@ func (m *RoutingModel) rebuildDetailContent() {
 		}
 		lines = append(lines, fmt.Sprintf("  %s  %s", detailLabel.Render("Allowed users:"), senders))
 	}
+	mode := mappingRuntimeMode(r)
+	lines = append(lines, fmt.Sprintf("  %s  %s", detailLabel.Render("AI mode:"), styleValue.Render(mode)))
+	if strings.TrimSpace(r.LocalBackend) != "" {
+		lines = append(lines, fmt.Sprintf("  %s  %s", detailLabel.Render("Local backend:"), styleValue.Render(r.LocalBackend)))
+	}
+	if strings.TrimSpace(r.LocalModel) != "" {
+		lines = append(lines, fmt.Sprintf("  %s  %s", detailLabel.Render("Local model:"), styleValue.Render(truncateValue(r.LocalModel, maxValW))))
+	}
+	if strings.TrimSpace(r.LocalPreset) != "" {
+		lines = append(lines, fmt.Sprintf("  %s  %s", detailLabel.Render("Local preset:"), styleValue.Render(truncateValue(r.LocalPreset, maxValW))))
+	}
 	lines = append(lines, "")
 	lines = append(lines, "  "+styleBold.Render("Actions in this screen"))
 	lines = append(lines, "    "+styleKey.Render("[u]")+" Edit who can message the AI in this folder")
 	lines = append(lines, "    "+styleKey.Render("[f]")+" Change which folder this chat uses")
+	lines = append(lines, "    "+styleKey.Render("[m]")+" Choose cloud or local AI mode for this room")
 	lines = append(lines, "    "+styleKey.Render("[e]")+" Explain why a sender is allowed or blocked")
 	lines = append(lines, "    "+styleKey.Render("[x]")+" Detach this mapping")
 	explainSender := firstAllowedSender(r.AllowedSenders)
@@ -604,6 +654,14 @@ func parseRoutingList(output string) []routingRow {
 				row.AllowedSenders = val
 			case "label":
 				row.Label = val
+			case "mode":
+				row.Mode = strings.ToLower(strings.TrimSpace(val))
+			case "local_backend":
+				row.LocalBackend = strings.ToLower(strings.TrimSpace(val))
+			case "local_model":
+				row.LocalModel = strings.TrimSpace(val)
+			case "local_preset":
+				row.LocalPreset = strings.TrimSpace(val)
 			}
 			i++
 		}
@@ -795,6 +853,8 @@ func (m RoutingModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (RoutingModel, te
 		return m.updateEditUsers(msg, snap)
 	case routingEditWorkspace:
 		return m.updateEditWorkspace(msg, snap)
+	case routingEditRuntime:
+		return m.updateEditRuntime(msg)
 	case routingBrowseFolder:
 		return m.updateBrowseFolder(msg, snap)
 	case routingPickRoom:
@@ -844,6 +904,8 @@ func (m RoutingModel) updateNormal(msg tea.KeyMsg, snap *VMSnapshot) (RoutingMod
 		return m.startExplain()
 	case "f":
 		return m.startEditWorkspace()
+	case "m":
+		return m.startEditRuntime()
 	case "v":
 		return m, routingValidateCmd(m.exec)
 	case "R":
@@ -1092,7 +1154,7 @@ func (m RoutingModel) updateAddWizard(msg tea.KeyMsg, snap *VMSnapshot) (Routing
 		if key == "enter" {
 			m.mode = routingNormal
 			return m, routingAddMappingCmd(m.exec, m.wizardChannel, m.wizardChatID,
-				m.wizardPath, m.wizardAllow, m.wizardLabel)
+				m.wizardPath, m.wizardAllow, m.wizardLabel, "", "", "", "")
 		}
 		return m, nil
 	}
@@ -1354,10 +1416,103 @@ func (m RoutingModel) updateEditWorkspace(msg tea.KeyMsg, snap *VMSnapshot) (Rou
 		workspace := expandHomeForExecPath(val, m.exec.HomePath())
 		m.mode = routingNormal
 		m.editWorkspaceInput.Blur()
-		return m, routingAddMappingCmd(m.exec, row.Channel, row.ChatID, workspace, row.AllowedSenders, row.Label)
+		return m, routingAddMappingCmd(m.exec, row.Channel, row.ChatID, workspace, row.AllowedSenders, row.Label, row.Mode, row.LocalBackend, row.LocalModel, row.LocalPreset)
 	}
 	var cmd tea.Cmd
 	m.editWorkspaceInput, cmd = m.editWorkspaceInput.Update(msg)
+	return m, cmd
+}
+
+func (m RoutingModel) startEditRuntime() (RoutingModel, tea.Cmd) {
+	if m.selectedRow >= len(m.mappings) {
+		return m, nil
+	}
+	row := m.mappings[m.selectedRow]
+	m.mode = routingEditRuntime
+	m.editRuntimeStep = editRuntimeStepMode
+	m.editRuntimeMode = strings.TrimSpace(row.Mode)
+	m.editRuntimeBackend = strings.TrimSpace(row.LocalBackend)
+	m.editRuntimeModel = strings.TrimSpace(row.LocalModel)
+	m.editRuntimePreset = strings.TrimSpace(row.LocalPreset)
+	if m.editRuntimeMode == "" {
+		m.editRuntimeMode = "default"
+	}
+	m.editRuntimeInput.SetValue(m.editRuntimeMode)
+	m.editRuntimeInput.Placeholder = "default|cloud|phi|vm"
+	m.editRuntimeInput.Focus()
+	return m, nil
+}
+
+func (m RoutingModel) updateEditRuntime(msg tea.KeyMsg) (RoutingModel, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = routingNormal
+		m.editRuntimeInput.Blur()
+		return m, nil
+	case "enter":
+		switch m.editRuntimeStep {
+		case editRuntimeStepMode:
+			val := strings.ToLower(strings.TrimSpace(m.editRuntimeInput.Value()))
+			if val == "" {
+				val = "default"
+			}
+			switch val {
+			case "default", "cloud", "phi", "local", "vm":
+			default:
+				m.flashMsg = styleErr.Render("✗") + " Mode must be default, cloud, phi, or vm"
+				m.flashUntil = time.Now().Add(4 * time.Second)
+				return m, nil
+			}
+			if val == "local" {
+				val = "phi"
+			}
+			m.editRuntimeMode = val
+			m.editRuntimeStep = editRuntimeStepBackend
+			m.editRuntimeInput.SetValue(m.editRuntimeBackend)
+			m.editRuntimeInput.Placeholder = "ollama (optional unless mode=phi)"
+			return m, nil
+		case editRuntimeStepBackend:
+			m.editRuntimeBackend = strings.ToLower(strings.TrimSpace(m.editRuntimeInput.Value()))
+			m.editRuntimeStep = editRuntimeStepModel
+			m.editRuntimeInput.SetValue(m.editRuntimeModel)
+			m.editRuntimeInput.Placeholder = "e.g. qwen3.5:4b (optional unless mode=phi)"
+			return m, nil
+		case editRuntimeStepModel:
+			m.editRuntimeModel = strings.TrimSpace(m.editRuntimeInput.Value())
+			m.editRuntimeStep = editRuntimeStepPreset
+			m.editRuntimeInput.SetValue(m.editRuntimePreset)
+			m.editRuntimeInput.Placeholder = "(optional)"
+			return m, nil
+		case editRuntimeStepPreset:
+			m.editRuntimePreset = strings.TrimSpace(m.editRuntimeInput.Value())
+			m.editRuntimeStep = editRuntimeStepConfirm
+			m.editRuntimeInput.Blur()
+			return m, nil
+		case editRuntimeStepConfirm:
+			if m.selectedRow >= len(m.mappings) {
+				m.mode = routingNormal
+				return m, nil
+			}
+			row := m.mappings[m.selectedRow]
+			mode := strings.ToLower(strings.TrimSpace(m.editRuntimeMode))
+			if mode == "default" {
+				mode = ""
+			}
+			backend := strings.ToLower(strings.TrimSpace(m.editRuntimeBackend))
+			model := strings.TrimSpace(m.editRuntimeModel)
+			preset := strings.TrimSpace(m.editRuntimePreset)
+			if mode != "phi" {
+				backend = ""
+				model = ""
+				preset = ""
+			}
+			m.mode = routingNormal
+			return m, routingSetRuntimeCmd(m.exec, row.Channel, row.ChatID, mode, backend, model, preset)
+		}
+	}
+
+	var cmd tea.Cmd
+	m.editRuntimeInput, cmd = m.editRuntimeInput.Update(msg)
 	return m, cmd
 }
 
@@ -1563,8 +1718,9 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 	b.WriteString("\n")
 
 	// Keybindings.
-	b.WriteString(fmt.Sprintf("  %s Add   %s Explain   %s Edit Folder   %s Edit Users   %s Enable/Disable   %s Detach   %s Check config   %s Apply changes   %s Refresh\n",
+	b.WriteString(fmt.Sprintf("  %s Add   %s AI Mode   %s Explain   %s Edit Folder   %s Edit Users   %s Enable/Disable   %s Detach   %s Check config   %s Apply changes   %s Refresh\n",
 		styleKey.Render("[a]"),
+		styleKey.Render("[m]"),
 		styleKey.Render("[e]"),
 		styleKey.Render("[f]"),
 		styleKey.Render("[u]"),
@@ -1606,6 +1762,10 @@ func (m RoutingModel) View(snap *VMSnapshot, width int) string {
 	if m.mode == routingEditWorkspace {
 		b.WriteString("\n")
 		b.WriteString(m.renderEditWorkspaceOverlay())
+	}
+	if m.mode == routingEditRuntime {
+		b.WriteString("\n")
+		b.WriteString(m.renderEditRuntimeOverlay())
 	}
 
 	// Overlay: folder browser.
@@ -1739,7 +1899,7 @@ func routingReloadCmd(exec Executor) tea.Cmd {
 	}
 }
 
-func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, label string) tea.Cmd {
+func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, label, mode, localBackend, localModel, localPreset string) tea.Cmd {
 	return func() tea.Msg {
 		workspace = expandHomeForExecPath(workspace, exec.HomePath())
 		cmd := fmt.Sprintf("HOME=%s %s routing add --channel %s --chat-id %s --workspace %s --allow %s",
@@ -1753,6 +1913,18 @@ func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, l
 		if strings.TrimSpace(label) != "" {
 			cmd += " --label " + shellEscape(label)
 		}
+		if strings.TrimSpace(mode) != "" {
+			cmd += " --mode " + shellEscape(mode)
+		}
+		if strings.TrimSpace(localBackend) != "" {
+			cmd += " --local-backend " + shellEscape(localBackend)
+		}
+		if strings.TrimSpace(localModel) != "" {
+			cmd += " --local-model " + shellEscape(localModel)
+		}
+		if strings.TrimSpace(localPreset) != "" {
+			cmd += " --local-preset " + shellEscape(localPreset)
+		}
 		cmd += " 2>&1"
 		out, err := exec.ExecShell(10*time.Second, cmd)
 		out = strings.TrimSpace(out)
@@ -1763,6 +1935,35 @@ func routingAddMappingCmd(exec Executor, channel, chatID, workspace, allowCSV, l
 			return routingActionMsg{action: "add", output: out, ok: false}
 		}
 		return routingActionMsg{action: "add", output: out, ok: true}
+	}
+}
+
+func routingSetRuntimeCmd(exec Executor, channel, chatID, mode, localBackend, localModel, localPreset string) tea.Cmd {
+	return func() tea.Msg {
+		cmd := fmt.Sprintf("HOME=%s %s routing set-runtime --channel %s --chat-id %s",
+			exec.HomePath(),
+			shellEscape(exec.BinaryPath()),
+			shellEscape(channel),
+			shellEscape(chatID),
+		)
+		if strings.TrimSpace(mode) != "" {
+			cmd += " --mode " + shellEscape(mode)
+		} else {
+			cmd += " --mode " + shellEscape("default")
+		}
+		cmd += " --local-backend " + shellEscape(strings.TrimSpace(localBackend))
+		cmd += " --local-model " + shellEscape(strings.TrimSpace(localModel))
+		cmd += " --local-preset " + shellEscape(strings.TrimSpace(localPreset))
+		cmd += " 2>&1"
+		out, err := exec.ExecShell(10*time.Second, cmd)
+		out = strings.TrimSpace(out)
+		if err != nil {
+			if out == "" {
+				out = err.Error()
+			}
+			return routingActionMsg{action: "set-runtime", output: out, ok: false}
+		}
+		return routingActionMsg{action: "set-runtime", output: out, ok: true}
 	}
 }
 
@@ -2084,6 +2285,50 @@ func (m RoutingModel) renderEditWorkspaceOverlay() string {
 	lines = append(lines, styleHint.Render("    Enter a new project folder for this room mapping."))
 	lines = append(lines, fmt.Sprintf("    %s to browse folders", styleKey.Render("Ctrl+B")))
 	lines = append(lines, styleDim.Render("    Enter to save, Esc to cancel"))
+	return strings.Join(lines, "\n")
+}
+
+func (m RoutingModel) renderEditRuntimeOverlay() string {
+	row := m.mappings[m.selectedRow]
+	var lines []string
+	lines = append(lines, styleBold.Render(fmt.Sprintf("  Choose AI mode for %s:%s", row.Channel, row.ChatID)))
+	lines = append(lines, styleHint.Render("    This room can use cloud AI or your local PHI runtime."))
+
+	switch m.editRuntimeStep {
+	case editRuntimeStepMode:
+		lines = append(lines, fmt.Sprintf("  Mode: %s", m.editRuntimeInput.View()))
+		lines = append(lines, styleHint.Render("    Options: default, cloud, phi, vm"))
+	case editRuntimeStepBackend:
+		lines = append(lines, fmt.Sprintf("  Local backend: %s", m.editRuntimeInput.View()))
+		lines = append(lines, styleHint.Render("    Usually ollama"))
+	case editRuntimeStepModel:
+		lines = append(lines, fmt.Sprintf("  Local model: %s", m.editRuntimeInput.View()))
+		lines = append(lines, styleHint.Render("    Example: qwen3.5:4b"))
+	case editRuntimeStepPreset:
+		lines = append(lines, fmt.Sprintf("  Local preset: %s", m.editRuntimeInput.View()))
+		lines = append(lines, styleHint.Render("    Optional profile label"))
+	case editRuntimeStepConfirm:
+		lines = append(lines, "")
+		mode := strings.TrimSpace(m.editRuntimeMode)
+		if mode == "" {
+			mode = "default"
+		}
+		lines = append(lines, fmt.Sprintf("    Mode: %s", styleValue.Render(mode)))
+		if strings.TrimSpace(m.editRuntimeBackend) != "" {
+			lines = append(lines, fmt.Sprintf("    Local backend: %s", styleValue.Render(m.editRuntimeBackend)))
+		}
+		if strings.TrimSpace(m.editRuntimeModel) != "" {
+			lines = append(lines, fmt.Sprintf("    Local model: %s", styleValue.Render(m.editRuntimeModel)))
+		}
+		if strings.TrimSpace(m.editRuntimePreset) != "" {
+			lines = append(lines, fmt.Sprintf("    Local preset: %s", styleValue.Render(m.editRuntimePreset)))
+		}
+		lines = append(lines, "")
+		lines = append(lines, styleHint.Render("    Press Enter to save, Esc to cancel"))
+	}
+	if m.editRuntimeStep != editRuntimeStepConfirm {
+		lines = append(lines, styleDim.Render("    Enter to continue, Esc to cancel"))
+	}
 	return strings.Join(lines, "\n")
 }
 

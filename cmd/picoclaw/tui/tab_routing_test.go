@@ -97,7 +97,7 @@ func TestRoutingAddMappingCmd_ExpandsWorkspacePath(t *testing.T) {
 		home:     "/Users/tester",
 		shellOut: "ok",
 	}
-	cmd := routingAddMappingCmd(execStub, "discord", "123", "~/sciclaw/workspace", "u1", "")
+	cmd := routingAddMappingCmd(execStub, "discord", "123", "~/sciclaw/workspace", "u1", "", "", "", "", "")
 	msg := cmd().(routingActionMsg)
 	if !msg.ok {
 		t.Fatalf("expected ok routing action, got: %#v", msg)
@@ -408,6 +408,49 @@ func TestRoutingStatusPanel_DisabledHintAndUnroutedWording(t *testing.T) {
 	}
 	if !strings.Contains(panel, "Press [t] to turn it on from this screen.") {
 		t.Fatalf("status panel should include TUI enable helper:\n%s", panel)
+	}
+}
+
+func TestParseRoutingList_ParsesRuntimeFields(t *testing.T) {
+	out := `Routing mappings (1):
+- discord 123
+  workspace: /tmp/project-a
+  allowed_senders: 111
+  label: project-a
+  mode: phi
+  local_backend: ollama
+  local_model: qwen3.5:4b
+  local_preset: balanced
+`
+	rows := parseRoutingList(out)
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.Mode != "phi" || row.LocalBackend != "ollama" || row.LocalModel != "qwen3.5:4b" || row.LocalPreset != "balanced" {
+		t.Fatalf("unexpected runtime parse: %+v", row)
+	}
+}
+
+func TestRoutingSetRuntimeCmd_BuildsExpectedCommand(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester", shellOut: "ok"}
+	cmd := routingSetRuntimeCmd(execStub, "discord", "123", "phi", "ollama", "qwen3.5:4b", "balanced")
+	msg := cmd().(routingActionMsg)
+	if !msg.ok {
+		t.Fatalf("expected ok message, got %#v", msg)
+	}
+	for _, want := range []string{
+		"routing set-runtime",
+		"--channel 'discord'",
+		"--chat-id '123'",
+		"--mode 'phi'",
+		"--local-backend 'ollama'",
+		"--local-model 'qwen3.5:4b'",
+		"--local-preset 'balanced'",
+	} {
+		if !strings.Contains(execStub.lastShell, want) {
+			t.Fatalf("command missing %q: %s", want, execStub.lastShell)
+		}
 	}
 }
 

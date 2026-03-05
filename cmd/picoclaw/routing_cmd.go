@@ -32,6 +32,8 @@ func routingCmd() {
 		routingRemoveCmd()
 	case "set-users":
 		routingSetUsersCmd()
+	case "set-runtime":
+		routingSetRuntimeCmd()
 	case "validate":
 		routingValidateCmd()
 	case "explain":
@@ -59,9 +61,10 @@ func routingHelp() {
 	fmt.Printf("\nRouting commands:\n")
 	fmt.Printf("  %s routing status\n", commandName)
 	fmt.Printf("  %s routing list\n", commandName)
-	fmt.Printf("  %s routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention]\n", commandName)
+	fmt.Printf("  %s routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention] [--mode <default|cloud|phi|vm>] [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]\n", commandName)
 	fmt.Printf("  %s routing remove --channel <channel> --chat-id <id>\n", commandName)
 	fmt.Printf("  %s routing set-users --channel <channel> --chat-id <id> --allow <id1,id2>\n", commandName)
+	fmt.Printf("  %s routing set-runtime --channel <channel> --chat-id <id> --mode <default|cloud|phi|vm> [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]\n", commandName)
 	fmt.Printf("  %s routing validate\n", commandName)
 	fmt.Printf("  %s routing explain --channel <channel> --chat-id <id> --sender <id> [--mention] [--dm]\n", commandName)
 	fmt.Printf("  %s routing enable|disable\n", commandName)
@@ -130,11 +133,23 @@ func routingListCmd() {
 		fmt.Printf("  workspace: %s\n", m.Workspace)
 		fmt.Printf("  allowed_senders: %s\n", strings.Join(m.AllowedSenders, ","))
 		fmt.Printf("  label: %s\n", label)
+		mode := mappingModeDisplay(m)
+		fmt.Printf("  mode: %s\n", mode)
+		if strings.TrimSpace(m.LocalBackend) != "" {
+			fmt.Printf("  local_backend: %s\n", strings.TrimSpace(strings.ToLower(m.LocalBackend)))
+		}
+		if strings.TrimSpace(m.LocalModel) != "" {
+			fmt.Printf("  local_model: %s\n", strings.TrimSpace(m.LocalModel))
+		}
+		if strings.TrimSpace(m.LocalPreset) != "" {
+			fmt.Printf("  local_preset: %s\n", strings.TrimSpace(m.LocalPreset))
+		}
 	}
 }
 
 func routingAddCmd() {
 	channel, chatID, workspace, allowCSV, label := "", "", "", "", ""
+	modeRaw, localBackend, localModel, localPreset := "", "", "", ""
 	noMention := false
 	args := os.Args[3:]
 	for i := 0; i < len(args); i++ {
@@ -166,12 +181,44 @@ func routingAddCmd() {
 			}
 		case "--no-mention":
 			noMention = true
+		case "--mode":
+			if i+1 < len(args) {
+				modeRaw = args[i+1]
+				i++
+			}
+		case "--local-backend":
+			if i+1 < len(args) {
+				localBackend = args[i+1]
+				i++
+			}
+		case "--local-model":
+			if i+1 < len(args) {
+				localModel = args[i+1]
+				i++
+			}
+		case "--local-preset":
+			if i+1 < len(args) {
+				localPreset = args[i+1]
+				i++
+			}
 		}
 	}
 
 	if strings.TrimSpace(channel) == "" || strings.TrimSpace(chatID) == "" || strings.TrimSpace(workspace) == "" || strings.TrimSpace(allowCSV) == "" {
-		fmt.Println("Usage: routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention]")
+		fmt.Println("Usage: routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention] [--mode <default|cloud|phi|vm>] [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]")
 		return
+	}
+
+	mode, modeSet, err := parseRoutingModeFlag(modeRaw)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	localBackend = strings.TrimSpace(strings.ToLower(localBackend))
+	localModel = strings.TrimSpace(localModel)
+	localPreset = strings.TrimSpace(localPreset)
+	if !modeSet && (localBackend != "" || localModel != "" || localPreset != "") {
+		mode = config.ModePhi
 	}
 
 	cfg, err := loadConfig()
@@ -192,6 +239,10 @@ func routingAddCmd() {
 		Workspace:      workspace,
 		AllowedSenders: allowed,
 		Label:          label,
+		Mode:           mode,
+		LocalBackend:   localBackend,
+		LocalModel:     localModel,
+		LocalPreset:    localPreset,
 	}
 	if noMention {
 		f := false
@@ -334,6 +385,110 @@ func routingSetUsersCmd() {
 	fmt.Printf("Updated allowed_senders for %s:%s\n", channel, chatID)
 }
 
+func routingSetRuntimeCmd() {
+	channel, chatID, modeRaw, localBackend, localModel, localPreset := "", "", "", "", "", ""
+	backendSet, modelSet, presetSet := false, false, false
+	args := os.Args[3:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--channel":
+			if i+1 < len(args) {
+				channel = args[i+1]
+				i++
+			}
+		case "--chat-id":
+			if i+1 < len(args) {
+				chatID = args[i+1]
+				i++
+			}
+		case "--mode":
+			if i+1 < len(args) {
+				modeRaw = args[i+1]
+				i++
+			}
+		case "--local-backend":
+			if i+1 < len(args) {
+				localBackend = args[i+1]
+				backendSet = true
+				i++
+			}
+		case "--local-model":
+			if i+1 < len(args) {
+				localModel = args[i+1]
+				modelSet = true
+				i++
+			}
+		case "--local-preset":
+			if i+1 < len(args) {
+				localPreset = args[i+1]
+				presetSet = true
+				i++
+			}
+		}
+	}
+	if strings.TrimSpace(channel) == "" || strings.TrimSpace(chatID) == "" {
+		fmt.Println("Usage: routing set-runtime --channel <channel> --chat-id <id> --mode <default|cloud|phi|vm> [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]")
+		return
+	}
+
+	mode, modeSet, err := parseRoutingModeFlag(modeRaw)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	localBackend = strings.TrimSpace(strings.ToLower(localBackend))
+	localModel = strings.TrimSpace(localModel)
+	localPreset = strings.TrimSpace(localPreset)
+	localFlagsSet := backendSet || modelSet || presetSet
+	if !modeSet && localFlagsSet {
+		mode = config.ModePhi
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		return
+	}
+
+	key := routingMappingKey(channel, chatID)
+	found := false
+	for i := range cfg.Routing.Mappings {
+		if routingMappingKey(cfg.Routing.Mappings[i].Channel, cfg.Routing.Mappings[i].ChatID) != key {
+			continue
+		}
+		m := &cfg.Routing.Mappings[i]
+		if modeSet || localFlagsSet {
+			m.Mode = mode
+		}
+		if backendSet {
+			m.LocalBackend = localBackend
+		}
+		if modelSet {
+			m.LocalModel = localModel
+		}
+		if presetSet {
+			m.LocalPreset = localPreset
+		}
+		if m.Mode != config.ModePhi {
+			m.LocalBackend = ""
+			m.LocalModel = ""
+			m.LocalPreset = ""
+		}
+		found = true
+		break
+	}
+	if !found {
+		fmt.Printf("No mapping found for %s:%s\n", channel, chatID)
+		return
+	}
+
+	if err := config.SaveConfig(getConfigPath(), cfg); err != nil {
+		fmt.Printf("Error saving config: %v\n", err)
+		return
+	}
+	fmt.Printf("Updated runtime for %s:%s\n", channel, chatID)
+}
+
 func routingValidateCmd() {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -409,6 +564,16 @@ func routingExplainCmd() {
 	fmt.Printf("  allowed: %t\n", d.Allowed)
 	fmt.Printf("  workspace: %s\n", d.Workspace)
 	fmt.Printf("  session_key: %s\n", d.SessionKey)
+	fmt.Printf("  mode: %s\n", d.Runtime.Mode)
+	if strings.TrimSpace(d.Runtime.LocalBackend) != "" {
+		fmt.Printf("  local_backend: %s\n", d.Runtime.LocalBackend)
+	}
+	if strings.TrimSpace(d.Runtime.LocalModel) != "" {
+		fmt.Printf("  local_model: %s\n", d.Runtime.LocalModel)
+	}
+	if strings.TrimSpace(d.Runtime.LocalPreset) != "" {
+		fmt.Printf("  local_preset: %s\n", d.Runtime.LocalPreset)
+	}
 	fmt.Printf("  reason: %s\n", d.Reason)
 	if strings.TrimSpace(d.MappingLabel) != "" {
 		fmt.Printf("  mapping_label: %s\n", d.MappingLabel)
@@ -601,4 +766,29 @@ func mergeRouting(current, imported config.RoutingConfig) config.RoutingConfig {
 		}
 	}
 	return out
+}
+
+func parseRoutingModeFlag(raw string) (mode string, explicitlySet bool, err error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false, nil
+	}
+	if strings.EqualFold(trimmed, "default") {
+		return "", true, nil
+	}
+	normalized := config.NormalizeMode(trimmed)
+	if normalized == "" {
+		return "", true, fmt.Errorf("invalid mode %q (expected default|cloud|phi|vm)", trimmed)
+	}
+	return normalized, true, nil
+}
+
+func mappingModeDisplay(m config.RoutingMapping) string {
+	if normalized := config.NormalizeMode(m.Mode); normalized != "" {
+		return normalized
+	}
+	if strings.TrimSpace(m.LocalBackend) != "" || strings.TrimSpace(m.LocalModel) != "" || strings.TrimSpace(m.LocalPreset) != "" {
+		return config.ModePhi
+	}
+	return "default"
 }
