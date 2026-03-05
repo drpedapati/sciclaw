@@ -596,6 +596,15 @@
       <a class="sidebar-link nested" href="#routing">Collaborative Routing</a>
     </div>
     <div class="sidebar-section">
+      <div class="sidebar-heading">Local Mode</div>
+      <a class="sidebar-link" href="#phi-mode">PHI Mode</a>
+      <a class="sidebar-link nested" href="#phi-setup">Setup</a>
+      <a class="sidebar-link nested" href="#phi-routing">Per-Room Routing</a>
+      <a class="sidebar-link nested" href="#phi-hardware">Hardware Profiles</a>
+      <a class="sidebar-link nested" href="#phi-commands">Commands</a>
+      <a class="sidebar-link nested" href="#phi-troubleshooting">Troubleshooting</a>
+    </div>
+    <div class="sidebar-section">
       <div class="sidebar-heading">Advanced</div>
       <a class="sidebar-link" href="#hooks">Hooks</a>
       <a class="sidebar-link nested" href="#hook-events">Events</a>
@@ -975,10 +984,10 @@
 
         <img src="assets/tui/tui-routing.png" alt="sciClaw TUI — Routing tab showing status, mapping list, and detail panel" class="tui-screenshot" />
 
-        <p>The <strong>[a] Add</strong> wizard walks you through selecting a channel, chat room, workspace folder, allowed users, and a label &mdash; six steps total. Use <strong>[e]</strong> to explain routing decisions, <strong>[f]</strong> to edit a folder, <strong>[u]</strong> to edit users, and <strong>[R]</strong> to apply changes. The gateway hot-reloads automatically.</p>
+        <p>The <strong>[a] Add</strong> wizard walks you through selecting a channel, chat room, workspace folder, allowed users, and a label &mdash; six steps total. Use <strong>[m]</strong> to choose AI mode for a room (default/cloud/local PHI), <strong>[f]</strong> to edit a folder, <strong>[u]</strong> to edit users, and <strong>[R]</strong> to apply changes. The gateway hot-reloads automatically.</p>
         <div class="callout">
           <div class="callout-title">Tip</div>
-          <p>By default, routed channels require an <code>@mention</code> to activate the bot. This lets collaborators discuss freely without triggering responses. See <a href="#routing">Collaborative Routing</a> for details and the <code>--no-mention</code> override.</p>
+          <p>For most teams: keep rooms in <strong>default</strong> mode, then set only privacy-sensitive rooms to <strong>PHI (local)</strong> with <strong>[m]</strong>. This gives you cloud speed where you want it, and local privacy where you need it.</p>
         </div>
       </div>
 
@@ -1785,31 +1794,24 @@
           <strong>Mention to activate.</strong> In routed channels the bot stays quiet unless someone <code>@mention</code>s it, so collaborators can discuss freely without triggering responses. DMs always work without a mention.
         </div>
 
-        <p><strong>1. Add mapping</strong></p>
+        <p><strong>Recommended: do this in the app (no commands needed)</strong></p>
+        <ol>
+          <li>Run <code>sciclaw app</code> and open the <strong>Routing</strong> tab.</li>
+          <li>Press <strong>[a]</strong> to add a mapping and follow the wizard (room, folder, allowed users, label).</li>
+          <li>Press <strong>[t]</strong> to enable routing, then <strong>[R]</strong> to apply changes live.</li>
+          <li>For privacy-sensitive rooms, press <strong>[m]</strong> and set AI mode to <strong>PHI (local)</strong>.</li>
+        </ol>
+
+        <p><strong>Advanced CLI (automation only)</strong></p>
         <pre><code><span class="hl-cmd">sciclaw</span> routing add \
   <span class="hl-flag">--channel</span> discord \
   <span class="hl-flag">--chat-id</span> 1467290563052048476 \
   <span class="hl-flag">--workspace</span> /absolute/path/to/project-a \
-  <span class="hl-flag">--allow</span> 8535331528,1467290563052048476 \
-  <span class="hl-flag">--label</span> project-a</code></pre>
-
-        <p>To let the bot respond to <em>every</em> message (no <code>@mention</code> needed), add <code>--no-mention</code>:</p>
-        <pre><code><span class="hl-cmd">sciclaw</span> routing add \
-  <span class="hl-flag">--channel</span> discord \
-  <span class="hl-flag">--chat-id</span> 1467290563052048476 \
-  <span class="hl-flag">--workspace</span> /absolute/path/to/solo-project \
   <span class="hl-flag">--allow</span> 8535331528 \
-  <span class="hl-flag">--no-mention</span></code></pre>
+  <span class="hl-flag">--label</span> project-a
 
-        <p><strong>2. Enable + validate + apply live</strong></p>
-        <pre><code><span class="hl-cmd">sciclaw</span> routing enable
-<span class="hl-cmd">sciclaw</span> routing validate
+<span class="hl-cmd">sciclaw</span> routing enable
 <span class="hl-cmd">sciclaw</span> routing reload</code></pre>
-
-        <p><strong>3. Inspect / troubleshoot decisions</strong></p>
-        <pre><code><span class="hl-cmd">sciclaw</span> routing status
-<span class="hl-cmd">sciclaw</span> routing list
-<span class="hl-cmd">sciclaw</span> routing explain <span class="hl-flag">--channel</span> discord <span class="hl-flag">--chat-id</span> 1467290563052048476 <span class="hl-flag">--sender</span> 8535331528 <span class="hl-flag">--mention</span></code></pre>
 
         <p><strong>What the routed agent can access:</strong></p>
         <ul>
@@ -1819,6 +1821,129 @@
         </ul>
 
         <p>Session keys are namespaced as <code>&lt;channel&gt;:&lt;chat_id&gt;@&lt;workspace_hash&gt;</code> to isolate context across workspaces.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ PHI MODE ━━━━━ -->
+      <div class="section" id="phi-mode">
+        <h2>PHI Mode (Local Inference)</h2>
+        <p class="page-subtitle">Run LLM inference locally via Ollama. No data leaves the machine &mdash; ideal for protected health information, air-gapped environments, or cost savings.</p>
+
+        <p>PHI Mode routes all LLM calls to a local <a href="https://ollama.com">Ollama</a> backend instead of cloud providers. It uses the Qwen 3.5 model family, which supports tool calling and runs efficiently on consumer hardware.</p>
+        <p>You can run PHI mode globally for everything, or apply it only to selected channels via <a href="#phi-routing">Per-Room PHI Routing</a>.</p>
+      </div>
+
+      <!-- ─── Setup ─── -->
+      <div class="section" id="phi-setup">
+        <h3>Setup</h3>
+        <p>Install <a href="https://ollama.com">Ollama</a> first, then run setup:</p>
+
+        <pre><code><span class="hl-comment"># One-time setup: detect hardware, pull model, verify</span>
+<span class="hl-cmd">sciclaw</span> modes phi-setup
+
+<span class="hl-comment"># Confirm it's active</span>
+<span class="hl-cmd">sciclaw</span> modes status</code></pre>
+
+        <p>Setup automatically detects your hardware, selects an appropriate model, pulls it via Ollama, verifies it responds, and persists the configuration. The whole process takes 2&ndash;5 minutes depending on download speed.</p>
+
+        <p>The resulting config looks like:</p>
+        <pre><code>{
+  <span class="hl-key">"agents"</span>: {
+    <span class="hl-key">"defaults"</span>: {
+      <span class="hl-key">"mode"</span>: <span class="hl-string">"phi"</span>,
+      <span class="hl-key">"local_backend"</span>: <span class="hl-string">"ollama"</span>,
+      <span class="hl-key">"local_model"</span>: <span class="hl-string">"qwen3.5:4b"</span>,
+      <span class="hl-key">"local_preset"</span>: <span class="hl-string">"balanced"</span>
+    }
+  }
+}</code></pre>
+
+        <p>Override via environment variables: <code>PICOCLAW_AGENTS_DEFAULTS_MODE=phi</code>, <code>PICOCLAW_AGENTS_DEFAULTS_LOCAL_BACKEND=ollama</code>, etc.</p>
+      </div>
+
+      <!-- ─── Per-Room PHI Routing ─── -->
+      <div class="section" id="phi-routing">
+        <h3>Per-Room PHI Routing (Mix Cloud + Local)</h3>
+        <p>You can keep everyday channels on cloud models and route only sensitive channels to local PHI mode. Think of this as a room-level override.</p>
+
+        <table>
+          <thead>
+            <tr><th>Goal</th><th>Best Choice</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Everything local on this machine</td><td>Set global mode to PHI</td></tr>
+            <tr><td>Only specific channels local/private</td><td>Keep global cloud/default and set those channel mappings to PHI</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>TUI steps (recommended)</strong></p>
+        <ol>
+          <li>Run <code>sciclaw modes phi-setup</code> once to install and validate your local runtime.</li>
+          <li>Open <code>sciclaw app</code> and go to <strong>Routing</strong>.</li>
+          <li>Select a room mapping, press <strong>[m]</strong>, set mode to <strong>phi</strong>, then confirm backend/model.</li>
+          <li>Press <strong>[R]</strong> to apply live. No restart needed.</li>
+        </ol>
+
+        <p>To move a room back to inherited/default behavior, open that mapping with <strong>[m]</strong>, set mode to <strong>default</strong>, then press <strong>[R]</strong> again.</p>
+      </div>
+
+      <!-- ─── Hardware Profiles ─── -->
+      <div class="section" id="phi-hardware">
+        <h3>Hardware Profiles</h3>
+        <p>Setup matches your hardware to a profile and selects a model. Three presets control the size/speed trade-off: <strong>speed</strong> (2B), <strong>balanced</strong> (4B, default), and <strong>quality</strong> (9B).</p>
+
+        <table>
+          <thead>
+            <tr><th>Profile</th><th>Requirements</th><th>Balanced Model</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Apple Silicon 16GB+</td><td>macOS arm64, 16GB+ RAM</td><td>qwen3.5:4b</td></tr>
+            <tr><td>NVIDIA 12GB+</td><td>Linux/Windows, 12GB+ VRAM</td><td>qwen3.5:4b</td></tr>
+            <tr><td>NVIDIA 6&ndash;11GB</td><td>Linux/Windows, 6&ndash;11GB VRAM</td><td>qwen3.5:4b</td></tr>
+            <tr><td>CPU-only 16GB+</td><td>Any OS, 16GB+ RAM, no GPU</td><td>qwen3.5:4b</td></tr>
+            <tr><td>CPU-only &lt;16GB</td><td>Any OS, 8&ndash;15GB RAM, no GPU</td><td>qwen3.5:2b</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ─── Commands ─── -->
+      <div class="section" id="phi-commands">
+        <h3>Commands</h3>
+
+        <pre><code><span class="hl-comment"># Show current mode, backend, model, hardware</span>
+<span class="hl-cmd">sciclaw</span> modes status
+
+<span class="hl-comment"># Switch to local inference</span>
+<span class="hl-cmd">sciclaw</span> modes set phi
+
+<span class="hl-comment"># Switch back to cloud</span>
+<span class="hl-cmd">sciclaw</span> modes set cloud
+
+<span class="hl-comment"># Re-run setup (e.g., after hardware change)</span>
+<span class="hl-cmd">sciclaw</span> modes phi-setup
+
+<span class="hl-comment"># Detailed backend health check</span>
+<span class="hl-cmd">sciclaw</span> modes phi-status</code></pre>
+
+        <p>Switching between modes is instant. PHI mode configuration is preserved when you switch to cloud, so switching back doesn't require re-downloading the model.</p>
+        <p>Advanced: you can also set PHI at the channel level with <code>routing set-runtime</code>, but most users should use the Routing tab (<strong>[m]</strong> then <strong>[R]</strong>).</p>
+      </div>
+
+      <!-- ─── Troubleshooting ─── -->
+      <div class="section" id="phi-troubleshooting">
+        <h3>Troubleshooting</h3>
+
+        <ul>
+          <li><strong>&ldquo;ollama is not installed&rdquo;</strong> &mdash; Download from <a href="https://ollama.com">ollama.com</a> and install before running setup.</li>
+          <li><strong>&ldquo;ollama is installed but not running&rdquo;</strong> &mdash; macOS: open the Ollama app. Linux: <code>systemctl start ollama</code>. Windows: start the Ollama service.</li>
+          <li><strong>Slow first response</strong> &mdash; The model loads into memory on first use. Subsequent responses are much faster.</li>
+          <li><strong>Room set to PHI but no answer</strong> &mdash; check <code>sciclaw modes phi-status</code>, confirm that mapping shows AI mode <code>phi</code>, then press <strong>[R]</strong> in Routing to apply.</li>
+          <li><strong>Tool calling quality</strong> &mdash; Qwen 3.5 supports tool calling, but results may vary compared to cloud models. If tools behave unexpectedly, try the <strong>quality</strong> preset (9B) or switch to cloud for complex tasks.</li>
+          <li><strong>No matching hardware profile</strong> &mdash; PHI mode requires at least 8GB RAM. Machines below this threshold should use cloud mode.</li>
+        </ul>
+
+        <p><strong>MLX support</strong> is planned for Apple Silicon and will be preferred when implemented. Currently all platforms use Ollama.</p>
       </div>
 
       <hr />

@@ -1,7 +1,9 @@
 package state
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -30,11 +32,17 @@ type Manager struct {
 	mu        sync.RWMutex
 	stateFile string
 	saveQueue chan State
+	saveMu    sync.Mutex
+	stopCh    chan struct{}
+	loopDone  chan struct{}
+	closed    bool
+	closeOnce sync.Once
 }
 
 var (
 	stateReadFile         = os.ReadFile
 	stateBootstrapTimeout = 750 * time.Millisecond
+	errManagerClosed      = errors.New("state manager is closed")
 )
 
 // NewManager creates a new state manager for the given workspace.
@@ -51,6 +59,8 @@ func NewManager(workspace string) *Manager {
 		stateFile: stateFile,
 		state:     &State{},
 		saveQueue: make(chan State, 1),
+		stopCh:    make(chan struct{}),
+		loopDone:  make(chan struct{}),
 	}
 
 	loadedState, loadedFromLegacy, err := loadBootstrapWithTimeout(stateFile, oldStateFile, stateBootstrapTimeout)
@@ -75,6 +85,10 @@ func NewManager(workspace string) *Manager {
 // ensuring that the state file is never corrupted even if the process crashes.
 func (sm *Manager) SetLastChannel(channel string) error {
 	sm.mu.Lock()
+	if sm.closed {
+		sm.mu.Unlock()
+		return errManagerClosed
+	}
 	sm.state.LastChannel = channel
 	sm.state.Timestamp = time.Now()
 	snapshot := *sm.state
@@ -86,6 +100,10 @@ func (sm *Manager) SetLastChannel(channel string) error {
 // SetLastChatID atomically updates the last chat ID and saves the state.
 func (sm *Manager) SetLastChatID(chatID string) error {
 	sm.mu.Lock()
+	if sm.closed {
+		sm.mu.Unlock()
+		return errManagerClosed
+	}
 	sm.state.LastChatID = chatID
 	sm.state.Timestamp = time.Now()
 	snapshot := *sm.state
@@ -145,10 +163,22 @@ func (sm *Manager) saveAtomicSnapshot(snapshot State) error {
 	return nil
 }
 
+func (sm *Manager) persistSnapshot(snapshot State) error {
+	sm.saveMu.Lock()
+	defer sm.saveMu.Unlock()
+	return sm.saveAtomicSnapshot(snapshot)
+}
+
 func (sm *Manager) saveLoop() {
-	for snapshot := range sm.saveQueue {
-		if err := sm.saveAtomicSnapshot(snapshot); err != nil {
-			log.Printf("[WARN] state: async save failed for %s: %v", sm.workspace, err)
+	defer close(sm.loopDone)
+	for {
+		select {
+		case <-sm.stopCh:
+			return
+		case snapshot := <-sm.saveQueue:
+			if err := sm.persistSnapshot(snapshot); err != nil {
+				log.Printf("[WARN] state: async save failed for %s: %v", sm.workspace, err)
+			}
 		}
 	}
 }
@@ -169,6 +199,65 @@ func (sm *Manager) enqueueSave(snapshot State) {
 	case sm.saveQueue <- snapshot:
 	default:
 	}
+}
+
+// Flush synchronously persists the latest in-memory snapshot to disk.
+func (sm *Manager) Flush(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	sm.mu.RLock()
+	snapshot := *sm.state
+	sm.mu.RUnlock()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sm.persistSnapshot(snapshot)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Close flushes state and stops the background save loop.
+func (sm *Manager) Close(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	sm.mu.Lock()
+	if sm.closed {
+		sm.mu.Unlock()
+		return nil
+	}
+	sm.closed = true
+	sm.mu.Unlock()
+
+	flushErr := sm.Flush(ctx)
+
+	sm.closeOnce.Do(func() {
+		close(sm.stopCh)
+	})
+
+	var waitErr error
+	select {
+	case <-sm.loopDone:
+	case <-ctx.Done():
+		waitErr = ctx.Err()
+	}
+
+	if flushErr != nil {
+		return flushErr
+	}
+	return waitErr
 }
 
 // load loads the state from disk.

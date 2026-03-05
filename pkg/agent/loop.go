@@ -353,6 +353,13 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 
 func (al *AgentLoop) Stop() {
 	al.running.Store(false)
+	if al.state != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := al.state.Close(ctx); err != nil {
+			logger.WarnCF("state", "Failed to close state manager", map[string]interface{}{"error": err.Error()})
+		}
+	}
 }
 
 // HandleInbound processes one inbound message and publishes any response.

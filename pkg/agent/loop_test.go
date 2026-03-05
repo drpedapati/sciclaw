@@ -69,8 +69,12 @@ func TestRecordLastChannel(t *testing.T) {
 		t.Errorf("Expected channel '%s', got '%s'", testChannel, lastChannel)
 	}
 
+	// Ensure async state writes are flushed before checking persisted state.
+	al.Stop()
+
 	// Verify persistence by creating a new agent loop
 	al2 := NewAgentLoop(cfg, msgBus, provider)
+	defer al2.Stop()
 	if al2.state.GetLastChannel() != testChannel {
 		t.Errorf("Expected persistent channel '%s', got '%s'", testChannel, al2.state.GetLastChannel())
 	}
@@ -114,8 +118,12 @@ func TestRecordLastChatID(t *testing.T) {
 		t.Errorf("Expected chat ID '%s', got '%s'", testChatID, lastChatID)
 	}
 
+	// Ensure async state writes are flushed before checking persisted state.
+	al.Stop()
+
 	// Verify persistence by creating a new agent loop
 	al2 := NewAgentLoop(cfg, msgBus, provider)
+	defer al2.Stop()
 	if al2.state.GetLastChatID() != testChatID {
 		t.Errorf("Expected persistent chat ID '%s', got '%s'", testChatID, al2.state.GetLastChatID())
 	}

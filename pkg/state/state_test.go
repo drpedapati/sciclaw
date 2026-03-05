@@ -1,7 +1,9 @@
 package state
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,15 +23,23 @@ func waitForCondition(t *testing.T, timeout time.Duration, cond func() bool, msg
 	t.Fatal(msg)
 }
 
+func newTestManager(t *testing.T, workspace string) *Manager {
+	t.Helper()
+	sm := NewManager(workspace)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = sm.Close(ctx)
+	})
+	return sm
+}
+
 func TestAtomicSave(t *testing.T) {
 	// Create temp workspace
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+	var err error
 
-	sm := NewManager(tmpDir)
+	sm := newTestManager(t, tmpDir)
 
 	// Test SetLastChannel
 	err = sm.SetLastChannel("test-channel")
@@ -50,26 +60,32 @@ func TestAtomicSave(t *testing.T) {
 
 	// Verify state file exists
 	stateFile := filepath.Join(tmpDir, "state", "state.json")
-	waitForCondition(t, time.Second, func() bool {
-		_, err := os.Stat(stateFile)
-		return err == nil
-	}, "expected state file to exist")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+	if _, err := os.Stat(stateFile); err != nil {
+		t.Fatalf("expected state file to exist: %v", err)
+	}
 
-	// Create a new manager to verify persistence
-	waitForCondition(t, time.Second, func() bool {
-		sm2 := NewManager(tmpDir)
-		return sm2.GetLastChannel() == "test-channel"
-	}, "expected persistent channel 'test-channel'")
+	// Create a new manager to verify persistence.
+	sm2 := NewManager(tmpDir)
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		defer closeCancel()
+		_ = sm2.Close(closeCtx)
+	}()
+	if sm2.GetLastChannel() != "test-channel" {
+		t.Fatalf("expected persistent channel 'test-channel', got %q", sm2.GetLastChannel())
+	}
 }
 
 func TestSetLastChatID(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+	var err error
 
-	sm := NewManager(tmpDir)
+	sm := newTestManager(t, tmpDir)
 
 	// Test SetLastChatID
 	err = sm.SetLastChatID("test-chat-id")
@@ -88,21 +104,29 @@ func TestSetLastChatID(t *testing.T) {
 		t.Error("Expected timestamp to be updated")
 	}
 
-	// Create a new manager to verify persistence
-	waitForCondition(t, time.Second, func() bool {
-		sm2 := NewManager(tmpDir)
-		return sm2.GetLastChatID() == "test-chat-id"
-	}, "expected persistent chat ID 'test-chat-id'")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	// Create a new manager to verify persistence.
+	sm2 := NewManager(tmpDir)
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		defer closeCancel()
+		_ = sm2.Close(closeCtx)
+	}()
+	if sm2.GetLastChatID() != "test-chat-id" {
+		t.Fatalf("expected persistent chat ID 'test-chat-id', got %q", sm2.GetLastChatID())
+	}
 }
 
 func TestAtomicity_NoCorruptionOnInterrupt(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+	var err error
 
-	sm := NewManager(tmpDir)
+	sm := newTestManager(t, tmpDir)
 
 	// Write initial state
 	err = sm.SetLastChannel("initial-channel")
@@ -139,13 +163,10 @@ func TestAtomicity_NoCorruptionOnInterrupt(t *testing.T) {
 }
 
 func TestConcurrentAccess(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+	var err error
 
-	sm := NewManager(tmpDir)
+	sm := newTestManager(t, tmpDir)
 
 	// Test concurrent writes
 	done := make(chan bool, 10)
@@ -187,33 +208,35 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestNewManager_ExistingState(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
 	// Create initial state
-	sm1 := NewManager(tmpDir)
+	sm1 := newTestManager(t, tmpDir)
 	sm1.SetLastChannel("existing-channel")
 	sm1.SetLastChatID("existing-chat-id")
 
-	// Create new manager with same workspace once persistence catches up.
-	waitForCondition(t, time.Second, func() bool {
-		sm2 := NewManager(tmpDir)
-		return sm2.GetLastChannel() == "existing-channel" &&
-			sm2.GetLastChatID() == "existing-chat-id"
-	}, "expected existing state to be loaded")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm1.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	// Create new manager with same workspace.
+	sm2 := NewManager(tmpDir)
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		defer closeCancel()
+		_ = sm2.Close(closeCtx)
+	}()
+	if sm2.GetLastChannel() != "existing-channel" || sm2.GetLastChatID() != "existing-chat-id" {
+		t.Fatalf("expected existing state to be loaded, got channel=%q chat=%q", sm2.GetLastChannel(), sm2.GetLastChatID())
+	}
 }
 
 func TestNewManager_EmptyWorkspace(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
-	sm := NewManager(tmpDir)
+	sm := newTestManager(t, tmpDir)
 
 	// Verify default state
 	if sm.GetLastChannel() != "" {
@@ -230,11 +253,8 @@ func TestNewManager_EmptyWorkspace(t *testing.T) {
 }
 
 func TestNewManager_LoadsLegacyStateFile(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+	var err error
 
 	legacy := State{
 		LastChannel: "legacy-channel",
@@ -249,7 +269,7 @@ func TestNewManager_LoadsLegacyStateFile(t *testing.T) {
 		t.Fatalf("write legacy state: %v", err)
 	}
 
-	sm := NewManager(tmpDir)
+	sm := newTestManager(t, tmpDir)
 	if sm.GetLastChannel() != "legacy-channel" {
 		t.Fatalf("expected legacy channel, got %q", sm.GetLastChannel())
 	}
@@ -259,11 +279,7 @@ func TestNewManager_LoadsLegacyStateFile(t *testing.T) {
 }
 
 func TestNewManager_BootstrapTimeoutDoesNotBlock(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "state-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
 	prevRead := stateReadFile
 	prevTimeout := stateBootstrapTimeout
@@ -280,7 +296,8 @@ func TestNewManager_BootstrapTimeoutDoesNotBlock(t *testing.T) {
 	stateBootstrapTimeout = 20 * time.Millisecond
 
 	start := time.Now()
-	_ = NewManager(tmpDir)
+	sm := newTestManager(t, tmpDir)
+	_ = sm
 	elapsed := time.Since(start)
 	if elapsed > 150*time.Millisecond {
 		t.Fatalf("expected constructor to return quickly, took %v", elapsed)
@@ -288,4 +305,72 @@ func TestNewManager_BootstrapTimeoutDoesNotBlock(t *testing.T) {
 
 	close(block)
 	time.Sleep(5 * time.Millisecond)
+}
+
+func TestFlushPersistsLatestSnapshot(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sm := newTestManager(t, tmpDir)
+	if err := sm.SetLastChannel("flush-channel"); err != nil {
+		t.Fatalf("SetLastChannel failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	sm2 := NewManager(tmpDir)
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		defer closeCancel()
+		_ = sm2.Close(closeCtx)
+	}()
+	if got := sm2.GetLastChannel(); got != "flush-channel" {
+		t.Fatalf("expected flushed channel %q, got %q", "flush-channel", got)
+	}
+}
+
+func TestCloseFlushesPendingState(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sm := NewManager(tmpDir)
+	if err := sm.SetLastChatID("close-chat-id"); err != nil {
+		t.Fatalf("SetLastChatID failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm.Close(ctx); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	sm2 := NewManager(tmpDir)
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		defer closeCancel()
+		_ = sm2.Close(closeCtx)
+	}()
+	if got := sm2.GetLastChatID(); got != "close-chat-id" {
+		t.Fatalf("expected persisted chat id %q, got %q", "close-chat-id", got)
+	}
+}
+
+func TestSetAfterCloseReturnsClosedError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sm := NewManager(tmpDir)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sm.Close(ctx); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	if err := sm.SetLastChannel("blocked"); !errors.Is(err, errManagerClosed) {
+		t.Fatalf("expected errManagerClosed from SetLastChannel, got %v", err)
+	}
+	if err := sm.SetLastChatID("blocked"); !errors.Is(err, errManagerClosed) {
+		t.Fatalf("expected errManagerClosed from SetLastChatID, got %v", err)
+	}
 }

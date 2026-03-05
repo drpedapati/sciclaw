@@ -105,15 +105,23 @@ func (hs *HeartbeatService) Start() error {
 // Stop gracefully stops the heartbeat service
 func (hs *HeartbeatService) Stop() {
 	hs.mu.Lock()
-	defer hs.mu.Unlock()
+	stopChan := hs.stopChan
+	hs.stopChan = nil
+	stateMgr := hs.state
+	hs.mu.Unlock()
 
-	if hs.stopChan == nil {
-		return
+	if stopChan != nil {
+		logger.InfoC("heartbeat", "Stopping heartbeat service")
+		close(stopChan)
 	}
 
-	logger.InfoC("heartbeat", "Stopping heartbeat service")
-	close(hs.stopChan)
-	hs.stopChan = nil
+	if stateMgr != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := stateMgr.Close(ctx); err != nil {
+			logger.WarnCF("heartbeat", "Failed to close state manager", map[string]interface{}{"error": err.Error()})
+		}
+	}
 }
 
 // IsRunning returns whether the service is running
