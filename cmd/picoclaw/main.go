@@ -1430,12 +1430,17 @@ func gatewayCmd() {
 		}
 	}
 
+	// Resolve home directory once for all path construction below (status
+	// file, log file, etc.). If it fails, skip home-dependent setup.
+	gwHome, gwHomeErr := os.UserHomeDir()
+	picoDir := filepath.Join(gwHome, ".picoclaw")
+
 	// Kill any stale gateway process from a previous run (e.g. orphaned SSH session).
 	// The status file is written on startup and removed on clean shutdown — if it
 	// still exists with a live PID, that process is a zombie competing for the
 	// Discord/Telegram websocket.
-	if gwHome, err := os.UserHomeDir(); err == nil {
-		statusPath := filepath.Join(gwHome, ".picoclaw", "gateway.status.json")
+	if gwHomeErr == nil {
+		statusPath := filepath.Join(picoDir, "gateway.status.json")
 		if data, err := os.ReadFile(statusPath); err == nil {
 			var status struct {
 				PID int `json:"pid"`
@@ -1463,6 +1468,16 @@ func gatewayCmd() {
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Enable structured JSON logging to file for all gateway runs (not just
+	// launchd-managed ones). The launchd plist also redirects stdout/stderr to
+	// this path, but EnableFileLogging writes structured JSON independently of
+	// how the process was launched.
+	if gwHomeErr == nil {
+		if err := logger.EnableFileLogging(filepath.Join(picoDir, "gateway.log")); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not enable file logging: %v\n", err)
+		}
 	}
 
 	provider, err := providers.CreateProvider(cfg)
@@ -1493,8 +1508,7 @@ func gatewayCmd() {
 		})
 
 	// Write gateway status file for TUI version mismatch detection.
-	gwHome, _ := os.UserHomeDir()
-	gatewayStatusPath := filepath.Join(gwHome, ".picoclaw", "gateway.status.json")
+	gatewayStatusPath := filepath.Join(picoDir, "gateway.status.json")
 	if statusJSON, err := json.Marshal(map[string]interface{}{
 		"version":    version,
 		"pid":        os.Getpid(),
@@ -1624,6 +1638,7 @@ func gatewayCmd() {
 	agentLoop.Stop()
 	channelManager.StopAll(ctx)
 	_ = os.Remove(gatewayStatusPath)
+	logger.DisableFileLogging()
 	fmt.Println("✓ Gateway stopped")
 }
 
