@@ -28,6 +28,7 @@ const (
 	tabCron     = 10
 	tabRouting  = 11
 	tabSettings = 12
+	tabPhi      = 13
 )
 
 // tabEntry maps a visible tab position to its logical ID and display name.
@@ -81,6 +82,7 @@ type Model struct {
 	agent    AgentModel
 	files    FilesModel
 	models   ModelsModel
+	phi      PhiModel
 	skills   SkillsModel
 	cron     CronModel
 	routing  RoutingModel
@@ -95,6 +97,7 @@ func buildTabs(mode Mode) []tabEntry {
 		{"Routing", tabRouting},
 		{"Users", tabUsers},
 		{"Models", tabModels},
+		{"PHI", tabPhi},
 		{"Skills", tabSkills},
 		{"Schedule", tabCron},
 	}
@@ -130,6 +133,7 @@ func NewModel(exec Executor) Model {
 		agent:     NewAgentModel(exec),
 		files:     NewFilesModel(),
 		models:    NewModelsModel(exec),
+		phi:       NewPhiModel(exec),
 		skills:    NewSkillsModel(exec),
 		cron:      NewCronModel(exec),
 		routing:   NewRoutingModel(exec),
@@ -164,6 +168,7 @@ func (m Model) subTabCapturingInput() bool {
 		(idx == tabLogin && m.login.mode != loginNormal) ||
 		(idx == tabFiles && m.files.mode != filesNormal) ||
 		(idx == tabModels && m.models.mode != modelsNormal) ||
+		(idx == tabPhi && m.phi.mode != phiNormal) ||
 		(idx == tabSkills && m.skills.mode != skillsNormal) ||
 		(idx == tabRouting && m.routing.mode != routingNormal) ||
 		(idx == tabCron && m.cron.mode != cronNormal) ||
@@ -177,6 +182,8 @@ func (m *Model) maybeAutoRun() tea.Cmd {
 		return m.doctor.AutoRun()
 	case tabModels:
 		return m.models.AutoRun()
+	case tabPhi:
+		return m.phi.AutoRun()
 	case tabSkills:
 		return m.skills.AutoRun()
 	case tabCron:
@@ -241,6 +248,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.files, cmd = m.files.Update(msg, m.snapshot)
 			case tabModels:
 				m.models, cmd = m.models.Update(msg, m.snapshot)
+			case tabPhi:
+				m.phi, cmd = m.phi.Update(msg, m.snapshot)
 			case tabSkills:
 				m.skills, cmd = m.skills.Update(msg, m.snapshot)
 			case tabRouting:
@@ -289,6 +298,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.files, cmd = m.files.Update(msg, m.snapshot)
 		case tabModels:
 			m.models, cmd = m.models.Update(msg, m.snapshot)
+		case tabPhi:
+			m.phi, cmd = m.phi.Update(msg, m.snapshot)
 		case tabSkills:
 			m.skills, cmd = m.skills.Update(msg, m.snapshot)
 		case tabCron:
@@ -396,6 +407,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modelsCatalogMsg:
 		m.models.HandleCatalog(msg)
 		return m, nil
+
+	case phiDataMsg:
+		m.phi.HandleData(msg)
+		return m, nil
+
+	case phiActionMsg:
+		m.phi.HandleAction(msg)
+		m.loading = true
+		return m, tea.Batch(
+			m.spinner.Tick,
+			fetchSnapshotCmd(m.exec),
+			fetchSettingsData(m.exec),
+			fetchPhiData(m.exec),
+		)
 
 	case skillsListMsg:
 		m.skills.HandleList(msg)
@@ -507,6 +532,8 @@ func (m Model) View() string {
 			content = m.files.View(m.snapshot, contentWidth)
 		case tabModels:
 			content = m.models.View(m.snapshot, contentWidth)
+		case tabPhi:
+			content = m.phi.View(m.snapshot, contentWidth)
 		case tabSkills:
 			content = m.skills.View(m.snapshot, contentWidth)
 		case tabCron:

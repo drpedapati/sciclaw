@@ -559,6 +559,7 @@
       <a class="sidebar-link nested" href="#tui-home">Home Dashboard</a>
       <a class="sidebar-link nested" href="#tui-channels">Channels</a>
       <a class="sidebar-link nested" href="#tui-routing">Routing</a>
+      <a class="sidebar-link nested" href="#tui-phi">PHI</a>
       <a class="sidebar-link nested" href="#tui-settings">Settings</a>
     </div>
     <div class="sidebar-section">
@@ -861,7 +862,7 @@
 
         <p>Launch the app:</p>
         <pre><code><span class="hl-cmd">sciclaw</span> app</code></pre>
-        <p>The interface opens in your terminal with a tabbed layout. Use <strong>Tab</strong> / <strong>Shift+Tab</strong> to switch between tabs, <strong>arrow keys</strong> to navigate within a tab, and <strong>q</strong> to quit. There are 12 tabs: <strong>Home</strong>, <strong>Chat</strong>, <strong>Channels</strong>, <strong>Routing</strong>, <strong>Users</strong>, <strong>Models</strong>, <strong>Skills</strong>, <strong>Schedule</strong>, <strong>Gateway</strong>, <strong>Settings</strong>, <strong>Login</strong>, and <strong>Health</strong>.</p>
+        <p>The interface opens in your terminal with a tabbed layout. Use <strong>Tab</strong> / <strong>Shift+Tab</strong> to switch between tabs, <strong>arrow keys</strong> to navigate within a tab, and <strong>q</strong> to quit. There are 13 tabs: <strong>Home</strong>, <strong>Chat</strong>, <strong>Channels</strong>, <strong>Routing</strong>, <strong>Users</strong>, <strong>Models</strong>, <strong>PHI</strong>, <strong>Skills</strong>, <strong>Schedule</strong>, <strong>Gateway</strong>, <strong>Settings</strong>, <strong>Login</strong>, and <strong>Health</strong>.</p>
 
         <img src="assets/tui/tui-home.png" alt="sciClaw TUI — Home tab showing system info, setup checklist, and suggested next step" class="tui-screenshot" />
 
@@ -989,6 +990,12 @@
           <div class="callout-title">Tip</div>
           <p>For most teams: keep rooms in <strong>default</strong> mode, then set only privacy-sensitive rooms to <strong>PHI (local)</strong> with <strong>[m]</strong>. This gives you cloud speed where you want it, and local privacy where you need it.</p>
         </div>
+      </div>
+
+      <div class="section" id="tui-phi">
+        <h3>PHI Tab</h3>
+        <p>Manage local Qwen runtime from one screen. This tab lets you switch global mode (cloud vs PHI), run one-click PHI setup, choose a local model, and pull/update model weights without leaving the TUI.</p>
+        <p>Use <strong>[p]</strong> for setup, <strong>[g]</strong> to switch to global PHI mode, <strong>[c]</strong> to switch back to cloud, <strong>[2]/[4]/[9]</strong> for Qwen size presets, <strong>[m]</strong> for a custom model tag, and <strong>[d]</strong> to pull the selected model.</p>
       </div>
 
       <div class="section" id="tui-settings">
