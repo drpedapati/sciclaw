@@ -34,13 +34,20 @@ type AgentLoopPool struct {
 	factory loopFactory
 }
 
-func NewAgentLoopPool(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) *AgentLoopPool {
+// LoopSetupFunc is an optional callback invoked on each new AgentLoop created by the pool.
+type LoopSetupFunc func(al *agent.AgentLoop)
+
+func NewAgentLoopPool(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider, setup ...LoopSetupFunc) *AgentLoopPool {
 	return NewAgentLoopPoolWithFactory(func(workspace string) (inboundHandler, error) {
 		cloned, err := cloneConfigForWorkspace(cfg, workspace)
 		if err != nil {
 			return nil, err
 		}
-		return agent.NewAgentLoop(cloned, msgBus, provider), nil
+		al := agent.NewAgentLoop(cloned, msgBus, provider)
+		for _, fn := range setup {
+			fn(al)
+		}
+		return al, nil
 	})
 }
 

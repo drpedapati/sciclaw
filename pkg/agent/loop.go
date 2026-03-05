@@ -155,6 +155,10 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// IRL integration tool (agent-mediated project lifecycle)
 	registry.Register(tools.NewIRLProjectTool(workspace))
 
+	// Channel history tool - fetches recent messages from the chat channel
+	channelHistoryTool := tools.NewChannelHistoryTool()
+	registry.Register(channelHistoryTool)
+
 	// Message tool - available to both agent and subagent
 	// Subagent uses it to communicate directly with user
 	messageTool := tools.NewMessageTool(workspace, restrict)
@@ -1289,6 +1293,11 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 			st.SetContext(channel, chatID)
 		}
 	}
+	if tool, ok := al.tools.Get("channel_history"); ok {
+		if ct, ok := tool.(tools.ContextualTool); ok {
+			ct.SetContext(channel, chatID)
+		}
+	}
 }
 
 // maybeSummarize triggers summarization if the session history exceeds thresholds.
@@ -1308,6 +1317,15 @@ func (al *AgentLoop) maybeSummarize(sessionKey string) {
 }
 
 // GetStartupInfo returns information about loaded tools and skills for logging.
+// SetChannelHistoryCallback sets the fetch callback on the channel_history tool.
+func (al *AgentLoop) SetChannelHistoryCallback(cb tools.FetchChannelHistoryCallback) {
+	if tool, ok := al.tools.Get("channel_history"); ok {
+		if cht, ok := tool.(*tools.ChannelHistoryTool); ok {
+			cht.SetFetchCallback(cb)
+		}
+	}
+}
+
 func (al *AgentLoop) GetStartupInfo() map[string]interface{} {
 	info := make(map[string]interface{})
 

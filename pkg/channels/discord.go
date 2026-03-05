@@ -85,6 +85,16 @@ func (c *DiscordChannel) SetTranscriber(transcriber *voice.GroqTranscriber) {
 	c.transcriber = transcriber
 }
 
+// GetChannelMessages fetches recent messages from a Discord channel via the REST API.
+// Messages are returned in reverse chronological order (newest first) by the API;
+// the caller is responsible for reversing if chronological order is needed.
+func (c *DiscordChannel) GetChannelMessages(channelID string, limit int, beforeID string) ([]*discordgo.Message, error) {
+	if c.session == nil {
+		return nil, fmt.Errorf("discord session not available")
+	}
+	return c.session.ChannelMessages(channelID, limit, beforeID, "", "")
+}
+
 func (c *DiscordChannel) getContext() context.Context {
 	if c.ctx == nil {
 		return context.Background()

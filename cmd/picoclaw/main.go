@@ -1577,6 +1577,14 @@ func gatewayCmd() {
 		}
 	}
 
+	// Wire channel_history tool to Discord if available
+	if discordCh, ok := channelManager.GetChannel("discord"); ok {
+		if dc, ok := discordCh.(*channels.DiscordChannel); ok {
+			agentLoop.SetChannelHistoryCallback(discordHistoryCallback(dc))
+			logger.InfoC("tools", "Channel history tool attached to Discord")
+		}
+	}
+
 	enabledChannels := channelManager.GetEnabledChannels()
 	if len(enabledChannels) > 0 {
 		fmt.Printf("✓ Channels enabled: %s\n", enabledChannels)
@@ -1596,7 +1604,17 @@ func gatewayCmd() {
 			fmt.Printf("Error initializing routing: %v\n", err)
 			os.Exit(1)
 		}
-		loopPool = routing.NewAgentLoopPool(cfg, msgBus, provider)
+		// Build a setup function that wires channel_history for each routed agent loop.
+		var poolSetup []routing.LoopSetupFunc
+		if dc, ok := channelManager.GetChannel("discord"); ok {
+			if discordChan, ok := dc.(*channels.DiscordChannel); ok {
+				cb := discordHistoryCallback(discordChan)
+				poolSetup = append(poolSetup, func(al *agent.AgentLoop) {
+					al.SetChannelHistoryCallback(cb)
+				})
+			}
+		}
+		loopPool = routing.NewAgentLoopPool(cfg, msgBus, provider, poolSetup...)
 		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
 		go func() {
 			if err := dispatcher.Run(ctx); err != nil {
@@ -1700,6 +1718,32 @@ func modelsCmd() {
 	default:
 		fmt.Printf("Unknown models command: %s\n", os.Args[2])
 		fmt.Printf("Usage: %s models [list|discover|set|effort|status]\n", commandName)
+	}
+}
+
+// discordHistoryCallback builds a FetchChannelHistoryCallback that reads
+// messages from the Discord REST API via the given DiscordChannel.
+func discordHistoryCallback(dc *channels.DiscordChannel) tools.FetchChannelHistoryCallback {
+	return func(channelID string, limit int, beforeID string) ([]tools.ChannelHistoryMessage, error) {
+		msgs, err := dc.GetChannelMessages(channelID, limit, beforeID)
+		if err != nil {
+			return nil, err
+		}
+		// Discord API returns newest-first; reverse to chronological order.
+		result := make([]tools.ChannelHistoryMessage, len(msgs))
+		for i, msg := range msgs {
+			author := "unknown"
+			if msg.Author != nil {
+				author = msg.Author.Username
+			}
+			result[len(msgs)-1-i] = tools.ChannelHistoryMessage{
+				ID:        msg.ID,
+				Author:    author,
+				Content:   msg.Content,
+				Timestamp: msg.Timestamp.Format("2006-01-02 15:04"),
+			}
+		}
+		return result, nil
 	}
 }
 
