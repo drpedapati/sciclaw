@@ -111,7 +111,7 @@ func (m *PhiModel) HandleData(msg phiDataMsg) {
 }
 
 func (m *PhiModel) HandleAction(msg phiActionMsg) {
-	if msg.action == "setup" || msg.action == "pull" {
+	if msg.action == "setup" || msg.action == "pull" || msg.action == "install" || msg.action == "service-start" || msg.action == "service-stop" {
 		m.opInFlight = false
 		m.opName = ""
 	}
@@ -133,6 +133,12 @@ func (m *PhiModel) HandleAction(msg phiActionMsg) {
 		label = "Local runtime defaults updated"
 	case "pull":
 		label = "Local model pull complete"
+	case "install":
+		label = "Ollama install complete"
+	case "service-start":
+		label = "Ollama service started"
+	case "service-stop":
+		label = "Ollama service stopped"
 	case "refresh":
 		label = "PHI status refreshed"
 	}
@@ -175,7 +181,7 @@ func (m PhiModel) Update(msg tea.KeyMsg, _ *VMSnapshot) (PhiModel, tea.Cmd) {
 		return m, cmd
 	}
 
-	if m.opInFlight && (key == "p" || key == "d") {
+	if m.opInFlight && (key == "p" || key == "d" || key == "i" || key == "o" || key == "x") {
 		op := m.opName
 		if strings.TrimSpace(op) == "" {
 			op = "operation"
@@ -236,6 +242,18 @@ func (m PhiModel) Update(msg tea.KeyMsg, _ *VMSnapshot) (PhiModel, tea.Cmd) {
 		m.opInFlight = true
 		m.opName = "Model pull"
 		return m, phiPullModelCmd(m.exec, backend, model)
+	case "i":
+		m.opInFlight = true
+		m.opName = "Ollama install"
+		return m, phiInstallOllamaCmd(m.exec)
+	case "o":
+		m.opInFlight = true
+		m.opName = "Start Ollama service"
+		return m, phiOllamaServiceCmd(m.exec, "start")
+	case "x":
+		m.opInFlight = true
+		m.opName = "Stop Ollama service"
+		return m, phiOllamaServiceCmd(m.exec, "stop")
 	}
 
 	return m, nil
@@ -298,11 +316,16 @@ func (m PhiModel) View(_ *VMSnapshot, width int) string {
 		styleKey.Render("[4]"),
 		styleKey.Render("[9]"),
 	))
-	lines = append(lines, fmt.Sprintf("  %s Custom model   %s Cycle preset   %s Toggle backend   %s Pull model   %s Refresh",
+	lines = append(lines, fmt.Sprintf("  %s Custom model   %s Cycle preset   %s Toggle backend   %s Pull model",
 		styleKey.Render("[m]"),
 		styleKey.Render("[s]"),
 		styleKey.Render("[b]"),
 		styleKey.Render("[d]"),
+	))
+	lines = append(lines, fmt.Sprintf("  %s Install Ollama   %s Start Ollama   %s Stop Ollama   %s Refresh",
+		styleKey.Render("[i]"),
+		styleKey.Render("[o]"),
+		styleKey.Render("[x]"),
 		styleKey.Render("[r]"),
 	))
 	if m.opInFlight {
@@ -378,6 +401,13 @@ func fetchPhiData(exec Executor) tea.Cmd {
 		phiStatusOut, _ := exec.ExecShell(15*time.Second, phiStatusCmd)
 		if strings.TrimSpace(phiStatusOut) != "" {
 			parsePhiStatusOutput(phiStatusOut, &msg)
+		}
+
+		// Surface backend health even when global mode is cloud.
+		probeCmd := phiHomeEnv(exec) + " bash -lc " + shellEscape(phiOllamaProbeScript()) + " 2>&1"
+		probeOut, _ := exec.ExecShell(10*time.Second, probeCmd)
+		if strings.TrimSpace(probeOut) != "" {
+			parsePhiOllamaProbeOutput(probeOut, &msg)
 		}
 
 		if msg.localBackend == "" {
@@ -540,6 +570,49 @@ func phiPullModelCmd(exec Executor, backend, model string) tea.Cmd {
 	}
 }
 
+func phiInstallOllamaCmd(exec Executor) tea.Cmd {
+	return func() tea.Msg {
+		script := phiOllamaInstallScript()
+		cmd := phiHomeEnv(exec) + " bash -lc " + shellEscape(script) + " 2>&1"
+		out, err := exec.ExecShell(20*time.Minute, cmd)
+		out = strings.TrimSpace(out)
+		if err != nil {
+			if out == "" {
+				out = err.Error()
+			}
+			return phiActionMsg{action: "install", output: out, ok: false}
+		}
+		return phiActionMsg{action: "install", output: out, ok: true}
+	}
+}
+
+func phiOllamaServiceCmd(exec Executor, op string) tea.Cmd {
+	return func() tea.Msg {
+		op = strings.TrimSpace(strings.ToLower(op))
+		if op != "start" && op != "stop" {
+			return phiActionMsg{action: "service-" + op, output: "unsupported service operation", ok: false}
+		}
+		script := phiBrewLookupScript() + `
+if [ -z "$BREW_BIN" ]; then
+  echo "Homebrew not found. Manage Ollama manually."
+  exit 1
+fi
+"$BREW_BIN" services ` + op + ` ollama
+echo "Ollama service ` + op + ` requested."
+`
+		cmd := phiHomeEnv(exec) + " bash -lc " + shellEscape(script) + " 2>&1"
+		out, err := exec.ExecShell(2*time.Minute, cmd)
+		out = strings.TrimSpace(out)
+		if err != nil {
+			if out == "" {
+				out = err.Error()
+			}
+			return phiActionMsg{action: "service-" + op, output: out, ok: false}
+		}
+		return phiActionMsg{action: "service-" + op, output: out, ok: true}
+	}
+}
+
 func phiSetLocalDefaultsCmd(exec Executor, backend, model, preset *string) tea.Cmd {
 	return func() tea.Msg {
 		updated := make([]string, 0, 3)
@@ -581,6 +654,107 @@ func phiSetLocalDefaultsCmd(exec Executor, backend, model, preset *string) tea.C
 
 func phiHomeEnv(exec Executor) string {
 	return "HOME=" + shellEscape(exec.HomePath())
+}
+
+func phiBrewLookupScript() string {
+	return `
+BREW_BIN=""
+if command -v brew >/dev/null 2>&1; then
+  BREW_BIN="$(command -v brew)"
+elif [ -x /opt/homebrew/bin/brew ]; then
+  BREW_BIN=/opt/homebrew/bin/brew
+elif [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+  BREW_BIN=/home/linuxbrew/.linuxbrew/bin/brew
+fi
+`
+}
+
+func phiOllamaInstallScript() string {
+	return `
+set -e
+` + phiBrewLookupScript() + `
+if command -v ollama >/dev/null 2>&1; then
+  OLLAMA_BIN="$(command -v ollama)"
+  echo "ollama is already installed."
+else
+  if [ -z "$BREW_BIN" ]; then
+    echo "Homebrew not found. Install Ollama manually: https://ollama.com"
+    exit 1
+  fi
+  "$BREW_BIN" install ollama
+  OLLAMA_BIN="$("$BREW_BIN" --prefix)/bin/ollama"
+fi
+
+if [ -n "$BREW_BIN" ]; then
+  "$BREW_BIN" services start ollama || true
+fi
+
+if [ ! -x "$OLLAMA_BIN" ]; then
+  echo "Ollama install completed, but executable was not found in this shell."
+  echo "Try a new terminal session, then rerun PHI setup."
+  exit 1
+fi
+
+"$OLLAMA_BIN" --version || true
+echo "Ollama install step complete."
+`
+}
+
+func phiOllamaProbeScript() string {
+	return `
+` + phiBrewLookupScript() + `
+OLLAMA_BIN=""
+if command -v ollama >/dev/null 2>&1; then
+  OLLAMA_BIN="$(command -v ollama)"
+elif [ -n "$BREW_BIN" ] && [ -x "$("$BREW_BIN" --prefix)/bin/ollama" ]; then
+  OLLAMA_BIN="$("$BREW_BIN" --prefix)/bin/ollama"
+fi
+
+if [ -z "$OLLAMA_BIN" ]; then
+  echo "installed:no"
+  echo "running:no"
+  exit 0
+fi
+
+echo "installed:yes"
+VER="$("$OLLAMA_BIN" --version 2>/dev/null | head -n 1)"
+if [ -n "$VER" ]; then
+  echo "version:$VER"
+fi
+if "$OLLAMA_BIN" ps >/dev/null 2>&1; then
+  echo "running:yes"
+else
+  echo "running:no"
+fi
+`
+}
+
+func parsePhiOllamaProbeOutput(output string, msg *phiDataMsg) {
+	if msg == nil {
+		return
+	}
+	for _, raw := range strings.Split(output, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(strings.ToLower(parts[0]))
+		val := strings.TrimSpace(parts[1])
+		switch key {
+		case "installed":
+			msg.backendInstall = phiBoolToken(val)
+		case "running":
+			msg.backendRunning = phiBoolToken(val)
+		case "version":
+			if strings.TrimSpace(msg.backendVersion) == "" {
+				msg.backendVersion = val
+			}
+		}
+	}
 }
 
 func normalizePhiMode(raw string) string {

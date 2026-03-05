@@ -233,6 +233,65 @@ func TestPhiSetupCmd_EscapesHomePath(t *testing.T) {
 	}
 }
 
+func TestPhiInstallOllamaCmd_BuildsBrewInstallScript(t *testing.T) {
+	execStub := &phiTestExec{
+		home:     "/Users/tester/My Home",
+		shellOut: "installed",
+	}
+	msg := phiInstallOllamaCmd(execStub)().(phiActionMsg)
+	if !msg.ok {
+		t.Fatalf("expected success, got %#v", msg)
+	}
+	if len(execStub.shellCommands) == 0 {
+		t.Fatal("expected install shell command")
+	}
+	cmd := execStub.shellCommands[0]
+	if !strings.Contains(cmd, "HOME='/Users/tester/My Home'") {
+		t.Fatalf("expected escaped HOME in install command, got: %s", cmd)
+	}
+	if !strings.Contains(cmd, "install ollama") {
+		t.Fatalf("expected brew install ollama in command, got: %s", cmd)
+	}
+	if !strings.Contains(cmd, "/home/linuxbrew/.linuxbrew/bin/brew") {
+		t.Fatalf("expected linuxbrew fallback in command, got: %s", cmd)
+	}
+}
+
+func TestPhiOllamaServiceCmd_StartAndStop(t *testing.T) {
+	execStub := &phiTestExec{shellOut: "ok"}
+	start := phiOllamaServiceCmd(execStub, "start")().(phiActionMsg)
+	if !start.ok {
+		t.Fatalf("expected start success, got %#v", start)
+	}
+	stop := phiOllamaServiceCmd(execStub, "stop")().(phiActionMsg)
+	if !stop.ok {
+		t.Fatalf("expected stop success, got %#v", stop)
+	}
+	if len(execStub.shellCommands) < 2 {
+		t.Fatalf("expected at least two service commands, got %#v", execStub.shellCommands)
+	}
+	if !strings.Contains(execStub.shellCommands[0], "services start ollama") {
+		t.Fatalf("expected start command, got: %s", execStub.shellCommands[0])
+	}
+	if !strings.Contains(execStub.shellCommands[1], "services stop ollama") {
+		t.Fatalf("expected stop command, got: %s", execStub.shellCommands[1])
+	}
+}
+
+func TestParsePhiOllamaProbeOutput(t *testing.T) {
+	msg := phiDataMsg{}
+	parsePhiOllamaProbeOutput("installed:yes\nrunning:no\nversion:ollama version is 0.11.2\n", &msg)
+	if msg.backendInstall != "yes" {
+		t.Fatalf("backendInstall=%q want yes", msg.backendInstall)
+	}
+	if msg.backendRunning != "no" {
+		t.Fatalf("backendRunning=%q want no", msg.backendRunning)
+	}
+	if msg.backendVersion != "ollama version is 0.11.2" {
+		t.Fatalf("backendVersion=%q", msg.backendVersion)
+	}
+}
+
 func TestPhiModel_UpdateBlocksConcurrentLongRunningActions(t *testing.T) {
 	execStub := &phiTestExec{}
 	m := NewPhiModel(execStub)
@@ -249,5 +308,30 @@ func TestPhiModel_UpdateBlocksConcurrentLongRunningActions(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(next.flashMsg), "already running") {
 		t.Fatalf("expected busy warning, got %q", next.flashMsg)
+	}
+}
+
+func TestPhiModel_UpdateStartStopInstallSetInFlight(t *testing.T) {
+	execStub := &phiTestExec{}
+	m := NewPhiModel(execStub)
+	m.loaded = true
+
+	nextInstall, cmdInstall := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}, nil)
+	if cmdInstall == nil || !nextInstall.opInFlight || nextInstall.opName != "Ollama install" {
+		t.Fatalf("expected install op in flight, got opInFlight=%v opName=%q", nextInstall.opInFlight, nextInstall.opName)
+	}
+
+	m2 := NewPhiModel(execStub)
+	m2.loaded = true
+	nextStart, cmdStart := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}}, nil)
+	if cmdStart == nil || !nextStart.opInFlight || nextStart.opName != "Start Ollama service" {
+		t.Fatalf("expected start op in flight, got opInFlight=%v opName=%q", nextStart.opInFlight, nextStart.opName)
+	}
+
+	m3 := NewPhiModel(execStub)
+	m3.loaded = true
+	nextStop, cmdStop := m3.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}, nil)
+	if cmdStop == nil || !nextStop.opInFlight || nextStop.opName != "Stop Ollama service" {
+		t.Fatalf("expected stop op in flight, got opInFlight=%v opName=%q", nextStop.opInFlight, nextStop.opName)
 	}
 }
