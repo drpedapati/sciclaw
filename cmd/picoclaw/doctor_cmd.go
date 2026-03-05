@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -52,6 +53,8 @@ type doctorReport struct {
 	Timestamp string        `json:"timestamp"`
 	Checks    []doctorCheck `json:"checks"`
 }
+
+var execRelativePathPattern = regexp.MustCompile(`(^|[\s'"=])([A-Za-z0-9._-]+/[A-Za-z0-9._*?][^\s'";&|)]*)`)
 
 func doctorCmd() {
 	opts, showHelp, err := parseDoctorOptions(os.Args[2:])
@@ -311,6 +314,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 
 	// Gateway log quick scan: common Telegram 409 conflict from multiple instances.
 	add(checkGatewayLog(cfg != nil && cfg.Channels.Telegram.Enabled))
+	add(checkExecGuardRelativePath(cfg))
 	for _, c := range checkServiceStatus(opts) {
 		add(c)
 	}
@@ -556,8 +560,12 @@ func checkHostVMChannelConflict(hostCfg *config.Config) doctorCheck {
 	}
 	var vmCfg struct {
 		Channels struct {
-			Discord  struct{ Enabled bool `json:"enabled"` } `json:"discord"`
-			Telegram struct{ Enabled bool `json:"enabled"` } `json:"telegram"`
+			Discord struct {
+				Enabled bool `json:"enabled"`
+			} `json:"discord"`
+			Telegram struct {
+				Enabled bool `json:"enabled"`
+			} `json:"telegram"`
 		} `json:"channels"`
 	}
 	if json.Unmarshal([]byte(vmCfgRaw), &vmCfg) != nil {
@@ -611,6 +619,101 @@ func checkGatewayLog(telegramEnabled bool) doctorCheck {
 		return doctorCheck{Name: "gateway.telegram", Status: doctorErr, Message: "Telegram getUpdates 409 conflict (multiple bot instances running?)", Data: map[string]string{"log": p}}
 	}
 	return doctorCheck{Name: "gateway.log", Status: doctorOK, Message: p}
+}
+
+func checkExecGuardRelativePath(cfg *config.Config) doctorCheck {
+	name := "exec.guard.relative_path"
+	if cfg == nil {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "config unavailable"}
+	}
+	if !cfg.Agents.Defaults.RestrictToWorkspace {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "restrict_to_workspace=false"}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "home directory unavailable"}
+	}
+	logPath := filepath.Join(home, ".picoclaw", "gateway.log")
+	if !fileExists(logPath) {
+		return doctorCheck{Name: name, Status: doctorSkip, Message: "gateway log not found"}
+	}
+
+	tail, err := readTail(logPath, 256*1024)
+	if err != nil {
+		return doctorCheck{
+			Name:    name,
+			Status:  doctorWarn,
+			Message: "unable to read gateway log",
+			Data: map[string]string{
+				"log":   logPath,
+				"error": err.Error(),
+			},
+		}
+	}
+
+	suspicious := findRelativePathGuardBlocks(tail)
+	if len(suspicious) == 0 {
+		return doctorCheck{Name: name, Status: doctorOK, Message: "no relative-path guard false positives detected"}
+	}
+
+	cli := invokedCLIName()
+	example := truncateOneLine(suspicious[len(suspicious)-1], 220)
+	return doctorCheck{
+		Name:    name,
+		Status:  doctorWarn,
+		Message: fmt.Sprintf("detected %d exec guard block(s) likely caused by unprefixed relative paths", len(suspicious)),
+		Data: map[string]string{
+			"log":        logPath,
+			"count":      fmt.Sprintf("%d", len(suspicious)),
+			"example":    example,
+			"workaround": "prefix relative paths with ./ (example: ./memory/MEMORY.md)",
+			"hint":       fmt.Sprintf("upgrade sciclaw to latest build, then run: %s service refresh && %s service restart", cli, cli),
+		},
+	}
+}
+
+func findRelativePathGuardBlocks(logTail string) []string {
+	lines := strings.Split(logTail, "\n")
+	matches := make([]string, 0)
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if !strings.Contains(line, "Exec blocked by safety guard") {
+			continue
+		}
+		if !strings.Contains(line, "path outside working dir") {
+			continue
+		}
+		if !hasLikelyRelativePathToken(line) {
+			continue
+		}
+		matches = append(matches, line)
+	}
+	return matches
+}
+
+func hasLikelyRelativePathToken(raw string) bool {
+	matches := execRelativePathPattern.FindAllStringSubmatch(raw, -1)
+	for _, m := range matches {
+		if len(m) < 3 {
+			continue
+		}
+		token := strings.TrimSpace(m[2])
+		if token == "" {
+			continue
+		}
+		if strings.HasPrefix(token, "./") || strings.HasPrefix(token, "../") {
+			continue
+		}
+		if strings.HasPrefix(token, "/") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func checkServiceStatus(opts doctorOptions) []doctorCheck {
