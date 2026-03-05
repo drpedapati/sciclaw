@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sciClaw Changelog</title>
+    <script defer data-domain="sciclaw.dev" src="https://analytics.cincineuro.com/js/script.file-downloads.outbound-links.tagged-events.js"></script>
+    <meta
+      name="description"
+      content="sciClaw changelog: high-value release highlights across stable and dev Homebrew tracks."
+    />
+    <link rel="canonical" href="https://sciclaw.dev/changelog.html" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://sciclaw.dev/changelog.html" />
+    <meta property="og:title" content="sciClaw Changelog" />
+    <meta property="og:description" content="High-value release highlights for stable and dev channels." />
+    <meta property="og:image" content="https://sciclaw.dev/og-image.jpg" />
+
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #475569;
+        --line: #e2e8f0;
+        --stable: #0f766e;
+        --stable-bg: #ecfdf5;
+        --dev: #0c4a6e;
+        --dev-bg: #e0f2fe;
+        --accent: #0ea5a4;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(1200px 500px at 10% -20%, #ccfbf1 0%, rgba(204, 251, 241, 0) 60%),
+          radial-gradient(1000px 500px at 90% -20%, #dbeafe 0%, rgba(219, 234, 254, 0) 60%),
+          var(--bg);
+      }
+
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 20px 60px;
+      }
+
+      .topnav {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: #0f172a;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .hero {
+        background: linear-gradient(145deg, #ffffff, #f8fafc);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 26px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 34px;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+      }
+
+      .sub {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .track-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: 18px;
+      }
+
+      .track {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+        background: var(--panel);
+      }
+
+      .track code {
+        display: block;
+        background: #0f172a;
+        color: #f8fafc;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin-top: 8px;
+        font-size: 13px;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 6px;
+      }
+
+      .timeline {
+        margin-top: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .item {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+      }
+
+      .item-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .tagline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .tag {
+        font-weight: 700;
+        font-size: 13px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid;
+      }
+
+      .stable {
+        color: var(--stable);
+        background: var(--stable-bg);
+        border-color: #a7f3d0;
+      }
+
+      .dev {
+        color: var(--dev);
+        background: var(--dev-bg);
+        border-color: #bae6fd;
+      }
+
+      .rel {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+
+      .date {
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      ul {
+        margin: 12px 0 0 20px;
+        padding: 0;
+      }
+
+      li {
+        margin: 6px 0;
+        line-height: 1.45;
+      }
+
+      .links {
+        margin-top: 10px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .links a {
+        text-decoration: none;
+        color: #0f766e;
+        font-weight: 600;
+        font-size: 13px;
+      }
+
+      .milestones {
+        margin-top: 22px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: linear-gradient(180deg, #ffffff, #f8fafc);
+      }
+
+      .milestones h2 {
+        margin: 0 0 8px;
+        font-size: 20px;
+      }
+
+      .milestones p {
+        margin: 0 0 10px;
+        color: var(--muted);
+      }
+
+      .foot {
+        margin-top: 18px;
+        color: #64748b;
+        font-size: 12px;
+      }
+
+      @media (max-width: 780px) {
+        h1 { font-size: 28px; }
+        .track-grid { grid-template-columns: 1fr; }
+        .rel { font-size: 20px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <nav class="topnav">
+        <a href="index.html">Home</a>
+        <a href="docs.html">Docs</a>
+        <a href="philosophy.html">Philosophy</a>
+        <a href="biography.html">Creator</a>
+        <a href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
+
+      <section class="hero">
+        <h1>Changelog</h1>
+        <p class="sub">
+          High-value release highlights from Homebrew stable and dev tracks.
+        </p>
+        <div class="track-grid">
+          <div class="track">
+            <strong>Stable channel</strong>
+            <code>brew install sciclaw</code>
+            <div class="meta">Production track. Most users should stay here.</div>
+          </div>
+          <div class="track">
+            <strong>Dev channel</strong>
+            <code>brew install sciclaw-dev</code>
+            <div class="meta">Preview track for upcoming features and fixes.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="timeline">
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.1.73</span>
+            </div>
+            <span class="date">March 5, 2026</span>
+          </div>
+          <ul>
+            <li>Added <code>channel_history</code> so sciClaw can summarize real Discord channel history, not only session-local memory.</li>
+            <li>Added per-turn token and call telemetry for clearer cost/performance visibility.</li>
+            <li>Fixed structured gateway file logging so <code>gateway.log</code> behaves consistently across service/manual/SSH runs.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.1.73" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.1.72...v0.1.73" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag dev">dev</span>
+              <span class="rel">v0.2.0-dev.2</span>
+            </div>
+            <span class="date">March 5, 2026</span>
+          </div>
+          <ul>
+            <li>Extended Discord channel-history capability on the prerelease branch.</li>
+            <li>Continues 0.2.0 line focus on observability and channel-grounded responses.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.0-dev.2" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.0-dev.1...v0.2.0-dev.2" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.1.71</span>
+            </div>
+            <span class="date">March 4, 2026</span>
+          </div>
+          <ul>
+            <li>Added guided config migrations for Discord routing safety.</li>
+            <li>Expanded <code>doctor --fix</code> to repair routing-related legacy config states.</li>
+            <li>Made migration flow idempotent for repeated safe runs.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.1.71" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.1.70...v0.1.71" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.1.70</span>
+            </div>
+            <span class="date">March 2, 2026</span>
+          </div>
+          <ul>
+            <li>Discord now supports edit-to-mention triggering without forcing users to resend messages.</li>
+            <li>Hardened stale gateway process detection with tighter matching to reduce false kills.</li>
+            <li>Improved Discord permission guidance and routing guard regressions.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.1.70" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.1.68...v0.1.70" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.1.67</span>
+            </div>
+            <span class="date">February 27, 2026</span>
+          </div>
+          <ul>
+            <li>Delivered Discord archive MVP with archive/list/recall workflow.</li>
+            <li>Integrated bounded archive recall into agent responses.</li>
+            <li>Improved reliability on cloud-backed workspaces and expanded diagnostics.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.1.67" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.1.65...v0.1.67" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+      </section>
+
+      <section class="milestones">
+        <h2>Earlier Milestones</h2>
+        <p>
+          <strong>v0.1.56:</strong> service stale-version detection after <code>brew upgrade</code>, dashboard version transparency, and host/VM channel contention checks.
+        </p>
+        <p>
+          <strong>v0.1.54:</strong> launched the visual <code>sciclaw app</code> dashboard, first-run wizard, collaborative routing, and safer mention-gated group behavior.
+        </p>
+        <div class="links">
+          <a href="v0.1.56-announcement.md" target="_blank" rel="noopener noreferrer">v0.1.56 announcement</a>
+          <a href="v0.1.54-announcement.md" target="_blank" rel="noopener noreferrer">v0.1.54 announcement</a>
+        </div>
+      </section>
+
+      <p class="foot">
+        Last updated: March 5, 2026. Highlights are curated for user impact from release notes and compare ranges.
+      </p>
+    </div>
+  </body>
+</html>
