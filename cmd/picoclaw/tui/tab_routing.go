@@ -1951,9 +1951,15 @@ func routingSetRuntimeCmd(exec Executor, channel, chatID, mode, localBackend, lo
 		} else {
 			cmd += " --mode " + shellEscape("default")
 		}
-		cmd += " --local-backend " + shellEscape(strings.TrimSpace(localBackend))
-		cmd += " --local-model " + shellEscape(strings.TrimSpace(localModel))
-		cmd += " --local-preset " + shellEscape(strings.TrimSpace(localPreset))
+		if strings.TrimSpace(localBackend) != "" {
+			cmd += " --local-backend " + shellEscape(strings.TrimSpace(localBackend))
+		}
+		if strings.TrimSpace(localModel) != "" {
+			cmd += " --local-model " + shellEscape(strings.TrimSpace(localModel))
+		}
+		if strings.TrimSpace(localPreset) != "" {
+			cmd += " --local-preset " + shellEscape(strings.TrimSpace(localPreset))
+		}
 		cmd += " 2>&1"
 		out, err := exec.ExecShell(10*time.Second, cmd)
 		out = strings.TrimSpace(out)
@@ -2278,6 +2284,9 @@ func (m RoutingModel) renderEditUsersOverlay(snap *VMSnapshot) string {
 }
 
 func (m RoutingModel) renderEditWorkspaceOverlay() string {
+	if m.selectedRow < 0 || m.selectedRow >= len(m.mappings) {
+		return styleErr.Render("  No mapping selected")
+	}
 	row := m.mappings[m.selectedRow]
 	var lines []string
 	lines = append(lines, styleBold.Render(fmt.Sprintf("  Edit folder for %s:%s", row.Channel, row.ChatID)))
@@ -2289,6 +2298,9 @@ func (m RoutingModel) renderEditWorkspaceOverlay() string {
 }
 
 func (m RoutingModel) renderEditRuntimeOverlay() string {
+	if m.selectedRow < 0 || m.selectedRow >= len(m.mappings) {
+		return styleErr.Render("  No mapping selected")
+	}
 	row := m.mappings[m.selectedRow]
 	var lines []string
 	lines = append(lines, styleBold.Render(fmt.Sprintf("  Choose AI mode for %s:%s", row.Channel, row.ChatID)))

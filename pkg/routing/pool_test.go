@@ -2,6 +2,7 @@ package routing
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -67,8 +68,7 @@ func TestAgentLoopPool_ReusesWorkspaceHandler(t *testing.T) {
 
 func TestAgentLoopPool_CreatesDistinctWorkspaceHandlers(t *testing.T) {
 	created := 0
-	pool := NewAgentLoopPoolWithFactory(func(target LoopTarget) (inboundHandler, error) {
-		_ = target
+	pool := NewAgentLoopPoolWithFactory(func(_ LoopTarget) (inboundHandler, error) {
 		created++
 		return &fakeHandler{received: make(chan bus.InboundMessage, 1)}, nil
 	})
@@ -91,8 +91,7 @@ func TestAgentLoopPool_CreatesDistinctWorkspaceHandlers(t *testing.T) {
 }
 
 func TestAgentLoopPool_ClosePreventsDispatch(t *testing.T) {
-	pool := NewAgentLoopPoolWithFactory(func(target LoopTarget) (inboundHandler, error) {
-		_ = target
+	pool := NewAgentLoopPoolWithFactory(func(_ LoopTarget) (inboundHandler, error) {
 		return &fakeHandler{received: make(chan bus.InboundMessage, 1)}, nil
 	})
 	pool.Close()
@@ -105,8 +104,7 @@ func TestAgentLoopPool_ClosePreventsDispatch(t *testing.T) {
 
 func TestAgentLoopPool_SameWorkspaceDifferentRuntimeCreatesDistinctHandlers(t *testing.T) {
 	created := 0
-	pool := NewAgentLoopPoolWithFactory(func(target LoopTarget) (inboundHandler, error) {
-		_ = target
+	pool := NewAgentLoopPoolWithFactory(func(_ LoopTarget) (inboundHandler, error) {
 		created++
 		return &fakeHandler{received: make(chan bus.InboundMessage, 1)}, nil
 	})
@@ -134,5 +132,73 @@ func TestAgentLoopPool_SameWorkspaceDifferentRuntimeCreatesDistinctHandlers(t *t
 	}
 	if pool.Size() != 2 {
 		t.Fatalf("expected pool size 2, got %d", pool.Size())
+	}
+}
+
+func TestAgentLoopPool_SlowFactoryDoesNotHoldMutex(t *testing.T) {
+	var (
+		createdMu sync.Mutex
+		created   int
+		startOnce sync.Once
+	)
+	factoryStarted := make(chan struct{})
+	releaseFactory := make(chan struct{})
+
+	pool := NewAgentLoopPoolWithFactory(func(_ LoopTarget) (inboundHandler, error) {
+		createdMu.Lock()
+		created++
+		createdMu.Unlock()
+		startOnce.Do(func() { close(factoryStarted) })
+		<-releaseFactory
+		return &fakeHandler{received: make(chan bus.InboundMessage, 8)}, nil
+	})
+	defer pool.Close()
+
+	target := LoopTarget{Workspace: "/tmp/ws-a"}
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- pool.Dispatch(context.Background(), target, bus.InboundMessage{SessionKey: "s1"})
+	}()
+	go func() {
+		errCh <- pool.Dispatch(context.Background(), target, bus.InboundMessage{SessionKey: "s2"})
+	}()
+
+	select {
+	case <-factoryStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for factory start")
+	}
+
+	sizeDone := make(chan struct{})
+	go func() {
+		_ = pool.Size()
+		close(sizeDone)
+	}()
+	select {
+	case <-sizeDone:
+	case <-time.After(time.Second):
+		t.Fatal("pool mutex is blocked while factory is in progress")
+	}
+
+	close(releaseFactory)
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-errCh:
+			if err != nil {
+				t.Fatalf("dispatch %d failed: %v", i+1, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for dispatch %d", i+1)
+		}
+	}
+
+	createdMu.Lock()
+	gotCreated := created
+	createdMu.Unlock()
+	if gotCreated != 1 {
+		t.Fatalf("expected exactly 1 handler creation, got %d", gotCreated)
+	}
+	if pool.Size() != 1 {
+		t.Fatalf("expected pool size 1, got %d", pool.Size())
 	}
 }

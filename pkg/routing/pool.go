@@ -44,13 +44,20 @@ type loopEntry struct {
 	cancel  context.CancelFunc
 }
 
+type inflightCreation struct {
+	done  chan struct{}
+	entry *loopEntry
+	err   error
+}
+
 // AgentLoopPool keeps one agent loop per workspace and reuses it.
 type AgentLoopPool struct {
-	mu      sync.Mutex
-	loops   map[string]*loopEntry
-	closed  bool
-	wg      sync.WaitGroup
-	factory loopFactory
+	mu       sync.Mutex
+	loops    map[string]*loopEntry
+	creating map[string]*inflightCreation
+	closed   bool
+	wg       sync.WaitGroup
+	factory  loopFactory
 }
 
 // LoopSetupFunc is an optional callback invoked on each new AgentLoop created by the pool.
@@ -76,8 +83,9 @@ func NewAgentLoopPool(cfg *config.Config, msgBus *bus.MessageBus, setup ...LoopS
 
 func NewAgentLoopPoolWithFactory(factory loopFactory) *AgentLoopPool {
 	return &AgentLoopPool{
-		loops:   map[string]*loopEntry{},
-		factory: factory,
+		loops:    map[string]*loopEntry{},
+		creating: map[string]*inflightCreation{},
+		factory:  factory,
 	}
 }
 
@@ -125,44 +133,83 @@ func (p *AgentLoopPool) getOrCreate(target LoopTarget) (*loopEntry, error) {
 	target = target.normalized()
 	key := target.key()
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	for {
+		p.mu.Lock()
+		if p.closed {
+			p.mu.Unlock()
+			return nil, fmt.Errorf("agent loop pool is closed")
+		}
+		if e, ok := p.loops[key]; ok {
+			p.mu.Unlock()
+			return e, nil
+		}
+		if inflight, ok := p.creating[key]; ok {
+			done := inflight.done
+			p.mu.Unlock()
+			<-done
+			if inflight.err != nil {
+				return nil, inflight.err
+			}
+			continue
+		}
 
-	if p.closed {
-		return nil, fmt.Errorf("agent loop pool is closed")
-	}
+		inflight := &inflightCreation{done: make(chan struct{})}
+		p.creating[key] = inflight
+		p.mu.Unlock()
 
-	if e, ok := p.loops[key]; ok {
-		return e, nil
-	}
-
-	handler, err := p.factory(target)
-	if err != nil {
-		return nil, err
-	}
-
-	workerCtx, cancel := context.WithCancel(context.Background())
-	entry := &loopEntry{
-		handler: handler,
-		inbound: make(chan bus.InboundMessage, 64),
-		cancel:  cancel,
-	}
-	p.loops[key] = entry
-
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-		for {
-			select {
-			case <-workerCtx.Done():
-				return
-			case msg := <-entry.inbound:
-				entry.handler.HandleInbound(workerCtx, msg)
+		handler, factoryErr := p.factory(target)
+		var (
+			entry       *loopEntry
+			workerCtx   context.Context
+			startWorker bool
+		)
+		if factoryErr == nil {
+			var cancel context.CancelFunc
+			workerCtx, cancel = context.WithCancel(context.Background())
+			entry = &loopEntry{
+				handler: handler,
+				inbound: make(chan bus.InboundMessage, 64),
+				cancel:  cancel,
 			}
 		}
-	}()
 
-	return entry, nil
+		p.mu.Lock()
+		if factoryErr == nil && p.closed {
+			factoryErr = fmt.Errorf("agent loop pool is closed")
+		}
+		if factoryErr == nil {
+			p.loops[key] = entry
+			p.wg.Add(1)
+			inflight.entry = entry
+			startWorker = true
+		} else {
+			inflight.err = factoryErr
+			if entry != nil {
+				entry.cancel()
+			}
+		}
+		delete(p.creating, key)
+		close(inflight.done)
+		p.mu.Unlock()
+
+		if factoryErr != nil {
+			return nil, factoryErr
+		}
+		if startWorker {
+			go func() {
+				defer p.wg.Done()
+				for {
+					select {
+					case <-workerCtx.Done():
+						return
+					case msg := <-entry.inbound:
+						entry.handler.HandleInbound(workerCtx, msg)
+					}
+				}
+			}()
+		}
+		return entry, nil
+	}
 }
 
 func cloneConfigForTarget(cfg *config.Config, target LoopTarget) (*config.Config, error) {

@@ -454,6 +454,23 @@ func TestRoutingSetRuntimeCmd_BuildsExpectedCommand(t *testing.T) {
 	}
 }
 
+func TestRoutingSetRuntimeCmd_OmitsEmptyLocalFlags(t *testing.T) {
+	execStub := &routingTestExec{home: "/Users/tester", shellOut: "ok"}
+	cmd := routingSetRuntimeCmd(execStub, "discord", "123", "default", "", "", "")
+	msg := cmd().(routingActionMsg)
+	if !msg.ok {
+		t.Fatalf("expected ok message, got %#v", msg)
+	}
+	if !strings.Contains(execStub.lastShell, "--mode 'default'") {
+		t.Fatalf("expected default mode flag, got: %s", execStub.lastShell)
+	}
+	for _, banned := range []string{"--local-backend", "--local-model", "--local-preset"} {
+		if strings.Contains(execStub.lastShell, banned) {
+			t.Fatalf("did not expect %q in command: %s", banned, execStub.lastShell)
+		}
+	}
+}
+
 func TestRoutingView_SeparatesPanelTitlesAndKeybindingsIntoOwnLines(t *testing.T) {
 	execStub := &routingTestExec{home: "/Users/tester"}
 	m := NewRoutingModel(execStub)
