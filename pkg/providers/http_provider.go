@@ -229,6 +229,11 @@ func hasStoredCredential(provider string) bool {
 }
 
 func CreateProvider(cfg *config.Config) (LLMProvider, error) {
+	// PHI mode routes to local backend (Ollama/MLX)
+	if cfg.EffectiveMode() == "phi" {
+		return createLocalProvider(cfg)
+	}
+
 	model := cfg.Agents.Defaults.Model
 	providerName := strings.ToLower(cfg.Agents.Defaults.Provider)
 
@@ -429,4 +434,22 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	}
 
 	return NewHTTPProvider(apiKey, apiBase, proxy), nil
+}
+
+func createLocalProvider(cfg *config.Config) (LLMProvider, error) {
+	backend := cfg.Agents.Defaults.LocalBackend
+	model := cfg.Agents.Defaults.LocalModel
+
+	if backend == "" || model == "" {
+		return nil, fmt.Errorf("PHI mode requires local_backend and local_model to be configured; run: sciclaw modes phi-setup")
+	}
+
+	switch backend {
+	case "ollama":
+		return NewHTTPProvider("", "http://localhost:11434/v1", ""), nil
+	case "mlx":
+		return NewHTTPProvider("", "http://localhost:8080/v1", ""), nil
+	default:
+		return nil, fmt.Errorf("unsupported local backend: %s", backend)
+	}
 }

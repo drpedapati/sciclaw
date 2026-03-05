@@ -326,3 +326,53 @@ func TestSaveConfig_UsesRestrictiveFilePermissions(t *testing.T) {
 		t.Fatalf("expected config mode 0600, got %o", got)
 	}
 }
+
+func TestDefaultConfig_HasNoMode(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Agents.Defaults.Mode != "" {
+		t.Errorf("Mode should be empty by default, got %q", cfg.Agents.Defaults.Mode)
+	}
+	if cfg.Agents.Defaults.LocalBackend != "" {
+		t.Errorf("LocalBackend should be empty by default, got %q", cfg.Agents.Defaults.LocalBackend)
+	}
+	if cfg.Agents.Defaults.LocalModel != "" {
+		t.Errorf("LocalModel should be empty by default, got %q", cfg.Agents.Defaults.LocalModel)
+	}
+	if cfg.Agents.Defaults.LocalPreset != "" {
+		t.Errorf("LocalPreset should be empty by default, got %q", cfg.Agents.Defaults.LocalPreset)
+	}
+}
+
+func TestEffectiveMode(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", "cloud"},
+		{"cloud", "cloud"},
+		{"phi", "phi"},
+		{"PHI", "phi"},
+		{"local", "phi"},
+		{"LOCAL", "phi"},
+		{"vm", "vm"},
+		{"VM", "vm"},
+		{"garbage", "cloud"},
+		{"  phi  ", "phi"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Agents.Defaults.Mode = tt.input
+			if got := cfg.EffectiveMode(); got != tt.want {
+				t.Errorf("EffectiveMode(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEffectiveMode_DefaultIsCloud(t *testing.T) {
+	cfg := DefaultConfig()
+	if got := cfg.EffectiveMode(); got != "cloud" {
+		t.Errorf("EffectiveMode() for default config = %q, want %q", got, "cloud")
+	}
+}

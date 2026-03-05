@@ -35,7 +35,9 @@ import (
 	"github.com/sipeed/picoclaw/pkg/irl"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/migrate"
+	"github.com/sipeed/picoclaw/pkg/hardware"
 	"github.com/sipeed/picoclaw/pkg/models"
+	"github.com/sipeed/picoclaw/pkg/phi"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/routing"
 	svcmgr "github.com/sipeed/picoclaw/pkg/service"
@@ -191,6 +193,8 @@ func main() {
 		cronCmd()
 	case "routing":
 		routingCmd()
+	case "modes":
+		modesCmd()
 	case "models":
 		modelsCmd()
 	case "skills":
@@ -489,6 +493,7 @@ func printHelp() {
 	fmt.Println("  app         Open the graphical dashboard (alias: tui)")
 	fmt.Println("  onboard     Initialize sciClaw configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
+	fmt.Println("  modes       Manage inference mode (cloud, phi, vm)")
 	fmt.Println("  models      Manage models (list, set, effort, status)")
 	fmt.Println("  auth        Manage authentication (login, import-op, logout, status)")
 	fmt.Println("  gateway     Start sciClaw gateway in foreground (debug/containers)")
@@ -1658,6 +1663,252 @@ func gatewayCmd() {
 	_ = os.Remove(gatewayStatusPath)
 	logger.DisableFileLogging()
 	fmt.Println("✓ Gateway stopped")
+}
+
+func modesCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	commandName := invokedCLIName()
+
+	if len(os.Args) < 3 {
+		modesStatus(cfg)
+		return
+	}
+
+	switch os.Args[2] {
+	case "status":
+		modesStatus(cfg)
+	case "set":
+		if len(os.Args) < 4 {
+			fmt.Printf("Usage: %s modes set <cloud|phi|vm>\n", commandName)
+			os.Exit(1)
+		}
+		modesSet(cfg, os.Args[3])
+	case "phi-setup":
+		modesPhiSetup(cfg)
+	case "phi-status":
+		modesPhiStatus(cfg)
+	default:
+		fmt.Printf("Unknown modes command: %s\n", os.Args[2])
+		fmt.Printf("Usage: %s modes [status|set|phi-setup|phi-status]\n", commandName)
+	}
+}
+
+func modesStatus(cfg *config.Config) {
+	mode := cfg.EffectiveMode()
+	switch mode {
+	case "phi":
+		fmt.Printf("Mode:     PHI (local inference)\n")
+		fmt.Printf("Backend:  %s\n", cfg.Agents.Defaults.LocalBackend)
+		fmt.Printf("Model:    %s\n", cfg.Agents.Defaults.LocalModel)
+		if cfg.Agents.Defaults.LocalPreset != "" {
+			fmt.Printf("Preset:   %s\n", cfg.Agents.Defaults.LocalPreset)
+		}
+		hw := hardware.Detect()
+		fmt.Printf("Hardware: %s %s, %dGB RAM, GPU: %s\n", hw.OS, hw.Arch, hw.MemoryGB, hw.GPUVendor)
+		if cfg.Agents.Defaults.LocalBackend != "" {
+			status := phi.CheckBackend(cfg.Agents.Defaults.LocalBackend)
+			if status.Running {
+				fmt.Printf("Status:   running (%s)\n", status.Version)
+			} else if status.Installed {
+				fmt.Printf("Status:   installed but not running\n")
+			} else {
+				fmt.Printf("Status:   not installed\n")
+			}
+			if status.Error != "" {
+				fmt.Printf("Error:    %s\n", status.Error)
+			}
+		}
+	case "vm":
+		fmt.Printf("Mode:     VM\n")
+	default:
+		fmt.Printf("Mode:     Cloud\n")
+		fmt.Printf("Model:    %s\n", cfg.Agents.Defaults.Model)
+		fmt.Printf("Provider: %s\n", models.ResolveProvider(cfg.Agents.Defaults.Model, cfg))
+	}
+}
+
+func modesSet(cfg *config.Config, mode string) {
+	configPath := getConfigPath()
+
+	switch strings.ToLower(mode) {
+	case "cloud":
+		cfg.Agents.Defaults.Mode = ""
+		if err := config.SaveConfig(configPath, cfg); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Switched to cloud mode. Model: %s\n", cfg.Agents.Defaults.Model)
+
+	case "phi", "local":
+		if cfg.Agents.Defaults.LocalBackend == "" || cfg.Agents.Defaults.LocalModel == "" {
+			fmt.Println("PHI mode not configured yet. Running setup...")
+			modesPhiSetup(cfg)
+			return
+		}
+		cfg.Agents.Defaults.Mode = "phi"
+		if err := config.SaveConfig(configPath, cfg); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Switched to PHI mode. Backend: %s, Model: %s\n",
+			cfg.Agents.Defaults.LocalBackend, cfg.Agents.Defaults.LocalModel)
+
+	case "vm":
+		cfg.Agents.Defaults.Mode = "vm"
+		if err := config.SaveConfig(configPath, cfg); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Switched to VM mode.")
+
+	default:
+		fmt.Printf("Unknown mode: %s. Use: cloud, phi, or vm\n", mode)
+		os.Exit(1)
+	}
+}
+
+func modesPhiSetup(cfg *config.Config) {
+	configPath := getConfigPath()
+
+	// 1. Detect hardware
+	fmt.Println("Detecting hardware...")
+	hw := hardware.Detect()
+	fmt.Printf("  OS:     %s\n", hw.OS)
+	fmt.Printf("  Arch:   %s\n", hw.Arch)
+	fmt.Printf("  RAM:    %d GB\n", hw.MemoryGB)
+	fmt.Printf("  GPU:    %s\n", hw.GPUVendor)
+	if hw.VRAMGB > 0 {
+		fmt.Printf("  VRAM:   %d GB\n", hw.VRAMGB)
+	}
+
+	// 2. Load catalog and match profile
+	cat, err := phi.LoadCatalog()
+	if err != nil {
+		fmt.Printf("Error loading model catalog: %v\n", err)
+		os.Exit(1)
+	}
+
+	profile := cat.MatchProfile(hw)
+	if profile == nil {
+		fmt.Println("\nNo suitable hardware profile found for this machine.")
+		fmt.Println("PHI mode requires at least 6GB RAM. Consider using cloud mode.")
+		os.Exit(1)
+	}
+	fmt.Printf("\nMatched profile: %s\n", profile.ProfileID)
+
+	// 3. Select backend and model
+	backend := cat.SelectBackend(profile)
+	preset := "balanced"
+	model, err := cat.SelectModel(profile, preset)
+	if err != nil {
+		fmt.Printf("Error selecting model: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Backend:  %s\n", backend)
+	fmt.Printf("Model:    %s (preset: %s)\n", model.OllamaTag, preset)
+
+	// 4. Check backend health
+	fmt.Printf("\nChecking %s...\n", backend)
+	status := phi.CheckBackend(backend)
+	if !status.Installed {
+		fmt.Printf("\n%s is not installed.\n", backend)
+		if backend == "ollama" {
+			fmt.Println("Install Ollama from: https://ollama.com")
+		}
+		os.Exit(1)
+	}
+	if !status.Running {
+		fmt.Printf("\n%s is installed but not running.\n", backend)
+		if backend == "ollama" {
+			switch hw.OS {
+			case "darwin":
+				fmt.Println("Open the Ollama app to start the server.")
+			case "linux":
+				fmt.Println("Start Ollama with: systemctl start ollama")
+			default:
+				fmt.Println("Start the Ollama server and try again.")
+			}
+		}
+		os.Exit(1)
+	}
+	fmt.Printf("  %s is running (%s)\n", backend, status.Version)
+
+	// 5. Pull model
+	if !phi.CheckModelReady(model.OllamaTag) {
+		fmt.Printf("\nPulling model %s...\n", model.OllamaTag)
+		err := phi.PullModel(context.Background(), model.OllamaTag, func(line string) {
+			fmt.Printf("  %s\n", line)
+		})
+		if err != nil {
+			fmt.Printf("Error pulling model: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("  Model pulled successfully.")
+	} else {
+		fmt.Printf("  Model %s is already available.\n", model.OllamaTag)
+	}
+
+	// 6. Warmup
+	fmt.Println("\nVerifying model response...")
+	if err := phi.WarmupModel(context.Background(), model.OllamaTag); err != nil {
+		fmt.Printf("Warning: warmup failed: %v\n", err)
+		fmt.Println("The model may still work. Continuing with setup.")
+	} else {
+		fmt.Println("  Model responded successfully.")
+	}
+
+	// 7. Persist config
+	cfg.Agents.Defaults.Mode = "phi"
+	cfg.Agents.Defaults.LocalBackend = backend
+	cfg.Agents.Defaults.LocalModel = model.OllamaTag
+	cfg.Agents.Defaults.LocalPreset = preset
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		fmt.Printf("Error saving config: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("\nPHI mode is ready!")
+	fmt.Printf("  Mode:    phi\n")
+	fmt.Printf("  Backend: %s\n", backend)
+	fmt.Printf("  Model:   %s\n", model.OllamaTag)
+	fmt.Printf("  Preset:  %s\n", preset)
+}
+
+func modesPhiStatus(cfg *config.Config) {
+	if cfg.EffectiveMode() != "phi" {
+		fmt.Println("Not in PHI mode. Current mode:", cfg.EffectiveMode())
+		return
+	}
+
+	backend := cfg.Agents.Defaults.LocalBackend
+	fmt.Printf("Backend: %s\n", backend)
+	fmt.Printf("Model:   %s\n", cfg.Agents.Defaults.LocalModel)
+
+	status := phi.CheckBackend(backend)
+	fmt.Printf("Installed: %v\n", status.Installed)
+	fmt.Printf("Running:   %v\n", status.Running)
+	if status.Version != "" {
+		fmt.Printf("Version:   %s\n", status.Version)
+	}
+
+	if status.Running && cfg.Agents.Defaults.LocalModel != "" {
+		ready := phi.CheckModelReady(cfg.Agents.Defaults.LocalModel)
+		fmt.Printf("Model ready: %v\n", ready)
+	}
+
+	hw := hardware.Detect()
+	fmt.Printf("\nHardware:\n")
+	fmt.Printf("  OS:   %s %s\n", hw.OS, hw.Arch)
+	fmt.Printf("  RAM:  %d GB\n", hw.MemoryGB)
+	fmt.Printf("  GPU:  %s\n", hw.GPUVendor)
+	if hw.VRAMGB > 0 {
+		fmt.Printf("  VRAM: %d GB\n", hw.VRAMGB)
+	}
 }
 
 func modelsCmd() {

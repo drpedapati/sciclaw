@@ -263,6 +263,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	model := resolveModel(cfg.Agents.Defaults.Model, provider)
 
+	// PHI mode: use local model tag instead of cloud model
+	if cfg.EffectiveMode() == "phi" && cfg.Agents.Defaults.LocalModel != "" {
+		model = cfg.Agents.Defaults.LocalModel
+	}
+
 	return &AgentLoop{
 		bus:             msgBus,
 		provider:        provider,

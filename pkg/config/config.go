@@ -72,6 +72,10 @@ type AgentDefaults struct {
 	MaxToolIterations       int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
 	ReasoningEffort         string  `json:"reasoning_effort,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_REASONING_EFFORT"`
 	ExecTimeout             int     `json:"exec_timeout,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_EXEC_TIMEOUT"` // seconds, 0 = use default (300)
+	Mode                    string  `json:"mode,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_MODE"`
+	LocalBackend            string  `json:"local_backend,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_LOCAL_BACKEND"`
+	LocalModel              string  `json:"local_model,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_LOCAL_MODEL"`
+	LocalPreset             string  `json:"local_preset,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_LOCAL_PRESET"`
 }
 
 const (
@@ -512,6 +516,21 @@ func expandHome(path string) string {
 		return home
 	}
 	return path
+}
+
+// EffectiveMode returns the active operational mode. Empty or unrecognised
+// values default to "cloud" for backward compatibility.
+func (c *Config) EffectiveMode() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	switch strings.ToLower(strings.TrimSpace(c.Agents.Defaults.Mode)) {
+	case "phi", "local":
+		return "phi"
+	case "vm":
+		return "vm"
+	default:
+		return "cloud"
+	}
 }
 
 func normalizeDiscordArchiveConfig(cfg *DiscordArchiveConfig) {

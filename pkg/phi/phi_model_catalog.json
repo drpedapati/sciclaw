@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-03-05",
+  "name": "phi-qwen3.5-small",
+  "description": "First-party local model defaults for PHI Mode.",
+  "selection_policy": {
+    "default_preset": "balanced",
+    "preferred_order": [
+      "qwen3.5-4b",
+      "qwen3.5-9b",
+      "qwen3.5-2b"
+    ]
+  },
+  "command_templates": {
+    "ollama": {
+      "install_check": "ollama --version",
+      "health_check": "ollama ps",
+      "pull": "ollama pull {ollama_tag}",
+      "warmup": "ollama run {ollama_tag} \"hello\""
+    },
+    "mlx": {
+      "install_check": "python -c \"import mlx_lm\"",
+      "pull": "python -m mlx_lm.convert --hf-path {hf_model_id} --output-dir {cache_dir}/{model_id}",
+      "warmup": "python -m mlx_lm.generate --model {cache_dir}/{model_id} --prompt \"hello\" --max-tokens 16"
+    }
+  },
+  "models": {
+    "qwen3.5-2b": {
+      "family": "Qwen/Qwen3.5-2B",
+      "ollama_tag": "qwen3.5:2b",
+      "hf_model_id": "Qwen/Qwen3.5-2B",
+      "min_memory_gb": {
+        "mlx": 8,
+        "ollama": 6,
+        "cpu": 8
+      }
+    },
+    "qwen3.5-4b": {
+      "family": "Qwen/Qwen3.5-4B",
+      "ollama_tag": "qwen3.5:4b",
+      "hf_model_id": "Qwen/Qwen3.5-4B",
+      "min_memory_gb": {
+        "mlx": 16,
+        "ollama": 10,
+        "cpu": 12
+      }
+    },
+    "qwen3.5-9b": {
+      "family": "Qwen/Qwen3.5-9B",
+      "ollama_tag": "qwen3.5:9b",
+      "hf_model_id": "Qwen/Qwen3.5-9B",
+      "min_memory_gb": {
+        "mlx": 24,
+        "ollama": 18,
+        "cpu": 20
+      }
+    }
+  },
+  "profiles": [
+    {
+      "profile_id": "macos_apple_silicon_16_plus",
+      "match": {
+        "os": "darwin",
+        "arch": "arm64",
+        "min_memory_gb": 16
+      },
+      "backend_order": [
+        "mlx",
+        "ollama"
+      ],
+      "defaults": {
+        "speed": "qwen3.5-2b",
+        "balanced": "qwen3.5-4b",
+        "quality": "qwen3.5-9b"
+      },
+      "allow_models": [
+        "qwen3.5-2b",
+        "qwen3.5-4b",
+        "qwen3.5-9b"
+      ]
+    },
+    {
+      "profile_id": "linux_or_windows_nvidia_12_plus",
+      "match": {
+        "os_any_of": [
+          "linux",
+          "windows"
+        ],
+        "gpu_vendor": "nvidia",
+        "min_vram_gb": 12
+      },
+      "backend_order": [
+        "ollama"
+      ],
+      "defaults": {
+        "speed": "qwen3.5-2b",
+        "balanced": "qwen3.5-4b",
+        "quality": "qwen3.5-9b"
+      },
+      "allow_models": [
+        "qwen3.5-2b",
+        "qwen3.5-4b",
+        "qwen3.5-9b"
+      ]
+    },
+    {
+      "profile_id": "linux_or_windows_nvidia_6_to_11",
+      "match": {
+        "os_any_of": [
+          "linux",
+          "windows"
+        ],
+        "gpu_vendor": "nvidia",
+        "min_vram_gb": 6,
+        "max_vram_gb": 11
+      },
+      "backend_order": [
+        "ollama"
+      ],
+      "defaults": {
+        "speed": "qwen3.5-2b",
+        "balanced": "qwen3.5-4b",
+        "quality": "qwen3.5-4b"
+      },
+      "allow_models": [
+        "qwen3.5-2b",
+        "qwen3.5-4b"
+      ]
+    },
+    {
+      "profile_id": "cpu_only_16_plus",
+      "match": {
+        "cpu_only": true,
+        "min_memory_gb": 16
+      },
+      "backend_order": [
+        "ollama"
+      ],
+      "defaults": {
+        "speed": "qwen3.5-2b",
+        "balanced": "qwen3.5-4b",
+        "quality": "qwen3.5-4b"
+      },
+      "allow_models": [
+        "qwen3.5-2b",
+        "qwen3.5-4b"
+      ]
+    },
+    {
+      "profile_id": "cpu_only_under_16",
+      "match": {
+        "cpu_only": true,
+        "max_memory_gb": 15
+      },
+      "backend_order": [
+        "ollama"
+      ],
+      "defaults": {
+        "speed": "qwen3.5-2b",
+        "balanced": "qwen3.5-2b",
+        "quality": "qwen3.5-2b"
+      },
+      "allow_models": [
+        "qwen3.5-2b"
+      ]
+    }
+  ]
+}
