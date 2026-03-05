@@ -8,7 +8,7 @@ PHI Mode runs LLM inference locally on your machine via [Ollama](https://ollama.
 - One of the following hardware configurations:
   - **macOS ARM64 (Apple Silicon)** with 16GB+ unified RAM
   - **Linux or Windows with NVIDIA GPU** and 6GB+ VRAM
-  - **CPU-only** with 6GB+ RAM (any OS; 8GB+ recommended)
+  - **CPU-only** with 6GB+ RAM (any OS; 6GB baseline, 8GB+ recommended)
 - **Models:** Qwen 3.5 family (2B, 4B, or 9B parameters)
 
 ## Quick Start

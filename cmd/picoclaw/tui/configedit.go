@@ -3,7 +3,10 @@ package tui
 import (
 	"encoding/json"
 	"strings"
+	"sync"
 )
+
+var configEditMu sync.Mutex
 
 // readConfigMap reads config.json through the executor and returns a generic map
 // for read-modify-write operations that preserve all existing fields.
@@ -27,6 +30,29 @@ func writeConfigMap(exec Executor, m map[string]interface{}) error {
 	}
 	data = append(data, '\n')
 	return exec.WriteFile(exec.ConfigPath(), data, 0644)
+}
+
+// updateConfigMap serializes a read-modify-write cycle in-process so concurrent
+// tab actions cannot clobber each other's config updates.
+func updateConfigMap(exec Executor, mutate func(map[string]interface{}) error) error {
+	configEditMu.Lock()
+	defer configEditMu.Unlock()
+
+	cfg, err := readConfigMap(exec)
+	if err != nil {
+		if isConfigNotFoundError(err) {
+			cfg = map[string]interface{}{}
+		} else {
+			return err
+		}
+	}
+	if cfg == nil {
+		cfg = map[string]interface{}{}
+	}
+	if err := mutate(cfg); err != nil {
+		return err
+	}
+	return writeConfigMap(exec, cfg)
 }
 
 // ensureMap navigates to or creates a nested map at the given key.

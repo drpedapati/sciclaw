@@ -65,6 +65,8 @@ type PhiModel struct {
 	lastOut    string
 	flashMsg   string
 	flashUntil time.Time
+	opInFlight bool
+	opName     string
 
 	input textinput.Model
 }
@@ -109,6 +111,11 @@ func (m *PhiModel) HandleData(msg phiDataMsg) {
 }
 
 func (m *PhiModel) HandleAction(msg phiActionMsg) {
+	if msg.action == "setup" || msg.action == "pull" {
+		m.opInFlight = false
+		m.opName = ""
+	}
+
 	out := strings.TrimSpace(msg.output)
 	if out != "" {
 		m.lastOut = shortenOutput(out, 800)
@@ -168,10 +175,22 @@ func (m PhiModel) Update(msg tea.KeyMsg, _ *VMSnapshot) (PhiModel, tea.Cmd) {
 		return m, cmd
 	}
 
+	if m.opInFlight && (key == "p" || key == "d") {
+		op := m.opName
+		if strings.TrimSpace(op) == "" {
+			op = "operation"
+		}
+		m.flashMsg = styleErr.Render("✗") + " " + op + " already running. Please wait for completion."
+		m.flashUntil = time.Now().Add(4 * time.Second)
+		return m, nil
+	}
+
 	switch key {
 	case "r", "l":
 		return m, fetchPhiData(m.exec)
 	case "p":
+		m.opInFlight = true
+		m.opName = "PHI setup"
 		return m, phiSetupCmd(m.exec)
 	case "g":
 		return m, phiSetModeCmd(m.exec, "phi")
@@ -214,6 +233,8 @@ func (m PhiModel) Update(msg tea.KeyMsg, _ *VMSnapshot) (PhiModel, tea.Cmd) {
 			m.flashUntil = time.Now().Add(4 * time.Second)
 			return m, nil
 		}
+		m.opInFlight = true
+		m.opName = "Model pull"
 		return m, phiPullModelCmd(m.exec, backend, model)
 	}
 
@@ -284,6 +305,13 @@ func (m PhiModel) View(_ *VMSnapshot, width int) string {
 		styleKey.Render("[d]"),
 		styleKey.Render("[r]"),
 	))
+	if m.opInFlight {
+		op := m.opName
+		if strings.TrimSpace(op) == "" {
+			op = "Operation"
+		}
+		lines = append(lines, "  "+styleHint.Render(op+" in progress..."))
+	}
 
 	if m.mode == phiEditModel {
 		lines = append(lines, "")
@@ -337,7 +365,7 @@ func fetchPhiData(exec Executor) tea.Cmd {
 			msg.err = fmt.Sprintf("config read failed: %v", err)
 		}
 
-		statusCmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " modes status 2>&1"
+		statusCmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " modes status 2>&1"
 		statusOut, statusErr := exec.ExecShell(15*time.Second, statusCmd)
 		if strings.TrimSpace(statusOut) != "" {
 			parseModesStatusOutput(statusOut, &msg)
@@ -346,7 +374,7 @@ func fetchPhiData(exec Executor) tea.Cmd {
 			msg.err = statusErr.Error()
 		}
 
-		phiStatusCmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " modes phi-status 2>&1"
+		phiStatusCmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " modes phi-status 2>&1"
 		phiStatusOut, _ := exec.ExecShell(15*time.Second, phiStatusCmd)
 		if strings.TrimSpace(phiStatusOut) != "" {
 			parsePhiStatusOutput(phiStatusOut, &msg)
@@ -460,7 +488,7 @@ func parsePhiStatusOutput(output string, msg *phiDataMsg) {
 
 func phiSetModeCmd(exec Executor, mode string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " modes set " + shellEscape(mode) + " 2>&1"
+		cmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " modes set " + shellEscape(mode) + " 2>&1"
 		out, err := exec.ExecShell(60*time.Second, cmd)
 		out = strings.TrimSpace(out)
 		if err != nil {
@@ -475,7 +503,7 @@ func phiSetModeCmd(exec Executor, mode string) tea.Cmd {
 
 func phiSetupCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " modes phi-setup 2>&1"
+		cmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " modes phi-setup 2>&1"
 		out, err := exec.ExecShell(20*time.Minute, cmd)
 		out = strings.TrimSpace(out)
 		if err != nil {
@@ -499,7 +527,7 @@ func phiPullModelCmd(exec Executor, backend, model string) tea.Cmd {
 				ok:     false,
 			}
 		}
-		cmd := "HOME=" + exec.HomePath() + " ollama pull " + shellEscape(model) + " 2>&1"
+		cmd := phiHomeEnv(exec) + " ollama pull " + shellEscape(model) + " 2>&1"
 		out, err := exec.ExecShell(20*time.Minute, cmd)
 		out = strings.TrimSpace(out)
 		if err != nil {
@@ -514,45 +542,45 @@ func phiPullModelCmd(exec Executor, backend, model string) tea.Cmd {
 
 func phiSetLocalDefaultsCmd(exec Executor, backend, model, preset *string) tea.Cmd {
 	return func() tea.Msg {
-		cfg, err := readConfigMap(exec)
-		if err != nil {
-			return phiActionMsg{action: "set-local", output: fmt.Sprintf("Failed to load config: %v", err), ok: false}
-		}
-
-		agents := ensureMap(cfg, "agents")
-		defaults := ensureMap(agents, "defaults")
 		updated := make([]string, 0, 3)
-		if backend != nil {
-			val := strings.TrimSpace(strings.ToLower(*backend))
-			defaults["local_backend"] = val
-			updated = append(updated, "backend="+val)
-		}
-		if model != nil {
-			val := strings.TrimSpace(*model)
-			defaults["local_model"] = val
-			updated = append(updated, "model="+val)
-			if strings.TrimSpace(asString(defaults["local_backend"])) == "" {
-				defaults["local_backend"] = "ollama"
+		if err := updateConfigMap(exec, func(cfg map[string]interface{}) error {
+			agents := ensureMap(cfg, "agents")
+			defaults := ensureMap(agents, "defaults")
+			if backend != nil {
+				val := strings.TrimSpace(strings.ToLower(*backend))
+				defaults["local_backend"] = val
+				updated = append(updated, "backend="+val)
 			}
-		}
-		if preset != nil {
-			val := strings.TrimSpace(strings.ToLower(*preset))
-			defaults["local_preset"] = val
-			updated = append(updated, "preset="+val)
-		}
-
-		if err := writeConfigMap(exec, cfg); err != nil {
+			if model != nil {
+				val := strings.TrimSpace(*model)
+				defaults["local_model"] = val
+				updated = append(updated, "model="+val)
+				if strings.TrimSpace(asString(defaults["local_backend"])) == "" {
+					defaults["local_backend"] = "ollama"
+				}
+			}
+			if preset != nil {
+				val := strings.TrimSpace(strings.ToLower(*preset))
+				defaults["local_preset"] = val
+				updated = append(updated, "preset="+val)
+			}
+			return nil
+		}); err != nil {
 			return phiActionMsg{action: "set-local", output: fmt.Sprintf("Failed to save config: %v", err), ok: false}
 		}
 
 		// Apply runtime update live where possible.
-		reloadCmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " routing reload 2>&1"
+		reloadCmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " routing reload 2>&1"
 		_, _ = exec.ExecShell(10*time.Second, reloadCmd)
 		if len(updated) == 0 {
 			return phiActionMsg{action: "set-local", output: "No local runtime changes.", ok: true}
 		}
 		return phiActionMsg{action: "set-local", output: "Updated " + strings.Join(updated, ", "), ok: true}
 	}
+}
+
+func phiHomeEnv(exec Executor) string {
+	return "HOME=" + shellEscape(exec.HomePath())
 }
 
 func normalizePhiMode(raw string) string {

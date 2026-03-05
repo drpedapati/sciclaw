@@ -157,7 +157,20 @@ func (p *AgentLoopPool) getOrCreate(target LoopTarget) (*loopEntry, error) {
 		p.creating[key] = inflight
 		p.mu.Unlock()
 
-		handler, factoryErr := p.factory(target)
+		var (
+			handler    inboundHandler
+			factoryErr error
+			panicValue any
+		)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					panicValue = r
+					factoryErr = fmt.Errorf("agent loop factory panicked: %v", r)
+				}
+			}()
+			handler, factoryErr = p.factory(target)
+		}()
 		var (
 			entry       *loopEntry
 			workerCtx   context.Context
@@ -192,6 +205,9 @@ func (p *AgentLoopPool) getOrCreate(target LoopTarget) (*loopEntry, error) {
 		close(inflight.done)
 		p.mu.Unlock()
 
+		if panicValue != nil {
+			panic(panicValue)
+		}
 		if factoryErr != nil {
 			return nil, factoryErr
 		}

@@ -202,3 +202,54 @@ func TestAgentLoopPool_SlowFactoryDoesNotHoldMutex(t *testing.T) {
 		t.Fatalf("expected pool size 1, got %d", pool.Size())
 	}
 }
+
+func TestAgentLoopPool_FactoryPanicDoesNotLeakInflight(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+
+	pool := NewAgentLoopPoolWithFactory(func(_ LoopTarget) (inboundHandler, error) {
+		mu.Lock()
+		calls++
+		call := calls
+		mu.Unlock()
+		if call == 1 {
+			panic("factory boom")
+		}
+		return &fakeHandler{received: make(chan bus.InboundMessage, 8)}, nil
+	})
+	defer pool.Close()
+
+	target := LoopTarget{Workspace: "/tmp/ws-panic"}
+	panicDone := make(chan struct{})
+	go func() {
+		defer close(panicDone)
+		defer func() {
+			_ = recover()
+		}()
+		_ = pool.Dispatch(context.Background(), target, bus.InboundMessage{SessionKey: "panic"})
+	}()
+
+	select {
+	case <-panicDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for panic dispatch to return")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := pool.Dispatch(ctx, target, bus.InboundMessage{SessionKey: "ok"}); err != nil {
+		t.Fatalf("dispatch after panic failed: %v", err)
+	}
+
+	mu.Lock()
+	gotCalls := calls
+	mu.Unlock()
+	if gotCalls < 2 {
+		t.Fatalf("expected factory to be retried after panic, got %d calls", gotCalls)
+	}
+	if pool.Size() != 1 {
+		t.Fatalf("expected pool size 1 after retry, got %d", pool.Size())
+	}
+}

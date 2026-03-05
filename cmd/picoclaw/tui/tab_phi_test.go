@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type phiTestExec struct {
@@ -211,5 +213,41 @@ func TestPhiPullModelCmd_RejectsUnsupportedBackend(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(msg.output), "ollama only") {
 		t.Fatalf("unexpected output: %q", msg.output)
+	}
+}
+
+func TestPhiSetupCmd_EscapesHomePath(t *testing.T) {
+	execStub := &phiTestExec{
+		home:     "/Users/tester/My Home",
+		shellOut: "ok",
+	}
+	msg := phiSetupCmd(execStub)().(phiActionMsg)
+	if !msg.ok {
+		t.Fatalf("expected success, got %#v", msg)
+	}
+	if len(execStub.shellCommands) == 0 {
+		t.Fatal("expected setup shell command")
+	}
+	if !strings.Contains(execStub.shellCommands[0], "HOME='/Users/tester/My Home'") {
+		t.Fatalf("expected escaped HOME in command, got: %s", execStub.shellCommands[0])
+	}
+}
+
+func TestPhiModel_UpdateBlocksConcurrentLongRunningActions(t *testing.T) {
+	execStub := &phiTestExec{}
+	m := NewPhiModel(execStub)
+	m.loaded = true
+	m.opInFlight = true
+	m.opName = "PHI setup"
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}, nil)
+	if cmd != nil {
+		t.Fatal("expected nil command while operation is in flight")
+	}
+	if !next.opInFlight {
+		t.Fatal("expected operation state to remain in-flight")
+	}
+	if !strings.Contains(strings.ToLower(next.flashMsg), "already running") {
+		t.Fatalf("expected busy warning, got %q", next.flashMsg)
 	}
 }
