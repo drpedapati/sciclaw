@@ -901,13 +901,17 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		providerToolDefs := al.tools.ToProviderDefs()
 
 		// Log LLM request details
+		maxTokens := 8192
+		if al.localMode {
+			maxTokens = 1024
+		}
 		logger.DebugCF("agent", "LLM request",
 			map[string]interface{}{
 				"iteration":         iteration,
 				"model":             al.model,
 				"messages_count":    len(messages),
 				"tools_count":       len(providerToolDefs),
-				"max_tokens":        8192,
+				"max_tokens":        maxTokens,
 				"temperature":       0.7,
 				"system_prompt_len": len(messages[0].Content),
 			})
@@ -936,7 +940,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 		// Call LLM
 		llmOpts := map[string]interface{}{
-			"max_tokens":  8192,
+			"max_tokens":  maxTokens,
 			"temperature": 0.7,
 		}
 		if al.reasoningEffort != "" {
@@ -1134,6 +1138,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				Role:       "tool",
 				Content:    contentForLLM,
 				ToolCallID: tc.ID,
+				ToolName:   tc.Name,
 			}
 			messages = append(messages, toolResultMsg)
 

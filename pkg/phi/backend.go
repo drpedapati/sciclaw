@@ -150,9 +150,9 @@ func WarmupModel(ctx context.Context, ollamaTag string) error {
 	warmupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	body := fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hello"}],"max_tokens":16}`, ollamaTag)
+	body := fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hello"}],"stream":false,"think":false,"options":{"num_predict":8,"num_ctx":4096}}`, ollamaTag)
 	req, err := http.NewRequestWithContext(warmupCtx, "POST",
-		OllamaDefaultURL+"/v1/chat/completions",
+		OllamaDefaultURL+"/api/chat",
 		strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating warmup request: %w", err)
@@ -170,17 +170,16 @@ func WarmupModel(ctx context.Context, ollamaTag string) error {
 	}
 
 	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		Done    bool `json:"done"`
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("parsing warmup response: %w", err)
 	}
-	if len(result.Choices) == 0 {
-		return fmt.Errorf("warmup returned no choices")
+	if !result.Done {
+		return fmt.Errorf("warmup did not complete")
 	}
 
 	return nil

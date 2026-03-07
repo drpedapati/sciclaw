@@ -449,6 +449,12 @@ func createLocalProvider(cfg *config.Config) (LLMProvider, error) {
 		return nil, fmt.Errorf("PHI mode requires local_backend and local_model to be configured; run: sciclaw modes phi-setup")
 	}
 
+	if backend == config.BackendOllama {
+		// Use Ollama native chat API so local-specific controls like think=false
+		// and num_ctx can be applied reliably.
+		return NewOllamaProvider(phi.OllamaDefaultURL, 10*time.Minute), nil
+	}
+
 	apiBase := phi.BackendAPIBase(backend)
 	if apiBase == "" {
 		return nil, fmt.Errorf("unsupported local backend: %s", backend)
