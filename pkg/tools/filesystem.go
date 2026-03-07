@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 type AccessMode int
@@ -30,6 +33,22 @@ var (
 
 	errFileReadTimedOut = errors.New("file read timed out")
 	errDirReadTimedOut  = errors.New("directory read timed out")
+
+	readFileBlockedExtensions = map[string]string{
+		".docx": "Use `docx-review` or a text-export tool instead.",
+		".pdf":  "Use a PDF extraction workflow instead of raw bytes.",
+		".xlsx": "Use spreadsheet tooling to read structured cell content.",
+		".xls":  "Use spreadsheet tooling to read structured cell content.",
+		".pptx": "Use a presentation extraction workflow instead of raw bytes.",
+		".ppt":  "Use a presentation extraction workflow instead of raw bytes.",
+		".odt":  "Use a document extraction workflow instead of raw bytes.",
+		".odf":  "Use a document extraction workflow instead of raw bytes.",
+		".zip":  "Extract the archive first, then read individual text files.",
+		".gz":   "Decompress first, then read the resulting text file.",
+		".tar":  "Extract the archive first, then read individual text files.",
+		".7z":   "Extract the archive first, then read individual text files.",
+		".bin":  "This appears to be binary data; use a format-aware tool.",
+	}
 )
 
 // validatePath ensures the given path is within the workspace if restrict is true.
@@ -219,6 +238,9 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return UserErrorResult(err.Error())
 	}
+	if guidance, blocked := blockedReadFileExtension(resolvedPath); blocked {
+		return UserErrorResult(fmt.Sprintf("read_file does not support %s files for LLM context. %s", guidance.Ext, guidance.Hint))
+	}
 
 	content, err := readFileWithTimeout(ctx, resolvedPath, fileToolOpTimeout)
 	if err != nil {
@@ -232,7 +254,62 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult(fmt.Sprintf("failed to read file: %v", err))
 	}
 
+	if looksBinaryFileContent(content) {
+		return UserErrorResult("read_file detected binary or non-text content. Use a format-aware extraction tool before sending content to the model.")
+	}
+
 	return NewToolResult(string(content))
+}
+
+type blockedExtensionInfo struct {
+	Ext  string
+	Hint string
+}
+
+func blockedReadFileExtension(path string) (blockedExtensionInfo, bool) {
+	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(path)))
+	if ext == "" {
+		return blockedExtensionInfo{}, false
+	}
+	hint, ok := readFileBlockedExtensions[ext]
+	if !ok {
+		return blockedExtensionInfo{}, false
+	}
+	return blockedExtensionInfo{Ext: ext, Hint: hint}, true
+}
+
+func looksBinaryFileContent(content []byte) bool {
+	if len(content) == 0 {
+		return false
+	}
+	sample := content
+	if len(sample) > 4096 {
+		sample = sample[:4096]
+	}
+	if bytes.IndexByte(sample, 0) >= 0 {
+		return true
+	}
+	if !utf8.Valid(sample) {
+		return true
+	}
+
+	textLike := 0
+	nonTextLike := 0
+	for _, r := range string(sample) {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			textLike++
+		case unicode.IsPrint(r):
+			textLike++
+		default:
+			nonTextLike++
+		}
+	}
+	total := textLike + nonTextLike
+	if total == 0 {
+		return false
+	}
+	return float64(nonTextLike)/float64(total) > 0.15
 }
 
 type WriteFileTool struct {

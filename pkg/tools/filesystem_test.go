@@ -40,6 +40,40 @@ func TestFilesystemTool_ReadFile_Success(t *testing.T) {
 	}
 }
 
+func TestFilesystemTool_ReadFile_BlockedExtension(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "draft.docx")
+	if err := os.WriteFile(testFile, []byte("fake-docx-bytes"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	tool := &ReadFileTool{}
+	result := tool.Execute(context.Background(), map[string]interface{}{"path": testFile})
+	if !result.IsError {
+		t.Fatalf("expected blocked extension to return error")
+	}
+	if !strings.Contains(strings.ToLower(result.ForLLM), ".docx") {
+		t.Fatalf("expected extension guidance in error, got: %s", result.ForLLM)
+	}
+}
+
+func TestFilesystemTool_ReadFile_BinaryContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "binary.dat")
+	if err := os.WriteFile(testFile, []byte{0x00, 0x01, 0x02, 0x03, 0x7f}, 0644); err != nil {
+		t.Fatalf("write binary file: %v", err)
+	}
+
+	tool := &ReadFileTool{}
+	result := tool.Execute(context.Background(), map[string]interface{}{"path": testFile})
+	if !result.IsError {
+		t.Fatalf("expected binary detection to return error")
+	}
+	if !strings.Contains(strings.ToLower(result.ForLLM), "binary") {
+		t.Fatalf("expected binary guidance, got: %s", result.ForLLM)
+	}
+}
+
 // TestFilesystemTool_ReadFile_NotFound verifies error handling for missing file
 func TestFilesystemTool_ReadFile_NotFound(t *testing.T) {
 	tool := &ReadFileTool{}

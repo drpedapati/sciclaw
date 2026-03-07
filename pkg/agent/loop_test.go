@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -602,6 +604,131 @@ func TestProcessDirectWithChannel_NonDiscordNoAutoRecallInjection(t *testing.T) 
 	}
 }
 
+func TestProcessDirectWithChannel_LocalModePrefetchesURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body><article>Local prefetch test payload</article></body></html>`))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Agents.Defaults.Mode = config.ModePhi
+
+	msgBus := bus.NewMessageBus()
+	provider := &captureMockProvider{response: "prefetch-ok"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	_, err := al.ProcessDirectWithChannel(
+		context.Background(),
+		"Please summarize this page: "+server.URL,
+		"cli:prefetch",
+		"cli",
+		"direct",
+		"user-1",
+	)
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel failed: %v", err)
+	}
+
+	userPrompt := provider.LastUserPrompt()
+	if !strings.Contains(userPrompt, "## Prefetched Context (web_fetch)") {
+		t.Fatalf("expected local prefetch context in user prompt, got: %s", userPrompt)
+	}
+	if !strings.Contains(userPrompt, server.URL) {
+		t.Fatalf("expected prefetched payload to include URL, got: %s", userPrompt)
+	}
+}
+
+func TestProcessDirectWithChannel_CloudModeSkipsLocalPrefetch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body><article>cloud no prefetch</article></body></html>`))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Agents.Defaults.Mode = config.ModeCloud
+
+	msgBus := bus.NewMessageBus()
+	provider := &captureMockProvider{response: "cloud-ok"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	_, err := al.ProcessDirectWithChannel(
+		context.Background(),
+		"Please summarize this page: "+server.URL,
+		"cli:cloud",
+		"cli",
+		"direct",
+		"user-1",
+	)
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel failed: %v", err)
+	}
+
+	userPrompt := provider.LastUserPrompt()
+	if strings.Contains(userPrompt, "## Prefetched Context (web_fetch)") {
+		t.Fatalf("did not expect local prefetch context in cloud mode, got: %s", userPrompt)
+	}
+}
+
+func TestRunLLMIteration_TruncatesToolOutputForLocalMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = tmpDir
+	cfg.Agents.Defaults.Model = "test-model"
+	cfg.Agents.Defaults.Mode = config.ModePhi
+	cfg.Agents.Defaults.MaxToolIterations = 5
+
+	provider := &toolThenDoneProvider{}
+	msgBus := bus.NewMessageBus()
+	al := NewAgentLoop(cfg, msgBus, provider)
+	al.RegisterTool(&bigOutputTool{
+		content: strings.Repeat("x", localToolResultMaxChars+3000),
+	})
+
+	_, err := al.ProcessDirectWithChannel(
+		context.Background(),
+		"trigger big output tool",
+		"cli:truncate",
+		"cli",
+		"direct",
+		"user-1",
+	)
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel failed: %v", err)
+	}
+
+	secondCall := provider.CallMessages(1)
+	if len(secondCall) == 0 {
+		t.Fatalf("expected second provider call with tool result context")
+	}
+
+	var toolMsg providers.Message
+	found := false
+	for i := len(secondCall) - 1; i >= 0; i-- {
+		if secondCall[i].Role == "tool" {
+			toolMsg = secondCall[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected tool message in second provider call")
+	}
+	if !strings.Contains(toolMsg.Content, "truncated") {
+		t.Fatalf("expected truncation marker in tool content, got len=%d", len(toolMsg.Content))
+	}
+	if len(toolMsg.Content) > localToolResultMaxChars+200 {
+		t.Fatalf("expected truncated content near cap, got len=%d", len(toolMsg.Content))
+	}
+}
+
 func TestAgentLoop_HooksCanBeDisabledByPolicy(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "agent-test-*")
 	if err != nil {
@@ -781,6 +908,82 @@ func (m *captureMockProvider) LastSystemPrompt() string {
 		return ""
 	}
 	return m.last[0].Content
+}
+
+func (m *captureMockProvider) LastUserPrompt() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := len(m.last) - 1; i >= 0; i-- {
+		if m.last[i].Role == "user" {
+			return m.last[i].Content
+		}
+	}
+	return ""
+}
+
+type toolThenDoneProvider struct {
+	mu    sync.Mutex
+	calls [][]providers.Message
+}
+
+func (m *toolThenDoneProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
+	m.mu.Lock()
+	m.calls = append(m.calls, cloneMessages(messages))
+	callIndex := len(m.calls) - 1
+	m.mu.Unlock()
+
+	if callIndex == 0 {
+		return &providers.LLMResponse{
+			Content: "",
+			ToolCalls: []providers.ToolCall{
+				{
+					ID:        "call-big-output",
+					Name:      "big_output_tool",
+					Arguments: map[string]interface{}{},
+				},
+			},
+		}, nil
+	}
+	return &providers.LLMResponse{
+		Content:   "done",
+		ToolCalls: []providers.ToolCall{},
+	}, nil
+}
+
+func (m *toolThenDoneProvider) GetDefaultModel() string {
+	return "mock-model"
+}
+
+func (m *toolThenDoneProvider) CallMessages(index int) []providers.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if index < 0 || index >= len(m.calls) {
+		return nil
+	}
+	return cloneMessages(m.calls[index])
+}
+
+type bigOutputTool struct {
+	content string
+}
+
+func (t *bigOutputTool) Name() string {
+	return "big_output_tool"
+}
+
+func (t *bigOutputTool) Description() string {
+	return "Returns very large output for truncation tests"
+}
+
+func (t *bigOutputTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type":       "object",
+		"properties": map[string]interface{}{},
+	}
+}
+
+func (t *bigOutputTool) Execute(ctx context.Context, args map[string]interface{}) *tools.ToolResult {
+	return tools.NewToolResult(t.content)
 }
 
 func cloneMessages(in []providers.Message) []providers.Message {

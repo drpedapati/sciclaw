@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,7 @@ type AgentLoop struct {
 	discordRecallFn func(query, sessionKey string, topK, maxChars int) ([]discordarchive.RecallHit, error)
 	hooks           *hooks.Dispatcher
 	hookAuditPath   string
+	localMode       bool
 	turnCounter     uint64
 	running         atomic.Bool
 	summarizing     sync.Map // Tracks which sessions are currently being summarized
@@ -79,7 +81,18 @@ const defaultEmptyAssistantResponse = "I completed the turn but did not produce 
 
 var errDiscordAutoArchiveTimedOut = errors.New("discord auto-archive timed out")
 
-const discordAutoArchiveTimeout = 750 * time.Millisecond
+const (
+	discordAutoArchiveTimeout = 750 * time.Millisecond
+	defaultToolResultMaxChars = 12000
+	localToolResultMaxChars   = 4000
+	localPrefetchMaxChars     = 3500
+	localPrefetchTimeout      = 20 * time.Second
+)
+
+var localPrefetchCurrentInfoKeywords = []string{
+	"latest", "current", "today", "recent", "news", "headline",
+	"just happened", "what's happening", "what is happening", "update",
+}
 
 // createToolRegistry creates a tool registry with common tools.
 // This is shared between main agent and subagents.
@@ -293,6 +306,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		},
 		hooks:         hookDispatcher,
 		hookAuditPath: hookAuditPath,
+		localMode:     cfg.EffectiveMode() == config.ModePhi,
 		summarizing:   sync.Map{},
 	}
 }
@@ -648,10 +662,30 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			}
 		}
 	}
+	userMessageForPrompt := opts.UserMessage
+	if prefetchContext, prefetchTool := al.maybeBuildLocalPrefetchContext(ctx, opts.UserMessage, opts.Channel, opts.ChatID); prefetchContext != "" {
+		trimmedUser := strings.TrimSpace(userMessageForPrompt)
+		if trimmedUser == "" {
+			userMessageForPrompt = prefetchContext
+		} else {
+			userMessageForPrompt = trimmedUser + "\n\n" + prefetchContext
+		}
+		logger.InfoCF("agent", "Injected local prefetch context",
+			map[string]interface{}{
+				"turn_id":             opts.TurnID,
+				"session_key":         opts.SessionKey,
+				"channel":             opts.Channel,
+				"chat_id":             opts.ChatID,
+				"prefetch_tool":       prefetchTool,
+				"prefetch_chars":      len(prefetchContext),
+				"user_prompt_chars":   len(userMessageForPrompt),
+				"original_user_chars": len(opts.UserMessage),
+			})
+	}
 	messages := al.contextBuilder.BuildMessages(
 		history,
 		summary,
-		opts.UserMessage,
+		userMessageForPrompt,
 		nil,
 		opts.Channel,
 		opts.ChatID,
@@ -664,7 +698,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			"session_key":     opts.SessionKey,
 			"history_count":   len(history),
 			"summary_chars":   len(summary),
-			"user_chars":      len(opts.UserMessage),
+			"user_chars":      len(userMessageForPrompt),
 			"prompt_messages": len(messages),
 		})
 
@@ -1094,6 +1128,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			if contentForLLM == "" && toolResult.Err != nil {
 				contentForLLM = toolResult.Err.Error()
 			}
+			contentForLLM = truncateWithNotice(contentForLLM, al.toolResultLLMCharLimit(), "tool output")
 
 			toolResultMsg := providers.Message{
 				Role:       "tool",
@@ -1149,6 +1184,114 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 
 	return finalContent, iteration, usage, nil
+}
+
+func (al *AgentLoop) toolResultLLMCharLimit() int {
+	if al.localMode {
+		return localToolResultMaxChars
+	}
+	return defaultToolResultMaxChars
+}
+
+func (al *AgentLoop) maybeBuildLocalPrefetchContext(ctx context.Context, userMessage, channel, chatID string) (string, string) {
+	if !al.localMode {
+		return "", ""
+	}
+	toolName, args, ok := pickLocalPrefetchTool(userMessage)
+	if !ok {
+		return "", ""
+	}
+	if _, exists := al.tools.Get(toolName); !exists {
+		return "", toolName
+	}
+
+	prefetchCtx, cancel := context.WithTimeout(ctx, localPrefetchTimeout)
+	defer cancel()
+
+	result := al.tools.ExecuteWithContext(prefetchCtx, toolName, args, channel, chatID, nil)
+	if result == nil {
+		return "", toolName
+	}
+	if result.IsError {
+		logger.WarnCF("agent", "Local prefetch tool failed",
+			map[string]interface{}{
+				"tool":    toolName,
+				"channel": channel,
+				"chat_id": chatID,
+				"error":   utils.Truncate(result.ForLLM, 180),
+			})
+		return "", toolName
+	}
+
+	content := compactPrefetchContent(result)
+	if content == "" {
+		return "", toolName
+	}
+	content = truncateWithNotice(content, localPrefetchMaxChars, "prefetched context")
+	return fmt.Sprintf("## Prefetched Context (%s)\n%s", toolName, content), toolName
+}
+
+func pickLocalPrefetchTool(userMessage string) (string, map[string]interface{}, bool) {
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return "", nil, false
+	}
+	if u := firstHTTPURL(msg); u != "" {
+		return "web_fetch", map[string]interface{}{"url": u}, true
+	}
+	if messageLooksCurrentInfo(msg) {
+		return "web_search", map[string]interface{}{"query": msg}, true
+	}
+	return "", nil, false
+}
+
+func firstHTTPURL(text string) string {
+	for _, token := range strings.Fields(text) {
+		candidate := strings.Trim(token, " \t\r\n\"'()[]{}<>,.;!?")
+		parsed, err := url.Parse(candidate)
+		if err != nil {
+			continue
+		}
+		if (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" {
+			return parsed.String()
+		}
+	}
+	return ""
+}
+
+func messageLooksCurrentInfo(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if lower == "" {
+		return false
+	}
+	for _, kw := range localPrefetchCurrentInfoKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func compactPrefetchContent(result *tools.ToolResult) string {
+	if result == nil {
+		return ""
+	}
+	if strings.TrimSpace(result.ForUser) != "" {
+		return strings.TrimSpace(result.ForUser)
+	}
+	return strings.TrimSpace(result.ForLLM)
+}
+
+func truncateWithNotice(content string, limit int, label string) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" || limit <= 0 || len(trimmed) <= limit {
+		return trimmed
+	}
+	if len(label) > 80 {
+		label = label[:80]
+	}
+	suffix := fmt.Sprintf("\n\n[%s truncated: showing first %d of %d chars]", label, limit, len(trimmed))
+	return trimmed[:limit] + suffix
 }
 
 func (al *AgentLoop) maybeArchiveDiscordSession(sessionKey string) (bool, error) {
