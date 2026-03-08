@@ -15,17 +15,36 @@ formula_name="${FORMULA_NAME:-sciclaw}"
 formula_class="${FORMULA_CLASS:-Sciclaw}"
 formula_desc="${FORMULA_DESC:-Autonomous paired scientist CLI forked from PicoClaw}"
 formula_path="${FORMULA_PATH:-Formula/${formula_name}.rb}"
+source_asset_name="${SOURCE_ASSET_NAME:-sciclaw-${tag}-source.tar.gz}"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
+fetch_with_retry() {
+  local url="$1"
+  local out="$2"
+  local attempt=1
+  local max_attempts=5
+  while [ "$attempt" -le "$max_attempts" ]; do
+    if curl -fsSL -o "$out" "$url"; then
+      return 0
+    fi
+    if [ "$attempt" -eq "$max_attempts" ]; then
+      echo "  Failed to download ${url} after ${max_attempts} attempts." >&2
+      return 1
+    fi
+    sleep $((attempt * 2))
+    attempt=$((attempt + 1))
+  done
+}
+
 # Download binaries and source, compute SHA-256s
 echo "  Downloading binaries and source archive..."
 for target in darwin-arm64 linux-arm64 linux-amd64; do
-  curl -fsSL -o "${tmpdir}/sciclaw-${target}" "${base}/sciclaw-${target}"
+  fetch_with_retry "${base}/sciclaw-${target}" "${tmpdir}/sciclaw-${target}"
 done
-source_url="https://github.com/${repo}/archive/refs/tags/${tag}.tar.gz"
-curl -fsSL -o "${tmpdir}/source.tar.gz" "${source_url}"
+source_url="${base}/${source_asset_name}"
+fetch_with_retry "${source_url}" "${tmpdir}/source.tar.gz"
 
 sha_darwin_arm64=$(shasum -a 256 "${tmpdir}/sciclaw-darwin-arm64" | awk '{print $1}')
 sha_linux_arm64=$(shasum -a 256 "${tmpdir}/sciclaw-linux-arm64" | awk '{print $1}')

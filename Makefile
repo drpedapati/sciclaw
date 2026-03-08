@@ -21,6 +21,7 @@ RELEASE_DEV_PRERELEASE?=true
 BUILD_TIME=$(shell date +%FT%T%z)
 GO_VERSION=$(shell $(GO) version | awk '{print $$3}')
 LDFLAGS=-trimpath -ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.goVersion=$(GO_VERSION)"
+RELEASE_SOURCE_ASSET_PREFIX?=$(PRIMARY_BINARY_NAME)
 
 # Go variables
 GO?=go
@@ -214,23 +215,27 @@ release-local:
 		exit 1; \
 	fi
 	@echo "==> Building all platforms..."
-	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt
+	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt $(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz
 	@VERSION=$(RELEASE_TAG) $(MAKE) build-all
-	@echo "==> Generating checksums..."
-	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* > sha256sums.txt
 	@echo "==> Tagging $(RELEASE_TAG)..."
 	@git tag -a "$(RELEASE_TAG)" -m "Release $(RELEASE_TAG)"
 	@git push origin "$(RELEASE_TAG)"
+	@echo "==> Building source archive..."
+	@git archive --format=tar.gz --prefix=$(PRIMARY_BINARY_NAME)-$(RELEASE_TAG)/ "$(RELEASE_TAG)" > "$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz"
+	@echo "==> Generating checksums..."
+	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* $(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz > sha256sums.txt
 	@echo "==> Creating GitHub release..."
 	@gh release create "$(RELEASE_TAG)" \
 		$(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* \
 		$(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* \
+		$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz \
 		$(BUILD_DIR)/sha256sums.txt \
 		--repo $(RELEASE_REPO) \
 		--title "$(RELEASE_TAG)" \
 		--generate-notes
 	@echo "==> Updating Homebrew tap..."
-	@deploy/update-tap.sh "$(RELEASE_TAG)" "$(RELEASE_REPO)"
+	@SOURCE_ASSET_NAME="$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz" \
+	 deploy/update-tap.sh "$(RELEASE_TAG)" "$(RELEASE_REPO)"
 	@echo "==> Release $(RELEASE_TAG) complete."
 
 ## release-dev-local: Build locally, create pre-release, and update Homebrew tap dev formula only
@@ -246,17 +251,20 @@ release-dev-local:
 		exit 1; \
 	fi
 	@echo "==> Building all platforms..."
-	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt
+	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt $(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz
 	@VERSION=$(RELEASE_DEV_TAG) $(MAKE) build-all
-	@echo "==> Generating checksums..."
-	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* > sha256sums.txt
 	@echo "==> Tagging $(RELEASE_DEV_TAG)..."
 	@git tag -a "$(RELEASE_DEV_TAG)" -m "Release $(RELEASE_DEV_TAG)"
 	@git push origin "$(RELEASE_DEV_TAG)"
+	@echo "==> Building source archive..."
+	@git archive --format=tar.gz --prefix=$(PRIMARY_BINARY_NAME)-$(RELEASE_DEV_TAG)/ "$(RELEASE_DEV_TAG)" > "$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz"
+	@echo "==> Generating checksums..."
+	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* $(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz > sha256sums.txt
 	@echo "==> Creating GitHub release..."
 	@gh release create "$(RELEASE_DEV_TAG)" \
 		$(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* \
 		$(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* \
+		$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz \
 		$(BUILD_DIR)/sha256sums.txt \
 		--repo $(RELEASE_REPO) \
 		--title "$(RELEASE_DEV_TAG)" \
@@ -265,6 +273,7 @@ release-dev-local:
 	@echo "==> Updating Homebrew tap dev formula..."
 	@FORMULA_NAME=$(RELEASE_DEV_FORMULA_NAME) \
 	 FORMULA_CLASS=$(RELEASE_DEV_FORMULA_CLASS) \
+	 SOURCE_ASSET_NAME="$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz" \
 	 deploy/update-tap.sh "$(RELEASE_DEV_TAG)" "$(RELEASE_REPO)"
 	@echo "==> Dev release $(RELEASE_DEV_TAG) complete."
 
