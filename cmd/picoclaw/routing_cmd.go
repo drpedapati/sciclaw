@@ -61,10 +61,10 @@ func routingHelp() {
 	fmt.Printf("\nRouting commands:\n")
 	fmt.Printf("  %s routing status\n", commandName)
 	fmt.Printf("  %s routing list\n", commandName)
-	fmt.Printf("  %s routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention] [--mode <default|cloud|phi|vm>] [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]\n", commandName)
+	fmt.Printf("  %s routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention] [--mode <default|cloud|phi|vm>] [--local-backend <ollama>] [--local-model <id>] [--local-preset <name>]\n", commandName)
 	fmt.Printf("  %s routing remove --channel <channel> --chat-id <id>\n", commandName)
 	fmt.Printf("  %s routing set-users --channel <channel> --chat-id <id> --allow <id1,id2>\n", commandName)
-	fmt.Printf("  %s routing set-runtime --channel <channel> --chat-id <id> --mode <default|cloud|phi|vm> [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]\n", commandName)
+	fmt.Printf("  %s routing set-runtime --channel <channel> --chat-id <id> --mode <default|cloud|phi|vm> [--local-backend <ollama>] [--local-model <id>] [--local-preset <name>]\n", commandName)
 	fmt.Printf("  %s routing validate\n", commandName)
 	fmt.Printf("  %s routing explain --channel <channel> --chat-id <id> --sender <id> [--mention] [--dm]\n", commandName)
 	fmt.Printf("  %s routing enable|disable\n", commandName)
@@ -205,7 +205,7 @@ func routingAddCmd() {
 	}
 
 	if strings.TrimSpace(channel) == "" || strings.TrimSpace(chatID) == "" || strings.TrimSpace(workspace) == "" || strings.TrimSpace(allowCSV) == "" {
-		fmt.Println("Usage: routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention] [--mode <default|cloud|phi|vm>] [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]")
+		fmt.Println("Usage: routing add --channel <channel> --chat-id <id> --workspace <abs_path> --allow <id1,id2> [--label <name>] [--no-mention] [--mode <default|cloud|phi|vm>] [--local-backend <ollama>] [--local-model <id>] [--local-preset <name>]")
 		return
 	}
 
@@ -427,7 +427,7 @@ func routingSetRuntimeCmd() {
 		}
 	}
 	if strings.TrimSpace(channel) == "" || strings.TrimSpace(chatID) == "" {
-		fmt.Println("Usage: routing set-runtime --channel <channel> --chat-id <id> --mode <default|cloud|phi|vm> [--local-backend <ollama|mlx>] [--local-model <id>] [--local-preset <name>]")
+		fmt.Println("Usage: routing set-runtime --channel <channel> --chat-id <id> --mode <default|cloud|phi|vm> [--local-backend <ollama>] [--local-model <id>] [--local-preset <name>]")
 		return
 	}
 

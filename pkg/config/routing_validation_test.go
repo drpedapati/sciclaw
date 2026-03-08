@@ -245,6 +245,29 @@ func TestValidateRoutingConfig_InvalidLocalBackendRejected(t *testing.T) {
 	}
 }
 
+func TestValidateRoutingConfig_MLXLocalBackendRejected(t *testing.T) {
+	workspace := t.TempDir()
+	err := ValidateRoutingConfig(RoutingConfig{
+		Mappings: []RoutingMapping{
+			{
+				Channel:        "discord",
+				ChatID:         "100",
+				Workspace:      workspace,
+				AllowedSenders: FlexibleStringSlice{"u1"},
+				Mode:           ModePhi,
+				LocalBackend:   BackendMLX,
+				LocalModel:     "qwen3.5:4b",
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected mlx local backend error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "not supported in this build") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadConfig_MissingRoutingSectionUsesDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {

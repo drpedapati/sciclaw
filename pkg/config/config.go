@@ -655,9 +655,11 @@ func ValidateRoutingConfig(r RoutingConfig) error {
 		localPreset := strings.TrimSpace(m.LocalPreset)
 		if localBackend != "" {
 			switch localBackend {
-			case BackendOllama, BackendMLX:
+			case BackendOllama:
+			case BackendMLX:
+				return fmt.Errorf("routing.mappings[%d].local_backend %q is not supported in this build; use %q", i, BackendMLX, BackendOllama)
 			default:
-				return fmt.Errorf("routing.mappings[%d].local_backend must be %q or %q", i, BackendOllama, BackendMLX)
+				return fmt.Errorf("routing.mappings[%d].local_backend must be %q", i, BackendOllama)
 			}
 		}
 		if mode != "" && mode != ModePhi && (localBackend != "" || localModel != "" || localPreset != "") {
