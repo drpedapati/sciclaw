@@ -105,6 +105,11 @@ build-all:
 	@ln -sf $(PRIMARY_BINARY_NAME)-windows-amd64.exe $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-windows-amd64.exe
 	@echo "All builds complete"
 
+## test: Run the Go test suite
+test:
+	@echo "Running Go tests..."
+	@$(GO) test ./...
+
 ## install: Install sciclaw and picoclaw compatibility alias to system and copy builtin skills
 install: build
 	@echo "Installing $(PRIMARY_BINARY_NAME) + compatibility alias $(LEGACY_BINARY_NAME)..."
@@ -215,28 +220,25 @@ release-local:
 		echo "Error: GitHub CLI (gh) is required."; \
 		exit 1; \
 	fi
+	@echo "==> Running tests..."
+	@$(MAKE) test
 	@echo "==> Building all platforms..."
 	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt $(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz
 	@VERSION=$(RELEASE_TAG) $(MAKE) build-all
-	@echo "==> Tagging $(RELEASE_TAG)..."
-	@git tag -a "$(RELEASE_TAG)" -m "Release $(RELEASE_TAG)"
-	@git push origin "$(RELEASE_TAG)"
 	@echo "==> Building source archive..."
 	@git archive --format=tar.gz --prefix=$(PRIMARY_BINARY_NAME)-$(RELEASE_TAG)/ "$(RELEASE_TAG)" > "$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz"
 	@echo "==> Generating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* $(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz > sha256sums.txt
-	@echo "==> Creating GitHub release..."
-	@gh release create "$(RELEASE_TAG)" \
-		$(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* \
-		$(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* \
-		$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz \
-		$(BUILD_DIR)/sha256sums.txt \
-		--repo $(RELEASE_REPO) \
-		--title "$(RELEASE_TAG)" \
-		--generate-notes
-	@echo "==> Updating Homebrew tap..."
-	@SOURCE_ASSET_NAME="$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz" \
-	 deploy/update-tap.sh "$(RELEASE_TAG)" "$(RELEASE_REPO)"
+	@deploy/create-release.sh \
+		"$(RELEASE_TAG)" \
+		"$(RELEASE_REPO)" \
+		"false" \
+		"sciclaw" \
+		"Sciclaw" \
+		"$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz" \
+		"$(BUILD_DIR)" \
+		"$(PRIMARY_BINARY_NAME)" \
+		"$(LEGACY_BINARY_NAME)"
 	@echo "==> Release $(RELEASE_TAG) complete."
 
 ## release-dev-local: Build locally, create pre-release, and update Homebrew tap dev formula only
@@ -251,31 +253,25 @@ release-dev-local:
 		echo "Error: GitHub CLI (gh) is required."; \
 		exit 1; \
 	fi
+	@echo "==> Running tests..."
+	@$(MAKE) test
 	@echo "==> Building all platforms..."
 	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt $(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz
 	@VERSION=$(RELEASE_DEV_TAG) $(MAKE) build-all
-	@echo "==> Tagging $(RELEASE_DEV_TAG)..."
-	@git tag -a "$(RELEASE_DEV_TAG)" -m "Release $(RELEASE_DEV_TAG)"
-	@git push origin "$(RELEASE_DEV_TAG)"
 	@echo "==> Building source archive..."
 	@git archive --format=tar.gz --prefix=$(PRIMARY_BINARY_NAME)-$(RELEASE_DEV_TAG)/ "$(RELEASE_DEV_TAG)" > "$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz"
 	@echo "==> Generating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* $(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz > sha256sums.txt
-	@echo "==> Creating GitHub release..."
-	@gh release create "$(RELEASE_DEV_TAG)" \
-		$(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* \
-		$(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* \
-		$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz \
-		$(BUILD_DIR)/sha256sums.txt \
-		--repo $(RELEASE_REPO) \
-		--title "$(RELEASE_DEV_TAG)" \
-		--generate-notes \
-		$(if $(filter true,$(RELEASE_DEV_PRERELEASE)),--prerelease,)
-	@echo "==> Updating Homebrew tap dev formula..."
-	@FORMULA_NAME=$(RELEASE_DEV_FORMULA_NAME) \
-	 FORMULA_CLASS=$(RELEASE_DEV_FORMULA_CLASS) \
-	 SOURCE_ASSET_NAME="$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz" \
-	 deploy/update-tap.sh "$(RELEASE_DEV_TAG)" "$(RELEASE_REPO)"
+	@deploy/create-release.sh \
+		"$(RELEASE_DEV_TAG)" \
+		"$(RELEASE_REPO)" \
+		"$(RELEASE_DEV_PRERELEASE)" \
+		"$(RELEASE_DEV_FORMULA_NAME)" \
+		"$(RELEASE_DEV_FORMULA_CLASS)" \
+		"$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz" \
+		"$(BUILD_DIR)" \
+		"$(PRIMARY_BINARY_NAME)" \
+		"$(LEGACY_BINARY_NAME)"
 	@echo "==> Dev release $(RELEASE_DEV_TAG) complete."
 
 ## release-dispatch: Trigger GitHub Create Tag and Release workflow (binaries + Homebrew tap update)

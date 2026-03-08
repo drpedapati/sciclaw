@@ -15,7 +15,7 @@ formula_name="${FORMULA_NAME:-sciclaw}"
 formula_class="${FORMULA_CLASS:-Sciclaw}"
 formula_desc="${FORMULA_DESC:-Autonomous paired scientist CLI forked from PicoClaw}"
 formula_path="${FORMULA_PATH:-Formula/${formula_name}.rb}"
-source_asset_name="${SOURCE_ASSET_NAME:-sciclaw-${tag}-source.tar.gz}"
+source_asset_name="${SOURCE_ASSET_NAME:-source-sciclaw-${tag}-source.tar.gz}"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
