@@ -113,3 +113,43 @@ func TestRunPhiToolEval_ReportsProviderError(t *testing.T) {
 		t.Fatalf("note=%q want timeout", result.Note)
 	}
 }
+
+type slowTwoTurnPhiEvalProvider struct {
+	callIndex int
+}
+
+func (p *slowTwoTurnPhiEvalProvider) Chat(ctx context.Context, _ []providers.Message, _ []providers.ToolDefinition, _ string, _ map[string]interface{}) (*providers.LLMResponse, error) {
+	p.callIndex++
+	switch p.callIndex {
+	case 1:
+		time.Sleep(80 * time.Millisecond)
+		return &providers.LLMResponse{
+			FinishReason: "tool_calls",
+			ToolCalls: []providers.ToolCall{{
+				ID:   "call_1",
+				Name: "word_count",
+				Arguments: map[string]interface{}{
+					"text": "alpha beta gamma delta",
+				},
+			}},
+		}, nil
+	case 2:
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return &providers.LLMResponse{Content: "4", FinishReason: "stop"}, nil
+	default:
+		return &providers.LLMResponse{}, nil
+	}
+}
+
+func TestRunPhiToolEval_UsesFreshTimeoutForFollowupCall(t *testing.T) {
+	provider := &slowTwoTurnPhiEvalProvider{}
+	result := runPhiToolEval(provider, "qwen3.5:9b", 50*time.Millisecond)
+	if !result.Passed {
+		t.Fatalf("expected pass with fresh follow-up timeout, got %+v", result)
+	}
+	if provider.callIndex != 2 {
+		t.Fatalf("callIndex=%d want 2", provider.callIndex)
+	}
+}

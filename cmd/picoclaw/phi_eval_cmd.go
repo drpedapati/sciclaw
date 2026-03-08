@@ -34,7 +34,7 @@ func modesPhiEvalCmd(cfg *config.Config, args []string) {
 	fs := flag.NewFlagSet("modes phi-eval", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	jsonOut := fs.Bool("json", false, "emit JSON")
-	timeoutSec := fs.Int("timeout", 120, "per-probe timeout in seconds")
+	timeoutSec := fs.Int("timeout", 120, "per model-call timeout in seconds")
 	if err := fs.Parse(args); err != nil {
 		fmt.Printf("Usage: %s modes phi-eval [--json] [--timeout <seconds>]\n", invokedCLIName())
 		os.Exit(1)
@@ -97,6 +97,9 @@ func runPhiEval(cfg *config.Config, timeout time.Duration) ([]phiEvalResult, str
 	model := strings.TrimSpace(cfg.Agents.Defaults.LocalModel)
 	if backend == "" || model == "" {
 		return nil, "", "", fmt.Errorf("local PHI runtime is not configured; run: %s modes phi-setup", invokedCLIName())
+	}
+	if backend == config.BackendMLX {
+		return nil, backend, model, fmt.Errorf("MLX local backend is not supported in this build yet; use Ollama")
 	}
 
 	status := phi.CheckBackend(backend)
@@ -185,9 +188,6 @@ func runPhiJSONEval(client phiEvalChatClient, model string, timeout time.Duratio
 }
 
 func runPhiToolEval(client phiEvalChatClient, model string, timeout time.Duration) phiEvalResult {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	toolDef := providers.ToolDefinition{
 		Type: "function",
 		Function: providers.ToolFunctionDefinition{
@@ -210,7 +210,9 @@ func runPhiToolEval(client phiEvalChatClient, model string, timeout time.Duratio
 	}}
 
 	start := time.Now()
-	resp, err := client.Chat(ctx, initialMessages, []providers.ToolDefinition{toolDef}, model, map[string]interface{}{"max_tokens": 256, "temperature": 0.1})
+	firstCtx, firstCancel := context.WithTimeout(context.Background(), timeout)
+	resp, err := client.Chat(firstCtx, initialMessages, []providers.ToolDefinition{toolDef}, model, map[string]interface{}{"max_tokens": 256, "temperature": 0.1})
+	firstCancel()
 	result := phiEvalResult{Name: "tool", DurationMS: time.Since(start).Milliseconds()}
 	if err != nil {
 		result.Note = err.Error()
@@ -246,7 +248,9 @@ func runPhiToolEval(client phiEvalChatClient, model string, timeout time.Duratio
 	}
 
 	followStart := time.Now()
-	finalResp, err := client.Chat(ctx, append(initialMessages, assistantMsg, toolMsg), []providers.ToolDefinition{toolDef}, model, map[string]interface{}{"max_tokens": 128, "temperature": 0.1})
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), timeout)
+	finalResp, err := client.Chat(secondCtx, append(initialMessages, assistantMsg, toolMsg), []providers.ToolDefinition{toolDef}, model, map[string]interface{}{"max_tokens": 128, "temperature": 0.1})
+	secondCancel()
 	result.DurationMS += time.Since(followStart).Milliseconds()
 	if err != nil {
 		result.Note = fmt.Sprintf("follow-up failed: %v", err)

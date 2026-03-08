@@ -194,6 +194,20 @@ func TestPhiSetLocalDefaultsCmd_WritesConfigAndReloads(t *testing.T) {
 	}
 }
 
+func TestPhiSetLocalDefaultsCmd_RejectsUnsupportedBackend(t *testing.T) {
+	execStub := &phiTestExec{
+		configRaw: `{"agents":{"defaults":{"mode":"","model":"gpt-5.2"}}}`,
+	}
+	backend := "mlx"
+	msg := phiSetLocalDefaultsCmd(execStub, &backend, nil, nil)().(phiActionMsg)
+	if msg.ok {
+		t.Fatalf("expected failure, got %#v", msg)
+	}
+	if !strings.Contains(strings.ToLower(msg.output), "use ollama") {
+		t.Fatalf("unexpected output: %q", msg.output)
+	}
+}
+
 func TestPhiPullModelCmd_BuildsOllamaPull(t *testing.T) {
 	execStub := &phiTestExec{shellOut: "pulled"}
 	msg := phiPullModelCmd(execStub, "ollama", "qwen3.5:4b")().(phiActionMsg)
@@ -340,6 +354,21 @@ func TestParsePhiEvalSummary_FallbackOnly(t *testing.T) {
 	}
 }
 
+func TestParsePhiEvalSummary_IncompleteOutputNeedsAttention(t *testing.T) {
+	summary, ok := parsePhiEvalSummary(`{
+  "results": [
+    {"name":"json","passed":true,"duration_ms":371},
+    {"name":"tool","passed":true,"duration_ms":1278}
+  ]
+}`)
+	if !ok || summary == nil {
+		t.Fatal("expected eval summary")
+	}
+	if summary.Label != "needs attention" {
+		t.Fatalf("label=%q", summary.Label)
+	}
+}
+
 func TestPhiModelHandleAction_EvalStoresSummary(t *testing.T) {
 	m := NewPhiModel(&phiTestExec{})
 	m.HandleAction(phiActionMsg{
@@ -417,5 +446,23 @@ func TestPhiModel_UpdateStartStopInstallSetInFlight(t *testing.T) {
 	nextEval, cmdEval := m4.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}, nil)
 	if cmdEval == nil || !nextEval.opInFlight || nextEval.opName != "PHI local eval" {
 		t.Fatalf("expected eval op in flight, got opInFlight=%v opName=%q", nextEval.opInFlight, nextEval.opName)
+	}
+}
+
+func TestPhiModel_UpdateBackendKeyWarnsWhenAlreadyOnOllama(t *testing.T) {
+	execStub := &phiTestExec{}
+	m := NewPhiModel(execStub)
+	m.loaded = true
+	m.localBackend = "ollama"
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}}, nil)
+	if cmd != nil {
+		t.Fatal("expected no command when backend toggle is disabled")
+	}
+	if len(execStub.shellCommands) != 0 {
+		t.Fatalf("expected no shell commands, got %#v", execStub.shellCommands)
+	}
+	if !strings.Contains(strings.ToLower(next.flashMsg), "ollama is the supported local backend") {
+		t.Fatalf("unexpected flash message: %q", next.flashMsg)
 	}
 }

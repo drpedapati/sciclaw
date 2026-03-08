@@ -454,6 +454,9 @@ func createLocalProvider(cfg *config.Config) (LLMProvider, error) {
 		// and num_ctx can be applied reliably.
 		return NewOllamaProvider(phi.OllamaDefaultURL, 10*time.Minute), nil
 	}
+	if backend == config.BackendMLX {
+		return nil, fmt.Errorf("MLX local backend is not supported in this build yet; use Ollama")
+	}
 
 	apiBase := phi.BackendAPIBase(backend)
 	if apiBase == "" {

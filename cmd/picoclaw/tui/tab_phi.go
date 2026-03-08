@@ -241,10 +241,12 @@ func (m PhiModel) Update(msg tea.KeyMsg, _ *VMSnapshot) (PhiModel, tea.Cmd) {
 		m.input.Focus()
 		return m, nil
 	case "b":
-		next := "ollama"
-		if strings.EqualFold(strings.TrimSpace(m.localBackend), "ollama") {
-			next = "mlx"
+		if strings.EqualFold(strings.TrimSpace(m.localBackend), "ollama") || strings.TrimSpace(m.localBackend) == "" {
+			m.flashMsg = styleHint.Render("!") + " Ollama is the supported local backend in this build. MLX is not enabled yet."
+			m.flashUntil = time.Now().Add(5 * time.Second)
+			return m, nil
 		}
+		next := "ollama"
 		return m, phiSetLocalDefaultsCmd(m.exec, &next, nil, nil)
 	case "s":
 		nextPreset := nextPhiPreset(m.localPreset)
@@ -334,6 +336,10 @@ func (m PhiModel) View(_ *VMSnapshot, width int) string {
 		lines = append(lines, "")
 		lines = append(lines, "  "+styleHint.Render(m.note))
 	}
+	if backend := strings.TrimSpace(strings.ToLower(m.localBackend)); backend != "" && backend != "ollama" {
+		lines = append(lines, "")
+		lines = append(lines, "  "+styleErr.Render("This backend is not supported in this build. Press [b] to reset to Ollama."))
+	}
 	if strings.TrimSpace(m.err) != "" {
 		lines = append(lines, "")
 		lines = append(lines, "  "+styleErr.Render(m.err))
@@ -348,12 +354,19 @@ func (m PhiModel) View(_ *VMSnapshot, width int) string {
 		styleKey.Render("[4]"),
 		styleKey.Render("[9]"),
 	))
-	lines = append(lines, fmt.Sprintf("  %s Custom model   %s Cycle preset   %s Toggle backend   %s Pull model",
-		styleKey.Render("[m]"),
-		styleKey.Render("[s]"),
-		styleKey.Render("[b]"),
-		styleKey.Render("[d]"),
-	))
+	if backend := strings.TrimSpace(strings.ToLower(m.localBackend)); backend != "" && backend != "ollama" {
+		lines = append(lines, fmt.Sprintf("  %s Custom model   %s Cycle preset   %s Reset to Ollama",
+			styleKey.Render("[m]"),
+			styleKey.Render("[s]"),
+			styleKey.Render("[b]"),
+		))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %s Custom model   %s Cycle preset   %s Pull model",
+			styleKey.Render("[m]"),
+			styleKey.Render("[s]"),
+			styleKey.Render("[d]"),
+		))
+	}
 	lines = append(lines, fmt.Sprintf("  %s Eval local quality   %s Install Ollama   %s Start Ollama   %s Stop Ollama   %s Refresh",
 		styleKey.Render("[e]"),
 		styleKey.Render("[i]"),
@@ -605,6 +618,7 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 	}
 
 	var textMS, jsonMS, toolMS int64
+	var haveText, haveJSON, haveTool bool
 	allPassed := true
 	for _, result := range payload.Results {
 		if !result.Passed {
@@ -613,10 +627,13 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 		switch strings.TrimSpace(strings.ToLower(result.Name)) {
 		case "text":
 			textMS = result.DurationMS
+			haveText = true
 		case "json":
 			jsonMS = result.DurationMS
+			haveJSON = true
 		case "tool":
 			toolMS = result.DurationMS
+			haveTool = true
 		}
 	}
 
@@ -624,6 +641,9 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 		Timings: fmt.Sprintf("text %.1fs, json %.1fs, tool %.1fs", millisToSeconds(textMS), millisToSeconds(jsonMS), millisToSeconds(toolMS)),
 	}
 	switch {
+	case !haveText || !haveJSON || !haveTool:
+		summary.Label = "needs attention"
+		summary.Detail = "Incomplete local eval output. Rerun the check."
 	case !allPassed:
 		summary.Label = "needs attention"
 		summary.Detail = "One or more local probes failed."
@@ -766,6 +786,9 @@ func phiSetLocalDefaultsCmd(exec Executor, backend, model, preset *string) tea.C
 			defaults := ensureMap(agents, "defaults")
 			if backend != nil {
 				val := strings.TrimSpace(strings.ToLower(*backend))
+				if val != "" && val != "ollama" {
+					return fmt.Errorf("unsupported local backend %q; use ollama", val)
+				}
 				defaults["local_backend"] = val
 				updated = append(updated, "backend="+val)
 			}

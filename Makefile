@@ -225,10 +225,6 @@ release-local:
 	@echo "==> Building all platforms..."
 	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt $(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz
 	@VERSION=$(RELEASE_TAG) $(MAKE) build-all
-	@echo "==> Building source archive..."
-	@git archive --format=tar.gz --prefix=$(PRIMARY_BINARY_NAME)-$(RELEASE_TAG)/ "$(RELEASE_TAG)" > "$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz"
-	@echo "==> Generating checksums..."
-	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* $(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_TAG)-source.tar.gz > sha256sums.txt
 	@deploy/create-release.sh \
 		"$(RELEASE_TAG)" \
 		"$(RELEASE_REPO)" \
@@ -258,10 +254,6 @@ release-dev-local:
 	@echo "==> Building all platforms..."
 	@rm -f $(BUILD_DIR)/$(PRIMARY_BINARY_NAME)-* $(BUILD_DIR)/$(LEGACY_BINARY_NAME)-* $(BUILD_DIR)/sha256sums.txt $(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz
 	@VERSION=$(RELEASE_DEV_TAG) $(MAKE) build-all
-	@echo "==> Building source archive..."
-	@git archive --format=tar.gz --prefix=$(PRIMARY_BINARY_NAME)-$(RELEASE_DEV_TAG)/ "$(RELEASE_DEV_TAG)" > "$(BUILD_DIR)/$(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz"
-	@echo "==> Generating checksums..."
-	@cd $(BUILD_DIR) && shasum -a 256 $(PRIMARY_BINARY_NAME)-* $(LEGACY_BINARY_NAME)-* $(RELEASE_SOURCE_ASSET_PREFIX)-$(RELEASE_DEV_TAG)-source.tar.gz > sha256sums.txt
 	@deploy/create-release.sh \
 		"$(RELEASE_DEV_TAG)" \
 		"$(RELEASE_REPO)" \

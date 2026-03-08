@@ -44,6 +44,15 @@ git tag -a "$tag" -m "Release $tag"
 tag_created=1
 git push origin "$tag"
 
+echo "==> Building source archive..."
+git archive --format=tar.gz --prefix="${primary_binary_name}-${tag}/" "$tag" > "${build_dir}/${source_asset_name}"
+
+echo "==> Generating checksums..."
+(
+  cd "$build_dir"
+  shasum -a 256 "${primary_binary_name}"-* "${legacy_binary_name}"-* "${source_asset_name}" > sha256sums.txt
+)
+
 echo "==> Creating GitHub release..."
 release_args=(
   release create "$tag"
