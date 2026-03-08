@@ -300,8 +300,58 @@ func TestPhiEvalCmd_BuildsEvalCommand(t *testing.T) {
 	if !strings.Contains(cmd, "HOME='/Users/tester/My Home'") {
 		t.Fatalf("expected escaped HOME in eval command, got: %s", cmd)
 	}
-	if !strings.Contains(cmd, "modes phi-eval") {
+	if !strings.Contains(cmd, "modes phi-eval --json") {
 		t.Fatalf("expected phi-eval command, got: %s", cmd)
+	}
+}
+
+func TestParsePhiEvalSummary_GoodInteractive(t *testing.T) {
+	summary, ok := parsePhiEvalSummary(`{
+  "results": [
+    {"name":"text","passed":true,"duration_ms":3018},
+    {"name":"json","passed":true,"duration_ms":371},
+    {"name":"tool","passed":true,"duration_ms":1278}
+  ]
+}`)
+	if !ok || summary == nil {
+		t.Fatal("expected eval summary")
+	}
+	if summary.Label != "good interactive" {
+		t.Fatalf("label=%q", summary.Label)
+	}
+	if !strings.Contains(summary.Timings, "text 3.0s") {
+		t.Fatalf("timings=%q", summary.Timings)
+	}
+}
+
+func TestParsePhiEvalSummary_FallbackOnly(t *testing.T) {
+	summary, ok := parsePhiEvalSummary(`{
+  "results": [
+    {"name":"text","passed":true,"duration_ms":26930},
+    {"name":"json","passed":true,"duration_ms":1586},
+    {"name":"tool","passed":true,"duration_ms":8658}
+  ]
+}`)
+	if !ok || summary == nil {
+		t.Fatal("expected eval summary")
+	}
+	if summary.Label != "fallback only" {
+		t.Fatalf("label=%q", summary.Label)
+	}
+}
+
+func TestPhiModelHandleAction_EvalStoresSummary(t *testing.T) {
+	m := NewPhiModel(&phiTestExec{})
+	m.HandleAction(phiActionMsg{
+		action: "eval",
+		ok:     true,
+		output: `{"results":[{"name":"text","passed":true,"duration_ms":3018},{"name":"json","passed":true,"duration_ms":371},{"name":"tool","passed":true,"duration_ms":1278}]}`,
+	})
+	if m.eval == nil {
+		t.Fatal("expected eval summary to be stored")
+	}
+	if m.eval.Label != "good interactive" {
+		t.Fatalf("label=%q", m.eval.Label)
 	}
 }
 

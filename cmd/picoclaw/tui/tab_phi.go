@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -39,6 +40,18 @@ type phiActionMsg struct {
 	ok     bool
 }
 
+type phiEvalProbe struct {
+	Name       string `json:"name"`
+	Passed     bool   `json:"passed"`
+	DurationMS int64  `json:"duration_ms"`
+}
+
+type phiEvalSummary struct {
+	Label   string
+	Detail  string
+	Timings string
+}
+
 // PhiModel handles global PHI/local runtime management.
 type PhiModel struct {
 	exec   Executor
@@ -63,6 +76,7 @@ type PhiModel struct {
 	note       string
 	err        string
 	lastOut    string
+	eval       *phiEvalSummary
 	flashMsg   string
 	flashUntil time.Time
 	opInFlight bool
@@ -119,6 +133,11 @@ func (m *PhiModel) HandleAction(msg phiActionMsg) {
 	out := strings.TrimSpace(msg.output)
 	if out != "" {
 		m.lastOut = shortenOutput(out, 800)
+	}
+	if msg.action == "eval" && msg.ok {
+		if eval, ok := parsePhiEvalSummary(out); ok {
+			m.eval = eval
+		}
 	}
 
 	label := "PHI action complete"
@@ -298,6 +317,13 @@ func (m PhiModel) View(_ *VMSnapshot, width int) string {
 	lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Installed:"), phiHealthValue(m.backendInstall)))
 	lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Running:"), phiHealthValue(m.backendRunning)))
 	lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Model ready:"), phiHealthValue(m.modelReady)))
+	if m.eval != nil {
+		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Suitability:"), renderPhiEvalLabel(m.eval.Label)))
+		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Eval timings:"), styleValue.Render(m.eval.Timings)))
+		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Eval note:"), styleHint.Render(m.eval.Detail)))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Suitability:"), styleHint.Render("Run [e] once on this machine.")))
+	}
 	if strings.TrimSpace(m.backendVersion) != "" {
 		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Version:"), styleValue.Render(m.backendVersion)))
 	}
@@ -555,7 +581,7 @@ func phiSetupCmd(exec Executor) tea.Cmd {
 
 func phiEvalCmd(exec Executor) tea.Cmd {
 	return func() tea.Msg {
-		cmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " modes phi-eval 2>&1"
+		cmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " modes phi-eval --json 2>&1"
 		out, err := exec.ExecShell(3*time.Minute, cmd)
 		if err != nil {
 			if strings.TrimSpace(out) == "" {
@@ -564,6 +590,70 @@ func phiEvalCmd(exec Executor) tea.Cmd {
 			return phiActionMsg{action: "eval", output: out, ok: false}
 		}
 		return phiActionMsg{action: "eval", output: out, ok: true}
+	}
+}
+
+func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
+	var payload struct {
+		Results []phiEvalProbe `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
+		return nil, false
+	}
+	if len(payload.Results) == 0 {
+		return nil, false
+	}
+
+	var textMS, jsonMS, toolMS int64
+	allPassed := true
+	for _, result := range payload.Results {
+		if !result.Passed {
+			allPassed = false
+		}
+		switch strings.TrimSpace(strings.ToLower(result.Name)) {
+		case "text":
+			textMS = result.DurationMS
+		case "json":
+			jsonMS = result.DurationMS
+		case "tool":
+			toolMS = result.DurationMS
+		}
+	}
+
+	summary := &phiEvalSummary{
+		Timings: fmt.Sprintf("text %.1fs, json %.1fs, tool %.1fs", millisToSeconds(textMS), millisToSeconds(jsonMS), millisToSeconds(toolMS)),
+	}
+	switch {
+	case !allPassed:
+		summary.Label = "needs attention"
+		summary.Detail = "One or more local probes failed."
+	case textMS > 15000 || toolMS > 8000:
+		summary.Label = "fallback only"
+		summary.Detail = "Local mode works, but this machine is too slow for normal interactive turns."
+	case textMS > 6000 || toolMS > 4000:
+		summary.Label = "usable, slower"
+		summary.Detail = "Local mode is working, but users should expect noticeably slower turns."
+	default:
+		summary.Label = "good interactive"
+		summary.Detail = "Local mode looks healthy for everyday interactive use."
+	}
+	return summary, true
+}
+
+func millisToSeconds(ms int64) float64 {
+	return float64(ms) / 1000.0
+}
+
+func renderPhiEvalLabel(label string) string {
+	switch strings.TrimSpace(strings.ToLower(label)) {
+	case "good interactive":
+		return styleOK.Render(label)
+	case "usable, slower":
+		return styleHint.Render(label)
+	case "fallback only", "needs attention":
+		return styleErr.Render(label)
+	default:
+		return styleValue.Render(label)
 	}
 }
 
