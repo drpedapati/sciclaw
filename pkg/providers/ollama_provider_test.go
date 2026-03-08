@@ -109,6 +109,50 @@ func TestOllamaProviderChat_RequestShapeAndParse(t *testing.T) {
 	}
 }
 
+func TestOllamaProviderChat_QwenSetsTopLevelThinkFalse(t *testing.T) {
+	var captured map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":{"content":"OK"},"done_reason":"stop"}`))
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL, 10*time.Second)
+	if _, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Say OK"}}, nil, "qwen3.5:9b", nil); err != nil {
+		t.Fatalf("Chat returned error: %v", err)
+	}
+
+	if captured["think"] != false {
+		t.Fatalf("think=%v want false", captured["think"])
+	}
+}
+
+func TestOllamaProviderChat_NonQwenDoesNotForceThinkFalse(t *testing.T) {
+	var captured map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":{"content":"OK"},"done_reason":"stop"}`))
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL, 10*time.Second)
+	if _, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Say OK"}}, nil, "llama3.2:3b", nil); err != nil {
+		t.Fatalf("Chat returned error: %v", err)
+	}
+
+	if _, exists := captured["think"]; exists {
+		t.Fatalf("think should be omitted for non-qwen models, got %v", captured["think"])
+	}
+}
+
 func TestParseOllamaChatResponse_FallsBackToReasoning(t *testing.T) {
 	body := []byte(`{
 		"message": {

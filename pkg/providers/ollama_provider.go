@@ -112,6 +112,8 @@ func (p *OllamaProvider) Chat(ctx context.Context, messages []Message, tools []T
 func (p *OllamaProvider) GetDefaultModel() string { return "" }
 
 func shouldDisableThinking(model string) bool {
+	// Ollama expects think=false as a top-level request field. Sending it under
+	// options does not suppress hidden reasoning on current Qwen builds.
 	lower := strings.ToLower(strings.TrimSpace(model))
 	return strings.Contains(lower, "qwen")
 }
