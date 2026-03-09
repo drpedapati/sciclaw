@@ -324,6 +324,7 @@ func TestParsePhiEvalSummary_GoodInteractive(t *testing.T) {
   "results": [
     {"name":"text","passed":true,"duration_ms":3018},
     {"name":"json","passed":true,"duration_ms":371},
+    {"name":"extract","passed":true,"duration_ms":622},
     {"name":"tool","passed":true,"duration_ms":1278}
   ]
 }`)
@@ -343,6 +344,7 @@ func TestParsePhiEvalSummary_FallbackOnly(t *testing.T) {
   "results": [
     {"name":"text","passed":true,"duration_ms":26930},
     {"name":"json","passed":true,"duration_ms":1586},
+    {"name":"extract","passed":true,"duration_ms":2430},
     {"name":"tool","passed":true,"duration_ms":8658}
   ]
 }`)
@@ -374,7 +376,7 @@ func TestPhiModelHandleAction_EvalStoresSummary(t *testing.T) {
 	m.HandleAction(phiActionMsg{
 		action: "eval",
 		ok:     true,
-		output: `{"results":[{"name":"text","passed":true,"duration_ms":3018},{"name":"json","passed":true,"duration_ms":371},{"name":"tool","passed":true,"duration_ms":1278}]}`,
+		output: `{"results":[{"name":"text","passed":true,"duration_ms":3018},{"name":"json","passed":true,"duration_ms":371},{"name":"extract","passed":true,"duration_ms":622},{"name":"tool","passed":true,"duration_ms":1278}]}`,
 	})
 	if m.eval == nil {
 		t.Fatal("expected eval summary to be stored")

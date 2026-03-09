@@ -617,8 +617,8 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 		return nil, false
 	}
 
-	var textMS, jsonMS, toolMS int64
-	var haveText, haveJSON, haveTool bool
+	var textMS, jsonMS, extractMS, toolMS int64
+	var haveText, haveJSON, haveExtract, haveTool bool
 	allPassed := true
 	for _, result := range payload.Results {
 		if !result.Passed {
@@ -631,6 +631,9 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 		case "json":
 			jsonMS = result.DurationMS
 			haveJSON = true
+		case "extract":
+			extractMS = result.DurationMS
+			haveExtract = true
 		case "tool":
 			toolMS = result.DurationMS
 			haveTool = true
@@ -638,10 +641,10 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 	}
 
 	summary := &phiEvalSummary{
-		Timings: fmt.Sprintf("text %.1fs, json %.1fs, tool %.1fs", millisToSeconds(textMS), millisToSeconds(jsonMS), millisToSeconds(toolMS)),
+		Timings: fmt.Sprintf("text %.1fs, json %.1fs, extract %.1fs, tool %.1fs", millisToSeconds(textMS), millisToSeconds(jsonMS), millisToSeconds(extractMS), millisToSeconds(toolMS)),
 	}
 	switch {
-	case !haveText || !haveJSON || !haveTool:
+	case !haveText || !haveJSON || !haveExtract || !haveTool:
 		summary.Label = "needs attention"
 		summary.Detail = "Incomplete local eval output. Rerun the check."
 	case !allPassed:

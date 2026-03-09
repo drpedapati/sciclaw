@@ -59,8 +59,31 @@ func TestRunPhiJSONEval_FailsOnInvalidJSON(t *testing.T) {
 	if result.Passed {
 		t.Fatalf("expected failure, got %+v", result)
 	}
+	if result.FailureCode != "invalid_json" {
+		t.Fatalf("failureCode=%q want invalid_json", result.FailureCode)
+	}
 	if result.Note == "" {
 		t.Fatalf("expected parse note, got %+v", result)
+	}
+}
+
+func TestRunPhiExtractEval_PassesOnStructuredPayload(t *testing.T) {
+	provider := &scriptedPhiEvalProvider{
+		responses: []*providers.LLMResponse{{
+			Content:      `{"patient":"Ada Lovelace","dob":"1815-12-10","priority":"urgent","task":"prior auth for MRI lumbar spine"}`,
+			FinishReason: "stop",
+			Diagnostics: &providers.ResponseDiagnostics{
+				ContentSource: "reasoning",
+			},
+		}},
+	}
+
+	result := runPhiExtractEval(provider, "qwen3.5:9b", 2*time.Second)
+	if !result.Passed {
+		t.Fatalf("expected pass, got %+v", result)
+	}
+	if !result.FallbackUsed {
+		t.Fatalf("expected fallbackUsed, got %+v", result)
 	}
 }
 
@@ -72,9 +95,9 @@ func TestRunPhiToolEval_PassesWithRecoveredToolCall(t *testing.T) {
 				FinishReason: "tool_calls",
 				ToolCalls: []providers.ToolCall{{
 					ID:   "call_1",
-					Name: "word_count",
+					Name: "read_local_note",
 					Arguments: map[string]interface{}{
-						"text": "alpha beta gamma delta",
+						"path": "./patient-note.txt",
 					},
 				}},
 				Diagnostics: &providers.ResponseDiagnostics{
@@ -82,7 +105,7 @@ func TestRunPhiToolEval_PassesWithRecoveredToolCall(t *testing.T) {
 				},
 			},
 			{
-				Content:      "4",
+				Content:      `{"patient":"Ada Lovelace","priority":"urgent","task":"prior auth for MRI lumbar spine"}`,
 				FinishReason: "stop",
 			},
 		},
@@ -94,6 +117,9 @@ func TestRunPhiToolEval_PassesWithRecoveredToolCall(t *testing.T) {
 	}
 	if result.ToolCalls != 1 {
 		t.Fatalf("toolCalls=%d want 1", result.ToolCalls)
+	}
+	if !result.FallbackUsed {
+		t.Fatalf("expected fallbackUsed, got %+v", result)
 	}
 	if result.Diagnostics == nil || result.Diagnostics.ToolCallSource != "thinking" {
 		t.Fatalf("diagnostics=%+v", result.Diagnostics)
@@ -108,6 +134,9 @@ func TestRunPhiToolEval_ReportsProviderError(t *testing.T) {
 	result := runPhiToolEval(provider, "qwen3.5:9b", 2*time.Second)
 	if result.Passed {
 		t.Fatalf("expected failure, got %+v", result)
+	}
+	if result.FailureCode != "provider_error" {
+		t.Fatalf("failureCode=%q want provider_error", result.FailureCode)
 	}
 	if result.Note != "timeout" {
 		t.Fatalf("note=%q want timeout", result.Note)
@@ -127,9 +156,9 @@ func (p *slowTwoTurnPhiEvalProvider) Chat(ctx context.Context, _ []providers.Mes
 			FinishReason: "tool_calls",
 			ToolCalls: []providers.ToolCall{{
 				ID:   "call_1",
-				Name: "word_count",
+				Name: "read_local_note",
 				Arguments: map[string]interface{}{
-					"text": "alpha beta gamma delta",
+					"path": "patient-note.txt",
 				},
 			}},
 		}, nil
@@ -137,7 +166,10 @@ func (p *slowTwoTurnPhiEvalProvider) Chat(ctx context.Context, _ []providers.Mes
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		return &providers.LLMResponse{Content: "4", FinishReason: "stop"}, nil
+		return &providers.LLMResponse{
+			Content:      `{"patient":"Ada Lovelace","priority":"urgent","task":"prior auth for MRI lumbar spine"}`,
+			FinishReason: "stop",
+		}, nil
 	default:
 		return &providers.LLMResponse{}, nil
 	}
@@ -151,5 +183,28 @@ func TestRunPhiToolEval_UsesFreshTimeoutForFollowupCall(t *testing.T) {
 	}
 	if provider.callIndex != 2 {
 		t.Fatalf("callIndex=%d want 2", provider.callIndex)
+	}
+}
+
+func TestRunPhiToolEval_FailsOnUnexpectedToolPath(t *testing.T) {
+	provider := &scriptedPhiEvalProvider{
+		responses: []*providers.LLMResponse{{
+			FinishReason: "tool_calls",
+			ToolCalls: []providers.ToolCall{{
+				ID:   "call_1",
+				Name: "read_local_note",
+				Arguments: map[string]interface{}{
+					"path": "wrong-note.txt",
+				},
+			}},
+		}},
+	}
+
+	result := runPhiToolEval(provider, "qwen3.5:9b", 2*time.Second)
+	if result.Passed {
+		t.Fatalf("expected failure, got %+v", result)
+	}
+	if result.FailureCode != "tool_args_mismatch" {
+		t.Fatalf("failureCode=%q want tool_args_mismatch", result.FailureCode)
 	}
 }
