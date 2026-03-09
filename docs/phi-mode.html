@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PHI Mode | Local AI for Private Work | sciClaw</title>
+    <meta
+      name="description"
+      content="A visual guide to sciClaw PHI Mode: what it is, when to use it, how to set it up, how per-room local routing works, and what new users should expect on different hardware."
+    />
+    <link rel="canonical" href="https://sciclaw.dev/phi-mode.html" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer data-domain="sciclaw.dev" src="https://analytics.cincineuro.com/js/script.file-downloads.outbound-links.tagged-events.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://sciclaw.dev/phi-mode.html" />
+    <meta property="og:title" content="PHI Mode | Local AI for Private Work | sciClaw" />
+    <meta property="og:description" content="A visual guide to running sciClaw locally with Ollama and Qwen 3.5 for private, folder-based work." />
+    <meta property="og:site_name" content="sciClaw" />
+    <meta property="og:image" content="https://sciclaw.dev/og-image.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PHI Mode | Local AI for Private Work | sciClaw" />
+    <meta name="twitter:description" content="A visual guide to local PHI Mode in sciClaw: setup, routing, privacy boundaries, and what to expect on real hardware." />
+    <meta name="twitter:image" content="https://sciclaw.dev/og-image.jpg" />
+    <style>
+      :root {
+        --phi-bg: #f4f7f2;
+        --phi-paper: rgba(255, 255, 255, 0.9);
+        --phi-ink: #112018;
+        --phi-muted: #55665d;
+        --phi-border: rgba(17, 32, 24, 0.12);
+        --phi-accent: #0f766e;
+        --phi-accent-2: #c46d38;
+        --phi-accent-soft: rgba(15, 118, 110, 0.12);
+        --phi-warm: #f2ece3;
+        --phi-local: #d7f4ed;
+        --phi-cloud: #e7eefb;
+        --phi-warning: #fff0df;
+        --phi-shadow: 0 24px 80px rgba(18, 28, 23, 0.08);
+      }
+
+      html,
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 28%),
+          radial-gradient(circle at 90% 12%, rgba(196, 109, 56, 0.14), transparent 25%),
+          linear-gradient(180deg, #f9fbf8 0%, var(--phi-bg) 100%);
+        color: var(--phi-ink);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(17, 32, 24, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(17, 32, 24, 0.03) 1px, transparent 1px);
+        background-size: 30px 30px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35), transparent 85%);
+      }
+
+      .phi-wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 34px 20px 100px;
+      }
+
+      .phi-hero {
+        display: grid;
+        grid-template-columns: 1.2fr 0.95fr;
+        gap: 24px;
+        padding: 34px;
+        border-radius: 28px;
+        border: 1px solid var(--phi-border);
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(250, 255, 252, 0.88)),
+          var(--phi-paper);
+        box-shadow: var(--phi-shadow);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .phi-hero::after {
+        content: "";
+        position: absolute;
+        right: -90px;
+        top: -90px;
+        width: 280px;
+        height: 280px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(15, 118, 110, 0.18), transparent 72%);
+      }
+
+      .phi-kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(15, 118, 110, 0.18);
+        background: rgba(15, 118, 110, 0.08);
+        color: var(--phi-accent);
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .phi-kicker::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--phi-accent);
+        box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+      }
+
+      .phi-hero h1 {
+        margin: 16px 0 14px;
+        max-width: 10ch;
+        font-size: clamp(40px, 7vw, 74px);
+        line-height: 0.96;
+      }
+
+      .phi-lead {
+        max-width: 58ch;
+        font-size: 18px;
+        color: var(--phi-muted);
+      }
+
+      .phi-highlight {
+        color: var(--phi-ink);
+        background: linear-gradient(120deg, rgba(196, 109, 56, 0.18), rgba(196, 109, 56, 0.08));
+        border-radius: 8px;
+        padding: 0 6px;
+      }
+
+      .phi-chip-row,
+      .phi-button-row,
+      .mode-card-grid,
+      .step-grid,
+      .signal-grid,
+      .faq-grid,
+      .compare-grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .phi-chip-row {
+        margin-top: 22px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .phi-chip {
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid var(--phi-border);
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .phi-chip strong,
+      .mode-card h3,
+      .step-card h3,
+      .signal-card h3,
+      .faq-card h3,
+      .compare-card h3,
+      .panel h3,
+      .pathway-card h3 {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 15px;
+      }
+
+      .phi-chip span,
+      .mode-card p,
+      .step-card p,
+      .signal-card p,
+      .faq-card p,
+      .compare-card p,
+      .pathway-card p,
+      .caption,
+      .mini-note {
+        color: var(--phi-muted);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .phi-button-row {
+        margin-top: 18px;
+        grid-template-columns: repeat(2, max-content);
+        justify-content: start;
+      }
+
+      .phi-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 46px;
+        padding: 0 16px;
+        border-radius: 14px;
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 500;
+        text-decoration: none;
+        transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+      }
+
+      .phi-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .phi-button-primary {
+        color: white;
+        background: linear-gradient(135deg, var(--phi-accent), #11867d);
+        box-shadow: 0 16px 32px rgba(15, 118, 110, 0.18);
+      }
+
+      .phi-button-secondary {
+        color: var(--phi-ink);
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid var(--phi-border);
+      }
+
+      .hero-side {
+        display: grid;
+        gap: 14px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .privacy-card,
+      .panel,
+      .step-card,
+      .mode-card,
+      .signal-card,
+      .faq-card,
+      .compare-card,
+      .pathway-card {
+        border: 1px solid var(--phi-border);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 16px 44px rgba(19, 30, 24, 0.05);
+      }
+
+      .privacy-card {
+        padding: 22px;
+        background:
+          linear-gradient(180deg, rgba(215, 244, 237, 0.82), rgba(255, 255, 255, 0.9));
+      }
+
+      .privacy-card h2 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+
+      .local-diagram {
+        margin-top: 18px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .local-step {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .local-bullet {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--phi-accent);
+        background: rgba(15, 118, 110, 0.12);
+      }
+
+      .local-step strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 14px;
+      }
+
+      .local-fence {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px dashed rgba(17, 32, 24, 0.2);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.55);
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--phi-muted);
+      }
+
+      .section-shell {
+        margin-top: 22px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 2px;
+      }
+
+      .section-header h2 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 42px);
+      }
+
+      .eyebrow {
+        margin-bottom: 7px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--phi-accent);
+      }
+
+      .section-copy {
+        max-width: 62ch;
+        color: var(--phi-muted);
+        font-size: 15px;
+      }
+
+      .mode-card-grid,
+      .step-grid,
+      .signal-grid,
+      .faq-grid,
+      .compare-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .mode-card,
+      .signal-card,
+      .faq-card,
+      .compare-card,
+      .pathway-card {
+        padding: 22px;
+      }
+
+      .mode-card {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .mode-card::after {
+        content: attr(data-stamp);
+        position: absolute;
+        right: 16px;
+        top: 16px;
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--phi-muted);
+      }
+
+      .mode-card.local { background: linear-gradient(180deg, rgba(215, 244, 237, 0.72), rgba(255,255,255,0.95)); }
+      .mode-card.cloud { background: linear-gradient(180deg, rgba(231, 238, 251, 0.78), rgba(255,255,255,0.95)); }
+      .mode-card.mix { background: linear-gradient(180deg, rgba(242, 236, 227, 0.85), rgba(255,255,255,0.95)); }
+
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 18px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(17, 32, 24, 0.08);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .comparison-matrix {
+        padding: 18px;
+        border-radius: 24px;
+        border: 1px solid var(--phi-border);
+        background: rgba(255,255,255,0.84);
+        overflow: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 14px 14px;
+        border-bottom: 1px solid rgba(17, 32, 24, 0.08);
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      th {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--phi-muted);
+      }
+
+      td strong { display: block; margin-bottom: 4px; }
+
+      .panel {
+        padding: 24px;
+      }
+
+      .message-flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .flow-node {
+        position: relative;
+        padding: 18px 14px 16px;
+        border-radius: 18px;
+        border: 1px solid var(--phi-border);
+        background: rgba(255,255,255,0.78);
+        min-height: 176px;
+      }
+
+      .flow-node::after {
+        content: "→";
+        position: absolute;
+        right: -16px;
+        top: calc(50% - 10px);
+        font-size: 22px;
+        color: rgba(17, 32, 24, 0.26);
+      }
+
+      .flow-node:last-child::after { display: none; }
+
+      .flow-index {
+        display: inline-grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        margin-bottom: 10px;
+        background: var(--phi-accent-soft);
+        color: var(--phi-accent);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .flow-node.local-only {
+        background: linear-gradient(180deg, rgba(215, 244, 237, 0.88), rgba(255,255,255,0.86));
+      }
+
+      .flow-node.border-local {
+        border-style: dashed;
+        border-color: rgba(15, 118, 110, 0.28);
+      }
+
+      .flow-note {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: var(--phi-warning);
+        border: 1px solid rgba(196, 109, 56, 0.18);
+        color: #6e4426;
+        font-size: 14px;
+      }
+
+      .step-card {
+        padding: 22px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .step-card::before {
+        content: attr(data-step);
+        position: absolute;
+        right: 16px;
+        top: 10px;
+        font-family: var(--serif);
+        font-size: 58px;
+        line-height: 1;
+        color: rgba(15, 118, 110, 0.08);
+      }
+
+      .kbd {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 0 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(17, 32, 24, 0.12);
+        background: rgba(255,255,255,0.88);
+        box-shadow: inset 0 -2px 0 rgba(17, 32, 24, 0.06);
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--phi-ink);
+      }
+
+      .pathway-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .pathway-card {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .pathway-card .pathway-tag {
+        display: inline-block;
+        margin-bottom: 14px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(17, 32, 24, 0.05);
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .pathway-steps {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .pathway-step {
+        display: grid;
+        grid-template-columns: 32px 1fr;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .pathway-step span:first-child {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: rgba(15, 118, 110, 0.12);
+        color: var(--phi-accent);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .signal-good {
+        background: linear-gradient(180deg, rgba(215, 244, 237, 0.82), rgba(255,255,255,0.95));
+      }
+
+      .signal-watch {
+        background: linear-gradient(180deg, rgba(255, 240, 223, 0.88), rgba(255,255,255,0.95));
+      }
+
+      .signal-card ul,
+      .mode-card ul,
+      .faq-card ul,
+      .compare-card ul {
+        margin: 12px 0 0;
+        padding-left: 18px;
+        color: var(--phi-muted);
+        font-size: 14px;
+      }
+
+      .quote-band {
+        padding: 24px 26px;
+        border-radius: 26px;
+        border: 1px solid var(--phi-border);
+        background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(242,236,227,0.9));
+        font-family: var(--serif);
+        font-size: clamp(24px, 3vw, 34px);
+        line-height: 1.2;
+      }
+
+      .quote-band strong {
+        color: var(--phi-accent);
+      }
+
+      .cta-shell {
+        margin-top: 20px;
+        padding: 28px;
+        border-radius: 28px;
+        border: 1px solid var(--phi-border);
+        background: linear-gradient(135deg, rgba(17, 32, 24, 0.96), rgba(15, 118, 110, 0.92));
+        color: rgba(255,255,255,0.92);
+        box-shadow: 0 24px 80px rgba(15, 118, 110, 0.16);
+      }
+
+      .cta-shell h2,
+      .cta-shell p,
+      .cta-shell .mini-note {
+        color: inherit;
+      }
+
+      .cta-shell .phi-button-secondary {
+        color: white;
+        border-color: rgba(255,255,255,0.22);
+        background: rgba(255,255,255,0.08);
+      }
+
+      .tiny-code {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.12);
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+
+      @media (max-width: 980px) {
+        .phi-hero,
+        .pathway-grid,
+        .mode-card-grid,
+        .step-grid,
+        .signal-grid,
+        .faq-grid,
+        .compare-grid,
+        .message-flow {
+          grid-template-columns: 1fr;
+        }
+
+        .phi-chip-row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .flow-node::after {
+          display: none;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .topbar-inner {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .nav-links {
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+
+        .phi-wrap {
+          padding-inline: 14px;
+        }
+
+        .phi-hero,
+        .panel,
+        .mode-card,
+        .step-card,
+        .signal-card,
+        .faq-card,
+        .compare-card,
+        .pathway-card,
+        .cta-shell {
+          padding: 20px;
+        }
+
+        .phi-chip-row,
+        .phi-button-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-dot" aria-hidden="true"></span>
+          sciClaw
+        </a>
+        <nav class="nav-links">
+          <a class="util" href="index.html">Home</a>
+          <a class="util" href="docs.html">Docs</a>
+          <a class="util" href="changelog.html">Changelog</a>
+          <a class="util" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="btn btn-primary" href="section-install.html" style="padding:6px 12px;font-size:12px;">Install</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="phi-wrap">
+      <section class="phi-hero">
+        <div>
+          <span class="phi-kicker">PHI Mode Explained</span>
+          <h1>Keep the private work local. Keep the rest flexible.</h1>
+          <p class="phi-lead">
+            PHI Mode gives sciClaw a <span class="phi-highlight">local brain on your own machine</span>.
+            New users can think of it like this: the same sciClaw workflow, the same folders, the same app,
+            but the model runs through <strong>Ollama + Qwen 3.5</strong> instead of a cloud provider.
+          </p>
+          <p class="phi-lead">
+            It is built for people who want to work with sensitive material, private notes, protected health
+            information, or simply want a local channel that does not leave the machine.
+          </p>
+
+          <div class="phi-chip-row">
+            <div class="phi-chip">
+              <strong>No cloud hop</strong>
+              <span>Your prompt and model run stay on the local machine.</span>
+            </div>
+            <div class="phi-chip">
+              <strong>Same sciClaw workflow</strong>
+              <span>You still work in folders, channels, and the app.</span>
+            </div>
+            <div class="phi-chip">
+              <strong>Ollama only</strong>
+              <span>This build supports Ollama as the local backend.</span>
+            </div>
+            <div class="phi-chip">
+              <strong>Per-room control</strong>
+              <span>You can keep one channel local and another on cloud.</span>
+            </div>
+          </div>
+
+          <div class="phi-button-row">
+            <a class="phi-button phi-button-primary" href="#first-10">See the first-time setup</a>
+            <a class="phi-button phi-button-secondary" href="#room-routing">See per-room routing</a>
+          </div>
+        </div>
+
+        <aside class="hero-side">
+          <div class="privacy-card">
+            <h2>What stays inside the fence?</h2>
+            <p class="caption">
+              In PHI Mode, sciClaw still reads and writes files in your workspace, but the model call itself stays local.
+              That is the core privacy boundary.
+            </p>
+            <div class="local-diagram">
+              <div class="local-step">
+                <div class="local-bullet">1</div>
+                <div>
+                  <strong>You ask sciClaw to work in a folder or channel</strong>
+                  <span>Examples: summarize a note, draft a letter, clean a document, inspect a form.</span>
+                </div>
+              </div>
+              <div class="local-step">
+                <div class="local-bullet">2</div>
+                <div>
+                  <strong>sciClaw calls your local Ollama model</strong>
+                  <span>No prompt is sent to OpenAI or Anthropic when the room is routed to PHI.</span>
+                </div>
+              </div>
+              <div class="local-step">
+                <div class="local-bullet">3</div>
+                <div>
+                  <strong>The output still lands in your workspace</strong>
+                  <span>The value is not just privacy. It is the same auditable file-based workflow you already know.</span>
+                </div>
+              </div>
+            </div>
+            <div class="local-fence">Private channel → local model → local files → reply. That is the mental model.</div>
+          </div>
+
+          <div class="compare-card">
+            <h3>Best fit for PHI Mode</h3>
+            <p>
+              Use it when the work is private first, local by policy, or cheap-to-run by design. Keep cloud models for the hardest,
+              most reasoning-heavy tasks when privacy is not the main constraint.
+            </p>
+            <ul>
+              <li>Protected clinical drafting</li>
+              <li>Private document cleanup</li>
+              <li>Channel-level privacy boundaries</li>
+              <li>Offline or low-trust environments</li>
+            </ul>
+          </div>
+        </aside>
+      </section>
+
+      <div class="section-shell">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">Choose the right mode</div>
+            <h2>Three ways new users usually work</h2>
+          </div>
+          <div class="section-copy">
+            You do not have to choose “all local” forever. Most people end up with a mixed setup: cloud for broad research,
+            PHI for private channels, and one shared sciClaw workspace tying the work together.
+          </div>
+        </div>
+
+        <div class="mode-card-grid">
+          <article class="mode-card cloud" data-stamp="Cloud first">
+            <span class="mode-pill">Everyday research</span>
+            <h3>Cloud mode</h3>
+            <p>Best when you want the strongest reasoning, fastest model iteration, and privacy is not the main limit.</p>
+            <ul>
+              <li>Great for literature review and broad synthesis</li>
+              <li>Usually the best choice for hard tool-heavy tasks</li>
+              <li>Not the right default for sensitive clinical work</li>
+            </ul>
+          </article>
+
+          <article class="mode-card local" data-stamp="Private first">
+            <span class="mode-pill">Everything local</span>
+            <h3>Global PHI mode</h3>
+            <p>Best when the whole machine should stay local. Every chat uses your Ollama-hosted Qwen model.</p>
+            <ul>
+              <li>Simple mental model: this machine is local</li>
+              <li>Great for dedicated privacy-sensitive setups</li>
+              <li>You can still switch back to cloud instantly later</li>
+            </ul>
+          </article>
+
+          <article class="mode-card mix" data-stamp="Most flexible">
+            <span class="mode-pill">One room at a time</span>
+            <h3>Per-room PHI routing</h3>
+            <p>Best for mixed use: keep a private channel local and everything else on cloud or default behavior.</p>
+            <ul>
+              <li>Ideal for a “phi” channel in Discord</li>
+              <li>Keeps local mode where it matters</li>
+              <li>Usually the easiest setup for new users</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+
+      <div class="section-shell">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">Visual guide</div>
+            <h2>What happens when you send one message?</h2>
+          </div>
+          <div class="section-copy">
+            The workflow is easier to trust when you can picture it. This is the full PHI path in plain English.
+          </div>
+        </div>
+
+        <section class="panel">
+          <div class="message-flow">
+            <div class="flow-node">
+              <div class="flow-index">1</div>
+              <h3>You write a message</h3>
+              <p>Usually from the app or a routed chat channel tied to a workspace folder.</p>
+            </div>
+            <div class="flow-node">
+              <div class="flow-index">2</div>
+              <h3>sciClaw checks the room</h3>
+              <p>It decides whether this room uses default, cloud, VM, or local PHI mode.</p>
+            </div>
+            <div class="flow-node local-only border-local">
+              <div class="flow-index">3</div>
+              <h3>Ollama runs locally</h3>
+              <p>Qwen 3.5 answers on your machine. This is the privacy boundary new users usually care about.</p>
+            </div>
+            <div class="flow-node local-only border-local">
+              <div class="flow-index">4</div>
+              <h3>Files and tools still work</h3>
+              <p>sciClaw can still read, write, and organize the workspace like normal.</p>
+            </div>
+            <div class="flow-node">
+              <div class="flow-index">5</div>
+              <h3>You get a reply</h3>
+              <p>The result comes back into the same chat flow, but the model call stayed local.</p>
+            </div>
+          </div>
+
+          <div class="flow-note">
+            The first reply can be slower because the model may need to load into memory. After that, the machine usually feels much snappier.
+          </div>
+        </section>
+      </div>
+
+      <div class="section-shell" id="first-10">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">First-time setup</div>
+            <h2>Your first ten minutes in PHI Mode</h2>
+          </div>
+          <div class="section-copy">
+            The goal is not to memorize commands. The goal is to know what is happening and what “good” looks like.
+          </div>
+        </div>
+
+        <div class="step-grid">
+          <article class="step-card" data-step="01">
+            <h3>Open the PHI Mode tab</h3>
+            <p>In <span class="kbd">sciclaw app</span>, go to the PHI Mode tab. This is where local mode is managed for normal users.</p>
+            <p class="mini-note">You should see the local backend, model, preset, and backend health area.</p>
+          </article>
+          <article class="step-card" data-step="02">
+            <h3>Press Setup</h3>
+            <p>Use <span class="kbd">p</span> to run setup. sciClaw detects your hardware, chooses a Qwen size, pulls the model, and validates the runtime.</p>
+            <p class="mini-note">For most people, the suggested model is the right starting point.</p>
+          </article>
+          <article class="step-card" data-step="03">
+            <h3>Run the local check</h3>
+            <p>Use <span class="kbd">e</span> to run the local eval. It checks plain text, JSON, and tool calls so you can tell whether the machine is ready.</p>
+            <p class="mini-note">This is the fastest way to tell the difference between “installed” and “actually usable.”</p>
+          </article>
+        </div>
+      </div>
+
+      <div class="quote-band">
+        PHI Mode is not a separate product. It is the same <strong>sciClaw</strong>, the same folders, and the same workflow — with the model moved <strong>onto your machine</strong>.
+      </div>
+
+      <div class="section-shell" id="room-routing">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">Most useful real-world pattern</div>
+            <h2>Route one private room to local mode</h2>
+          </div>
+          <div class="section-copy">
+            This is the pattern that makes PHI Mode practical for new users: keep your general work flexible, and reserve local mode for the room that actually needs it.
+          </div>
+        </div>
+
+        <div class="pathway-grid">
+          <section class="pathway-card">
+            <span class="pathway-tag">When to choose this</span>
+            <h3>Create a dedicated private channel</h3>
+            <p>
+              A simple example is a Discord channel like <strong>#phi-channel</strong> or a folder-specific room for private drafting.
+            </p>
+            <div class="pathway-steps">
+              <div class="pathway-step">
+                <span>1</span>
+                <div><strong>Keep global mode on cloud or default</strong><div class="mini-note">So your ordinary rooms keep using the stronger cloud path.</div></div>
+              </div>
+              <div class="pathway-step">
+                <span>2</span>
+                <div><strong>Open Routing in the app</strong><div class="mini-note">Select the room mapping you want to isolate.</div></div>
+              </div>
+              <div class="pathway-step">
+                <span>3</span>
+                <div><strong>Set that room to PHI</strong><div class="mini-note">Choose mode <span class="kbd">phi</span>, backend <span class="kbd">ollama</span>, then keep the suggested model unless you have a reason to change it.</div></div>
+              </div>
+              <div class="pathway-step">
+                <span>4</span>
+                <div><strong>Apply and test</strong><div class="mini-note">Ask a simple question in the room. If it replies, the boundary is working.</div></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="pathway-card">
+            <span class="pathway-tag">Why people like it</span>
+            <h3>It gives you a clean mental model</h3>
+            <p>
+              New users usually do better with room-level rules than machine-level theory. One room is private. One room is general. You know which is which.
+            </p>
+            <ul>
+              <li>Private notes stay in the local room</li>
+              <li>General research can still use cloud models</li>
+              <li>You do not need to switch your whole machine back and forth all day</li>
+              <li>It works especially well for teams that want one “safe lane” inside a busier setup</li>
+            </ul>
+          </section>
+        </div>
+      </div>
+
+      <div class="section-shell">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">Reality check</div>
+            <h2>What good local mode feels like</h2>
+          </div>
+          <div class="section-copy">
+            PHI Mode is strongest when expectations match hardware. Good local mode feels private, steady, and predictable — not necessarily identical to the best cloud model.
+          </div>
+        </div>
+
+        <div class="signal-grid">
+          <article class="signal-card signal-good">
+            <h3>Good interactive fit</h3>
+            <p>Usually Apple Silicon or GPU-backed machines with enough RAM/VRAM.</p>
+            <ul>
+              <li>Short replies feel quick</li>
+              <li>Tool calls are usable</li>
+              <li>Drafting and cleanup feel natural</li>
+            </ul>
+          </article>
+          <article class="signal-card signal-watch">
+            <h3>Fallback-only fit</h3>
+            <p>Usually smaller CPU-only machines. Still useful, but not the same experience.</p>
+            <ul>
+              <li>Short text can still be fine</li>
+              <li>Hard tool tasks may drag</li>
+              <li>Best for lighter local work, not your fastest workflow</li>
+            </ul>
+          </article>
+          <article class="signal-card">
+            <h3>What does not change</h3>
+            <p>The folder-first workflow, the app, the routing model, and the file outputs all stay the same.</p>
+            <ul>
+              <li>Same workspace</li>
+              <li>Same channels</li>
+              <li>Same sciClaw personality and skills</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+
+      <div class="section-shell">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">Quick comparison</div>
+            <h2>What changes when you switch on PHI Mode?</h2>
+          </div>
+          <div class="section-copy">
+            New users often assume everything changes. It does not. Only one part of the stack moves: the model runtime.
+          </div>
+        </div>
+
+        <section class="comparison-matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>Part of the workflow</th>
+                <th>Cloud / default</th>
+                <th>PHI Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Your folders</strong><span class="mini-note">Workspace, files, outputs</span></td>
+                <td>Same sciClaw workspace model</td>
+                <td>Same sciClaw workspace model</td>
+              </tr>
+              <tr>
+                <td><strong>The model runtime</strong><span class="mini-note">Where inference actually happens</span></td>
+                <td>Remote provider</td>
+                <td>Local Ollama + Qwen 3.5</td>
+              </tr>
+              <tr>
+                <td><strong>Privacy boundary</strong><span class="mini-note">Where the prompt goes</span></td>
+                <td>Leaves the machine</td>
+                <td>Stays on the machine</td>
+              </tr>
+              <tr>
+                <td><strong>Best use case</strong><span class="mini-note">What each mode is best at</span></td>
+                <td>Highest-end reasoning and harder agent work</td>
+                <td>Private drafting, local routing, sensitive work</td>
+              </tr>
+              <tr>
+                <td><strong>First response</strong><span class="mini-note">What users notice first</span></td>
+                <td>Usually immediate</td>
+                <td>Can be slower if the model is loading</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <div class="section-shell">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">FAQ</div>
+            <h2>Questions new users usually ask first</h2>
+          </div>
+          <div class="section-copy">
+            These are the questions that matter before commands and configuration files matter.
+          </div>
+        </div>
+
+        <div class="faq-grid">
+          <article class="faq-card">
+            <h3>Do I need to use PHI Mode for everything?</h3>
+            <p>No. Most people should not. The best default is usually cloud or default for ordinary work, then route only private rooms to PHI.</p>
+          </article>
+          <article class="faq-card">
+            <h3>What backend does local mode use?</h3>
+            <p>Ollama. This build treats Ollama as the supported local backend for normal users.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Will it feel slower?</h3>
+            <p>Sometimes, yes. Especially on CPU-only machines or on the first reply after a model loads. That is normal and not a sign the setup is broken.</p>
+          </article>
+          <article class="faq-card">
+            <h3>What models does it use?</h3>
+            <p>The Qwen 3.5 family, usually 2B, 4B, or 9B depending on your hardware and preset.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Can I switch back to cloud later?</h3>
+            <p>Yes. Switching back is immediate. Your local setup stays saved for the next time you need it.</p>
+          </article>
+          <article class="faq-card">
+            <h3>How do I know my machine is ready?</h3>
+            <p>Run setup, then run the local eval in the PHI tab. That tells you whether the machine is merely installed or actually usable.</p>
+          </article>
+        </div>
+      </div>
+
+      <section class="cta-shell">
+        <div class="section-header" style="padding:0;align-items:center;">
+          <div>
+            <div class="eyebrow" style="color: rgba(255,255,255,0.75);">Start simple</div>
+            <h2>Set up local mode once. Route the private room. Keep moving.</h2>
+          </div>
+          <div class="section-copy" style="color: rgba(255,255,255,0.74); max-width: 42ch;">
+            That is the whole story for most new users. You do not need a new workflow. You need one local lane that you trust.
+          </div>
+        </div>
+
+        <div class="phi-button-row" style="margin-top: 22px;">
+          <a class="phi-button phi-button-primary" href="docs.html#phi-mode">Read the detailed docs</a>
+          <a class="phi-button phi-button-secondary" href="section-install.html">Install sciClaw</a>
+        </div>
+
+        <div class="tiny-code">sciclaw app → PHI Mode → Setup → Eval → Routing → set one room to PHI</div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -11,6 +11,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sciclaw.dev/phi-mode.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sciclaw.dev/changelog.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
