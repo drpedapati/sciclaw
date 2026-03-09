@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/archive/discordarchive"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
@@ -31,6 +33,202 @@ func (m *mockProvider) Chat(ctx context.Context, messages []providers.Message, t
 
 func (m *mockProvider) GetDefaultModel() string {
 	return "mock-model"
+}
+
+type diagnosticMockProvider struct {
+	response    string
+	diagnostics *providers.ResponseDiagnostics
+}
+
+func (m *diagnosticMockProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
+	return &providers.LLMResponse{
+		Content:     m.response,
+		ToolCalls:   []providers.ToolCall{},
+		Diagnostics: m.diagnostics,
+	}, nil
+}
+
+func (m *diagnosticMockProvider) GetDefaultModel() string {
+	return "mock-model"
+}
+
+func TestLocalTurnDiagnostics_RecordLLMResponseTracksFallbacks(t *testing.T) {
+	diag := newLocalTurnDiagnostics()
+	diag.recordLLMResponse(1500*time.Millisecond, &providers.LLMResponse{
+		ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "read_file"}},
+		Diagnostics: &providers.ResponseDiagnostics{
+			ContentSource:  "thinking",
+			ToolCallSource: "thinking",
+		},
+	})
+
+	if diag.LLMCalls != 1 {
+		t.Fatalf("llm_calls=%d", diag.LLMCalls)
+	}
+	if diag.LLMTotalMS != 1500 {
+		t.Fatalf("llm_total_ms=%d", diag.LLMTotalMS)
+	}
+	if diag.ToolCallsRequested != 1 {
+		t.Fatalf("tool_calls_requested=%d", diag.ToolCallsRequested)
+	}
+	if diag.FallbackContentCount != 1 {
+		t.Fatalf("fallback_content_count=%d", diag.FallbackContentCount)
+	}
+	if diag.FallbackToolCallCount != 1 {
+		t.Fatalf("fallback_tool_call_count=%d", diag.FallbackToolCallCount)
+	}
+	if diag.ContentSources["thinking"] != 1 {
+		t.Fatalf("content_sources=%v", diag.ContentSources)
+	}
+	if diag.ToolCallSources["thinking"] != 1 {
+		t.Fatalf("tool_call_sources=%v", diag.ToolCallSources)
+	}
+}
+
+func TestLocalTurnDiagnostics_RecordToolExecutionTracksErrors(t *testing.T) {
+	diag := newLocalTurnDiagnostics()
+	diag.recordToolExecution(275*time.Millisecond, &tools.ToolResult{IsError: true, Async: true})
+
+	if diag.ToolCalls != 1 {
+		t.Fatalf("tool_calls=%d", diag.ToolCalls)
+	}
+	if diag.ToolTotalMS != 275 {
+		t.Fatalf("tool_total_ms=%d", diag.ToolTotalMS)
+	}
+	if diag.ToolErrorCount != 1 {
+		t.Fatalf("tool_error_count=%d", diag.ToolErrorCount)
+	}
+	if diag.ToolAsyncCount != 1 {
+		t.Fatalf("tool_async_count=%d", diag.ToolAsyncCount)
+	}
+	if diag.FailurePhase != "tool_execution" {
+		t.Fatalf("failure_phase=%q", diag.FailurePhase)
+	}
+}
+
+func TestLocalTurnDiagnosticsFieldsIncludeSourceBreakdown(t *testing.T) {
+	diag := newLocalTurnDiagnostics()
+	diag.ContextBuildMS = 18
+	diag.LLMTotalMS = 2400
+	diag.ToolTotalMS = 510
+	diag.SessionSaveMS = 6
+	diag.SummaryMS = 2
+	diag.OutboundMS = 1
+	diag.LLMCalls = 2
+	diag.ToolCallsRequested = 1
+	diag.ToolCalls = 1
+	diag.FallbackContentCount = 1
+	diag.ContentSources["content"] = 1
+	diag.ContentSources["thinking"] = 1
+	diag.ToolCallSources["native"] = 1
+
+	fields := diag.fields()
+	if fields["context_build_ms"] != int64(18) {
+		t.Fatalf("fields=%v", fields)
+	}
+	if fields["fallback_used"] != true {
+		t.Fatalf("fields=%v", fields)
+	}
+	if fields["tool_calls_requested"] != 1 {
+		t.Fatalf("fields=%v", fields)
+	}
+	if fields["tool_calls_executed"] != 1 {
+		t.Fatalf("fields=%v", fields)
+	}
+	contentSources, ok := fields["content_sources"].(map[string]int)
+	if !ok {
+		t.Fatalf("expected content_sources map, got %T", fields["content_sources"])
+	}
+	if contentSources["thinking"] != 1 {
+		t.Fatalf("content_sources=%v", contentSources)
+	}
+}
+
+func TestLocalTurnDiagnostics_RecordFailurePreservesFirstCause(t *testing.T) {
+	diag := newLocalTurnDiagnostics()
+	diag.recordFailure("provider_chat", "deadline exceeded")
+	diag.recordFailure("llm_iteration", "later wrapper")
+
+	fields := diag.fields()
+	if fields["failure_phase"] != "provider_chat" {
+		t.Fatalf("fields=%v", fields)
+	}
+	if fields["failure_reason"] != "deadline exceeded" {
+		t.Fatalf("fields=%v", fields)
+	}
+}
+
+func TestProcessDirect_LocalModeEmitsRuntimeSummaryLog(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-local-runtime-log-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logPath := filepath.Join(tmpDir, "gateway.log")
+	prevLevel := logger.GetLevel()
+	logger.SetLevel(logger.INFO)
+	defer logger.SetLevel(prevLevel)
+	if err := logger.EnableFileLogging(logPath); err != nil {
+		t.Fatalf("EnableFileLogging() error = %v", err)
+	}
+	defer logger.DisableFileLogging()
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				Mode:              config.ModePhi,
+				LocalBackend:      "ollama",
+				LocalModel:        "qwen3.5:4b",
+				MaxTokens:         4096,
+				MaxToolIterations: 4,
+			},
+		},
+	}
+
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), &diagnosticMockProvider{
+		response: "Local reply",
+		diagnostics: &providers.ResponseDiagnostics{
+			ContentSource: "thinking",
+		},
+	})
+	defer al.Stop()
+
+	if _, err := al.ProcessDirect(context.Background(), "hello local mode", "local-runtime-test"); err != nil {
+		t.Fatalf("ProcessDirect() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	var found bool
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry logger.LogEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v for line %q", err, line)
+		}
+		if entry.Message != "Local runtime summary" {
+			continue
+		}
+		found = true
+		if got := entry.Fields["local_backend"]; got != "ollama" {
+			t.Fatalf("local_backend=%v fields=%v", got, entry.Fields)
+		}
+		if got := entry.Fields["fallback_used"]; got != true {
+			t.Fatalf("fallback_used=%v fields=%v", got, entry.Fields)
+		}
+		if got := entry.Fields["llm_calls"]; got != float64(1) {
+			t.Fatalf("llm_calls=%v fields=%v", got, entry.Fields)
+		}
+	}
+	if !found {
+		t.Fatalf("expected Local runtime summary entry in log:\n%s", string(data))
+	}
 }
 
 func TestRecordLastChannel(t *testing.T) {

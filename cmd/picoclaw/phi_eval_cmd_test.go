@@ -9,6 +9,24 @@ import (
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
+func TestNormalizePhiEvalPreset_DefaultsBlankToBalanced(t *testing.T) {
+	if got := normalizePhiEvalPreset(""); got != "balanced" {
+		t.Fatalf("preset=%q", got)
+	}
+	if got := normalizePhiEvalPreset("  "); got != "balanced" {
+		t.Fatalf("preset=%q", got)
+	}
+}
+
+func TestNormalizePhiEvalPreset_PreservesKnownPreset(t *testing.T) {
+	if got := normalizePhiEvalPreset("quality"); got != "quality" {
+		t.Fatalf("preset=%q", got)
+	}
+	if got := normalizePhiEvalPreset("speed"); got != "speed" {
+		t.Fatalf("preset=%q", got)
+	}
+}
+
 type scriptedPhiEvalProvider struct {
 	responses []*providers.LLMResponse
 	errs      []error

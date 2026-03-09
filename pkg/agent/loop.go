@@ -59,6 +59,7 @@ type AgentLoop struct {
 	hooks           *hooks.Dispatcher
 	hookAuditPath   string
 	localMode       bool
+	localBackend    string
 	turnCounter     uint64
 	running         atomic.Bool
 	summarizing     sync.Map // Tracks which sessions are currently being summarized
@@ -307,6 +308,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		hooks:         hookDispatcher,
 		hookAuditPath: hookAuditPath,
 		localMode:     cfg.EffectiveMode() == config.ModePhi,
+		localBackend:  strings.TrimSpace(strings.ToLower(cfg.Agents.Defaults.LocalBackend)),
 		summarizing:   sync.Map{},
 	}
 }
@@ -572,6 +574,10 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.TurnID = al.nextTurnID()
 	}
 	turnStartedAt := time.Now()
+	var localDiag *localTurnDiagnostics
+	if al.localMode {
+		localDiag = newLocalTurnDiagnostics()
+	}
 
 	// 0. Record last channel for heartbeat notifications (skip internal channels)
 	if opts.Channel != "" && opts.ChatID != "" {
@@ -597,6 +603,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	})
 
 	// 2. Build messages (skip history for heartbeat)
+	contextPreparedAt := time.Now()
 	var history []providers.Message
 	var summary string
 	if !opts.NoHistory {
@@ -701,13 +708,30 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			"user_chars":      len(userMessageForPrompt),
 			"prompt_messages": len(messages),
 		})
+	if localDiag != nil {
+		localDiag.ContextBuildMS = time.Since(contextPreparedAt).Milliseconds()
+	}
 
 	// 3. Save user message to session
 	al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
 
 	// 4. Run LLM iteration loop
-	finalContent, iteration, usage, err := al.runLLMIteration(ctx, messages, opts)
+	finalContent, iteration, usage, err := al.runLLMIteration(ctx, messages, opts, localDiag)
 	if err != nil {
+		if localDiag != nil {
+			localDiag.recordFailure("llm_iteration", err.Error())
+			logFields := localDiag.fields()
+			logFields["turn_id"] = opts.TurnID
+			logFields["session_key"] = opts.SessionKey
+			logFields["channel"] = opts.Channel
+			logFields["chat_id"] = opts.ChatID
+			logFields["model"] = al.model
+			logFields["local_backend"] = al.localBackend
+			logFields["iterations"] = iteration
+			logFields["message_tool_sent"] = false
+			logFields["turn_ms"] = time.Since(turnStartedAt).Milliseconds()
+			logger.WarnCF("agent", "Local runtime summary", logFields)
+		}
 		al.dispatchHook(ctx, hooks.EventOnError, hooks.Context{
 			Timestamp:    time.Now(),
 			TurnID:       opts.TurnID,
@@ -759,20 +783,32 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				"message_tool_sent": messageToolSent,
 			})
 	}
+	sessionSaveStartedAt := time.Now()
 	al.sessions.Save(opts.SessionKey)
+	if localDiag != nil {
+		localDiag.SessionSaveMS = time.Since(sessionSaveStartedAt).Milliseconds()
+	}
 
 	// 7. Optional: summarization
 	if opts.EnableSummary {
+		summaryStartedAt := time.Now()
 		al.maybeSummarize(opts.SessionKey)
+		if localDiag != nil {
+			localDiag.SummaryMS = time.Since(summaryStartedAt).Milliseconds()
+		}
 	}
 
 	// 8. Optional: send response via bus
 	if opts.SendResponse && strings.TrimSpace(finalContent) != "" {
+		outboundStartedAt := time.Now()
 		al.bus.PublishOutbound(ctx, bus.OutboundMessage{
 			Channel: opts.Channel,
 			ChatID:  opts.ChatID,
 			Content: finalContent,
 		})
+		if localDiag != nil {
+			localDiag.OutboundMS = time.Since(outboundStartedAt).Milliseconds()
+		}
 	}
 
 	// 9. Log response and token usage
@@ -809,6 +845,19 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				"turn_ms":           turnMs,
 			})
 	}
+	if localDiag != nil {
+		logFields := localDiag.fields()
+		logFields["turn_id"] = opts.TurnID
+		logFields["session_key"] = opts.SessionKey
+		logFields["channel"] = opts.Channel
+		logFields["chat_id"] = opts.ChatID
+		logFields["model"] = al.model
+		logFields["local_backend"] = al.localBackend
+		logFields["iterations"] = iteration
+		logFields["message_tool_sent"] = messageToolSent
+		logFields["turn_ms"] = turnMs
+		logger.InfoCF("agent", "Local runtime summary", logFields)
+	}
 	al.dispatchHook(ctx, hooks.EventAfterTurn, hooks.Context{
 		Timestamp:          time.Now(),
 		TurnID:             opts.TurnID,
@@ -822,6 +871,134 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	})
 
 	return finalContent, nil
+}
+
+type localTurnDiagnostics struct {
+	ContextBuildMS        int64
+	LLMTotalMS            int64
+	ToolTotalMS           int64
+	SessionSaveMS         int64
+	SummaryMS             int64
+	OutboundMS            int64
+	LLMCalls              int
+	ToolCallsRequested    int
+	ToolCalls             int
+	ToolErrorCount        int
+	ToolAsyncCount        int
+	FallbackContentCount  int
+	FallbackToolCallCount int
+	ContentSources        map[string]int
+	ToolCallSources       map[string]int
+	FailurePhase          string
+	FailureReason         string
+}
+
+func newLocalTurnDiagnostics() *localTurnDiagnostics {
+	return &localTurnDiagnostics{
+		ContentSources:  map[string]int{},
+		ToolCallSources: map[string]int{},
+	}
+}
+
+func (d *localTurnDiagnostics) recordLLMResponse(duration time.Duration, response *providers.LLMResponse) {
+	if d == nil {
+		return
+	}
+	d.LLMCalls++
+	d.LLMTotalMS += duration.Milliseconds()
+	if response == nil {
+		return
+	}
+	d.ToolCallsRequested += len(response.ToolCalls)
+	if response.Diagnostics == nil {
+		return
+	}
+	if source := strings.TrimSpace(response.Diagnostics.ContentSource); source != "" {
+		d.ContentSources[source]++
+		if source != "content" {
+			d.FallbackContentCount++
+		}
+	}
+	if source := strings.TrimSpace(response.Diagnostics.ToolCallSource); source != "" {
+		d.ToolCallSources[source]++
+		if source != "native" {
+			d.FallbackToolCallCount++
+		}
+	}
+}
+
+func (d *localTurnDiagnostics) recordToolExecution(duration time.Duration, result *tools.ToolResult) {
+	if d == nil {
+		return
+	}
+	d.ToolCalls++
+	d.ToolTotalMS += duration.Milliseconds()
+	if result == nil {
+		d.ToolErrorCount++
+		if d.FailurePhase == "" {
+			d.FailurePhase = "tool_execution"
+			d.FailureReason = "tool returned no result"
+		}
+		return
+	}
+	if result.IsError {
+		d.ToolErrorCount++
+		if d.FailurePhase == "" {
+			d.FailurePhase = "tool_execution"
+			errText := strings.TrimSpace(result.ForLLM)
+			if errText == "" && result.Err != nil {
+				errText = result.Err.Error()
+			}
+			d.FailureReason = utils.Truncate(compactLine(errText), 180)
+		}
+	}
+	if result.Async {
+		d.ToolAsyncCount++
+	}
+}
+
+func (d *localTurnDiagnostics) recordFailure(phase, reason string) {
+	if d == nil {
+		return
+	}
+	if strings.TrimSpace(d.FailurePhase) == "" {
+		d.FailurePhase = strings.TrimSpace(phase)
+	}
+	if strings.TrimSpace(d.FailureReason) == "" {
+		d.FailureReason = utils.Truncate(compactLine(reason), 180)
+	}
+}
+
+func (d *localTurnDiagnostics) fields() map[string]interface{} {
+	fields := map[string]interface{}{
+		"context_build_ms":         d.ContextBuildMS,
+		"llm_total_ms":             d.LLMTotalMS,
+		"tool_total_ms":            d.ToolTotalMS,
+		"session_save_ms":          d.SessionSaveMS,
+		"summary_ms":               d.SummaryMS,
+		"outbound_ms":              d.OutboundMS,
+		"llm_calls":                d.LLMCalls,
+		"tool_calls_requested":     d.ToolCallsRequested,
+		"tool_calls_executed":      d.ToolCalls,
+		"tool_error_count":         d.ToolErrorCount,
+		"tool_async_count":         d.ToolAsyncCount,
+		"fallback_used":            d.FallbackContentCount > 0 || d.FallbackToolCallCount > 0,
+		"fallback_content_count":   d.FallbackContentCount,
+		"fallback_tool_call_count": d.FallbackToolCallCount,
+	}
+	if len(d.ContentSources) > 0 {
+		fields["content_sources"] = d.ContentSources
+	}
+	if len(d.ToolCallSources) > 0 {
+		fields["tool_call_sources"] = d.ToolCallSources
+	}
+	if strings.TrimSpace(d.FailurePhase) != "" {
+		fields["failure_phase"] = d.FailurePhase
+	}
+	if strings.TrimSpace(d.FailureReason) != "" {
+		fields["failure_reason"] = d.FailureReason
+	}
+	return fields
 }
 
 // turnUsage accumulates token usage across all LLM calls within a single turn.
@@ -862,7 +1039,7 @@ func addUsageFields(m map[string]interface{}, u *providers.UsageInfo) {
 
 // runLLMIteration executes the LLM call loop with tool handling.
 // Returns the final content, iteration count, accumulated token usage, and any error.
-func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions) (string, int, turnUsage, error) {
+func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, localDiag *localTurnDiagnostics) (string, int, turnUsage, error) {
 	iteration := 0
 	var finalContent string
 	var lastMessageToolContent string
@@ -961,19 +1138,27 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, llmOpts)
 
 		if err != nil {
+			if localDiag != nil {
+				localDiag.recordFailure("provider_chat", err.Error())
+			}
 			logger.ErrorCF("agent", "LLM call failed",
 				map[string]interface{}{
-					"iteration": iteration,
-					"error":     err.Error(),
-					"duration":  time.Since(llmCallStartedAt).String(),
+					"iteration":   iteration,
+					"error":       err.Error(),
+					"duration":    time.Since(llmCallStartedAt).String(),
+					"duration_ms": time.Since(llmCallStartedAt).Milliseconds(),
 				})
 			return "", iteration, usage, fmt.Errorf("LLM call failed: %w", err)
+		}
+		if localDiag != nil {
+			localDiag.recordLLMResponse(time.Since(llmCallStartedAt), response)
 		}
 		usage.add(response.Usage)
 		llmCompleteFields := map[string]interface{}{
 			"turn_id":          opts.TurnID,
 			"iteration":        iteration,
 			"duration":         time.Since(llmCallStartedAt).String(),
+			"duration_ms":      time.Since(llmCallStartedAt).Milliseconds(),
 			"response_chars":   len(response.Content),
 			"tool_calls_count": len(response.ToolCalls),
 		}
@@ -1099,7 +1284,11 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				}
 			}
 
+			toolStartedAt := time.Now()
 			toolResult := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
+			if localDiag != nil {
+				localDiag.recordToolExecution(time.Since(toolStartedAt), toolResult)
+			}
 			if tc.Name == "message" {
 				if content, ok := tc.Arguments["content"].(string); ok {
 					trimmed := strings.TrimSpace(content)
@@ -1141,6 +1330,23 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				contentForLLM = toolResult.Err.Error()
 			}
 			contentForLLM = truncateWithNotice(contentForLLM, al.toolResultLLMCharLimit(), "tool output")
+			if localDiag != nil {
+				toolFields := map[string]interface{}{
+					"turn_id":        opts.TurnID,
+					"iteration":      iteration,
+					"tool":           tc.Name,
+					"duration_ms":    time.Since(toolStartedAt).Milliseconds(),
+					"is_error":       toolResult.IsError,
+					"async":          toolResult.Async,
+					"for_llm_chars":  len(contentForLLM),
+					"for_user_chars": len(toolResult.ForUser),
+				}
+				if toolResult.IsError {
+					logger.WarnCF("agent", "Local tool execution complete", toolFields)
+				} else {
+					logger.InfoCF("agent", "Local tool execution complete", toolFields)
+				}
+			}
 
 			toolResultMsg := providers.Message{
 				Role:       "tool",

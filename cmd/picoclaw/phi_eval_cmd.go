@@ -106,7 +106,7 @@ func modesPhiEvalCmd(cfg *config.Config, args []string) {
 func runPhiEval(cfg *config.Config, timeout time.Duration) ([]phiEvalResult, string, string, string, error) {
 	backend := strings.TrimSpace(cfg.Agents.Defaults.LocalBackend)
 	model := strings.TrimSpace(cfg.Agents.Defaults.LocalModel)
-	preset := strings.TrimSpace(cfg.Agents.Defaults.LocalPreset)
+	preset := normalizePhiEvalPreset(cfg.Agents.Defaults.LocalPreset)
 	if backend == "" || model == "" {
 		return nil, "", "", "", fmt.Errorf("local PHI runtime is not configured; run: %s modes phi-setup", invokedCLIName())
 	}
@@ -139,6 +139,18 @@ func runPhiEval(cfg *config.Config, timeout time.Duration) ([]phiEvalResult, str
 	results = append(results, runPhiExtractEval(client, model, timeout))
 	results = append(results, runPhiToolEval(client, model, timeout))
 	return results, backend, model, preset, nil
+}
+
+func normalizePhiEvalPreset(raw string) string {
+	val := strings.ToLower(strings.TrimSpace(raw))
+	switch val {
+	case "", "balanced":
+		return "balanced"
+	case "speed", "quality":
+		return val
+	default:
+		return strings.TrimSpace(raw)
+	}
 }
 
 func runPhiTextEval(client phiEvalChatClient, model string, timeout time.Duration) phiEvalResult {
