@@ -51,9 +51,10 @@ func modesPhiEvalCmd(cfg *config.Config, args []string) {
 
 	if *jsonOut {
 		payload := map[string]any{
-			"backend": backend,
-			"model":   model,
-			"results": results,
+			"backend":      backend,
+			"model":        model,
+			"evaluated_at": time.Now().UTC().Format(time.RFC3339),
+			"results":      results,
 		}
 		out, _ := json.MarshalIndent(payload, "", "  ")
 		fmt.Println(string(out))

@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type phiDataMsg struct {
 	hardware       string
 	note           string
 	err            string
+	eval           *phiEvalSummary
 }
 
 type phiActionMsg struct {
@@ -41,15 +43,32 @@ type phiActionMsg struct {
 }
 
 type phiEvalProbe struct {
-	Name       string `json:"name"`
-	Passed     bool   `json:"passed"`
-	DurationMS int64  `json:"duration_ms"`
+	Name         string `json:"name"`
+	Passed       bool   `json:"passed"`
+	DurationMS   int64  `json:"duration_ms"`
+	FallbackUsed bool   `json:"fallback_used,omitempty"`
+	FailureCode  string `json:"failure_code,omitempty"`
+	Note         string `json:"note,omitempty"`
+}
+
+type phiEvalRecord struct {
+	Backend     string         `json:"backend,omitempty"`
+	Model       string         `json:"model,omitempty"`
+	EvaluatedAt string         `json:"evaluated_at,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	Results     []phiEvalProbe `json:"results"`
 }
 
 type phiEvalSummary struct {
-	Label   string
-	Detail  string
-	Timings string
+	Label       string
+	Detail      string
+	Timings     string
+	LastEval    string
+	Backend     string
+	Model       string
+	ProbeStatus string
+	Recovery    string
+	LastError   string
 }
 
 // PhiModel handles global PHI/local runtime management.
@@ -122,6 +141,9 @@ func (m *PhiModel) HandleData(msg phiDataMsg) {
 	m.hardware = strings.TrimSpace(msg.hardware)
 	m.note = strings.TrimSpace(msg.note)
 	m.err = strings.TrimSpace(msg.err)
+	if msg.eval != nil {
+		m.eval = msg.eval
+	}
 }
 
 func (m *PhiModel) HandleAction(msg phiActionMsg) {
@@ -134,9 +156,27 @@ func (m *PhiModel) HandleAction(msg phiActionMsg) {
 	if out != "" {
 		m.lastOut = shortenOutput(out, 800)
 	}
-	if msg.action == "eval" && msg.ok {
-		if eval, ok := parsePhiEvalSummary(out); ok {
-			m.eval = eval
+	if msg.action == "eval" {
+		var record phiEvalRecord
+		var ok bool
+		if msg.ok {
+			record, ok = parsePhiEvalRecord(out)
+			if ok {
+				if strings.TrimSpace(record.EvaluatedAt) == "" {
+					record.EvaluatedAt = time.Now().UTC().Format(time.RFC3339)
+				}
+				m.eval = summarizePhiEvalRecord(record)
+				_ = persistPhiEvalRecord(m.exec, record)
+			}
+		} else {
+			record = phiEvalRecord{
+				Backend:     strings.TrimSpace(m.localBackend),
+				Model:       strings.TrimSpace(m.localModel),
+				EvaluatedAt: time.Now().UTC().Format(time.RFC3339),
+				Error:       shortenOutput(out, 400),
+			}
+			m.eval = summarizePhiEvalRecord(record)
+			_ = persistPhiEvalRecord(m.exec, record)
 		}
 	}
 
@@ -320,8 +360,26 @@ func (m PhiModel) View(_ *VMSnapshot, width int) string {
 	lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Running:"), phiHealthValue(m.backendRunning)))
 	lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Model ready:"), phiHealthValue(m.modelReady)))
 	if m.eval != nil {
+		if strings.TrimSpace(m.eval.LastEval) != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Last eval:"), styleValue.Render(m.eval.LastEval)))
+		}
+		if strings.TrimSpace(m.eval.Backend) != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Eval backend:"), styleValue.Render(m.eval.Backend)))
+		}
+		if strings.TrimSpace(m.eval.Model) != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Eval model:"), styleValue.Render(m.eval.Model)))
+		}
 		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Suitability:"), renderPhiEvalLabel(m.eval.Label)))
 		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Eval timings:"), styleValue.Render(m.eval.Timings)))
+		if strings.TrimSpace(m.eval.ProbeStatus) != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Probe status:"), styleValue.Render(m.eval.ProbeStatus)))
+		}
+		if strings.TrimSpace(m.eval.Recovery) != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Output recovery:"), styleValue.Render(m.eval.Recovery)))
+		}
+		if strings.TrimSpace(m.eval.LastError) != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Last error:"), styleErr.Render(m.eval.LastError)))
+		}
 		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Eval note:"), styleHint.Render(m.eval.Detail)))
 	} else {
 		lines = append(lines, fmt.Sprintf("  %s  %s", label.Render("Suitability:"), styleHint.Render("Run [e] once on this machine.")))
@@ -432,6 +490,11 @@ func fetchPhiData(exec Executor) tea.Cmd {
 			msg.cloudProvider = asString(defaults["provider"])
 		} else if !isConfigNotFoundError(err) {
 			msg.err = fmt.Sprintf("config read failed: %v", err)
+		}
+		if raw, err := exec.ReadFile(phiEvalStatePath(exec)); err == nil {
+			if record, ok := parsePhiEvalRecord(raw); ok {
+				msg.eval = summarizePhiEvalRecord(record)
+			}
 		}
 
 		statusCmd := phiHomeEnv(exec) + " " + shellEscape(exec.BinaryPath()) + " modes status 2>&1"
@@ -606,25 +669,45 @@ func phiEvalCmd(exec Executor) tea.Cmd {
 	}
 }
 
-func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
-	var payload struct {
-		Results []phiEvalProbe `json:"results"`
+func summarizePhiEvalRecord(record phiEvalRecord) *phiEvalSummary {
+	if len(record.Results) == 0 && strings.TrimSpace(record.Error) == "" {
+		return nil
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
-		return nil, false
-	}
-	if len(payload.Results) == 0 {
-		return nil, false
-	}
-
 	var textMS, jsonMS, extractMS, toolMS int64
 	var haveText, haveJSON, haveExtract, haveTool bool
 	allPassed := true
-	for _, result := range payload.Results {
+	var probeParts []string
+	var recovery []string
+	lastError := strings.TrimSpace(record.Error)
+
+	for _, result := range record.Results {
+		status := "ok"
 		if !result.Passed {
 			allPassed = false
+			status = "fail"
+			if lastError == "" {
+				errText := strings.TrimSpace(result.Note)
+				if code := strings.TrimSpace(result.FailureCode); code != "" {
+					if errText == "" {
+						errText = code
+					} else {
+						errText = code + ": " + errText
+					}
+				}
+				if errText == "" {
+					errText = "probe failed"
+				}
+				lastError = fmt.Sprintf("%s: %s", strings.TrimSpace(result.Name), errText)
+			}
 		}
-		switch strings.TrimSpace(strings.ToLower(result.Name)) {
+		name := strings.TrimSpace(strings.ToLower(result.Name))
+		if name != "" {
+			probeParts = append(probeParts, fmt.Sprintf("%s %s", name, status))
+		}
+		if result.FallbackUsed && name != "" {
+			recovery = append(recovery, name)
+		}
+		switch name {
 		case "text":
 			textMS = result.DurationMS
 			haveText = true
@@ -641,9 +724,22 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 	}
 
 	summary := &phiEvalSummary{
-		Timings: fmt.Sprintf("text %.1fs, json %.1fs, extract %.1fs, tool %.1fs", millisToSeconds(textMS), millisToSeconds(jsonMS), millisToSeconds(extractMS), millisToSeconds(toolMS)),
+		Timings:     fmt.Sprintf("text %.1fs, json %.1fs, extract %.1fs, tool %.1fs", millisToSeconds(textMS), millisToSeconds(jsonMS), millisToSeconds(extractMS), millisToSeconds(toolMS)),
+		LastEval:    formatPhiEvalTime(record.EvaluatedAt),
+		Backend:     strings.TrimSpace(record.Backend),
+		Model:       strings.TrimSpace(record.Model),
+		ProbeStatus: strings.Join(probeParts, ", "),
+		LastError:   lastError,
+	}
+	if len(recovery) == 0 {
+		summary.Recovery = "none"
+	} else {
+		summary.Recovery = strings.Join(recovery, ", ")
 	}
 	switch {
+	case strings.TrimSpace(record.Error) != "":
+		summary.Label = "needs attention"
+		summary.Detail = "The last local eval failed before a full probe result was captured."
 	case !haveText || !haveJSON || !haveExtract || !haveTool:
 		summary.Label = "needs attention"
 		summary.Detail = "Incomplete local eval output. Rerun the check."
@@ -660,11 +756,58 @@ func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
 		summary.Label = "good interactive"
 		summary.Detail = "Local mode looks healthy for everyday interactive use."
 	}
+	return summary
+}
+
+func parsePhiEvalRecord(raw string) (phiEvalRecord, bool) {
+	var payload phiEvalRecord
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
+		return phiEvalRecord{}, false
+	}
+	if len(payload.Results) == 0 && strings.TrimSpace(payload.Error) == "" {
+		return phiEvalRecord{}, false
+	}
+	return payload, true
+}
+
+func parsePhiEvalSummary(raw string) (*phiEvalSummary, bool) {
+	record, ok := parsePhiEvalRecord(raw)
+	if !ok {
+		return nil, false
+	}
+	summary := summarizePhiEvalRecord(record)
+	if summary == nil {
+		return nil, false
+	}
 	return summary, true
 }
 
 func millisToSeconds(ms int64) float64 {
 	return float64(ms) / 1000.0
+}
+
+func phiEvalStatePath(exec Executor) string {
+	return filepath.Join(filepath.Dir(exec.ConfigPath()), "phi.eval.json")
+}
+
+func persistPhiEvalRecord(exec Executor, record phiEvalRecord) error {
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return err
+	}
+	return exec.WriteFile(phiEvalStatePath(exec), data, 0o600)
+}
+
+func formatPhiEvalTime(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	ts, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return raw
+	}
+	return ts.Local().Format("2006-01-02 15:04")
 }
 
 func renderPhiEvalLabel(label string) string {

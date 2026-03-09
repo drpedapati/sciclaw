@@ -13,8 +13,10 @@ import (
 type phiTestExec struct {
 	home          string
 	configRaw     string
+	readFiles     map[string]string
 	readErr       error
 	writtenRaw    string
+	writtenFiles  map[string]string
 	writeErr      error
 	shellOut      string
 	shellErr      error
@@ -46,6 +48,9 @@ func (e *phiTestExec) ReadFile(path string) (string, error) {
 	if path == e.ConfigPath() {
 		return e.configRaw, nil
 	}
+	if out, ok := e.readFiles[path]; ok {
+		return out, nil
+	}
 	return "", os.ErrNotExist
 }
 
@@ -56,6 +61,10 @@ func (e *phiTestExec) WriteFile(path string, data []byte, _ os.FileMode) error {
 	if path == e.ConfigPath() {
 		e.writtenRaw = string(data)
 	}
+	if e.writtenFiles == nil {
+		e.writtenFiles = map[string]string{}
+	}
+	e.writtenFiles[path] = string(data)
 	return nil
 }
 
@@ -321,10 +330,13 @@ func TestPhiEvalCmd_BuildsEvalCommand(t *testing.T) {
 
 func TestParsePhiEvalSummary_GoodInteractive(t *testing.T) {
 	summary, ok := parsePhiEvalSummary(`{
+  "backend": "ollama",
+  "model": "qwen3.5:9b",
+  "evaluated_at": "2026-03-09T15:04:05Z",
   "results": [
     {"name":"text","passed":true,"duration_ms":3018},
     {"name":"json","passed":true,"duration_ms":371},
-    {"name":"extract","passed":true,"duration_ms":622},
+    {"name":"extract","passed":true,"duration_ms":622,"fallback_used":true},
     {"name":"tool","passed":true,"duration_ms":1278}
   ]
 }`)
@@ -336,6 +348,18 @@ func TestParsePhiEvalSummary_GoodInteractive(t *testing.T) {
 	}
 	if !strings.Contains(summary.Timings, "text 3.0s") {
 		t.Fatalf("timings=%q", summary.Timings)
+	}
+	if summary.Backend != "ollama" || summary.Model != "qwen3.5:9b" {
+		t.Fatalf("backend/model=%q/%q", summary.Backend, summary.Model)
+	}
+	if !strings.Contains(summary.ProbeStatus, "extract ok") {
+		t.Fatalf("probeStatus=%q", summary.ProbeStatus)
+	}
+	if summary.Recovery != "extract" {
+		t.Fatalf("recovery=%q want extract", summary.Recovery)
+	}
+	if summary.LastEval == "" {
+		t.Fatal("expected formatted last eval time")
 	}
 }
 
@@ -372,17 +396,64 @@ func TestParsePhiEvalSummary_IncompleteOutputNeedsAttention(t *testing.T) {
 }
 
 func TestPhiModelHandleAction_EvalStoresSummary(t *testing.T) {
-	m := NewPhiModel(&phiTestExec{})
+	execStub := &phiTestExec{}
+	m := NewPhiModel(execStub)
 	m.HandleAction(phiActionMsg{
 		action: "eval",
 		ok:     true,
-		output: `{"results":[{"name":"text","passed":true,"duration_ms":3018},{"name":"json","passed":true,"duration_ms":371},{"name":"extract","passed":true,"duration_ms":622},{"name":"tool","passed":true,"duration_ms":1278}]}`,
+		output: `{"backend":"ollama","model":"qwen3.5:9b","evaluated_at":"2026-03-09T15:04:05Z","results":[{"name":"text","passed":true,"duration_ms":3018},{"name":"json","passed":true,"duration_ms":371},{"name":"extract","passed":true,"duration_ms":622,"fallback_used":true},{"name":"tool","passed":true,"duration_ms":1278}]}`,
 	})
 	if m.eval == nil {
 		t.Fatal("expected eval summary to be stored")
 	}
 	if m.eval.Label != "good interactive" {
 		t.Fatalf("label=%q", m.eval.Label)
+	}
+	if got := execStub.writtenFiles[phiEvalStatePath(execStub)]; !strings.Contains(got, `"backend": "ollama"`) {
+		t.Fatalf("expected persisted eval file, got %q", got)
+	}
+}
+
+func TestPhiModelHandleAction_EvalFailurePersistsFailureSummary(t *testing.T) {
+	execStub := &phiTestExec{}
+	m := NewPhiModel(execStub)
+	m.localBackend = "ollama"
+	m.localModel = "qwen3.5:4b"
+	m.HandleAction(phiActionMsg{
+		action: "eval",
+		ok:     false,
+		output: "tool round-trip timed out",
+	})
+	if m.eval == nil {
+		t.Fatal("expected eval summary")
+	}
+	if m.eval.Label != "needs attention" {
+		t.Fatalf("label=%q", m.eval.Label)
+	}
+	if !strings.Contains(strings.ToLower(m.eval.LastError), "timed out") {
+		t.Fatalf("lastError=%q", m.eval.LastError)
+	}
+	if got := execStub.writtenFiles[phiEvalStatePath(execStub)]; !strings.Contains(got, `"error": "tool round-trip timed out"`) {
+		t.Fatalf("expected persisted failure eval, got %q", got)
+	}
+}
+
+func TestFetchPhiData_LoadsPersistedEvalSummary(t *testing.T) {
+	execStub := &phiTestExec{
+		configRaw: `{"agents":{"defaults":{"mode":"phi","local_backend":"ollama","local_model":"qwen3.5:9b","local_preset":"quality"}}}`,
+		readFiles: map[string]string{
+			phiEvalStatePath(&phiTestExec{}): `{"backend":"ollama","model":"qwen3.5:9b","evaluated_at":"2026-03-09T15:04:05Z","results":[{"name":"text","passed":true,"duration_ms":3018},{"name":"json","passed":true,"duration_ms":371},{"name":"extract","passed":true,"duration_ms":622},{"name":"tool","passed":true,"duration_ms":1278}]}`,
+		},
+	}
+	msg := fetchPhiData(execStub)().(phiDataMsg)
+	if msg.eval == nil {
+		t.Fatal("expected cached eval summary")
+	}
+	if msg.eval.Model != "qwen3.5:9b" {
+		t.Fatalf("model=%q", msg.eval.Model)
+	}
+	if msg.eval.Label != "good interactive" {
+		t.Fatalf("label=%q", msg.eval.Label)
 	}
 }
 
