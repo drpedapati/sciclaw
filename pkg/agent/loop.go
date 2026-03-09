@@ -719,6 +719,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	finalContent, iteration, usage, err := al.runLLMIteration(ctx, messages, opts, localDiag)
 	if err != nil {
 		if localDiag != nil {
+			messageToolSent := al.messageToolSentInRound()
 			localDiag.recordFailure("llm_iteration", err.Error())
 			logFields := localDiag.fields()
 			logFields["turn_id"] = opts.TurnID
@@ -728,7 +729,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			logFields["model"] = al.model
 			logFields["local_backend"] = al.localBackend
 			logFields["iterations"] = iteration
-			logFields["message_tool_sent"] = false
+			logFields["message_tool_sent"] = messageToolSent
 			logFields["turn_ms"] = time.Since(turnStartedAt).Milliseconds()
 			logger.WarnCF("agent", "Local runtime summary", logFields)
 		}
