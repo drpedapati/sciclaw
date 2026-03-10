@@ -11,6 +11,12 @@ sciClaw is a free, open-source AI research agent that integrates literature sear
 - Repository: https://github.com/drpedapati/sciclaw
 - Documentation: https://sciclaw.dev/docs.html
 - Install: `brew tap drpedapati/tap && brew install sciclaw`
+- Install surfaces:
+  - `sciclaw.dev` = website and docs
+  - `drpedapati/sciclaw` = source repo and release binaries
+  - `drpedapati/tap` = main Homebrew tap for `sciclaw`, `sciclaw-dev`, `irl`, and `sciclaw-*` companion formulas
+  - `drpedapati/tools` = standalone Homebrew tap for tools like `docx-review`, `pubmed-cli`, `pdf-form-filler`, and `phi-cleaner`
+  - deprecated legacy tap: `drpedapati/sciclaw` (users should run `brew untap drpedapati/sciclaw`)
 - Platforms: macOS (Apple Silicon), Linux (amd64, arm64), Windows (amd64)
 
 ## Architecture
@@ -78,3 +84,4 @@ Pedapati, E. (2025). sciClaw: A Lightweight Paired-Scientist Agent for Reproduci
 - Releases: https://github.com/drpedapati/sciclaw/releases
 - Manuscript PDF: https://sciclaw.dev/sciclaw-open.pdf
 - Homebrew tap: https://github.com/drpedapati/homebrew-tap
+- Standalone tools tap: https://github.com/drpedapati/homebrew-tools

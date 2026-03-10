@@ -49,6 +49,18 @@ New users should follow [Quick Start](#quick-start) below for the canonical setu
 brew tap drpedapati/tap && brew install sciclaw
 ```
 
+Install surfaces are split intentionally:
+- `sciclaw.dev` is the website and documentation
+- `drpedapati/sciclaw` is the source repo and release binaries
+- `drpedapati/tap` is the Homebrew tap for `sciclaw`, `sciclaw-dev`, `irl`, and `sciclaw-*` companion formulas
+- `drpedapati/tools` is the Homebrew tap for standalone tools like `docx-review`, `pubmed-cli`, `pdf-form-filler`, and `phi-cleaner`
+
+If you still have the old legacy tap installed, remove it to avoid ambiguity:
+
+```bash
+brew untap drpedapati/sciclaw
+```
+
 ### Homebrew (development channel)
 
 ```bash

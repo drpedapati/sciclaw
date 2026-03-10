@@ -715,6 +715,11 @@
         <p>Add the sciClaw tap and install the package:</p>
         <pre><code><span class="hl-cmd">brew</span> tap drpedapati/tap &amp;&amp; <span class="hl-cmd">brew</span> install sciclaw</code></pre>
         <p>This installs <code>sciclaw</code> as the primary command and <code>picoclaw</code> as a compatibility alias. Homebrew also installs companion tools used by built-in skills (including <code>irl</code>, <code>pandoc</code>, <code>rg</code>, <code>uv</code>, <code>docx-review</code>, and <code>pubmed-cli</code>) as dependencies.</p>
+        <div class="callout">
+          <div class="callout-title">Install Surfaces</div>
+          <p><code>sciclaw.dev</code> is the website and docs. <code>drpedapati/sciclaw</code> is the source repo and release binary origin. <code>drpedapati/tap</code> is the main Homebrew tap for <code>sciclaw</code>, <code>sciclaw-dev</code>, <code>irl</code>, and the <code>sciclaw-*</code> companion formulas. <code>drpedapati/tools</code> is the separate Homebrew tap for standalone utilities like <code>docx-review</code>, <code>pubmed-cli</code>, <code>pdf-form-filler</code>, and <code>phi-cleaner</code>.</p>
+          <p>If you still have the deprecated legacy tap installed, remove it to avoid ambiguity: <code>brew untap drpedapati/sciclaw</code>.</p>
+        </div>
 
         <h3>Step 2 &mdash; Initialize (app or onboard)</h3>
         <pre><code><span class="hl-comment"># Recommended: opens dashboard + starts setup wizard</span>
