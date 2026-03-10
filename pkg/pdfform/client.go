@@ -25,6 +25,7 @@ type RunFunc func(ctx context.Context, binary string, args []string) (RunResult,
 type ClientOptions struct {
 	LookPathFn       func(string) (string, error)
 	BinaryCandidates []string
+	RunFn            RunFunc
 	Timeout          time.Duration
 }
 
@@ -77,10 +78,14 @@ func NewClientWithOptions(opts ClientOptions) *Client {
 	if timeout <= 0 {
 		timeout = 90 * time.Second
 	}
+	runFn := opts.RunFn
+	if runFn == nil {
+		runFn = defaultRun
+	}
 	return &Client{
 		lookPathFn:       lookPathFn,
 		binaryCandidates: binaryCandidates,
-		run:              defaultRun,
+		run:              runFn,
 		timeout:          timeout,
 	}
 }
@@ -94,6 +99,12 @@ func newClientWithRunner(opts ClientOptions, runner RunFunc) *Client {
 }
 
 func (c *Client) ResolveBinaryPath() (string, error) {
+	if explicit := strings.TrimSpace(os.Getenv("PICOCLAW_PDF_FORM_FILLER_BINARY")); explicit != "" {
+		if isExecutableBinary(explicit) {
+			return explicit, nil
+		}
+	}
+
 	if c.lookPathFn != nil {
 		if binaryPath, err := c.lookPathFn("pdf-form-filler"); err == nil && strings.TrimSpace(binaryPath) != "" {
 			return binaryPath, nil
@@ -123,6 +134,9 @@ func (c *Client) Inspect(ctx context.Context, pdfPath string) (*Inspection, erro
 	if pdfPath == "" {
 		return nil, fmt.Errorf("pdf path is required")
 	}
+	if err := ensureRegularFile(pdfPath, "--pdf"); err != nil {
+		return nil, err
+	}
 	var inspection Inspection
 	if err := c.runJSON(ctx, []string{"inspect", "--pdf", pdfPath, "--json"}, &inspection, true); err != nil {
 		return nil, err
@@ -134,6 +148,9 @@ func (c *Client) Schema(ctx context.Context, pdfPath string) (*Schema, error) {
 	pdfPath = strings.TrimSpace(pdfPath)
 	if pdfPath == "" {
 		return nil, fmt.Errorf("pdf path is required")
+	}
+	if err := ensureRegularFile(pdfPath, "--pdf"); err != nil {
+		return nil, err
 	}
 	var schema Schema
 	if err := c.runJSON(ctx, []string{"schema", "--pdf", pdfPath}, &schema, false); err != nil {
@@ -155,18 +172,32 @@ func (c *Client) Fill(ctx context.Context, req FillRequest) (*FillResult, error)
 	if req.OutputPath == "" {
 		return nil, fmt.Errorf("output path is required")
 	}
+	if err := ensureRegularFile(req.PDFPath, "--pdf"); err != nil {
+		return nil, err
+	}
+	if err := ensureRegularFile(req.ValuesPath, "--values"); err != nil {
+		return nil, err
+	}
+	if pathsReferToSameFile(req.PDFPath, req.OutputPath) {
+		return nil, fmt.Errorf("output path must differ from source pdf")
+	}
 
 	args := []string{"fill", "--pdf", req.PDFPath, "--values", req.ValuesPath, "--out", req.OutputPath, "--json"}
 	if req.Flatten {
 		args = append(args, "--flatten")
 	}
 
+	beforeInfo, beforeErr := os.Stat(req.OutputPath)
 	var result FillResult
 	if err := c.runJSON(ctx, args, &result, false); err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(req.OutputPath); err != nil {
+	afterInfo, err := os.Stat(req.OutputPath)
+	if err != nil {
 		return nil, fmt.Errorf("pdf-form-filler completed without producing output file %q: %w", req.OutputPath, err)
+	}
+	if beforeErr == nil && sameFileSnapshot(beforeInfo, afterInfo) {
+		return nil, fmt.Errorf("pdf-form-filler reported success but did not update output file %q", req.OutputPath)
 	}
 	return &result, nil
 }
@@ -282,5 +313,41 @@ func isExecutableBinary(path string) bool {
 	if info.IsDir() {
 		return false
 	}
+	if runtime.GOOS == "windows" {
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".exe", ".bat", ".cmd":
+			return true
+		}
+	}
 	return info.Mode().Perm()&0o111 != 0
+}
+
+func sameFileSnapshot(before, after os.FileInfo) bool {
+	if before == nil || after == nil {
+		return false
+	}
+	return before.Size() == after.Size() && before.ModTime().Equal(after.ModTime())
+}
+
+func ensureRegularFile(path string, flagName string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("%s file not found: %s", flagName, path)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s path is a directory, expected file: %s", flagName, path)
+	}
+	return nil
+}
+
+func pathsReferToSameFile(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return filepath.Clean(absA) == filepath.Clean(absB)
 }
