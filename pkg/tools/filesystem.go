@@ -35,7 +35,7 @@ var (
 	errDirReadTimedOut  = errors.New("directory read timed out")
 
 	readFileBlockedExtensions = map[string]string{
-		".docx": "Use `docx-review` or a text-export tool instead.",
+		".docx": "Use `docx_review_read`/`docx_review_diff`/`docx_review_apply` or `docx-review` instead of raw bytes.",
 		".pdf":  "Use a PDF extraction workflow instead of raw bytes. For fillable AcroForms, use `pdf_form_inspect`/`pdf_form_schema`/`pdf_form_fill`.",
 		".xlsx": "Use spreadsheet tooling to read structured cell content.",
 		".xls":  "Use spreadsheet tooling to read structured cell content.",

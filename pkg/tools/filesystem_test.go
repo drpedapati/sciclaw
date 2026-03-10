@@ -55,6 +55,9 @@ func TestFilesystemTool_ReadFile_BlockedExtension(t *testing.T) {
 	if !strings.Contains(strings.ToLower(result.ForLLM), ".docx") {
 		t.Fatalf("expected extension guidance in error, got: %s", result.ForLLM)
 	}
+	if !strings.Contains(result.ForLLM, "docx_review_read") {
+		t.Fatalf("expected typed docx tool guidance, got: %s", result.ForLLM)
+	}
 }
 
 func TestFilesystemTool_ReadFile_BinaryContent(t *testing.T) {
