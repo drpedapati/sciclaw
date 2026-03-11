@@ -1,4 +1,4 @@
-# sciClaw v0.2.2 Announcement Copy
+# sciClaw v0.2.3 Announcement Copy
 
 Keep the tone aligned with prior announcement files:
 - short opening line
@@ -13,17 +13,17 @@ Do not show real PHI, API keys, email addresses, bot tokens, or private channel 
 
 ## Tweet 1 - Main Release Announcement
 
-sciClaw v0.2.2 is out.
+sciClaw v0.2.3 is out.
 
-This release makes private, local AI much easier to use without guesswork.
+This release makes sciClaw easier to trust in day-to-day work.
 
-- the app now tells you whether your machine is actually a good fit for local mode
-- routing sensitive rooms is clearer
-- document workflows are safer and more guided
+- clearer local vs cloud behavior
+- safer built-in document workflows for Word files and PDF forms
+- better support for newer Claude and ChatGPT model names
 
-If you want the privacy of local AI without spending your day troubleshooting it, this release is for you.
+If you want AI to help in a real shared workspace, not in random private tabs and copy-paste, this release moves that forward.
 
-https://github.com/drpedapati/sciclaw/releases/tag/v0.2.2
+https://github.com/drpedapati/sciclaw/releases/tag/v0.2.3
 
 ---
 
@@ -73,7 +73,7 @@ If you already use sciClaw, update and open the app.
 
 If you are new, install from Homebrew and do the rest from the sciClaw app in your terminal.
 
-Release notes: https://github.com/drpedapati/sciclaw/releases/tag/v0.2.2
+Release notes: https://github.com/drpedapati/sciclaw/releases/tag/v0.2.3
 
 Install guide: https://sciclaw.dev/docs.html
 
