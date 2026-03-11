@@ -1267,13 +1267,7 @@ func agentCmd() {
 		os.Exit(1)
 	}
 
-	// Apply CLI overrides before provider creation
-	if modelOverride != "" {
-		cfg.Agents.Defaults.Model = modelOverride
-	}
-	if effortOverride != "" {
-		cfg.Agents.Defaults.ReasoningEffort = effortOverride
-	}
+	applyAgentCLIOverrides(cfg, modelOverride, effortOverride)
 
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
@@ -1304,6 +1298,18 @@ func agentCmd() {
 	} else {
 		fmt.Printf("%s Interactive mode (Ctrl+C to exit)\n\n", logo)
 		interactiveMode(agentLoop, sessionKey)
+	}
+}
+
+func applyAgentCLIOverrides(cfg *config.Config, modelOverride, effortOverride string) {
+	if modelOverride != "" {
+		cfg.Agents.Defaults.Model = modelOverride
+		if provider := models.ResolveProvider(modelOverride, cfg); provider != "unknown" {
+			cfg.Agents.Defaults.Provider = provider
+		}
+	}
+	if effortOverride != "" {
+		cfg.Agents.Defaults.ReasoningEffort = effortOverride
 	}
 }
 

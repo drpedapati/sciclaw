@@ -243,6 +243,9 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 
 	model := cfg.Agents.Defaults.Model
 	providerName := strings.ToLower(cfg.Agents.Defaults.Provider)
+	if explicitProvider := explicitProviderFromModel(model); explicitProvider != "" {
+		providerName = explicitProvider
+	}
 
 	var apiKey, apiBase, proxy string
 
@@ -441,6 +444,32 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	}
 
 	return NewHTTPProvider(apiKey, apiBase, proxy), nil
+}
+
+func explicitProviderFromModel(model string) string {
+	model = strings.TrimSpace(strings.ToLower(model))
+	switch {
+	case strings.HasPrefix(model, "anthropic/"):
+		return "anthropic"
+	case strings.HasPrefix(model, "openai/"):
+		return "openai"
+	case strings.HasPrefix(model, "google/"):
+		return "gemini"
+	case strings.HasPrefix(model, "groq/"):
+		return "groq"
+	case strings.HasPrefix(model, "moonshot/"):
+		return "moonshot"
+	case strings.HasPrefix(model, "nvidia/"):
+		return "nvidia"
+	case strings.HasPrefix(model, "openrouter/"):
+		return "openrouter"
+	case strings.HasPrefix(model, "zhipu/"):
+		return "zhipu"
+	case strings.HasPrefix(model, "deepseek/"):
+		return "deepseek"
+	default:
+		return ""
+	}
 }
 
 func createLocalProvider(cfg *config.Config) (LLMProvider, error) {
