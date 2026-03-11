@@ -94,10 +94,10 @@ func ListProviders(cfg *config.Config) []ProviderInfo {
 	}
 
 	add("anthropic", cfg.Providers.Anthropic, []string{
-		"claude-opus-4-6", "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001",
+		"claude-sonnet-4.6", "claude-opus-4-6", "claude-haiku-4-5-20251001",
 	})
 	add("openai", cfg.Providers.OpenAI, []string{
-		"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2",
+		"gpt-5.4", "gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2",
 	})
 	add("openrouter", cfg.Providers.OpenRouter, []string{
 		"openrouter/<model>",
@@ -398,9 +398,9 @@ func discoverSecondaryProviders(cfg *config.Config, primary string) []string {
 func knownModelsForProvider(provider string) []string {
 	switch provider {
 	case "anthropic":
-		return []string{"claude-opus-4-6", "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"}
+		return []string{"claude-sonnet-4.6", "claude-opus-4-6", "claude-haiku-4-5-20251001"}
 	case "openai":
-		return []string{"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2"}
+		return []string{"gpt-5.4", "gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2"}
 	case "gemini":
 		return []string{"gemini-2.5-pro", "gemini-2.5-flash"}
 	case "openrouter":

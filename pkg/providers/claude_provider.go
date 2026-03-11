@@ -65,7 +65,7 @@ func (p *ClaudeProvider) Chat(ctx context.Context, messages []Message, tools []T
 }
 
 func (p *ClaudeProvider) GetDefaultModel() string {
-	return "claude-sonnet-4-5-20250929"
+	return "claude-sonnet-4.6"
 }
 
 func buildClaudeParams(messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (anthropic.MessageNewParams, error) {
@@ -114,7 +114,7 @@ func buildClaudeParams(messages []Message, tools []ToolDefinition, model string,
 	}
 
 	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(model),
+		Model:     anthropic.Model(normalizeClaudeModel(model)),
 		Messages:  anthropicMessages,
 		MaxTokens: maxTokens,
 	}
@@ -141,6 +141,16 @@ func buildClaudeParams(messages []Message, tools []ToolDefinition, model string,
 	}
 
 	return params, nil
+}
+
+func normalizeClaudeModel(model string) string {
+	model = strings.TrimSpace(model)
+	if rest, ok := strings.CutPrefix(model, "anthropic/"); ok {
+		model = rest
+	}
+	// Anthropic API expects hyphenated model IDs, while upstream PicoClaw
+	// and user-facing configs may use dotted aliases like claude-sonnet-4.6.
+	return strings.ReplaceAll(model, ".", "-")
 }
 
 func translateToolsForClaude(tools []ToolDefinition) []anthropic.ToolUnionParam {

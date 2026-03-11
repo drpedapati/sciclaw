@@ -62,7 +62,7 @@ func NewModelsModel(exec Executor) ModelsModel {
 	ti := textinput.New()
 	ti.CharLimit = 64
 	ti.Width = 40
-	ti.Placeholder = "e.g. gpt-5.2 or claude-opus-4-6"
+	ti.Placeholder = "e.g. gpt-5.4 or claude-sonnet-4.6"
 	return ModelsModel{exec: exec, input: ti}
 }
 

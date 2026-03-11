@@ -54,10 +54,12 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		return nil, fmt.Errorf("API base not configured")
 	}
 
-	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5)
+	// Strip provider prefix for direct vendor APIs. Keep prefixes intact for
+	// routers like OpenRouter, where upstream model namespaces are part of the
+	// actual model identifier.
 	if idx := strings.Index(model, "/"); idx != -1 {
 		prefix := model[:idx]
-		if prefix == "moonshot" || prefix == "nvidia" {
+		if prefix == "moonshot" || prefix == "nvidia" || (prefix == "openai" && !strings.Contains(p.apiBase, "openrouter.ai")) {
 			model = model[idx+1:]
 		}
 	}
@@ -350,15 +352,6 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiBase = "https://api.moonshot.cn/v1"
 			}
 
-		case strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(model, "openai/") || strings.HasPrefix(model, "meta-llama/") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "google/"):
-			apiKey = cfg.Providers.OpenRouter.APIKey
-			proxy = cfg.Providers.OpenRouter.Proxy
-			if cfg.Providers.OpenRouter.APIBase != "" {
-				apiBase = cfg.Providers.OpenRouter.APIBase
-			} else {
-				apiBase = "https://openrouter.ai/api/v1"
-			}
-
 		case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && (cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != "" || hasStoredCredential("anthropic")):
 			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" || (cfg.Providers.Anthropic.APIKey == "" && hasStoredCredential("anthropic")) {
 				return createClaudeAuthProvider()
@@ -384,6 +377,15 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			proxy = cfg.Providers.Gemini.Proxy
 			if apiBase == "" {
 				apiBase = "https://generativelanguage.googleapis.com/v1beta"
+			}
+
+		case strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(model, "openai/") || strings.HasPrefix(model, "meta-llama/") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "google/"):
+			apiKey = cfg.Providers.OpenRouter.APIKey
+			proxy = cfg.Providers.OpenRouter.Proxy
+			if cfg.Providers.OpenRouter.APIBase != "" {
+				apiBase = cfg.Providers.OpenRouter.APIBase
+			} else {
+				apiBase = "https://openrouter.ai/api/v1"
 			}
 
 		case (strings.Contains(lowerModel, "glm") || strings.Contains(lowerModel, "zhipu") || strings.Contains(lowerModel, "zai")) && cfg.Providers.Zhipu.APIKey != "":

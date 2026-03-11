@@ -170,7 +170,7 @@ func buildCodexParams(messages []Message, tools []ToolDefinition, model string, 
 	}
 
 	params := responses.ResponseNewParams{
-		Model: model,
+		Model: normalizeOpenAIModel(model),
 		Input: responses.ResponseNewParamsInputUnion{
 			OfInputItemList: inputItems,
 		},
@@ -188,6 +188,14 @@ func buildCodexParams(messages []Message, tools []ToolDefinition, model string, 
 	}
 
 	return params
+}
+
+func normalizeOpenAIModel(model string) string {
+	model = strings.TrimSpace(model)
+	if rest, ok := strings.CutPrefix(model, "openai/"); ok {
+		return rest
+	}
+	return model
 }
 
 func resolveToolCallName(tc ToolCall) string {

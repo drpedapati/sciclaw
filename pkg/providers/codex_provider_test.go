@@ -16,11 +16,11 @@ func TestBuildCodexParams_BasicMessage(t *testing.T) {
 	messages := []Message{
 		{Role: "user", Content: "Hello"},
 	}
-	params := buildCodexParams(messages, nil, "gpt-4o", map[string]interface{}{
+	params := buildCodexParams(messages, nil, "openai/gpt-5.4", map[string]interface{}{
 		"max_tokens": 2048,
 	})
-	if params.Model != "gpt-4o" {
-		t.Errorf("Model = %q, want %q", params.Model, "gpt-4o")
+	if params.Model != "gpt-5.4" {
+		t.Errorf("Model = %q, want %q", params.Model, "gpt-5.4")
 	}
 }
 
@@ -308,6 +308,21 @@ func TestCodexProvider_GetDefaultModel(t *testing.T) {
 	p := NewCodexProvider("test-token", "")
 	if got := p.GetDefaultModel(); got != "gpt-5.2" {
 		t.Errorf("GetDefaultModel() = %q, want %q", got, "gpt-5.2")
+	}
+}
+
+func TestNormalizeOpenAIModel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"gpt-5.4", "gpt-5.4"},
+		{"openai/gpt-5.4", "gpt-5.4"},
+	}
+	for _, tt := range tests {
+		if got := normalizeOpenAIModel(tt.in); got != tt.want {
+			t.Fatalf("normalizeOpenAIModel(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }
 

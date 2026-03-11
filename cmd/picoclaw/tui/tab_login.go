@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const anthropicDefaultModel = "claude-opus-4-6"
+const anthropicDefaultModel = "claude-sonnet-4.6"
 
 type loginSelection int
 
@@ -215,7 +215,7 @@ func saveAPIKey(exec Executor, provider, key string) error {
 	if provider == "anthropic" {
 		agents := ensureMap(cfg, "agents")
 		defaults := ensureMap(agents, "defaults")
-		if v, ok := defaults["model"]; !ok || strings.TrimSpace(asString(v)) == "" || strings.EqualFold(asString(v), "gpt-5.2") {
+		if v, ok := defaults["model"]; !ok || strings.TrimSpace(asString(v)) == "" || isStockOpenAIModel(asString(v)) {
 			defaults["model"] = anthropicDefaultModel
 		}
 	}
@@ -226,6 +226,16 @@ func saveAPIKey(exec Executor, provider, key string) error {
 func asString(v interface{}) string {
 	s, _ := v.(string)
 	return strings.TrimSpace(s)
+}
+
+func isStockOpenAIModel(model string) bool {
+	model = strings.TrimSpace(model)
+	switch strings.ToLower(model) {
+	case "gpt-5.2", "openai/gpt-5.2", "gpt-5.4", "openai/gpt-5.4":
+		return true
+	default:
+		return false
+	}
 }
 
 func logoutCmd(exec Executor, provider string) tea.Cmd {

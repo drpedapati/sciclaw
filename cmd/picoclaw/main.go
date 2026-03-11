@@ -514,7 +514,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Agent flags:")
 	fmt.Println("  --model <model>   Override model for this invocation")
-	fmt.Println("  --effort <level>  Set GPT-5.2 reasoning effort (none/minimal/low/medium/high/xhigh)")
+	fmt.Println("  --effort <level>  Set GPT-5.x reasoning effort (none/minimal/low/medium/high/xhigh)")
 	fmt.Println("  -m <message>      Send a single message (non-interactive)")
 	fmt.Println("  -s <session>      Use a specific session key")
 }
@@ -1954,7 +1954,7 @@ func modelsCmd() {
 	case "effort":
 		if len(os.Args) < 4 {
 			fmt.Printf("Usage: %s models effort <level>\n", commandName)
-			fmt.Println("  GPT-5.2 levels: none, minimal, low, medium, high, xhigh")
+			fmt.Println("  GPT-5.x levels: none, minimal, low, medium, high, xhigh")
 			os.Exit(1)
 		}
 		configPath := getConfigPath()

@@ -16,14 +16,14 @@ func TestBuildClaudeParams_BasicMessage(t *testing.T) {
 	messages := []Message{
 		{Role: "user", Content: "Hello"},
 	}
-	params, err := buildClaudeParams(messages, nil, "claude-sonnet-4-5-20250929", map[string]interface{}{
+	params, err := buildClaudeParams(messages, nil, "claude-sonnet-4.6", map[string]interface{}{
 		"max_tokens": 1024,
 	})
 	if err != nil {
 		t.Fatalf("buildClaudeParams() error: %v", err)
 	}
-	if string(params.Model) != "claude-sonnet-4-5-20250929" {
-		t.Errorf("Model = %q, want %q", params.Model, "claude-sonnet-4-5-20250929")
+	if string(params.Model) != "claude-sonnet-4-6" {
+		t.Errorf("Model = %q, want %q", params.Model, "claude-sonnet-4-6")
 	}
 	if params.MaxTokens != 1024 {
 		t.Errorf("MaxTokens = %d, want 1024", params.MaxTokens)
@@ -38,7 +38,7 @@ func TestBuildClaudeParams_SystemMessage(t *testing.T) {
 		{Role: "system", Content: "You are helpful"},
 		{Role: "user", Content: "Hi"},
 	}
-	params, err := buildClaudeParams(messages, nil, "claude-sonnet-4-5-20250929", map[string]interface{}{})
+	params, err := buildClaudeParams(messages, nil, "claude-sonnet-4.6", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("buildClaudeParams() error: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestBuildClaudeParams_ToolCallMessage(t *testing.T) {
 		},
 		{Role: "tool", Content: `{"temp": 72}`, ToolCallID: "call_1"},
 	}
-	params, err := buildClaudeParams(messages, nil, "claude-sonnet-4-5-20250929", map[string]interface{}{})
+	params, err := buildClaudeParams(messages, nil, "claude-sonnet-4.6", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("buildClaudeParams() error: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestBuildClaudeParams_WithTools(t *testing.T) {
 			},
 		},
 	}
-	params, err := buildClaudeParams([]Message{{Role: "user", Content: "Hi"}}, tools, "claude-sonnet-4-5-20250929", map[string]interface{}{})
+	params, err := buildClaudeParams([]Message{{Role: "user", Content: "Hi"}}, tools, "claude-sonnet-4.6", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("buildClaudeParams() error: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestClaudeProvider_ChatRoundTrip(t *testing.T) {
 	provider.client = createAnthropicTestClient(server.URL, "test-token")
 
 	messages := []Message{{Role: "user", Content: "Hello"}}
-	resp, err := provider.Chat(t.Context(), messages, nil, "claude-sonnet-4-5-20250929", map[string]interface{}{"max_tokens": 1024})
+	resp, err := provider.Chat(t.Context(), messages, nil, "anthropic/claude-sonnet-4.6", map[string]interface{}{"max_tokens": 1024})
 	if err != nil {
 		t.Fatalf("Chat() error: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestClaudeProvider_ChatRoundTrip_OAuthTokenAddsBetaHeader(t *testing.T) {
 	provider := NewClaudeProvider(oauthToken)
 	provider.client = createAnthropicTestClient(server.URL, oauthToken)
 
-	resp, err := provider.Chat(t.Context(), []Message{{Role: "user", Content: "Ping"}}, nil, "claude-sonnet-4-5-20250929", map[string]interface{}{"max_tokens": 64})
+	resp, err := provider.Chat(t.Context(), []Message{{Role: "user", Content: "Ping"}}, nil, "claude-sonnet-4.6", map[string]interface{}{"max_tokens": 64})
 	if err != nil {
 		t.Fatalf("Chat() error: %v", err)
 	}
@@ -249,8 +249,24 @@ func TestClaudeProvider_ChatRoundTrip_OAuthTokenAddsBetaHeader(t *testing.T) {
 
 func TestClaudeProvider_GetDefaultModel(t *testing.T) {
 	p := NewClaudeProvider("test-token")
-	if got := p.GetDefaultModel(); got != "claude-sonnet-4-5-20250929" {
-		t.Errorf("GetDefaultModel() = %q, want %q", got, "claude-sonnet-4-5-20250929")
+	if got := p.GetDefaultModel(); got != "claude-sonnet-4.6" {
+		t.Errorf("GetDefaultModel() = %q, want %q", got, "claude-sonnet-4.6")
+	}
+}
+
+func TestNormalizeClaudeModel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"claude-sonnet-4.6", "claude-sonnet-4-6"},
+		{"anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"},
+		{"claude-opus-4-6", "claude-opus-4-6"},
+	}
+	for _, tt := range tests {
+		if got := normalizeClaudeModel(tt.in); got != tt.want {
+			t.Fatalf("normalizeClaudeModel(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }
 
