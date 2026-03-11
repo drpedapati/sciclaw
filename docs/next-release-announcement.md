@@ -79,6 +79,74 @@ Install guide: https://sciclaw.dev/docs.html
 
 ---
 
+## Basic Non-Technical Tweet Options
+
+## Tweet A - One Room, One Workspace
+
+Most AI chat tools feel detached from the real work.
+
+sciClaw is different:
+- one Discord room can map to one real project folder
+- the AI works in that folder
+- the people in the room can see what it is doing
+
+That makes it much easier to use AI on actual team work instead of random copy/paste.
+
+---
+
+## Tweet B - No Secret AI Coworker
+
+A lot of AI use at work is private and invisible.
+
+One person uses AI in secret.
+Nobody else knows what was pasted in, what came back, or what changed.
+
+sciClaw is built for the opposite:
+- the AI works in the shared room
+- people can see how it is being used
+- there is a clear record of what happened
+
+That is a much healthier model for teams.
+
+---
+
+## Tweet C - Private Room, Normal Workflow
+
+Sometimes one room really does need more privacy.
+
+With sciClaw, you can keep one sensitive room on a local model and leave the rest of the workflow alone.
+
+That is much more practical than forcing a whole team into “all local” or “all cloud.”
+
+---
+
+## Tweet D - AI That Lives With The Project
+
+The useful version of AI at work is not “one more chatbot.”
+
+It is:
+- attached to a real project
+- working in a real folder
+- visible to the team
+- able to help with documents, notes, and files where the work already happens
+
+That is the idea behind sciClaw.
+
+---
+
+## Tweet E - Better Team Transparency
+
+If AI is helping with real work, teams should not have to guess where it was used.
+
+sciClaw gives you a better operating model:
+- the AI shows up in the room with everyone else
+- the work is tied to a real workspace
+- usage is visible instead of hidden in private tabs and side chats
+
+AI at work should be easier to trust, not harder.
+
+---
+
 ## Isolated Engagement Tweet 1 - Room-Level Local Routing
 
 Hook:
@@ -159,6 +227,23 @@ Use a terminal + artifact pairing:
 
 Why:
 - shows a real outcome without requiring technical detail
+
+### Best screenshots for non-technical tweets
+
+For "one room, one workspace":
+- Discord room on one side
+- sciClaw app Routing view on the other
+- the mapped folder path visible
+
+For "no secret AI coworker":
+- shared chat room with sciClaw participating
+- terminal or app panel showing logs/history/status
+- nothing private, nothing hidden
+
+For "private room, normal workflow":
+- one room clearly marked local/private
+- another room left on normal defaults
+- keep the image simple and legible
 
 ### Screenshot rules
 
