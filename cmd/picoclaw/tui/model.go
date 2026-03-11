@@ -483,6 +483,9 @@ func (m Model) View() string {
 		title = fmt.Sprintf("🦞🧪 sciClaw VM v%s", ver)
 	}
 	header := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render(title)
+	if gatewayChip := m.renderGatewayHeaderChip(); gatewayChip != "" {
+		header += "  " + gatewayChip
+	}
 	if m.snapshot != nil && m.snapshot.GatewayVersion != "" &&
 		m.snapshot.GatewayVersion != ver &&
 		m.snapshot.ServiceRunning &&
@@ -603,6 +606,7 @@ func (m Model) renderTabBar() string {
 func (m Model) renderStatusBar() string {
 	left := ""
 	if m.snapshot != nil {
+		left = fmt.Sprintf(" Gateway: %s", m.renderGatewayState())
 		if m.exec.Mode() == ModeVM {
 			stateColor := colorSuccess
 			switch m.snapshot.State {
@@ -611,18 +615,15 @@ func (m Model) renderStatusBar() string {
 			case "NotFound", "":
 				stateColor = colorError
 			}
-			left = fmt.Sprintf(" VM: %s", lipgloss.NewStyle().Foreground(stateColor).Bold(true).Render(m.snapshot.State))
+			left += fmt.Sprintf("  VM: %s", lipgloss.NewStyle().Foreground(stateColor).Bold(true).Render(m.snapshot.State))
 		} else {
-			left = fmt.Sprintf(" Mode: %s", lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("Local"))
+			left += fmt.Sprintf("  Mode: %s", lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("Local"))
 		}
 		if m.snapshot.ActiveModel != "" {
 			left += fmt.Sprintf("  Model: %s", styleDim.Render(m.snapshot.ActiveModel))
 		}
-		if m.loading {
-			left += fmt.Sprintf("  %s", m.spinner.View())
-		}
 	} else if m.loading {
-		left = fmt.Sprintf(" %s Connecting...", m.spinner.View())
+		left = fmt.Sprintf(" Gateway: %s", styleWarn.Render("checking"))
 	}
 
 	if !m.lastActionAt.IsZero() && time.Since(m.lastActionAt) <= 8*time.Second {
@@ -639,6 +640,9 @@ func (m Model) renderStatusBar() string {
 	}
 
 	right := "Tab: switch section  Enter: select  q: quit"
+	if refresh := m.renderRefreshState(); refresh != "" {
+		right = refresh + " | " + right
+	}
 	if !m.lastRefresh.IsZero() {
 		ago := time.Since(m.lastRefresh).Truncate(time.Second)
 		right = fmt.Sprintf("Updated %s ago | %s", ago, right)
@@ -650,6 +654,67 @@ func (m Model) renderStatusBar() string {
 	}
 
 	return styleStatusBar.Width(m.width).Render(left + strings.Repeat(" ", gap) + right)
+}
+
+func (m Model) renderGatewayHeaderChip() string {
+	if m.snapshot == nil {
+		if m.loading {
+			return lipgloss.NewStyle().Padding(0, 1).Bold(true).Foreground(colorWarning).Render("Gateway checking")
+		}
+		if m.snapshotErr != nil {
+			return lipgloss.NewStyle().Padding(0, 1).Bold(true).Foreground(colorError).Render("Gateway status error")
+		}
+		return ""
+	}
+
+	label := "Gateway stopped"
+	color := colorWarning
+	switch {
+	case !m.snapshot.ServiceInstalled:
+		label = "Gateway not installed"
+		color = colorWarning
+	case m.snapshot.ServiceRunning:
+		label = "Gateway running"
+		color = colorSuccess
+	default:
+		label = "Gateway stopped"
+		color = colorError
+	}
+
+	return lipgloss.NewStyle().Padding(0, 1).Bold(true).Foreground(color).Render(label)
+}
+
+func (m Model) renderGatewayState() string {
+	if m.snapshot == nil {
+		if m.loading {
+			return styleWarn.Render("checking")
+		}
+		if m.snapshotErr != nil {
+			return styleErr.Render("error")
+		}
+		return styleDim.Render("unknown")
+	}
+	switch {
+	case !m.snapshot.ServiceInstalled:
+		return styleWarn.Render("not installed")
+	case m.snapshot.ServiceRunning:
+		return styleOK.Render("running")
+	default:
+		return styleErr.Render("stopped")
+	}
+}
+
+func (m Model) renderRefreshState() string {
+	switch {
+	case m.loading && m.snapshot != nil:
+		return fmt.Sprintf("%s Refreshing status...", m.spinner.View())
+	case m.loading:
+		return fmt.Sprintf("%s Loading status...", m.spinner.View())
+	case m.snapshotErr != nil:
+		return styleErr.Render("Status refresh failed")
+	default:
+		return ""
+	}
 }
 
 func fetchSnapshotCmd(exec Executor) tea.Cmd {
