@@ -261,10 +261,11 @@ type GatewayConfig struct {
 }
 
 type JobsConfig struct {
-	Enabled               bool `json:"enabled" env:"PICOCLAW_JOBS_ENABLED"`
-	MaxConcurrent         int  `json:"max_concurrent" env:"PICOCLAW_JOBS_MAX_CONCURRENT"`
-	ProgressUpdateSeconds int  `json:"progress_update_seconds" env:"PICOCLAW_JOBS_PROGRESS_UPDATE_SECONDS"`
-	DiscordAsyncDefault   bool `json:"discord_async_default" env:"PICOCLAW_JOBS_DISCORD_ASYNC_DEFAULT"`
+	Enabled                  bool `json:"enabled" env:"PICOCLAW_JOBS_ENABLED"`
+	MaxConcurrent            int  `json:"max_concurrent" env:"PICOCLAW_JOBS_MAX_CONCURRENT"`
+	ProgressUpdateSeconds    int  `json:"progress_update_seconds" env:"PICOCLAW_JOBS_PROGRESS_UPDATE_SECONDS"`
+	DiscordAsyncDefault      bool `json:"discord_async_default" env:"PICOCLAW_JOBS_DISCORD_ASYNC_DEFAULT"`
+	AllowReadOnlyDuringWrite bool `json:"allow_read_only_during_write" env:"PICOCLAW_JOBS_ALLOW_READ_ONLY_DURING_WRITE"`
 }
 
 type BraveConfig struct {
@@ -407,10 +408,11 @@ func DefaultConfig() *Config {
 			Port: 18790,
 		},
 		Jobs: JobsConfig{
-			Enabled:               true,
-			MaxConcurrent:         4,
-			ProgressUpdateSeconds: 5,
-			DiscordAsyncDefault:   true,
+			Enabled:                  true,
+			MaxConcurrent:            4,
+			ProgressUpdateSeconds:    5,
+			DiscordAsyncDefault:      true,
+			AllowReadOnlyDuringWrite: true,
 		},
 		Tools: ToolsConfig{
 			Web: WebToolsConfig{

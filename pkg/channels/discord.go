@@ -40,14 +40,14 @@ type DiscordChannel struct {
 	ctx         context.Context
 	botUserID   string
 
-	typingMu      sync.Mutex
-	typing        map[string]*typingState
-	typingEvery   time.Duration
-	sendMessageFn func(channelID, content string) error
+	typingMu              sync.Mutex
+	typing                map[string]*typingState
+	typingEvery           time.Duration
+	sendMessageFn         func(channelID, content string) error
 	sendProgressMessageFn func(channelID, content string) (string, error)
-	sendFileFn    func(channelID, content string, attachment bus.OutboundAttachment) error
-	sendTypingFn  func(channelID string) error
-	editMessageFn func(channelID, messageID, content string) error
+	sendFileFn            func(channelID, content string, attachment bus.OutboundAttachment) error
+	sendTypingFn          func(channelID string) error
+	editMessageFn         func(channelID, messageID, content string) error
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -332,20 +332,22 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 
 	// Detect @bot mention (direct user mention, role mention, or reply to bot)
 	isMention := m.GuildID == "" // DMs are always "mentions"
+	hasDirectMention := isMention
+	replyToBot := false
 
 	// DEBUG: Log all incoming messages to trace mention detection
 	logger.InfoCF("discord", "Mention detection start", map[string]any{
-		"content_preview":   utils.Truncate(m.Content, 100),
-		"mentions_count":    len(m.Mentions),
-		"mention_roles":     len(m.MentionRoles),
-		"bot_user_id":       c.botUserID,
-		"guild_id":          m.GuildID,
-		"channel_id":        m.ChannelID,
-		"message_id":        m.ID,
-		"sender_id":         senderID,
-		"has_msg_ref":       m.MessageReference != nil,
-		"has_ref_msg":       m.ReferencedMessage != nil,
-		"is_edit":           editOnly,
+		"content_preview": utils.Truncate(m.Content, 100),
+		"mentions_count":  len(m.Mentions),
+		"mention_roles":   len(m.MentionRoles),
+		"bot_user_id":     c.botUserID,
+		"guild_id":        m.GuildID,
+		"channel_id":      m.ChannelID,
+		"message_id":      m.ID,
+		"sender_id":       senderID,
+		"has_msg_ref":     m.MessageReference != nil,
+		"has_ref_msg":     m.ReferencedMessage != nil,
+		"is_edit":         editOnly,
 	})
 
 	if !isMention {
@@ -358,6 +360,7 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 			})
 			if u.ID == c.botUserID {
 				isMention = true
+				hasDirectMention = true
 				break
 			}
 		}
@@ -368,6 +371,7 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 					for _, botRole := range member.Roles {
 						if mentionedRole == botRole {
 							isMention = true
+							hasDirectMention = true
 							break
 						}
 					}
@@ -381,6 +385,7 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 		if !isMention && m.MessageReference != nil && m.ReferencedMessage != nil {
 			if m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == c.botUserID {
 				isMention = true
+				replyToBot = true
 			}
 		}
 	}
@@ -480,15 +485,23 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 	}
 
 	metadata := map[string]string{
-		"message_id":   m.ID,
-		"user_id":      senderID,
-		"username":     m.Author.Username,
-		"display_name": senderName,
-		"guild_id":     m.GuildID,
-		"channel_id":   m.ChannelID,
-		"is_dm":        fmt.Sprintf("%t", m.GuildID == ""),
-		"is_mention":   fmt.Sprintf("%t", isMention),
-		"is_edit":      fmt.Sprintf("%t", editOnly),
+		"message_id":         m.ID,
+		"user_id":            senderID,
+		"username":           m.Author.Username,
+		"display_name":       senderName,
+		"guild_id":           m.GuildID,
+		"channel_id":         m.ChannelID,
+		"is_dm":              fmt.Sprintf("%t", m.GuildID == ""),
+		"is_mention":         fmt.Sprintf("%t", isMention),
+		"has_direct_mention": fmt.Sprintf("%t", hasDirectMention),
+		"reply_to_bot":       fmt.Sprintf("%t", replyToBot),
+		"is_edit":            fmt.Sprintf("%t", editOnly),
+	}
+	if m.MessageReference != nil {
+		metadata["reply_message_id"] = strings.TrimSpace(m.MessageReference.MessageID)
+	}
+	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
+		metadata["reply_author_id"] = strings.TrimSpace(m.ReferencedMessage.Author.ID)
 	}
 
 	c.HandleMessage(senderID, m.ChannelID, content, mediaPaths, metadata)

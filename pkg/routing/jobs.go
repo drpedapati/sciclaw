@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -34,18 +36,28 @@ type ProgressMessenger interface {
 
 type handlerResolverFunc func(target LoopTarget) (JobRunner, error)
 
+type JobClass string
+
+const (
+	JobClassWrite            JobClass = "write"
+	JobClassExternalReadOnly JobClass = "external_readonly"
+)
+
 type JobRecord struct {
 	ID              string   `json:"id"`
+	ShortID         string   `json:"short_id"`
 	Channel         string   `json:"channel"`
 	ChatID          string   `json:"chat_id"`
 	Workspace       string   `json:"workspace"`
 	RuntimeKey      string   `json:"runtime_key"`
 	TargetKey       string   `json:"target_key"`
+	Class           JobClass `json:"class"`
 	State           JobState `json:"state"`
 	Phase           string   `json:"phase,omitempty"`
 	Detail          string   `json:"detail,omitempty"`
 	StatusMessageID string   `json:"status_message_id,omitempty"`
 	Summary         string   `json:"summary,omitempty"`
+	AskSummary      string   `json:"ask_summary,omitempty"`
 	LastError       string   `json:"last_error,omitempty"`
 	StartedAt       int64    `json:"started_at"`
 	UpdatedAt       int64    `json:"updated_at"`
@@ -63,6 +75,11 @@ type activeJob struct {
 	cancel context.CancelFunc
 }
 
+type targetActiveJobs struct {
+	write            *activeJob
+	externalReadOnly *activeJob
+}
+
 func (j *activeJob) snapshot() JobRecord {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
@@ -76,16 +93,67 @@ func (j *activeJob) update(mutator func(*JobRecord)) JobRecord {
 	return j.record
 }
 
+func (s *targetActiveJobs) set(class JobClass, job *activeJob) {
+	switch class {
+	case JobClassExternalReadOnly:
+		s.externalReadOnly = job
+	default:
+		s.write = job
+	}
+}
+
+func (s *targetActiveJobs) clear(class JobClass) {
+	switch class {
+	case JobClassExternalReadOnly:
+		s.externalReadOnly = nil
+	default:
+		s.write = nil
+	}
+}
+
+func (s *targetActiveJobs) jobForClass(class JobClass) *activeJob {
+	switch class {
+	case JobClassExternalReadOnly:
+		return s.externalReadOnly
+	default:
+		return s.write
+	}
+}
+
+func (s *targetActiveJobs) empty() bool {
+	return s == nil || (s.write == nil && s.externalReadOnly == nil)
+}
+
+func (s *targetActiveJobs) isFull() bool {
+	return s != nil && s.write != nil && s.externalReadOnly != nil
+}
+
+func (s *targetActiveJobs) snapshot() []*activeJob {
+	if s == nil {
+		return nil
+	}
+	out := make([]*activeJob, 0, 2)
+	if s.write != nil {
+		out = append(out, s.write)
+	}
+	if s.externalReadOnly != nil {
+		out = append(out, s.externalReadOnly)
+	}
+	return out
+}
+
 type JobManager struct {
-	bus              *bus.MessageBus
-	progress         ProgressMessenger
-	resolve          handlerResolverFunc
-	progressInterval time.Duration
-	store            *jobStore
-	semaphore        chan struct{}
+	bus                      *bus.MessageBus
+	progress                 ProgressMessenger
+	resolve                  handlerResolverFunc
+	resolveExternal          handlerResolverFunc
+	progressInterval         time.Duration
+	store                    *jobStore
+	semaphore                chan struct{}
+	allowReadOnlyDuringWrite bool
 
 	mu      sync.Mutex
-	active  map[string]*activeJob
+	active  map[string]*targetActiveJobs
 	counter uint64
 }
 
@@ -109,13 +177,14 @@ func NewJobManager(storePath string, cfg config.JobsConfig, msgBus *bus.MessageB
 		return nil, err
 	}
 	jm := &JobManager{
-		bus:              msgBus,
-		progress:         progress,
-		resolve:          resolve,
-		progressInterval: progressEvery,
-		store:            store,
-		semaphore:        make(chan struct{}, maxConcurrent),
-		active:           map[string]*activeJob{},
+		bus:                      msgBus,
+		progress:                 progress,
+		resolve:                  resolve,
+		progressInterval:         progressEvery,
+		store:                    store,
+		semaphore:                make(chan struct{}, maxConcurrent),
+		allowReadOnlyDuringWrite: cfg.AllowReadOnlyDuringWrite,
+		active:                   map[string]*targetActiveJobs{},
 	}
 	if err := jm.interruptStaleActiveJobs(); err != nil {
 		return nil, err
@@ -123,44 +192,72 @@ func NewJobManager(storePath string, cfg config.JobsConfig, msgBus *bus.MessageB
 	return jm, nil
 }
 
+func (jm *JobManager) SetExternalReadOnlyResolver(resolve handlerResolverFunc) {
+	jm.mu.Lock()
+	jm.resolveExternal = resolve
+	jm.mu.Unlock()
+}
+
 func (jm *JobManager) ShouldHandleChannel(channel string) bool {
 	return strings.EqualFold(strings.TrimSpace(channel), "discord")
+}
+
+func (jm *JobManager) resolveForClass(class JobClass, target LoopTarget) (JobRunner, error) {
+	if class == JobClassExternalReadOnly {
+		jm.mu.Lock()
+		resolve := jm.resolveExternal
+		jm.mu.Unlock()
+		if resolve == nil {
+			return nil, fmt.Errorf("external readonly job runner is not configured")
+		}
+		return resolve(target)
+	}
+	return jm.resolve(target)
 }
 
 func (jm *JobManager) Submit(ctx context.Context, target LoopTarget, msg bus.InboundMessage) error {
 	target = target.normalized()
 	targetKey := target.key()
-
-	control := parseJobControl(msg.Content)
+	control := parseJobControl(msg)
+	jobClass := classifyJobClass(msg)
 
 	jm.mu.Lock()
-	active := jm.active[targetKey]
-	if active != nil {
+	activeSet := jm.active[targetKey]
+	activeJobs := activeSet.snapshot()
+	if control.Kind != jobControlNone && control.Directed {
 		jm.mu.Unlock()
-		return jm.handleControlOrBusy(ctx, msg, active, control)
+		return jm.handleControl(ctx, msg, activeJobs, control)
 	}
-	if control != jobControlNone {
-		jm.mu.Unlock()
-		return jm.sendNoActiveJobMessage(ctx, msg, control)
+	if activeSet == nil {
+		activeSet = &targetActiveJobs{}
+		jm.active[targetKey] = activeSet
 	}
 
-	jobID := jm.nextJobID()
+	if activeSet.jobForClass(jobClass) != nil || (!jm.allowReadOnlyDuringWrite && jobClass == JobClassExternalReadOnly && activeSet.write != nil) || activeSet.isFull() {
+		jm.mu.Unlock()
+		return jm.sendBusy(ctx, msg, snapshotActiveJobs(activeJobs), jobClass)
+	}
+
+	jobID, shortID := jm.nextJobID()
 	jobCtx, cancel := context.WithCancel(ctx)
 	record := JobRecord{
 		ID:         jobID,
+		ShortID:    shortID,
 		Channel:    msg.Channel,
 		ChatID:     msg.ChatID,
 		Workspace:  target.Workspace,
 		RuntimeKey: target.Runtime.Key(),
 		TargetKey:  targetKey,
+		Class:      jobClass,
 		State:      JobStateQueued,
 		Phase:      "queued",
 		Detail:     "Queued",
+		AskSummary: summarizeJobAsk(msg.Content),
 		StartedAt:  time.Now().UnixMilli(),
 		UpdatedAt:  time.Now().UnixMilli(),
 	}
-	active = &activeJob{record: record, cancel: cancel}
-	jm.active[targetKey] = active
+	active := &activeJob{record: record, cancel: cancel}
+	activeSet.set(jobClass, active)
 	jm.mu.Unlock()
 
 	if err := jm.store.Save(record); err != nil {
@@ -192,34 +289,51 @@ func (jm *JobManager) interruptStaleActiveJobs() error {
 	return nil
 }
 
-func (jm *JobManager) handleControlOrBusy(ctx context.Context, msg bus.InboundMessage, active *activeJob, control jobControl) error {
-	record := active.snapshot()
-	switch control {
+func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage, active []*activeJob, control parsedJobControl) error {
+	if len(active) == 0 {
+		text := "sciClaw is not currently running a background job for this workspace."
+		if control.Kind == jobControlCancel {
+			text = "sciClaw is not currently running a background job that can be cancelled."
+		}
+		return jm.sendText(ctx, msg.Channel, msg.ChatID, text)
+	}
+
+	selected, err := selectActiveJob(active, control.TargetID, msg.Metadata["reply_message_id"])
+	if err != nil {
+		if control.TargetID == "" && len(active) > 1 && control.Kind == jobControlStatus {
+			return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobList(snapshotActiveJobs(active)))
+		}
+		if control.TargetID == "" && len(active) > 1 && control.Kind == jobControlCancel {
+			return jm.sendText(ctx, msg.Channel, msg.ChatID, formatCancelRequiresJobID(snapshotActiveJobs(active)))
+		}
+		return jm.sendText(ctx, msg.Channel, msg.ChatID, err.Error())
+	}
+
+	record := selected.snapshot()
+	switch control.Kind {
 	case jobControlStatus:
 		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobStatus(record, false))
 	case jobControlCancel:
-		active.cancel()
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, "sciClaw is stopping the background job for this workspace.")
+		selected.cancel()
+		return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw is stopping job %s.\n\nAsk: %s", record.ShortID, fallbackAskSummary(record.AskSummary)))
 	default:
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatBusyMessage(record))
+		return nil
 	}
-}
-
-func (jm *JobManager) sendNoActiveJobMessage(ctx context.Context, msg bus.InboundMessage, control jobControl) error {
-	text := "sciClaw is not currently running a background job for this workspace."
-	if control == jobControlCancel {
-		text = "sciClaw is not currently running a background job that can be cancelled."
-	}
-	return jm.sendText(ctx, msg.Channel, msg.ChatID, text)
 }
 
 func (jm *JobManager) runJob(ctx context.Context, target LoopTarget, msg bus.InboundMessage, active *activeJob) {
 	targetKey := target.key()
+	jobClass := active.snapshot().Class
 	progress := jm.newProgressReporter(ctx, active)
 	defer progress.finish()
 	defer func() {
 		jm.mu.Lock()
-		delete(jm.active, targetKey)
+		if activeSet := jm.active[targetKey]; activeSet != nil {
+			activeSet.clear(jobClass)
+			if activeSet.empty() {
+				delete(jm.active, targetKey)
+			}
+		}
 		jm.mu.Unlock()
 	}()
 
@@ -235,7 +349,7 @@ func (jm *JobManager) runJob(ctx context.Context, target LoopTarget, msg bus.Inb
 
 	progress.update(JobStateRunning, "preparing_context", "Preparing context")
 
-	handler, err := jm.resolve(target)
+	handler, err := jm.resolveForClass(jobClass, target)
 	if err != nil {
 		progress.complete(JobStateFailed, "failed", "Failed to start", err)
 		return
@@ -266,9 +380,9 @@ func (jm *JobManager) sendText(ctx context.Context, channel, chatID, content str
 	})
 }
 
-func (jm *JobManager) nextJobID() string {
+func (jm *JobManager) nextJobID() (string, string) {
 	n := atomic.AddUint64(&jm.counter, 1)
-	return fmt.Sprintf("job-%d-%d", time.Now().UnixMilli(), n)
+	return fmt.Sprintf("job-%d-%d", time.Now().UnixMilli(), n), "J" + strings.ToUpper(strconv.FormatUint(n, 36))
 }
 
 type progressReporter struct {
@@ -420,22 +534,154 @@ const (
 	jobControlCancel
 )
 
-func parseJobControl(content string) jobControl {
-	trimmed := strings.ToLower(strings.TrimSpace(content))
-	switch trimmed {
-	case "status", "progress", "job status":
-		return jobControlStatus
-	case "cancel", "stop", "cancel job", "stop job":
-		return jobControlCancel
-	default:
-		return jobControlNone
+type parsedJobControl struct {
+	Kind     jobControl
+	TargetID string
+	Directed bool
+}
+
+var discordMentionPattern = regexp.MustCompile(`<@!?\d+>`)
+
+func parseJobControl(msg bus.InboundMessage) parsedJobControl {
+	content := compactJobLine(discordMentionPattern.ReplaceAllString(strings.TrimSpace(msg.Content), ""))
+	fields := strings.Fields(strings.ToLower(content))
+	if len(fields) == 0 {
+		return parsedJobControl{}
 	}
+
+	parseTarget := func(idx int) string {
+		if len(fields) <= idx {
+			return ""
+		}
+		return strings.ToUpper(strings.TrimSpace(fields[idx]))
+	}
+
+	control := parsedJobControl{
+		Directed: isControlDirected(msg),
+	}
+	switch fields[0] {
+	case "status", "progress":
+		control.Kind = jobControlStatus
+		control.TargetID = parseTarget(1)
+	case "job":
+		if len(fields) >= 2 && fields[1] == "status" {
+			control.Kind = jobControlStatus
+			control.TargetID = parseTarget(2)
+		}
+	case "cancel", "stop":
+		control.Kind = jobControlCancel
+		control.TargetID = parseTarget(1)
+		if control.TargetID == "JOB" {
+			control.TargetID = parseTarget(2)
+		}
+	}
+	return control
+}
+
+func isControlDirected(msg bus.InboundMessage) bool {
+	meta := msg.Metadata
+	if strings.EqualFold(strings.TrimSpace(meta["is_dm"]), "true") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(meta["has_direct_mention"]), "true") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(meta["reply_to_bot"]), "true")
+}
+
+func classifyJobClass(msg bus.InboundMessage) JobClass {
+	text := strings.ToLower(compactJobLine(discordMentionPattern.ReplaceAllString(msg.Content, "")))
+	if text == "" {
+		return JobClassWrite
+	}
+	for _, marker := range []string{
+		".pdf", ".docx", ".pptx", ".xlsx", "./", "../", "/users/", "/home/", "\\",
+		"workspace", "folder", "directory", "file", "files", "save", "write", "edit",
+		"apply", "patch", "rename", "move", "copy", "delete", "remove", "run ", "exec",
+		"shell", "terminal", "command", "docx", "pdf", "quarto", "pandoc",
+	} {
+		if strings.Contains(text, marker) {
+			return JobClassWrite
+		}
+	}
+	hasExternalCue := false
+	for _, cue := range []string{
+		"search", "look up", "look for", "find", "collect", "gather", "compare",
+		"what is", "what are", "which", "who", "when", "where", "images", "image",
+		"photos", "pictures", "species", "related probes", "probe", "research",
+	} {
+		if strings.Contains(text, cue) {
+			hasExternalCue = true
+			break
+		}
+	}
+	if hasExternalCue {
+		return JobClassExternalReadOnly
+	}
+	return JobClassWrite
+}
+
+func fallbackAskSummary(summary string) string {
+	if strings.TrimSpace(summary) == "" {
+		return "Working request"
+	}
+	return strings.TrimSpace(summary)
+}
+
+func summarizeJobAsk(content string) string {
+	trimmed := compactJobLine(discordMentionPattern.ReplaceAllString(content, ""))
+	if trimmed == "" {
+		return "Working request"
+	}
+	if idx := strings.IndexAny(trimmed, ".!?"); idx >= 0 && idx < 120 {
+		trimmed = strings.TrimSpace(trimmed[:idx+1])
+	}
+	return utils.Truncate(trimmed, 100)
+}
+
+func snapshotActiveJobs(active []*activeJob) []JobRecord {
+	records := make([]JobRecord, 0, len(active))
+	for _, job := range active {
+		if job == nil {
+			continue
+		}
+		records = append(records, job.snapshot())
+	}
+	return records
+}
+
+func selectActiveJob(active []*activeJob, targetID, replyMessageID string) (*activeJob, error) {
+	if len(active) == 0 {
+		return nil, fmt.Errorf("sciClaw is not currently running a background job for this workspace.")
+	}
+	if targetID != "" {
+		for _, job := range active {
+			record := job.snapshot()
+			if strings.EqualFold(record.ShortID, targetID) || strings.EqualFold(record.ID, targetID) {
+				return job, nil
+			}
+		}
+		return nil, fmt.Errorf("No active sciClaw job matches %s.", targetID)
+	}
+	if strings.TrimSpace(replyMessageID) != "" {
+		for _, job := range active {
+			if job.snapshot().StatusMessageID == strings.TrimSpace(replyMessageID) {
+				return job, nil
+			}
+		}
+	}
+	if len(active) == 1 {
+		return active[0], nil
+	}
+	return nil, fmt.Errorf("Multiple sciClaw jobs are active here.")
 }
 
 func formatProgressMessage(record JobRecord) string {
 	lines := []string{
 		"sciClaw is working in the background.",
 		"",
+		fmt.Sprintf("Job: %s", record.ShortID),
+		fmt.Sprintf("Ask: %s", fallbackAskSummary(record.AskSummary)),
 		fmt.Sprintf("Status: %s", humanizePhase(record.Phase)),
 	}
 	if strings.TrimSpace(record.Detail) != "" && !strings.EqualFold(strings.TrimSpace(record.Detail), humanizePhase(record.Phase)) {
@@ -444,7 +690,7 @@ func formatProgressMessage(record JobRecord) string {
 	lines = append(lines, fmt.Sprintf("Started: %s ago", time.Since(time.UnixMilli(record.StartedAt)).Round(time.Second)))
 	switch record.State {
 	case JobStateQueued, JobStateRunning:
-		lines = append(lines, "", "Reply with `status` to check progress or `cancel` to stop this job.")
+		lines = append(lines, "", fmt.Sprintf("Reply with `@sciclaw status %s` to check progress or `@sciclaw cancel %s` to stop this job.", record.ShortID, record.ShortID))
 	case JobStateDone:
 		lines = append(lines, "", "Done. The full reply is below.")
 	case JobStateCancelled:
@@ -458,19 +704,61 @@ func formatProgressMessage(record JobRecord) string {
 }
 
 func formatActiveJobStatus(record JobRecord, includeControlHint bool) string {
-	text := fmt.Sprintf("sciClaw is already working in the background.\n\nStatus: %s", humanizePhase(record.Phase))
+	text := fmt.Sprintf("sciClaw is already working in the background.\n\nJob: %s\nAsk: %s\nStatus: %s", record.ShortID, fallbackAskSummary(record.AskSummary), humanizePhase(record.Phase))
 	if strings.TrimSpace(record.Detail) != "" {
 		text += "\nDetail: " + strings.TrimSpace(record.Detail)
 	}
 	text += "\nStarted: " + time.Since(time.UnixMilli(record.StartedAt)).Round(time.Second).String() + " ago"
 	if includeControlHint {
-		text += "\n\nReply with `status` to check progress or `cancel` to stop this job."
+		text += fmt.Sprintf("\n\nReply with `@sciclaw status %s` to check progress or `@sciclaw cancel %s` to stop this job.", record.ShortID, record.ShortID)
 	}
 	return text
 }
 
-func formatBusyMessage(record JobRecord) string {
-	return formatActiveJobStatus(record, false) + "\n\nTo avoid mixing partial work into a second request, sciClaw is not starting another job in this workspace yet. Reply with `status` or `cancel`, then send the next request after this finishes."
+func formatActiveJobList(records []JobRecord) string {
+	lines := []string{
+		"sciClaw has multiple background jobs running here:",
+		"",
+	}
+	for _, record := range records {
+		lines = append(lines, fmt.Sprintf("- %s (%s): %s", record.ShortID, record.Class, fallbackAskSummary(record.AskSummary)))
+		lines = append(lines, fmt.Sprintf("  Status: %s", humanizePhase(record.Phase)))
+	}
+	lines = append(lines, "", "Reply with `@sciclaw status <job-id>` for details.")
+	return strings.Join(lines, "\n")
+}
+
+func formatCancelRequiresJobID(records []JobRecord) string {
+	lines := []string{
+		"More than one sciClaw job is active here. Reply with `@sciclaw cancel <job-id>`.",
+		"",
+	}
+	for _, record := range records {
+		lines = append(lines, fmt.Sprintf("- %s (%s): %s", record.ShortID, record.Class, fallbackAskSummary(record.AskSummary)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatBusyMessage(records []JobRecord, requestedClass JobClass) string {
+	if len(records) == 0 {
+		return "sciClaw is already busy with this workspace."
+	}
+	lines := []string{formatActiveJobStatus(records[0], false)}
+	if len(records) > 1 {
+		lines = []string{formatActiveJobList(records)}
+	}
+	switch requestedClass {
+	case JobClassExternalReadOnly:
+		lines = append(lines, "", "sciClaw is not starting another external research job in this workspace right now.")
+	default:
+		lines = append(lines, "", "To avoid mixing partial work into a second request, sciClaw is not starting another write-capable job in this workspace yet.")
+	}
+	lines = append(lines, "If you need the running job, reply with `@sciclaw status <job-id>` or `@sciclaw cancel <job-id>`.")
+	return strings.Join(lines, "\n")
+}
+
+func (jm *JobManager) sendBusy(ctx context.Context, msg bus.InboundMessage, records []JobRecord, requestedClass JobClass) error {
+	return jm.sendText(ctx, msg.Channel, msg.ChatID, formatBusyMessage(records, requestedClass))
 }
 
 func humanizePhase(phase string) string {

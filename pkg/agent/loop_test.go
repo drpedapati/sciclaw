@@ -85,6 +85,51 @@ func TestLocalTurnDiagnostics_RecordLLMResponseTracksFallbacks(t *testing.T) {
 	}
 }
 
+func TestNewAgentLoopWithExternalReadOnlyProfileRestrictsTools(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), &mockProvider{}, LoopOptions{
+		ToolProfile: ToolProfileExternalReadOnly,
+	})
+
+	if _, ok := al.tools.Get("web_search"); !ok {
+		t.Fatal("expected web_search tool")
+	}
+	if _, ok := al.tools.Get("web_fetch"); !ok {
+		t.Fatal("expected web_fetch tool")
+	}
+	for _, blocked := range []string{"exec", "message", "read_file", "write_file", "spawn", "subagent"} {
+		if _, ok := al.tools.Get(blocked); ok {
+			t.Fatalf("did not expect %s tool in external readonly profile", blocked)
+		}
+	}
+}
+
+func TestExternalReadOnlyRunJobDoesNotPersistSession(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), &mockProvider{}, LoopOptions{
+		ToolProfile: ToolProfileExternalReadOnly,
+	})
+
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-1",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-1",
+		Content:    "what species do neuronexus probes record from?",
+	}
+	if _, err := al.RunJob(context.Background(), msg, nil); err != nil {
+		t.Fatalf("RunJob: %v", err)
+	}
+	if history := al.sessions.GetHistory(msg.SessionKey); len(history) != 0 {
+		t.Fatalf("expected no persisted session history, got %d messages", len(history))
+	}
+	if summary := al.sessions.GetSummary(msg.SessionKey); summary != "" {
+		t.Fatalf("expected no persisted summary, got %q", summary)
+	}
+}
+
 func TestLocalTurnDiagnostics_RecordToolExecutionTracksErrors(t *testing.T) {
 	diag := newLocalTurnDiagnostics()
 	diag.recordToolExecution(275*time.Millisecond, &tools.ToolResult{IsError: true, Async: true})

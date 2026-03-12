@@ -42,6 +42,7 @@ func (t LoopTarget) key() string {
 }
 
 type loopFactory func(target LoopTarget) (inboundHandler, error)
+type jobRunnerFactory func(target LoopTarget) (JobRunner, error)
 
 type loopEntry struct {
 	handler inboundHandler
@@ -58,40 +59,65 @@ type inflightCreation struct {
 
 // AgentLoopPool keeps one agent loop per workspace and reuses it.
 type AgentLoopPool struct {
-	mu       sync.Mutex
-	loops    map[string]*loopEntry
-	creating map[string]*inflightCreation
-	closed   bool
-	wg       sync.WaitGroup
-	factory  loopFactory
+	mu                 sync.Mutex
+	loops              map[string]*loopEntry
+	creating           map[string]*inflightCreation
+	closed             bool
+	wg                 sync.WaitGroup
+	factory            loopFactory
+	externalJobFactory jobRunnerFactory
 }
 
 // LoopSetupFunc is an optional callback invoked on each new AgentLoop created by the pool.
 type LoopSetupFunc func(al *agent.AgentLoop)
 
 func NewAgentLoopPool(cfg *config.Config, msgBus *bus.MessageBus, setup ...LoopSetupFunc) *AgentLoopPool {
-	return NewAgentLoopPoolWithFactory(func(target LoopTarget) (inboundHandler, error) {
-		cloned, err := cloneConfigForTarget(cfg, target)
-		if err != nil {
-			return nil, err
-		}
-		loopProvider, err := providers.CreateProvider(cloned)
-		if err != nil {
-			return nil, fmt.Errorf("creating provider for route target: %w", err)
-		}
-		al := agent.NewAgentLoop(cloned, msgBus, loopProvider)
-		for _, fn := range setup {
-			fn(al)
-		}
-		return al, nil
-	})
+	return NewAgentLoopPoolWithFactories(
+		func(target LoopTarget) (inboundHandler, error) {
+			cloned, err := cloneConfigForTarget(cfg, target)
+			if err != nil {
+				return nil, err
+			}
+			loopProvider, err := providers.CreateProvider(cloned)
+			if err != nil {
+				return nil, fmt.Errorf("creating provider for route target: %w", err)
+			}
+			al := agent.NewAgentLoop(cloned, msgBus, loopProvider)
+			for _, fn := range setup {
+				fn(al)
+			}
+			return al, nil
+		},
+		func(target LoopTarget) (JobRunner, error) {
+			cloned, err := cloneConfigForTarget(cfg, target)
+			if err != nil {
+				return nil, err
+			}
+			loopProvider, err := providers.CreateProvider(cloned)
+			if err != nil {
+				return nil, fmt.Errorf("creating provider for route target: %w", err)
+			}
+			al := agent.NewAgentLoopWithOptions(cloned, msgBus, loopProvider, agent.LoopOptions{
+				ToolProfile: agent.ToolProfileExternalReadOnly,
+			})
+			for _, fn := range setup {
+				fn(al)
+			}
+			return al, nil
+		},
+	)
 }
 
 func NewAgentLoopPoolWithFactory(factory loopFactory) *AgentLoopPool {
+	return NewAgentLoopPoolWithFactories(factory, nil)
+}
+
+func NewAgentLoopPoolWithFactories(factory loopFactory, external jobRunnerFactory) *AgentLoopPool {
 	return &AgentLoopPool{
-		loops:    map[string]*loopEntry{},
-		creating: map[string]*inflightCreation{},
-		factory:  factory,
+		loops:              map[string]*loopEntry{},
+		creating:           map[string]*inflightCreation{},
+		factory:            factory,
+		externalJobFactory: external,
 	}
 }
 
@@ -145,6 +171,13 @@ func (p *AgentLoopPool) ResolveJobHandler(target LoopTarget) (JobRunner, error) 
 		return nil, fmt.Errorf("agent loop for %s does not support background jobs", target.Workspace)
 	}
 	return entry, nil
+}
+
+func (p *AgentLoopPool) ResolveExternalReadOnlyJobHandler(target LoopTarget) (JobRunner, error) {
+	if p.externalJobFactory == nil {
+		return nil, fmt.Errorf("external readonly job runner is not configured")
+	}
+	return p.externalJobFactory(target.normalized())
 }
 
 func (e *loopEntry) HandleInbound(ctx context.Context, msg bus.InboundMessage) {
@@ -262,7 +295,7 @@ func (p *AgentLoopPool) getOrCreate(target LoopTarget) (*loopEntry, error) {
 	}
 }
 
-func cloneConfigForTarget(cfg *config.Config, target LoopTarget) (*config.Config, error) {
+func CloneConfigForTarget(cfg *config.Config, target LoopTarget) (*config.Config, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
@@ -285,6 +318,10 @@ func cloneConfigForTarget(cfg *config.Config, target LoopTarget) (*config.Config
 		return nil, err
 	}
 	return cloned, nil
+}
+
+func cloneConfigForTarget(cfg *config.Config, target LoopTarget) (*config.Config, error) {
+	return CloneConfigForTarget(cfg, target)
 }
 
 func validateLocalRouteRuntime(cfg *config.Config) error {

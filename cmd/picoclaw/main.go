@@ -1613,6 +1613,20 @@ func gatewayCmd() {
 	defer cancel()
 	var loopPool *routing.AgentLoopPool
 	var jobManager *routing.JobManager
+	externalReadOnlyResolver := func(target routing.LoopTarget) (routing.JobRunner, error) {
+		cloned, err := routing.CloneConfigForTarget(cfg, target)
+		if err != nil {
+			return nil, err
+		}
+		loopProvider, err := providers.CreateProvider(cloned)
+		if err != nil {
+			return nil, fmt.Errorf("creating provider for read-only job: %w", err)
+		}
+		al := agent.NewAgentLoopWithOptions(cloned, msgBus, loopProvider, agent.LoopOptions{
+			ToolProfile: agent.ToolProfileExternalReadOnly,
+		})
+		return al, nil
+	}
 	if cfg.Jobs.Enabled && cfg.Jobs.DiscordAsyncDefault {
 		jm, jmErr := routing.NewJobManager(
 			filepath.Join(filepath.Dir(getConfigPath()), "jobs.json"),
@@ -1630,6 +1644,7 @@ func gatewayCmd() {
 			fmt.Printf("Warning: background jobs disabled: %v\n", jmErr)
 		} else {
 			jobManager = jm
+			jobManager.SetExternalReadOnlyResolver(externalReadOnlyResolver)
 			fmt.Println("✓ Discord background jobs enabled")
 		}
 	}
@@ -1650,6 +1665,9 @@ func gatewayCmd() {
 			}
 		}
 		loopPool = routing.NewAgentLoopPool(cfg, msgBus, poolSetup...)
+		if jobManager != nil {
+			jobManager.SetExternalReadOnlyResolver(loopPool.ResolveExternalReadOnlyJobHandler)
+		}
 		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
 		if jobManager != nil {
 			dispatcher.SetJobManager(jobManager)

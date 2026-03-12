@@ -60,9 +60,21 @@ type AgentLoop struct {
 	hookAuditPath   string
 	localMode       bool
 	localBackend    string
+	toolProfile     ToolProfile
 	turnCounter     uint64
 	running         atomic.Bool
 	summarizing     sync.Map // Tracks which sessions are currently being summarized
+}
+
+type ToolProfile string
+
+const (
+	ToolProfileDefault          ToolProfile = "default"
+	ToolProfileExternalReadOnly ToolProfile = "external_readonly"
+)
+
+type LoopOptions struct {
+	ToolProfile ToolProfile
 }
 
 // processOptions configures how a message is processed
@@ -76,6 +88,7 @@ type processOptions struct {
 	EnableSummary   bool   // Whether to trigger summarization
 	SendResponse    bool   // Whether to send response via bus
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
+	Ephemeral       bool   // If true, do not mutate session/state on disk
 	OnProgress      func(phase, detail string)
 }
 
@@ -98,8 +111,23 @@ var localPrefetchCurrentInfoKeywords = []string{
 
 // createToolRegistry creates a tool registry with common tools.
 // This is shared between main agent and subagents.
-func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus) *tools.ToolRegistry {
+func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus, profile ToolProfile) *tools.ToolRegistry {
 	registry := tools.NewToolRegistry()
+
+	if profile == ToolProfileExternalReadOnly {
+		if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
+			BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
+			BraveMaxResults:      cfg.Tools.Web.Brave.MaxResults,
+			BraveEnabled:         cfg.Tools.Web.Brave.Enabled,
+			DuckDuckGoMaxResults: cfg.Tools.Web.DuckDuckGo.MaxResults,
+			DuckDuckGoEnabled:    cfg.Tools.Web.DuckDuckGo.Enabled,
+		}); searchTool != nil {
+			registry.Register(searchTool)
+		}
+		registry.Register(tools.NewWebFetchTool(50000))
+		return registry
+	}
+
 	sharedWorkspace := cfg.SharedWorkspacePath()
 	sharedReadOnly := cfg.Agents.Defaults.SharedWorkspaceReadOnly
 	// When workspace and shared workspace resolve to the same directory,
@@ -211,27 +239,37 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 }
 
 func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) *AgentLoop {
+	return NewAgentLoopWithOptions(cfg, msgBus, provider, LoopOptions{})
+}
+
+func NewAgentLoopWithOptions(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider, opts LoopOptions) *AgentLoop {
 	workspace := cfg.WorkspacePath()
 	os.MkdirAll(workspace, 0755)
 
 	restrict := cfg.Agents.Defaults.RestrictToWorkspace
 
 	// Create tool registry for main agent
-	toolsRegistry := createToolRegistry(workspace, restrict, cfg, msgBus)
+	profile := opts.ToolProfile
+	if profile == "" {
+		profile = ToolProfileDefault
+	}
+	toolsRegistry := createToolRegistry(workspace, restrict, cfg, msgBus, profile)
 
-	// Create subagent manager with its own tool registry
-	subagentManager := tools.NewSubagentManager(provider, cfg.Agents.Defaults.Model, workspace, msgBus, cfg.Agents.Defaults.MaxToolIterations)
-	subagentTools := createToolRegistry(workspace, restrict, cfg, msgBus)
-	// Subagent doesn't need spawn/subagent tools to avoid recursion
-	subagentManager.SetTools(subagentTools)
+	if profile == ToolProfileDefault {
+		// Create subagent manager with its own tool registry
+		subagentManager := tools.NewSubagentManager(provider, cfg.Agents.Defaults.Model, workspace, msgBus, cfg.Agents.Defaults.MaxToolIterations)
+		subagentTools := createToolRegistry(workspace, restrict, cfg, msgBus, ToolProfileDefault)
+		// Subagent doesn't need spawn/subagent tools to avoid recursion
+		subagentManager.SetTools(subagentTools)
 
-	// Register spawn tool (for main agent)
-	spawnTool := tools.NewSpawnTool(subagentManager)
-	toolsRegistry.Register(spawnTool)
+		// Register spawn tool (for main agent)
+		spawnTool := tools.NewSpawnTool(subagentManager)
+		toolsRegistry.Register(spawnTool)
 
-	// Register subagent tool (synchronous execution)
-	subagentTool := tools.NewSubagentTool(subagentManager)
-	toolsRegistry.Register(subagentTool)
+		// Register subagent tool (synchronous execution)
+		subagentTool := tools.NewSubagentTool(subagentManager)
+		toolsRegistry.Register(subagentTool)
+	}
 
 	sessionsManager := session.NewSessionManager(filepath.Join(workspace, "sessions"))
 	discordArchiveMgr := discordarchive.NewManager(workspace, sessionsManager, cfg.Channels.Discord.Archive)
@@ -329,6 +367,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		hookAuditPath: hookAuditPath,
 		localMode:     cfg.EffectiveMode() == config.ModePhi,
 		localBackend:  strings.TrimSpace(strings.ToLower(cfg.Agents.Defaults.LocalBackend)),
+		toolProfile:   profile,
 		summarizing:   sync.Map{},
 	}
 }
@@ -547,8 +586,9 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 		ChatID:          msg.ChatID,
 		UserMessage:     msg.Content,
 		DefaultResponse: defaultEmptyAssistantResponse,
-		EnableSummary:   true,
+		EnableSummary:   al.toolProfile == ToolProfileDefault,
 		SendResponse:    false,
+		Ephemeral:       al.toolProfile == ToolProfileExternalReadOnly,
 		OnProgress:      onProgress,
 	})
 }
@@ -619,7 +659,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 0. Record last channel for heartbeat notifications (skip internal channels)
-	if opts.Channel != "" && opts.ChatID != "" {
+	if !opts.Ephemeral && opts.Channel != "" && opts.ChatID != "" {
 		// Don't record internal channels (cli, system, subagent)
 		if !constants.IsInternalChannel(opts.Channel) {
 			channelKey := fmt.Sprintf("%s:%s", opts.Channel, opts.ChatID)
@@ -648,7 +688,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	if !opts.NoHistory {
 		history = al.sessions.GetHistory(opts.SessionKey)
 		summary = al.sessions.GetSummary(opts.SessionKey)
-		if opts.Channel == "discord" && al.archiveEnabled && al.archiveAuto && al.discordArchive != nil {
+		if !opts.Ephemeral && opts.Channel == "discord" && al.archiveEnabled && al.archiveAuto && al.discordArchive != nil {
 			archiveStartedAt := time.Now()
 			logger.InfoCF("archive", "discord auto-archive start", map[string]interface{}{
 				"session_key": opts.SessionKey,
@@ -752,7 +792,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 3. Save user message to session
-	al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
+	if !opts.Ephemeral {
+		al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
+	}
 
 	// 4. Run LLM iteration loop
 	emitProgress(opts.OnProgress, "thinking", "Thinking")
@@ -812,9 +854,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 6. Save final assistant message to session
-	if strings.TrimSpace(finalContent) != "" {
+	if !opts.Ephemeral && strings.TrimSpace(finalContent) != "" {
 		al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
-	} else {
+	} else if !opts.Ephemeral {
 		logger.InfoCF("agent", "Skipping assistant session write for empty final content",
 			map[string]interface{}{
 				"channel":           opts.Channel,
@@ -826,13 +868,15 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 	sessionSaveStartedAt := time.Now()
 	emitProgress(opts.OnProgress, "saving", "Saving conversation state")
-	al.sessions.Save(opts.SessionKey)
-	if localDiag != nil {
-		localDiag.SessionSaveMS = time.Since(sessionSaveStartedAt).Milliseconds()
+	if !opts.Ephemeral {
+		al.sessions.Save(opts.SessionKey)
+		if localDiag != nil {
+			localDiag.SessionSaveMS = time.Since(sessionSaveStartedAt).Milliseconds()
+		}
 	}
 
 	// 7. Optional: summarization
-	if opts.EnableSummary {
+	if opts.EnableSummary && !opts.Ephemeral {
 		summaryStartedAt := time.Now()
 		emitProgress(opts.OnProgress, "saving", "Updating summary")
 		al.maybeSummarize(opts.SessionKey)
@@ -1292,7 +1336,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		messages = append(messages, assistantMsg)
 
 		// Save assistant message with tool calls to session
-		al.sessions.AddFullMessage(opts.SessionKey, assistantMsg)
+		if !opts.Ephemeral {
+			al.sessions.AddFullMessage(opts.SessionKey, assistantMsg)
+		}
 
 		// Execute tool calls
 		for _, tc := range response.ToolCalls {
@@ -1409,7 +1455,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			messages = append(messages, toolResultMsg)
 
 			// Save tool result message to session
-			al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+			if !opts.Ephemeral {
+				al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+			}
 			al.dispatchHook(ctx, hooks.EventAfterTool, hooks.Context{
 				Timestamp:  time.Now(),
 				TurnID:     opts.TurnID,

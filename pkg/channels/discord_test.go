@@ -263,6 +263,52 @@ func TestDiscordSendOrEditProgressEditsExistingMessage(t *testing.T) {
 	}
 }
 
+func TestDiscordProcessIncomingMessage_PublishesReplyMetadata(t *testing.T) {
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, bus.NewMessageBus(), nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-1",
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	session := &discordgo.Session{State: &discordgo.State{Ready: discordgo.Ready{User: &discordgo.User{ID: "bot-1"}}}}
+	msg := &discordgo.Message{
+		ID:        "m-1",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "status",
+		Author:    &discordgo.User{ID: "user-1", Username: "alice"},
+		MessageReference: &discordgo.MessageReference{
+			MessageID: "progress-123",
+		},
+		ReferencedMessage: &discordgo.Message{
+			ID:     "progress-123",
+			Author: &discordgo.User{ID: "bot-1", Username: "sciclaw"},
+		},
+	}
+
+	ch.processIncomingMessage(session, msg, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	in, ok := ch.BaseChannel.bus.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("expected inbound message")
+	}
+	if got := in.Metadata["reply_message_id"]; got != "progress-123" {
+		t.Fatalf("reply_message_id = %q, want progress-123", got)
+	}
+	if got := in.Metadata["reply_to_bot"]; got != "true" {
+		t.Fatalf("reply_to_bot = %q, want true", got)
+	}
+	if got := in.Metadata["is_mention"]; got != "true" {
+		t.Fatalf("is_mention = %q, want true", got)
+	}
+}
+
 func TestDiscordSendOrEditProgressReturnsMessageIDForNewProgressMessage(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.sendProgressMessageFn = func(channelID, content string) (string, error) {
