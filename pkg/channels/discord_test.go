@@ -263,6 +263,21 @@ func TestDiscordSendOrEditProgressEditsExistingMessage(t *testing.T) {
 	}
 }
 
+func TestDiscordSendOrEditProgressReturnsMessageIDForNewProgressMessage(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.sendProgressMessageFn = func(channelID, content string) (string, error) {
+		return "progress-123", nil
+	}
+
+	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "", "Thinking")
+	if err != nil {
+		t.Fatalf("SendOrEditProgress: %v", err)
+	}
+	if id != "progress-123" {
+		t.Fatalf("message id = %q, want progress-123", id)
+	}
+}
+
 func TestDiscordSendOrEditProgressFallsBackToNewMessageOnEditFailure(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.editMessageFn = func(channelID, messageID, content string) error {

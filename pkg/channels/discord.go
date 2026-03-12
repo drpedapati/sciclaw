@@ -44,6 +44,7 @@ type DiscordChannel struct {
 	typing        map[string]*typingState
 	typingEvery   time.Duration
 	sendMessageFn func(channelID, content string) error
+	sendProgressMessageFn func(channelID, content string) (string, error)
 	sendFileFn    func(channelID, content string, attachment bus.OutboundAttachment) error
 	sendTypingFn  func(channelID string) error
 	editMessageFn func(channelID, messageID, content string) error
@@ -72,6 +73,13 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		sendMessageFn: func(channelID, content string) error {
 			_, err := session.ChannelMessageSend(channelID, content)
 			return err
+		},
+		sendProgressMessageFn: func(channelID, content string) (string, error) {
+			msg, err := session.ChannelMessageSend(channelID, content)
+			if err != nil {
+				return "", err
+			}
+			return msg.ID, nil
 		},
 		sendFileFn: func(channelID, content string, attachment bus.OutboundAttachment) error {
 			return sendDiscordAttachment(session, channelID, content, attachment)
@@ -504,6 +512,9 @@ func (c *DiscordChannel) sendMessage(channelID, content string) error {
 }
 
 func (c *DiscordChannel) sendProgressMessage(channelID, content string) (string, error) {
+	if c.sendProgressMessageFn != nil {
+		return c.sendProgressMessageFn(channelID, content)
+	}
 	if c.session == nil {
 		return "", fmt.Errorf("discord session is nil")
 	}

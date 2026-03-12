@@ -211,6 +211,18 @@ func TestJobManagerRefreshesProgressDuringLongRunningPhase(t *testing.T) {
 	}
 
 	close(runner.block)
+
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		jm.mu.Lock()
+		_, ok := jm.active[target.key()]
+		jm.mu.Unlock()
+		if !ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for long-running job cleanup")
 }
 
 func mustNextOutbound(t *testing.T, mb *bus.MessageBus) bus.OutboundMessage {
