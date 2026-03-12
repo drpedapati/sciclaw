@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,6 +204,41 @@ func runDoctor(opts doctorOptions) doctorReport {
 			}
 		} else {
 			add(doctorCheck{Name: "discord", Status: doctorSkip, Message: "disabled"})
+		}
+
+		if cfg.Channels.Email.Enabled {
+			if strings.TrimSpace(cfg.Channels.Email.APIKey) == "" || strings.TrimSpace(cfg.Channels.Email.Address) == "" {
+				add(doctorCheck{Name: "email", Status: doctorWarn, Message: "enabled but api_key/address is incomplete"})
+			} else {
+				add(doctorCheck{Name: "email", Status: doctorOK, Message: "enabled (send-only)"})
+			}
+			baseURL := strings.TrimSpace(cfg.Channels.Email.BaseURL)
+			if baseURL == "" {
+				baseURL = "https://api.resend.com"
+			}
+			if _, err := url.ParseRequestURI(baseURL); err != nil {
+				add(doctorCheck{Name: "email.base_url", Status: doctorWarn, Message: "invalid: " + err.Error()})
+			} else {
+				add(doctorCheck{Name: "email.base_url", Status: doctorOK, Message: baseURL})
+			}
+			if cfg.Channels.Email.ReceiveEnabled {
+				add(doctorCheck{Name: "email.receive", Status: doctorWarn, Message: "enabled in config, but inbound email is not supported in this build"})
+			} else {
+				add(doctorCheck{Name: "email.receive", Status: doctorSkip, Message: "disabled"})
+			}
+			if cfg.Channels.Email.ReceiveEnabled {
+				if len(cfg.Channels.Email.AllowFrom) == 0 {
+					add(doctorCheck{Name: "email.allow_from", Status: doctorWarn, Message: "empty (future inbound email would allow any sender)"})
+				} else {
+					add(doctorCheck{Name: "email.allow_from", Status: doctorOK, Message: fmt.Sprintf("%d entries", len(cfg.Channels.Email.AllowFrom))})
+				}
+			} else if len(cfg.Channels.Email.AllowFrom) > 0 {
+				add(doctorCheck{Name: "email.allow_from", Status: doctorOK, Message: fmt.Sprintf("%d entries (preconfigured for future receive)", len(cfg.Channels.Email.AllowFrom))})
+			} else {
+				add(doctorCheck{Name: "email.allow_from", Status: doctorSkip, Message: "empty"})
+			}
+		} else {
+			add(doctorCheck{Name: "email", Status: doctorSkip, Message: "disabled"})
 		}
 
 		if cfg.Agents.Defaults.RestrictToWorkspace {

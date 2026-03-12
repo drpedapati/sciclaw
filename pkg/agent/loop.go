@@ -195,10 +195,11 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Subagent uses it to communicate directly with user
 	messageTool := tools.NewMessageTool(workspace, restrict)
 	messageTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
-	messageTool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	messageTool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		return msgBus.PublishOutbound(context.TODO(), bus.OutboundMessage{
 			Channel:     channel,
 			ChatID:      chatID,
+			Subject:     subject,
 			Content:     content,
 			Attachments: attachments,
 		})

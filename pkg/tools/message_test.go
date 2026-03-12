@@ -16,7 +16,7 @@ func TestMessageTool_Execute_Success(t *testing.T) {
 	tool.SetContext("test-channel", "test-chat-id")
 
 	var sentChannel, sentChatID, sentContent string
-	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	tool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		sentChannel = channel
 		sentChatID = chatID
 		sentContent = content
@@ -77,7 +77,7 @@ func TestMessageTool_Execute_WithCustomChannel(t *testing.T) {
 	tool.SetContext("default-channel", "default-chat-id")
 
 	var sentChannel, sentChatID string
-	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	tool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		sentChannel = channel
 		sentChatID = chatID
 		return nil
@@ -113,7 +113,7 @@ func TestMessageTool_Execute_SendFailure(t *testing.T) {
 	tool.SetContext("test-channel", "test-chat-id")
 
 	sendErr := errors.New("network error")
-	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	tool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		return sendErr
 	})
 
@@ -167,7 +167,7 @@ func TestMessageTool_Execute_NoTargetChannel(t *testing.T) {
 	tool := NewMessageTool("", false)
 	// No SetContext called, so defaultChannel and defaultChatID are empty
 
-	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	tool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		return nil
 	})
 
@@ -219,7 +219,7 @@ func TestMessageTool_Execute_WithAttachments(t *testing.T) {
 	tool.SetContext("discord", "chan-1")
 
 	var got []bus.OutboundAttachment
-	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	tool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		got = append([]bus.OutboundAttachment(nil), attachments...)
 		return nil
 	})
@@ -267,7 +267,7 @@ func TestMessageTool_Execute_AttachmentOutsideWorkspaceBlocked(t *testing.T) {
 
 	tool := NewMessageTool(workspace, true)
 	tool.SetContext("discord", "chan-1")
-	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	tool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		return nil
 	})
 
@@ -295,7 +295,7 @@ func TestMessageTool_Execute_AttachmentsUnsupportedChannel(t *testing.T) {
 
 	tool := NewMessageTool(workspace, true)
 	tool.SetContext("slack", "chan-1")
-	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.OutboundAttachment) error {
+	tool.SetSendCallback(func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error {
 		return nil
 	})
 

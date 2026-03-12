@@ -18,6 +18,7 @@ type OutboundAttachment struct {
 type OutboundMessage struct {
 	Channel     string               `json:"channel"`
 	ChatID      string               `json:"chat_id"`
+	Subject     string               `json:"subject,omitempty"`
 	Content     string               `json:"content"`
 	Attachments []OutboundAttachment `json:"attachments,omitempty"`
 }

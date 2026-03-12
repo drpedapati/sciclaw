@@ -121,11 +121,25 @@ type ChannelsConfig struct {
 	Telegram TelegramConfig `json:"telegram"`
 	Feishu   FeishuConfig   `json:"feishu"`
 	Discord  DiscordConfig  `json:"discord"`
+	Email    EmailConfig    `json:"email"`
 	MaixCam  MaixCamConfig  `json:"maixcam"`
 	QQ       QQConfig       `json:"qq"`
 	DingTalk DingTalkConfig `json:"dingtalk"`
 	Slack    SlackConfig    `json:"slack"`
 	LINE     LINEConfig     `json:"line"`
+}
+
+type EmailConfig struct {
+	Enabled             bool                `json:"enabled" env:"PICOCLAW_CHANNELS_EMAIL_ENABLED"`
+	Provider            string              `json:"provider" env:"PICOCLAW_CHANNELS_EMAIL_PROVIDER"`
+	APIKey              string              `json:"api_key" env:"PICOCLAW_CHANNELS_EMAIL_API_KEY"`
+	Address             string              `json:"address" env:"PICOCLAW_CHANNELS_EMAIL_ADDRESS"`
+	DisplayName         string              `json:"display_name" env:"PICOCLAW_CHANNELS_EMAIL_DISPLAY_NAME"`
+	BaseURL             string              `json:"base_url" env:"PICOCLAW_CHANNELS_EMAIL_BASE_URL"`
+	AllowFrom           FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_EMAIL_ALLOW_FROM"`
+	ReceiveEnabled      bool                `json:"receive_enabled" env:"PICOCLAW_CHANNELS_EMAIL_RECEIVE_ENABLED"`
+	ReceiveMode         string              `json:"receive_mode" env:"PICOCLAW_CHANNELS_EMAIL_RECEIVE_MODE"`
+	PollIntervalSeconds int                 `json:"poll_interval_seconds" env:"PICOCLAW_CHANNELS_EMAIL_POLL_INTERVAL_SECONDS"`
 }
 
 type WhatsAppConfig struct {
@@ -321,6 +335,18 @@ func DefaultConfig() *Config {
 					RecallMinScore:     0.20,
 				},
 			},
+			Email: EmailConfig{
+				Enabled:             false,
+				Provider:            "resend",
+				APIKey:              "",
+				Address:             "",
+				DisplayName:         "sciClaw",
+				BaseURL:             "https://api.resend.com",
+				AllowFrom:           FlexibleStringSlice{},
+				ReceiveEnabled:      false,
+				ReceiveMode:         "poll",
+				PollIntervalSeconds: 30,
+			},
 			MaixCam: MaixCamConfig{
 				Enabled:   false,
 				Host:      "0.0.0.0",
@@ -427,6 +453,21 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if strings.TrimSpace(cfg.Routing.UnmappedBehavior) == "" {
 		cfg.Routing.UnmappedBehavior = RoutingUnmappedBehaviorDefault
+	}
+	if strings.TrimSpace(cfg.Channels.Email.Provider) == "" {
+		cfg.Channels.Email.Provider = "resend"
+	}
+	if strings.TrimSpace(cfg.Channels.Email.BaseURL) == "" {
+		cfg.Channels.Email.BaseURL = "https://api.resend.com"
+	}
+	if strings.TrimSpace(cfg.Channels.Email.DisplayName) == "" {
+		cfg.Channels.Email.DisplayName = "sciClaw"
+	}
+	if strings.TrimSpace(cfg.Channels.Email.ReceiveMode) == "" {
+		cfg.Channels.Email.ReceiveMode = "poll"
+	}
+	if cfg.Channels.Email.PollIntervalSeconds <= 0 {
+		cfg.Channels.Email.PollIntervalSeconds = 30
 	}
 	if err := ValidateRoutingConfig(cfg.Routing); err != nil {
 		return nil, err

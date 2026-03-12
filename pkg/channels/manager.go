@@ -9,6 +9,7 @@ package channels
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
@@ -95,6 +96,21 @@ func (m *Manager) initChannels() error {
 		} else {
 			m.channels["discord"] = discord
 			logger.InfoC("channels", "Discord channel enabled successfully")
+		}
+	}
+
+	if m.config.Channels.Email.Enabled &&
+		strings.TrimSpace(m.config.Channels.Email.APIKey) != "" &&
+		strings.TrimSpace(m.config.Channels.Email.Address) != "" {
+		logger.DebugC("channels", "Attempting to initialize Email channel")
+		emailCh, err := NewEmailChannel(m.config.Channels.Email, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize Email channel", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["email"] = emailCh
+			logger.InfoC("channels", "Email channel enabled successfully")
 		}
 	}
 

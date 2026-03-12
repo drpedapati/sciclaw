@@ -11,7 +11,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 )
 
-type SendCallback func(channel, chatID, content string, attachments []bus.OutboundAttachment) error
+type SendCallback func(channel, chatID, subject, content string, attachments []bus.OutboundAttachment) error
 
 const messageStatusPreviewRunes = 80
 
@@ -62,9 +62,13 @@ func (t *MessageTool) Parameters() map[string]interface{} {
 				"type":        "string",
 				"description": "Optional: target chat/user ID",
 			},
+			"subject": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional: subject line for email messages",
+			},
 			"attachments": map[string]interface{}{
 				"type":        "array",
-				"description": "Optional: files to attach (currently supported on Discord and Telegram)",
+				"description": "Optional: files to attach (currently supported on Discord, Telegram, and Email)",
 				"items": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -108,6 +112,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 	channel, _ := args["channel"].(string)
 	chatID, _ := args["chat_id"].(string)
+	subject, _ := args["subject"].(string)
 
 	if channel == "" {
 		channel = t.defaultChannel
@@ -130,9 +135,9 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 		}
 	}
 
-	if len(attachments) > 0 && channel != "discord" && channel != "telegram" {
+	if len(attachments) > 0 && channel != "discord" && channel != "telegram" && channel != "email" {
 		return &ToolResult{
-			ForLLM:  fmt.Sprintf("attachments are currently supported only on discord/telegram (got %q)", channel),
+			ForLLM:  fmt.Sprintf("attachments are currently supported only on discord/telegram/email (got %q)", channel),
 			IsError: true,
 		}
 	}
@@ -141,7 +146,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return &ToolResult{ForLLM: "Message sending not configured", IsError: true}
 	}
 
-	if err := t.sendCallback(channel, chatID, content, attachments); err != nil {
+	if err := t.sendCallback(channel, chatID, subject, content, attachments); err != nil {
 		return &ToolResult{
 			ForLLM:  fmt.Sprintf("sending message: %v", err),
 			IsError: true,
@@ -152,6 +157,9 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 	t.sentInRound = true
 	// Silent: user already received the message directly
 	status := fmt.Sprintf("Message sent to %s:%s (chars=%d", channel, chatID, utf8.RuneCountInString(content))
+	if strings.TrimSpace(subject) != "" {
+		status += fmt.Sprintf(", subject=%q", summarizeMessageContentForStatus(subject))
+	}
 	if preview := summarizeMessageContentForStatus(content); preview != "" {
 		status += fmt.Sprintf(", preview=%q", preview)
 	}
