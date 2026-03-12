@@ -1252,7 +1252,7 @@ func checkConfigHealth(cfg *config.Config, configPath string, opts doctorOptions
 		}
 
 		if before.unmappedBehaviorLegacy {
-			cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorBlock
+			cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
 			unmappedFixed = true
 			changed = true
 		}
@@ -1291,7 +1291,7 @@ func checkConfigHealth(cfg *config.Config, configPath string, opts doctorOptions
 				parts = append(parts, fmt.Sprintf("require_mention fixed on %d mapping(s)", mentionFixed))
 			}
 			if unmappedFixed {
-				parts = append(parts, "unmapped_behavior set to block")
+				parts = append(parts, "unmapped_behavior set to mention_only")
 			}
 			if allowlistFixed > 0 {
 				parts = append(parts, fmt.Sprintf("discord.allow_from set (%d entries)", allowlistFixed))
@@ -1326,7 +1326,7 @@ func checkConfigHealth(cfg *config.Config, configPath string, opts doctorOptions
 	unmappedStatus := doctorSkip
 	unmappedMsg := strings.TrimSpace(cfg.Routing.UnmappedBehavior)
 	if unmappedMsg == "" {
-		unmappedMsg = config.RoutingUnmappedBehaviorDefault
+		unmappedMsg = config.RoutingUnmappedBehaviorMentionOnly
 	}
 	unmappedData := map[string]string{}
 	if cfg.Routing.Enabled && len(cfg.Routing.Mappings) > 0 {
@@ -1334,13 +1334,15 @@ func checkConfigHealth(cfg *config.Config, configPath string, opts doctorOptions
 			unmappedStatus = doctorWarn
 			unmappedMsg = "default (unmapped rooms fall back to default workspace)"
 			unmappedData["hint"] = fmt.Sprintf("run: %s doctor --fix", invokedCLIName())
+		} else if strings.EqualFold(strings.TrimSpace(cfg.Routing.UnmappedBehavior), config.RoutingUnmappedBehaviorMentionOnly) {
+			unmappedStatus = doctorOK
+			unmappedMsg = "mention_only (default workspace only when sciClaw is mentioned)"
 		} else if strings.EqualFold(strings.TrimSpace(cfg.Routing.UnmappedBehavior), config.RoutingUnmappedBehaviorBlock) {
 			unmappedStatus = doctorOK
 			unmappedMsg = "block"
 		} else if strings.TrimSpace(cfg.Routing.UnmappedBehavior) == "" {
-			unmappedStatus = doctorWarn
-			unmappedMsg = "default (unmapped rooms fall back to default workspace)"
-			unmappedData["hint"] = fmt.Sprintf("run: %s doctor --fix", invokedCLIName())
+			unmappedStatus = doctorOK
+			unmappedMsg = "mention_only (default workspace only when sciClaw is mentioned)"
 		} else {
 			unmappedStatus = doctorErr
 		}
@@ -1393,9 +1395,9 @@ func checkRoutingDiagnostics(cfg *config.Config) []doctorCheck {
 
 	behavior := strings.TrimSpace(cfg.Routing.UnmappedBehavior)
 	switch behavior {
-	case "", config.RoutingUnmappedBehaviorBlock, config.RoutingUnmappedBehaviorDefault:
+	case "", config.RoutingUnmappedBehaviorBlock, config.RoutingUnmappedBehaviorMentionOnly, config.RoutingUnmappedBehaviorDefault:
 		if behavior == "" {
-			behavior = config.RoutingUnmappedBehaviorDefault
+			behavior = config.RoutingUnmappedBehaviorMentionOnly
 		}
 		add(doctorCheck{Name: "routing.unmapped_behavior", Status: doctorOK, Message: behavior})
 	default:

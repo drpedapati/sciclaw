@@ -9,7 +9,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 )
 
-func TestDispatcherSendBlockNotice_UnmappedIncludesAppAndToggleGuidance(t *testing.T) {
+func TestDispatcherSendBlockNotice_UnmappedIncludesAppAndMentionOnlyGuidance(t *testing.T) {
 	mb := bus.NewMessageBus()
 	defer mb.Close()
 
@@ -30,7 +30,8 @@ func TestDispatcherSendBlockNotice_UnmappedIncludesAppAndToggleGuidance(t *testi
 		"This chat is not mapped to a workspace yet.",
 		"Open `sciclaw app` in your terminal, go to Routing",
 		"sciclaw routing add --channel discord --chat-id 1480213273453396101 --workspace /absolute/path --allow <sender_id>",
-		"Unmapped behavior to `default`",
+		"Unmapped behavior to `mention_only`",
+		"Use `default` only if you want every unmapped room to fall back automatically.",
 	} {
 		if !strings.Contains(out.Content, want) {
 			t.Fatalf("expected notice to contain %q, got: %s", want, out.Content)

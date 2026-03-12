@@ -325,12 +325,12 @@ func maybeOfferConfigHealthRepair() error {
 	}
 
 	if issues.unmappedBehaviorLegacy {
-		fmt.Println("- Unmapped behavior is set to default fallback (old installs often expected block).")
-		if promptYesNo(r, "  Set unmapped behavior to block now?", false) {
+		fmt.Println("- Unmapped behavior is set to full default fallback (unmapped rooms can reply without an explicit sciClaw mention).")
+		if promptYesNo(r, "  Set unmapped behavior to mention_only now?", true) {
 			if err := ensureBackup(); err != nil {
 				return err
 			}
-			cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorBlock
+			cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
 			changed = true
 		}
 	}

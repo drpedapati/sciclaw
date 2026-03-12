@@ -116,8 +116,8 @@ func TestCheckConfigHealthAppliesFixesWithDoctorFix(t *testing.T) {
 	if cfg.Routing.Mappings[0].RequireMention == nil || !*cfg.Routing.Mappings[0].RequireMention {
 		t.Fatalf("require_mention not fixed in-memory: %#v", cfg.Routing.Mappings[0])
 	}
-	if cfg.Routing.UnmappedBehavior != config.RoutingUnmappedBehaviorBlock {
-		t.Fatalf("unmapped_behavior=%q want %q", cfg.Routing.UnmappedBehavior, config.RoutingUnmappedBehaviorBlock)
+	if cfg.Routing.UnmappedBehavior != config.RoutingUnmappedBehaviorMentionOnly {
+		t.Fatalf("unmapped_behavior=%q want %q", cfg.Routing.UnmappedBehavior, config.RoutingUnmappedBehaviorMentionOnly)
 	}
 	if len(cfg.Channels.Discord.AllowFrom) != 2 {
 		t.Fatalf("discord allow_from len=%d want 2 (%#v)", len(cfg.Channels.Discord.AllowFrom), cfg.Channels.Discord.AllowFrom)
@@ -130,8 +130,8 @@ func TestCheckConfigHealthAppliesFixesWithDoctorFix(t *testing.T) {
 	if reloaded.Routing.Mappings[0].RequireMention == nil || !*reloaded.Routing.Mappings[0].RequireMention {
 		t.Fatalf("require_mention not persisted: %#v", reloaded.Routing.Mappings[0])
 	}
-	if reloaded.Routing.UnmappedBehavior != config.RoutingUnmappedBehaviorBlock {
-		t.Fatalf("persisted unmapped_behavior=%q want %q", reloaded.Routing.UnmappedBehavior, config.RoutingUnmappedBehaviorBlock)
+	if reloaded.Routing.UnmappedBehavior != config.RoutingUnmappedBehaviorMentionOnly {
+		t.Fatalf("persisted unmapped_behavior=%q want %q", reloaded.Routing.UnmappedBehavior, config.RoutingUnmappedBehaviorMentionOnly)
 	}
 	if len(reloaded.Channels.Discord.AllowFrom) != 2 {
 		t.Fatalf("persisted allow_from len=%d want 2", len(reloaded.Channels.Discord.AllowFrom))

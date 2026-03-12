@@ -73,6 +73,56 @@ func TestResolve_UnmappedBlock(t *testing.T) {
 	}
 }
 
+func TestResolve_UnmappedMentionOnlySkipsWithoutMention(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "missing",
+		SenderID: "u1",
+	})
+	if d.Allowed {
+		t.Fatalf("expected mention-only decision to skip without mention, got %+v", d)
+	}
+	if d.Event != EventRouteMentionSkip {
+		t.Fatalf("unexpected event: %s", d.Event)
+	}
+}
+
+func TestResolve_UnmappedMentionOnlyFallbackOnMention(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "missing",
+		SenderID: "u1",
+		Metadata: map[string]string{"is_mention": "true"},
+	})
+	if !d.Allowed {
+		t.Fatalf("expected fallback decision to be allowed, got %+v", d)
+	}
+	if d.Event != EventRouteUnmapped {
+		t.Fatalf("unexpected event: %s", d.Event)
+	}
+	if d.Workspace != cfg.WorkspacePath() {
+		t.Fatalf("workspace = %q, want %q", d.Workspace, cfg.WorkspacePath())
+	}
+}
+
 func TestResolve_UnmappedDefaultFallback(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Routing.Enabled = true

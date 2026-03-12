@@ -1865,9 +1865,11 @@ func (m RoutingModel) renderStatusPanel(panelW int) string {
 	unmappedDisplay := m.status.UnmappedBehavior
 	switch unmappedDisplay {
 	case "":
-		unmappedDisplay = "blocked until mapped"
+		unmappedDisplay = "default workspace only when mentioned"
 	case "block":
 		unmappedDisplay = "blocked until mapped"
+	case "mention_only":
+		unmappedDisplay = "default workspace only when mentioned"
 	case "default":
 		unmappedDisplay = "fallback to default workspace"
 	}

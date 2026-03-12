@@ -103,7 +103,7 @@ func NewResolver(cfg *config.Config) (*Resolver, error) {
 		mappings: make(map[string]config.RoutingMapping, len(cfg.Routing.Mappings)),
 	}
 	if r.unmappedBehavior == "" {
-		r.unmappedBehavior = config.RoutingUnmappedBehaviorDefault
+		r.unmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
 	}
 	for _, m := range cfg.Routing.Mappings {
 		r.mappings[mappingKey(m.Channel, m.ChatID)] = m
@@ -134,10 +134,25 @@ func (r *Resolver) Resolve(msg bus.InboundMessage) Decision {
 
 	mapping, ok := r.mappings[mappingKey(channel, chatID)]
 	if !ok {
-		if r.unmappedBehavior == config.RoutingUnmappedBehaviorDefault {
+		switch r.unmappedBehavior {
+		case config.RoutingUnmappedBehaviorDefault:
 			d := r.allowDefault(msg, channel, chatID, "unmapped default fallback")
 			d.Event = EventRouteUnmapped
 			return d
+		case config.RoutingUnmappedBehaviorMentionOnly:
+			if isMentionOrDM(msg.Metadata) {
+				d := r.allowDefault(msg, channel, chatID, "unmapped mention-only fallback")
+				d.Event = EventRouteUnmapped
+				return d
+			}
+			return Decision{
+				Event:    EventRouteMentionSkip,
+				Allowed:  false,
+				Channel:  channel,
+				ChatID:   chatID,
+				SenderID: msg.SenderID,
+				Reason:   "mention required for unmapped default workspace",
+			}
 		}
 		return Decision{
 			Event:    EventRouteUnmapped,

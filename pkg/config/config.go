@@ -86,8 +86,9 @@ const (
 	BackendOllama = "ollama"
 	BackendMLX    = "mlx"
 
-	RoutingUnmappedBehaviorBlock   = "block"
-	RoutingUnmappedBehaviorDefault = "default"
+	RoutingUnmappedBehaviorBlock       = "block"
+	RoutingUnmappedBehaviorMentionOnly = "mention_only"
+	RoutingUnmappedBehaviorDefault     = "default"
 )
 
 type RoutingConfig struct {
@@ -423,7 +424,7 @@ func DefaultConfig() *Config {
 		},
 		Routing: RoutingConfig{
 			Enabled:          false,
-			UnmappedBehavior: RoutingUnmappedBehaviorDefault,
+			UnmappedBehavior: RoutingUnmappedBehaviorMentionOnly,
 			Mappings:         []RoutingMapping{},
 		},
 	}
@@ -452,7 +453,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Agents.Defaults.MaxToolIterations = 0
 	}
 	if strings.TrimSpace(cfg.Routing.UnmappedBehavior) == "" {
-		cfg.Routing.UnmappedBehavior = RoutingUnmappedBehaviorDefault
+		cfg.Routing.UnmappedBehavior = RoutingUnmappedBehaviorMentionOnly
 	}
 	if strings.TrimSpace(cfg.Channels.Email.Provider) == "" {
 		cfg.Channels.Email.Provider = "resend"
@@ -626,15 +627,16 @@ func normalizeDiscordArchiveConfig(cfg *DiscordArchiveConfig) {
 func ValidateRoutingConfig(r RoutingConfig) error {
 	behavior := strings.TrimSpace(r.UnmappedBehavior)
 	if behavior == "" {
-		behavior = RoutingUnmappedBehaviorDefault
+		behavior = RoutingUnmappedBehaviorMentionOnly
 	}
 
 	switch behavior {
-	case RoutingUnmappedBehaviorBlock, RoutingUnmappedBehaviorDefault:
+	case RoutingUnmappedBehaviorBlock, RoutingUnmappedBehaviorMentionOnly, RoutingUnmappedBehaviorDefault:
 	default:
 		return fmt.Errorf(
-			"routing.unmapped_behavior must be %q or %q",
+			"routing.unmapped_behavior must be %q, %q, or %q",
 			RoutingUnmappedBehaviorBlock,
+			RoutingUnmappedBehaviorMentionOnly,
 			RoutingUnmappedBehaviorDefault,
 		)
 	}

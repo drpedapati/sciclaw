@@ -158,7 +158,7 @@ func (m SettingsModel) buildDisplayRows(snap *VMSnapshot) []settingRow {
 		{key: "discord_enabled", label: "Discord", value: boolYesNo(m.discordEnabled), kind: settingBool, section: "Channels"},
 		{key: "telegram_enabled", label: "Telegram", value: boolYesNo(m.telegramEnabled), kind: settingBool},
 		{key: "routing_enabled", label: "Routing", value: boolYesNo(m.routingEnabled), kind: settingBool, section: "Routing"},
-		{key: "unmapped_behavior", label: "Unmapped behavior", value: m.unmappedBehavior, kind: settingEnum, options: []string{"block", "default"}},
+		{key: "unmapped_behavior", label: "Unmapped behavior", value: m.unmappedBehavior, kind: settingEnum, options: []string{"block", "mention_only", "default"}},
 		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent", restartRequired: modelRestartRequired},
 		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: []string{"", "low", "medium", "high"}, restartRequired: effortRestartRequired},
 		{key: "pubmed_api_key", label: "PubMed API key", value: m.pubmedAPIKey, kind: settingText, section: "Integrations"},
@@ -606,7 +606,7 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 			}
 		}
 		if msg.unmappedBehavior == "" {
-			msg.unmappedBehavior = "block"
+			msg.unmappedBehavior = "mention_only"
 		}
 
 		return msg
