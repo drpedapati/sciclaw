@@ -18,17 +18,18 @@ const (
 	tabHome     = 0
 	tabChat     = 1
 	tabChannels = 2
-	tabUsers    = 3
-	tabLogin    = 4
-	tabDoctor   = 5
-	tabAgent    = 6
-	tabFiles    = 7 // VM-only
-	tabModels   = 8
-	tabSkills   = 9
-	tabCron     = 10
-	tabRouting  = 11
-	tabSettings = 12
-	tabPhi      = 13
+	tabEmail    = 3
+	tabUsers    = 4
+	tabLogin    = 5
+	tabDoctor   = 6
+	tabAgent    = 7
+	tabFiles    = 8 // VM-only
+	tabModels   = 9
+	tabSkills   = 10
+	tabCron     = 11
+	tabRouting  = 12
+	tabSettings = 13
+	tabPhi      = 14
 )
 
 // tabEntry maps a visible tab position to its logical ID and display name.
@@ -76,6 +77,7 @@ type Model struct {
 	home     HomeModel
 	chat     ChatModel
 	channels ChannelsModel
+	email    EmailModel
 	users    UsersModel
 	login    LoginModel
 	doctor   DoctorModel
@@ -94,6 +96,7 @@ func buildTabs(mode Mode) []tabEntry {
 		{"Home", tabHome},
 		{"Chat", tabChat},
 		{"Channels", tabChannels},
+		{"Email", tabEmail},
 		{"Routing", tabRouting},
 		{"Users", tabUsers},
 		{"Models", tabModels},
@@ -127,6 +130,7 @@ func NewModel(exec Executor) Model {
 		home:      NewHomeModel(exec),
 		chat:      NewChatModel(exec),
 		channels:  NewChannelsModel(exec),
+		email:     NewEmailModel(exec),
 		users:     NewUsersModel(exec),
 		login:     NewLoginModel(exec),
 		doctor:    NewDoctorModel(exec),
@@ -164,6 +168,7 @@ func (m Model) subTabCapturingInput() bool {
 	return idx == tabChat || // Chat always captures
 		(idx == tabHome && m.home.onboardActive) ||
 		(idx == tabChannels && m.channels.mode != modeNormal) ||
+		(idx == tabEmail && m.email.mode != emailNormal) ||
 		(idx == tabUsers && m.users.mode != usersNormal) ||
 		(idx == tabLogin && m.login.mode != loginNormal) ||
 		(idx == tabFiles && m.files.mode != filesNormal) ||
@@ -182,6 +187,8 @@ func (m *Model) maybeAutoRun() tea.Cmd {
 		return m.doctor.AutoRun()
 	case tabModels:
 		return m.models.AutoRun()
+	case tabEmail:
+		return m.email.AutoRun()
 	case tabPhi:
 		return m.phi.AutoRun()
 	case tabSkills:
@@ -240,6 +247,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chat, cmd = m.chat.Update(msg, m.snapshot)
 			case tabChannels:
 				m.channels, cmd = m.channels.Update(msg, m.snapshot)
+			case tabEmail:
+				m.email, cmd = m.email.Update(msg, m.snapshot)
 			case tabUsers:
 				m.users, cmd = m.users.Update(msg, m.snapshot)
 			case tabLogin:
@@ -286,6 +295,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat, cmd = m.chat.Update(msg, m.snapshot)
 		case tabChannels:
 			m.channels, cmd = m.channels.Update(msg, m.snapshot)
+		case tabEmail:
+			m.email, cmd = m.email.Update(msg, m.snapshot)
 		case tabUsers:
 			m.users, cmd = m.users.Update(msg, m.snapshot)
 		case tabLogin:
@@ -461,6 +472,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case settingsDataMsg:
 		m.settings.HandleData(msg)
 		return m, nil
+
+	case emailDataMsg:
+		m.email.HandleData(msg)
+		return m, nil
+
+	case emailActionMsg:
+		m.email.HandleAction(msg)
+		return m, nil
 	}
 
 	return m, tea.Batch(cmds...)
@@ -523,6 +542,8 @@ func (m Model) View() string {
 			content = m.chat.View(m.snapshot, contentWidth)
 		case tabChannels:
 			content = m.channels.View(m.snapshot, contentWidth)
+		case tabEmail:
+			content = m.email.View(m.snapshot, contentWidth)
 		case tabUsers:
 			content = m.users.View(m.snapshot, contentWidth)
 		case tabLogin:
