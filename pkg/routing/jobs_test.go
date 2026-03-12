@@ -168,6 +168,51 @@ func TestJobManagerWritesProgressAndFinalState(t *testing.T) {
 	}
 }
 
+func TestJobManagerRefreshesProgressDuringLongRunningPhase(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	runner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+	jm.progressInterval = 50 * time.Millisecond
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "do slow work"}); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for job start")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if countMatchingProgress(progress, "Status: Thinking") >= 2 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if got := countMatchingProgress(progress, "Status: Thinking"); got < 2 {
+		t.Fatalf("expected repeated thinking progress updates, got %d calls: %#v", got, progress.calls)
+	}
+
+	close(runner.block)
+}
+
 func mustNextOutbound(t *testing.T, mb *bus.MessageBus) bus.OutboundMessage {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -192,4 +237,16 @@ func filepathJoin(elem ...string) string {
 		}
 	}
 	return out
+}
+
+func countMatchingProgress(progress *fakeProgressMessenger, needle string) int {
+	progress.mu.Lock()
+	defer progress.mu.Unlock()
+	count := 0
+	for _, call := range progress.calls {
+		if strings.Contains(call, needle) {
+			count++
+		}
+	}
+	return count
 }

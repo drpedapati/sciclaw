@@ -58,8 +58,22 @@ type jobStore struct {
 }
 
 type activeJob struct {
+	mu     sync.RWMutex
 	record JobRecord
 	cancel context.CancelFunc
+}
+
+func (j *activeJob) snapshot() JobRecord {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.record
+}
+
+func (j *activeJob) update(mutator func(*JobRecord)) JobRecord {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	mutator(&j.record)
+	return j.record
 }
 
 type JobManager struct {
@@ -179,14 +193,15 @@ func (jm *JobManager) interruptStaleActiveJobs() error {
 }
 
 func (jm *JobManager) handleControlOrBusy(ctx context.Context, msg bus.InboundMessage, active *activeJob, control jobControl) error {
+	record := active.snapshot()
 	switch control {
 	case jobControlStatus:
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobStatus(active.record, false))
+		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobStatus(record, false))
 	case jobControlCancel:
 		active.cancel()
 		return jm.sendText(ctx, msg.Channel, msg.ChatID, "sciClaw is stopping the background job for this workspace.")
 	default:
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatBusyMessage(active.record))
+		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatBusyMessage(record))
 	}
 }
 
@@ -200,7 +215,7 @@ func (jm *JobManager) sendNoActiveJobMessage(ctx context.Context, msg bus.Inboun
 
 func (jm *JobManager) runJob(ctx context.Context, target LoopTarget, msg bus.InboundMessage, active *activeJob) {
 	targetKey := target.key()
-	progress := jm.newProgressReporter(ctx, &active.record)
+	progress := jm.newProgressReporter(ctx, active)
 	defer progress.finish()
 	defer func() {
 		jm.mu.Lock()
@@ -259,17 +274,60 @@ func (jm *JobManager) nextJobID() string {
 type progressReporter struct {
 	manager   *JobManager
 	ctx       context.Context
+	active    *activeJob
 	recordMu  sync.Mutex
-	record    *JobRecord
 	lastPhase string
 	lastSent  time.Time
+	done      chan struct{}
 }
 
-func (jm *JobManager) newProgressReporter(ctx context.Context, record *JobRecord) *progressReporter {
-	return &progressReporter{manager: jm, ctx: ctx, record: record}
+func (jm *JobManager) newProgressReporter(ctx context.Context, active *activeJob) *progressReporter {
+	reporter := &progressReporter{
+		manager: jm,
+		ctx:     ctx,
+		active:  active,
+		done:    make(chan struct{}),
+	}
+	if jm.progressInterval > 0 {
+		go reporter.runHeartbeat()
+	}
+	return reporter
 }
 
-func (p *progressReporter) finish() {}
+func (p *progressReporter) finish() {
+	close(p.done)
+}
+
+func (p *progressReporter) runHeartbeat() {
+	ticker := time.NewTicker(p.manager.progressInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-p.done:
+			return
+		case <-p.ctx.Done():
+			return
+		case <-ticker.C:
+			p.heartbeat()
+		}
+	}
+}
+
+func (p *progressReporter) heartbeat() {
+	p.recordMu.Lock()
+	defer p.recordMu.Unlock()
+	if p.active == nil {
+		return
+	}
+	record := p.active.snapshot()
+	if record.State != JobStateQueued && record.State != JobStateRunning {
+		return
+	}
+	if !p.lastSent.IsZero() && time.Since(p.lastSent) < p.manager.progressInterval {
+		return
+	}
+	p.sendLocked(record)
+}
 
 func (p *progressReporter) throttledUpdate(phase, detail string) {
 	p.recordMu.Lock()
@@ -288,36 +346,44 @@ func (p *progressReporter) update(state JobState, phase, detail string) {
 }
 
 func (p *progressReporter) updateLocked(state JobState, phase, detail string) {
-	if p.record == nil {
+	if p.active == nil {
 		return
 	}
-	p.record.State = state
-	p.record.Phase = strings.TrimSpace(phase)
-	p.record.Detail = strings.TrimSpace(detail)
-	p.record.Summary = p.record.Detail
-	p.record.UpdatedAt = time.Now().UnixMilli()
-	if p.record.Phase == "" {
-		p.record.Phase = string(state)
-	}
-	p.lastPhase = p.record.Phase
+	record := p.active.update(func(record *JobRecord) {
+		record.State = state
+		record.Phase = strings.TrimSpace(phase)
+		record.Detail = strings.TrimSpace(detail)
+		record.Summary = record.Detail
+		record.UpdatedAt = time.Now().UnixMilli()
+		if record.Phase == "" {
+			record.Phase = string(state)
+		}
+	})
+	p.lastPhase = record.Phase
 
-	if err := p.manager.store.Save(*p.record); err != nil {
-		logger.WarnCF("jobs", "Failed to persist job progress", map[string]interface{}{"job_id": p.record.ID, "error": err.Error()})
+	if err := p.manager.store.Save(record); err != nil {
+		logger.WarnCF("jobs", "Failed to persist job progress", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
 	}
+	p.sendLocked(record)
+}
+
+func (p *progressReporter) sendLocked(record JobRecord) {
 	if p.manager.progress == nil {
 		return
 	}
 
-	content := formatProgressMessage(*p.record)
-	messageID, err := p.manager.progress.SendOrEditProgress(p.ctx, p.record.Channel, p.record.ChatID, p.record.StatusMessageID, content)
+	content := formatProgressMessage(record)
+	messageID, err := p.manager.progress.SendOrEditProgress(p.ctx, record.Channel, record.ChatID, record.StatusMessageID, content)
 	if err != nil {
-		logger.WarnCF("jobs", "Failed to send progress update", map[string]interface{}{"job_id": p.record.ID, "error": err.Error()})
+		logger.WarnCF("jobs", "Failed to send progress update", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
 		return
 	}
-	if strings.TrimSpace(messageID) != "" {
-		p.record.StatusMessageID = strings.TrimSpace(messageID)
-		if err := p.manager.store.Save(*p.record); err != nil {
-			logger.WarnCF("jobs", "Failed to persist progress message id", map[string]interface{}{"job_id": p.record.ID, "error": err.Error()})
+	if strings.TrimSpace(messageID) != "" && strings.TrimSpace(messageID) != record.StatusMessageID {
+		record = p.active.update(func(existing *JobRecord) {
+			existing.StatusMessageID = strings.TrimSpace(messageID)
+		})
+		if err := p.manager.store.Save(record); err != nil {
+			logger.WarnCF("jobs", "Failed to persist progress message id", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
 		}
 	}
 	p.lastSent = time.Now()
@@ -326,36 +392,24 @@ func (p *progressReporter) updateLocked(state JobState, phase, detail string) {
 func (p *progressReporter) complete(state JobState, phase, detail string, err error) {
 	p.recordMu.Lock()
 	defer p.recordMu.Unlock()
-	if p.record == nil {
+	if p.active == nil {
 		return
 	}
-	p.record.State = state
-	p.record.Phase = strings.TrimSpace(phase)
-	p.record.Detail = strings.TrimSpace(detail)
-	p.record.Summary = p.record.Detail
-	p.record.UpdatedAt = time.Now().UnixMilli()
-	p.record.LastError = ""
-	if err != nil {
-		p.record.LastError = utils.Truncate(compactJobLine(err.Error()), 180)
-	}
-	if saveErr := p.manager.store.Save(*p.record); saveErr != nil {
-		logger.WarnCF("jobs", "Failed to persist final job state", map[string]interface{}{"job_id": p.record.ID, "error": saveErr.Error()})
-	}
-	if p.manager.progress == nil {
-		return
-	}
-	content := formatProgressMessage(*p.record)
-	messageID, sendErr := p.manager.progress.SendOrEditProgress(p.ctx, p.record.Channel, p.record.ChatID, p.record.StatusMessageID, content)
-	if sendErr != nil {
-		logger.WarnCF("jobs", "Failed to send final progress update", map[string]interface{}{"job_id": p.record.ID, "error": sendErr.Error()})
-		return
-	}
-	if strings.TrimSpace(messageID) != "" {
-		p.record.StatusMessageID = strings.TrimSpace(messageID)
-		if saveErr := p.manager.store.Save(*p.record); saveErr != nil {
-			logger.WarnCF("jobs", "Failed to persist final progress message id", map[string]interface{}{"job_id": p.record.ID, "error": saveErr.Error()})
+	record := p.active.update(func(record *JobRecord) {
+		record.State = state
+		record.Phase = strings.TrimSpace(phase)
+		record.Detail = strings.TrimSpace(detail)
+		record.Summary = record.Detail
+		record.UpdatedAt = time.Now().UnixMilli()
+		record.LastError = ""
+		if err != nil {
+			record.LastError = utils.Truncate(compactJobLine(err.Error()), 180)
 		}
+	})
+	if saveErr := p.manager.store.Save(record); saveErr != nil {
+		logger.WarnCF("jobs", "Failed to persist final job state", map[string]interface{}{"job_id": record.ID, "error": saveErr.Error()})
 	}
+	p.sendLocked(record)
 }
 
 type jobControl int
