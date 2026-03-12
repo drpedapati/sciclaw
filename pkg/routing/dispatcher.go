@@ -16,6 +16,7 @@ type Dispatcher struct {
 	bus      *bus.MessageBus
 	resolver *Resolver
 	pool     *AgentLoopPool
+	jobs     *JobManager
 	mu       sync.RWMutex
 }
 
@@ -49,6 +50,22 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			Workspace: decision.Workspace,
 			Runtime:   decision.Runtime,
 		}
+		if jobs := d.getJobManager(); jobs != nil && jobs.ShouldHandleChannel(routed.Channel) {
+			if err := jobs.Submit(ctx, target, routed); err != nil {
+				logger.ErrorCF("routing", "job_submit_failed", map[string]interface{}{
+					"channel":   msg.Channel,
+					"chat_id":   msg.ChatID,
+					"sender_id": msg.SenderID,
+					"workspace": decision.Workspace,
+					"mode":      decision.Runtime.Mode,
+					"backend":   decision.Runtime.LocalBackend,
+					"model":     decision.Runtime.LocalModel,
+					"reason":    err.Error(),
+				})
+				d.sendDispatchError(ctx, msg, decision, err)
+			}
+			continue
+		}
 		if err := d.pool.Dispatch(ctx, target, routed); err != nil {
 			logger.ErrorCF("routing", "route_invalid", map[string]interface{}{
 				"channel":   msg.Channel,
@@ -65,6 +82,12 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	}
 }
 
+func (d *Dispatcher) SetJobManager(jobs *JobManager) {
+	d.mu.Lock()
+	d.jobs = jobs
+	d.mu.Unlock()
+}
+
 func (d *Dispatcher) ReplaceResolver(resolver *Resolver) {
 	if resolver == nil {
 		return
@@ -78,6 +101,12 @@ func (d *Dispatcher) getResolver() *Resolver {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.resolver
+}
+
+func (d *Dispatcher) getJobManager() *JobManager {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.jobs
 }
 
 func (d *Dispatcher) logDecision(decision Decision) {

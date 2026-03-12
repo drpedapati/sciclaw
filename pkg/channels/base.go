@@ -19,6 +19,13 @@ type Channel interface {
 	IsAllowed(senderID string) bool
 }
 
+// ProgressChannel is an optional interface for channels that can update a
+// single in-channel progress message in place.
+type ProgressChannel interface {
+	Channel
+	SendOrEditProgress(ctx context.Context, chatID, messageID, content string) (string, error)
+}
+
 type BaseChannel struct {
 	config    interface{}
 	bus       *bus.MessageBus

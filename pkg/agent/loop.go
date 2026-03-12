@@ -76,6 +76,7 @@ type processOptions struct {
 	EnableSummary   bool   // Whether to trigger summarization
 	SendResponse    bool   // Whether to send response via bus
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
+	OnProgress      func(phase, detail string)
 }
 
 const defaultEmptyAssistantResponse = "I completed the turn but did not produce a user-facing reply. Ask me for a summary of what was done."
@@ -405,6 +406,19 @@ func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) 
 		response = fmt.Sprintf("Error processing message: %v", err)
 	}
 
+	al.publishFinalResponse(ctx, msg, response)
+}
+
+func (al *AgentLoop) RunJob(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, error) {
+	response, err := al.processMessageWithProgress(ctx, msg, onProgress)
+	if err != nil {
+		response = fmt.Sprintf("Error processing message: %v", err)
+	}
+	al.publishFinalResponse(ctx, msg, response)
+	return response, err
+}
+
+func (al *AgentLoop) publishFinalResponse(ctx context.Context, msg bus.InboundMessage, response string) {
 	if response == "" {
 		if msg.Channel != "system" {
 			logger.InfoCF("agent", "No outbound response generated",
@@ -502,6 +516,10 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 }
 
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
+	return al.processMessageWithProgress(ctx, msg, nil)
+}
+
+func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, error) {
 	// Add message preview to log (show full content for error messages)
 	var logContent string
 	if strings.Contains(msg.Content, "Error:") || strings.Contains(msg.Content, "error") {
@@ -531,6 +549,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		DefaultResponse: defaultEmptyAssistantResponse,
 		EnableSummary:   true,
 		SendResponse:    false,
+		OnProgress:      onProgress,
 	})
 }
 
@@ -593,6 +612,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.TurnID = al.nextTurnID()
 	}
 	turnStartedAt := time.Now()
+	emitProgress(opts.OnProgress, "preparing_context", "Preparing context")
 	var localDiag *localTurnDiagnostics
 	if al.localMode {
 		localDiag = newLocalTurnDiagnostics()
@@ -735,6 +755,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
 
 	// 4. Run LLM iteration loop
+	emitProgress(opts.OnProgress, "thinking", "Thinking")
 	finalContent, iteration, usage, err := al.runLLMIteration(ctx, messages, opts, localDiag)
 	if err != nil {
 		if localDiag != nil {
@@ -804,6 +825,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			})
 	}
 	sessionSaveStartedAt := time.Now()
+	emitProgress(opts.OnProgress, "saving", "Saving conversation state")
 	al.sessions.Save(opts.SessionKey)
 	if localDiag != nil {
 		localDiag.SessionSaveMS = time.Since(sessionSaveStartedAt).Milliseconds()
@@ -812,6 +834,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 7. Optional: summarization
 	if opts.EnableSummary {
 		summaryStartedAt := time.Now()
+		emitProgress(opts.OnProgress, "saving", "Updating summary")
 		al.maybeSummarize(opts.SessionKey)
 		if localDiag != nil {
 			localDiag.SummaryMS = time.Since(summaryStartedAt).Milliseconds()
@@ -821,6 +844,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 8. Optional: send response via bus
 	if opts.SendResponse && strings.TrimSpace(finalContent) != "" {
 		outboundStartedAt := time.Now()
+		emitProgress(opts.OnProgress, "replying", "Replying")
 		al.bus.PublishOutbound(ctx, bus.OutboundMessage{
 			Channel: opts.Channel,
 			ChatID:  opts.ChatID,
@@ -1019,6 +1043,13 @@ func (d *localTurnDiagnostics) fields() map[string]interface{} {
 		fields["failure_reason"] = d.FailureReason
 	}
 	return fields
+}
+
+func emitProgress(cb func(phase, detail string), phase, detail string) {
+	if cb == nil {
+		return
+	}
+	cb(strings.TrimSpace(phase), strings.TrimSpace(detail))
 }
 
 // turnUsage accumulates token usage across all LLM calls within a single turn.
@@ -1265,6 +1296,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 		// Execute tool calls
 		for _, tc := range response.ToolCalls {
+			emitProgress(opts.OnProgress, "using_tools", fmt.Sprintf("Using tool: %s", tc.Name))
 			al.dispatchHook(ctx, hooks.EventBeforeTool, hooks.Context{
 				Timestamp:  time.Now(),
 				TurnID:     opts.TurnID,

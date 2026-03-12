@@ -46,6 +46,7 @@ type DiscordChannel struct {
 	sendMessageFn func(channelID, content string) error
 	sendFileFn    func(channelID, content string, attachment bus.OutboundAttachment) error
 	sendTypingFn  func(channelID string) error
+	editMessageFn func(channelID, messageID, content string) error
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -77,6 +78,10 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		},
 		sendTypingFn: func(channelID string) error {
 			return session.ChannelTyping(channelID)
+		},
+		editMessageFn: func(channelID, messageID, content string) error {
+			_, err := session.ChannelMessageEdit(channelID, messageID, content)
+			return err
 		},
 	}, nil
 }
@@ -211,6 +216,35 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 	case <-sendCtx.Done():
 		return fmt.Errorf("send message timeout: %w", sendCtx.Err())
 	}
+}
+
+func (c *DiscordChannel) SendOrEditProgress(ctx context.Context, chatID, messageID, content string) (string, error) {
+	channelID := strings.TrimSpace(chatID)
+	if channelID == "" {
+		return "", fmt.Errorf("channel ID is empty")
+	}
+	if !c.IsRunning() {
+		return "", fmt.Errorf("discord bot not running")
+	}
+
+	c.stopTyping(channelID)
+
+	if strings.TrimSpace(messageID) == "" {
+		id, err := c.sendProgressMessage(channelID, content)
+		if err != nil {
+			return "", err
+		}
+		return id, nil
+	}
+
+	if err := c.editProgressMessage(channelID, messageID, content); err != nil {
+		id, sendErr := c.sendProgressMessage(channelID, content)
+		if sendErr != nil {
+			return "", fmt.Errorf("edit progress message: %w (fallback send failed: %v)", err, sendErr)
+		}
+		return id, nil
+	}
+	return messageID, nil
 }
 
 func (c *DiscordChannel) sendMessageWithAttachments(channelID string, chunks []string, attachments []bus.OutboundAttachment) error {
@@ -466,6 +500,34 @@ func (c *DiscordChannel) sendMessage(channelID, content string) error {
 		return fmt.Errorf("discord session is nil")
 	}
 	_, err := c.session.ChannelMessageSend(channelID, content)
+	return err
+}
+
+func (c *DiscordChannel) sendProgressMessage(channelID, content string) (string, error) {
+	if c.session == nil {
+		return "", fmt.Errorf("discord session is nil")
+	}
+	if c.sendMessageFn != nil {
+		if err := c.sendMessageFn(channelID, content); err != nil {
+			return "", err
+		}
+		return "", nil
+	}
+	msg, err := c.session.ChannelMessageSend(channelID, content)
+	if err != nil {
+		return "", err
+	}
+	return msg.ID, nil
+}
+
+func (c *DiscordChannel) editProgressMessage(channelID, messageID, content string) error {
+	if c.editMessageFn != nil {
+		return c.editMessageFn(channelID, messageID, content)
+	}
+	if c.session == nil {
+		return fmt.Errorf("discord session is nil")
+	}
+	_, err := c.session.ChannelMessageEdit(channelID, messageID, content)
 	return err
 }
 

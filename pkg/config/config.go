@@ -49,6 +49,7 @@ type Config struct {
 	Channels  ChannelsConfig  `json:"channels"`
 	Providers ProvidersConfig `json:"providers"`
 	Gateway   GatewayConfig   `json:"gateway"`
+	Jobs      JobsConfig      `json:"jobs"`
 	Tools     ToolsConfig     `json:"tools"`
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	Devices   DevicesConfig   `json:"devices"`
@@ -259,6 +260,13 @@ type GatewayConfig struct {
 	Port int    `json:"port" env:"PICOCLAW_GATEWAY_PORT"`
 }
 
+type JobsConfig struct {
+	Enabled               bool `json:"enabled" env:"PICOCLAW_JOBS_ENABLED"`
+	MaxConcurrent         int  `json:"max_concurrent" env:"PICOCLAW_JOBS_MAX_CONCURRENT"`
+	ProgressUpdateSeconds int  `json:"progress_update_seconds" env:"PICOCLAW_JOBS_PROGRESS_UPDATE_SECONDS"`
+	DiscordAsyncDefault   bool `json:"discord_async_default" env:"PICOCLAW_JOBS_DISCORD_ASYNC_DEFAULT"`
+}
+
 type BraveConfig struct {
 	Enabled    bool   `json:"enabled" env:"PICOCLAW_TOOLS_WEB_BRAVE_ENABLED"`
 	APIKey     string `json:"api_key" env:"PICOCLAW_TOOLS_WEB_BRAVE_API_KEY"`
@@ -397,6 +405,12 @@ func DefaultConfig() *Config {
 		Gateway: GatewayConfig{
 			Host: "0.0.0.0",
 			Port: 18790,
+		},
+		Jobs: JobsConfig{
+			Enabled:               true,
+			MaxConcurrent:         4,
+			ProgressUpdateSeconds: 5,
+			DiscordAsyncDefault:   true,
 		},
 		Tools: ToolsConfig{
 			Web: WebToolsConfig{

@@ -243,6 +243,52 @@ func TestDiscordSend_SendsChunkedMessages(t *testing.T) {
 	}
 }
 
+func TestDiscordSendOrEditProgressEditsExistingMessage(t *testing.T) {
+	ch := newTestDiscordChannel()
+	var edited []string
+	ch.editMessageFn = func(channelID, messageID, content string) error {
+		edited = append(edited, channelID+"|"+messageID+"|"+content)
+		return nil
+	}
+
+	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "progress-123", "Thinking")
+	if err != nil {
+		t.Fatalf("SendOrEditProgress: %v", err)
+	}
+	if id != "progress-123" {
+		t.Fatalf("message id = %q, want progress-123", id)
+	}
+	if len(edited) != 1 || !strings.Contains(edited[0], "Thinking") {
+		t.Fatalf("expected progress edit call, got %#v", edited)
+	}
+}
+
+func TestDiscordSendOrEditProgressFallsBackToNewMessageOnEditFailure(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.editMessageFn = func(channelID, messageID, content string) error {
+		return os.ErrNotExist
+	}
+	ch.session = &discordgo.Session{}
+	ch.sendMessageFn = nil
+	called := 0
+	ch.session = &discordgo.Session{}
+	ch.sendMessageFn = func(channelID, content string) error {
+		called++
+		return nil
+	}
+
+	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "progress-123", "Thinking")
+	if err != nil {
+		t.Fatalf("SendOrEditProgress: %v", err)
+	}
+	if id != "" {
+		t.Fatalf("expected empty fallback id with stub sender, got %q", id)
+	}
+	if called != 1 {
+		t.Fatalf("expected fallback send call, got %d", called)
+	}
+}
+
 func TestDiscordSend_WithAttachments_RoutesCaptionsAndRemainingText(t *testing.T) {
 	ch := newTestDiscordChannel()
 	var mu sync.Mutex

@@ -17,6 +17,22 @@ func (h *fakeHandler) HandleInbound(_ context.Context, msg bus.InboundMessage) {
 	h.received <- msg
 }
 
+type blockingJobHandler struct {
+	inboundStarted chan struct{}
+	jobStarted     chan struct{}
+	release        chan struct{}
+}
+
+func (h *blockingJobHandler) HandleInbound(_ context.Context, _ bus.InboundMessage) {
+	close(h.inboundStarted)
+	<-h.release
+}
+
+func (h *blockingJobHandler) RunJob(_ context.Context, _ bus.InboundMessage, _ func(phase, detail string)) (string, error) {
+	close(h.jobStarted)
+	return "done", nil
+}
+
 func TestAgentLoopPool_ReusesWorkspaceHandler(t *testing.T) {
 	created := 0
 	handlers := map[string]*fakeHandler{}
@@ -251,5 +267,62 @@ func TestAgentLoopPool_FactoryPanicDoesNotLeakInflight(t *testing.T) {
 	}
 	if pool.Size() != 1 {
 		t.Fatalf("expected pool size 1 after retry, got %d", pool.Size())
+	}
+}
+
+func TestAgentLoopPool_SerializesDispatchAndRunJobOnSameHandler(t *testing.T) {
+	handler := &blockingJobHandler{
+		inboundStarted: make(chan struct{}),
+		jobStarted:     make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	pool := NewAgentLoopPoolWithFactory(func(_ LoopTarget) (inboundHandler, error) {
+		return handler, nil
+	})
+	defer pool.Close()
+
+	target := LoopTarget{Workspace: "/tmp/ws-serial"}
+	if err := pool.Dispatch(context.Background(), target, bus.InboundMessage{SessionKey: "queued"}); err != nil {
+		t.Fatalf("dispatch queued message: %v", err)
+	}
+
+	select {
+	case <-handler.inboundStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for queued dispatch to start")
+	}
+
+	runner, err := pool.ResolveJobHandler(target)
+	if err != nil {
+		t.Fatalf("ResolveJobHandler: %v", err)
+	}
+
+	jobDone := make(chan error, 1)
+	go func() {
+		_, runErr := runner.RunJob(context.Background(), bus.InboundMessage{SessionKey: "job"}, nil)
+		jobDone <- runErr
+	}()
+
+	select {
+	case <-handler.jobStarted:
+		t.Fatal("background job started before queued dispatch released the shared handler")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	close(handler.release)
+
+	select {
+	case <-handler.jobStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for background job to start after release")
+	}
+
+	select {
+	case err := <-jobDone:
+		if err != nil {
+			t.Fatalf("RunJob: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for background job to finish")
 	}
 }

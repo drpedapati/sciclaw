@@ -30,6 +30,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/constants"
 	"github.com/sipeed/picoclaw/pkg/cron"
 	"github.com/sipeed/picoclaw/pkg/hardware"
 	"github.com/sipeed/picoclaw/pkg/heartbeat"
@@ -1611,6 +1612,27 @@ func gatewayCmd() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var loopPool *routing.AgentLoopPool
+	var jobManager *routing.JobManager
+	if cfg.Jobs.Enabled && cfg.Jobs.DiscordAsyncDefault {
+		jm, jmErr := routing.NewJobManager(
+			filepath.Join(filepath.Dir(getConfigPath()), "jobs.json"),
+			cfg.Jobs,
+			msgBus,
+			channelManager,
+			func(target routing.LoopTarget) (routing.JobRunner, error) {
+				if loopPool != nil {
+					return loopPool.ResolveJobHandler(target)
+				}
+				return agentLoop, nil
+			},
+		)
+		if jmErr != nil {
+			fmt.Printf("Warning: background jobs disabled: %v\n", jmErr)
+		} else {
+			jobManager = jm
+			fmt.Println("✓ Discord background jobs enabled")
+		}
+	}
 	if cfg.Routing.Enabled {
 		resolver, err := routing.NewResolver(cfg)
 		if err != nil {
@@ -1629,6 +1651,9 @@ func gatewayCmd() {
 		}
 		loopPool = routing.NewAgentLoopPool(cfg, msgBus, poolSetup...)
 		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
+		if jobManager != nil {
+			dispatcher.SetJobManager(jobManager)
+		}
 		go func() {
 			if err := dispatcher.Run(ctx); err != nil {
 				logger.ErrorCF("routing", "route_invalid", map[string]interface{}{"reason": err.Error()})
@@ -1638,7 +1663,19 @@ func gatewayCmd() {
 		fmt.Printf("✓ Routing enabled: %d mapping(s)\n", len(cfg.Routing.Mappings))
 		fmt.Printf("✓ Routing reload trigger: %s\n", routingReloadTriggerPath())
 	} else {
-		go agentLoop.Run(ctx)
+		if jobManager != nil {
+			go runGatewayDefaultDispatch(ctx, msgBus, agentLoop, jobManager, routing.LoopTarget{
+				Workspace: cfg.WorkspacePath(),
+				Runtime: routing.RuntimeProfile{
+					Mode:         cfg.EffectiveMode(),
+					LocalBackend: cfg.Agents.Defaults.LocalBackend,
+					LocalModel:   cfg.Agents.Defaults.LocalModel,
+					LocalPreset:  cfg.Agents.Defaults.LocalPreset,
+				},
+			})
+		} else {
+			go agentLoop.Run(ctx)
+		}
 	}
 
 	if err := cronService.Start(); err != nil {
@@ -2564,6 +2601,31 @@ func authStatusCmd() {
 func getConfigPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".picoclaw", "config.json")
+}
+
+func runGatewayDefaultDispatch(ctx context.Context, msgBus *bus.MessageBus, agentLoop *agent.AgentLoop, jobManager *routing.JobManager, target routing.LoopTarget) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			msg, ok := msgBus.ConsumeInbound(ctx)
+			if !ok {
+				continue
+			}
+			if jobManager != nil && jobManager.ShouldHandleChannel(msg.Channel) {
+				if err := jobManager.Submit(ctx, target, msg); err != nil && !constants.IsInternalChannel(msg.Channel) {
+					_ = msgBus.PublishOutbound(ctx, bus.OutboundMessage{
+						Channel: msg.Channel,
+						ChatID:  msg.ChatID,
+						Content: fmt.Sprintf("Failed to start background job: %v", err),
+					})
+				}
+				continue
+			}
+			agentLoop.HandleInbound(ctx, msg)
+		}
+	}
 }
 
 func routingReloadTriggerPath() string {

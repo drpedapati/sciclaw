@@ -19,6 +19,11 @@ type inboundHandler interface {
 	HandleInbound(context.Context, bus.InboundMessage)
 }
 
+type JobRunner interface {
+	inboundHandler
+	RunJob(context.Context, bus.InboundMessage, func(phase, detail string)) (string, error)
+}
+
 type LoopTarget struct {
 	Workspace string
 	Runtime   RuntimeProfile
@@ -42,6 +47,7 @@ type loopEntry struct {
 	handler inboundHandler
 	inbound chan bus.InboundMessage
 	cancel  context.CancelFunc
+	runMu   sync.Mutex
 }
 
 type inflightCreation struct {
@@ -127,6 +133,34 @@ func (p *AgentLoopPool) Close() {
 		e.cancel()
 	}
 	p.wg.Wait()
+}
+
+func (p *AgentLoopPool) ResolveJobHandler(target LoopTarget) (JobRunner, error) {
+	entry, err := p.getOrCreate(target)
+	if err != nil {
+		return nil, err
+	}
+	_, ok := entry.handler.(JobRunner)
+	if !ok {
+		return nil, fmt.Errorf("agent loop for %s does not support background jobs", target.Workspace)
+	}
+	return entry, nil
+}
+
+func (e *loopEntry) HandleInbound(ctx context.Context, msg bus.InboundMessage) {
+	e.runMu.Lock()
+	defer e.runMu.Unlock()
+	e.handler.HandleInbound(ctx, msg)
+}
+
+func (e *loopEntry) RunJob(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, error) {
+	runner, ok := e.handler.(JobRunner)
+	if !ok {
+		return "", fmt.Errorf("agent loop does not support background jobs")
+	}
+	e.runMu.Lock()
+	defer e.runMu.Unlock()
+	return runner.RunJob(ctx, msg, onProgress)
 }
 
 func (p *AgentLoopPool) getOrCreate(target LoopTarget) (*loopEntry, error) {
@@ -219,7 +253,7 @@ func (p *AgentLoopPool) getOrCreate(target LoopTarget) (*loopEntry, error) {
 					case <-workerCtx.Done():
 						return
 					case msg := <-entry.inbound:
-						entry.handler.HandleInbound(workerCtx, msg)
+						entry.HandleInbound(workerCtx, msg)
 					}
 				}
 			}()

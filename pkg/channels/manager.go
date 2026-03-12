@@ -346,3 +346,36 @@ func (m *Manager) SendToChannel(ctx context.Context, channelName, chatID, conten
 
 	return channel.Send(ctx, msg)
 }
+
+func (m *Manager) SendOrEditProgress(ctx context.Context, channelName, chatID, messageID, content string) (string, error) {
+	m.mu.RLock()
+	channel, exists := m.channels[channelName]
+	m.mu.RUnlock()
+	if !exists {
+		return "", fmt.Errorf("channel %s not found", channelName)
+	}
+
+	if progressCh, ok := channel.(ProgressChannel); ok {
+		return progressCh.SendOrEditProgress(ctx, chatID, messageID, content)
+	}
+
+	if strings.TrimSpace(messageID) != "" {
+		if err := channel.Send(ctx, bus.OutboundMessage{
+			Channel: channelName,
+			ChatID:  chatID,
+			Content: content,
+		}); err != nil {
+			return "", err
+		}
+		return messageID, nil
+	}
+
+	if err := channel.Send(ctx, bus.OutboundMessage{
+		Channel: channelName,
+		ChatID:  chatID,
+		Content: content,
+	}); err != nil {
+		return "", err
+	}
+	return "", nil
+}
