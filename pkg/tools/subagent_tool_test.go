@@ -313,3 +313,29 @@ func TestSubagentTool_ForUserTruncation(t *testing.T) {
 		t.Error("ForLLM should contain reference to original task")
 	}
 }
+
+func TestSubagentTool_TruncatesToolOutputWhenConfigured(t *testing.T) {
+	provider := &toolLoopEchoProvider{}
+	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
+	manager.SetToolResultMaxChars(40)
+	manager.RegisterTool(&fixedToolResultTool{
+		name:   "big_output",
+		result: NewToolResult(strings.Repeat("z", 120)),
+	})
+	tool := NewSubagentTool(manager)
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"task":  "Use the tool and summarize the result",
+		"label": "truncate-test",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, "[tool output truncated: showing first 40 of 120 chars]") {
+		t.Fatalf("expected truncation notice in subagent result, got %q", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, strings.Repeat("z", 40)) {
+		t.Fatalf("expected truncated tool output prefix in subagent result, got %q", result.ForLLM)
+	}
+}

@@ -22,15 +22,16 @@ type SubagentTask struct {
 }
 
 type SubagentManager struct {
-	tasks         map[string]*SubagentTask
-	mu            sync.RWMutex
-	provider      providers.LLMProvider
-	defaultModel  string
-	bus           *bus.MessageBus
-	workspace     string
-	tools         *ToolRegistry
-	maxIterations int
-	nextID        int
+	tasks              map[string]*SubagentTask
+	mu                 sync.RWMutex
+	provider           providers.LLMProvider
+	defaultModel       string
+	bus                *bus.MessageBus
+	workspace          string
+	tools              *ToolRegistry
+	maxIterations      int
+	toolResultMaxChars int
+	nextID             int
 }
 
 func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus, maxIterations ...int) *SubagentManager {
@@ -66,6 +67,15 @@ func (sm *SubagentManager) RegisterTool(tool Tool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.tools.Register(tool)
+}
+
+func (sm *SubagentManager) SetToolResultMaxChars(limit int) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if limit < 0 {
+		limit = 0
+	}
+	sm.toolResultMaxChars = limit
 }
 
 func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string, callback AsyncCallback) (string, error) {
@@ -130,13 +140,15 @@ After completing the task, provide a clear summary of what was done.`
 	sm.mu.RLock()
 	tools := sm.tools
 	maxIter := sm.maxIterations
+	toolResultMaxChars := sm.toolResultMaxChars
 	sm.mu.RUnlock()
 
 	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
-		Provider:      sm.provider,
-		Model:         sm.defaultModel,
-		Tools:         tools,
-		MaxIterations: maxIter,
+		Provider:           sm.provider,
+		Model:              sm.defaultModel,
+		Tools:              tools,
+		MaxIterations:      maxIter,
+		ToolResultMaxChars: toolResultMaxChars,
 		LLMOptions: map[string]any{
 			"max_tokens":  4096,
 			"temperature": 0.7,
@@ -288,13 +300,15 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	sm.mu.RLock()
 	tools := sm.tools
 	maxIter := sm.maxIterations
+	toolResultMaxChars := sm.toolResultMaxChars
 	sm.mu.RUnlock()
 
 	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
-		Provider:      sm.provider,
-		Model:         sm.defaultModel,
-		Tools:         tools,
-		MaxIterations: maxIter,
+		Provider:           sm.provider,
+		Model:              sm.defaultModel,
+		Tools:              tools,
+		MaxIterations:      maxIter,
+		ToolResultMaxChars: toolResultMaxChars,
 		LLMOptions: map[string]any{
 			"max_tokens":  4096,
 			"temperature": 0.7,

@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -22,7 +23,10 @@ type ToolLoopConfig struct {
 	Model         string
 	Tools         *ToolRegistry
 	MaxIterations int
-	LLMOptions    map[string]any
+	// ToolResultMaxChars truncates tool output before it is re-injected into the
+	// next LLM turn. A value of 0 leaves tool output unbounded.
+	ToolResultMaxChars int
+	LLMOptions         map[string]any
 }
 
 // ToolLoopResult contains the result of running the tool loop.
@@ -154,6 +158,7 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 			if contentForLLM == "" && toolResult.Err != nil {
 				contentForLLM = toolResult.Err.Error()
 			}
+			contentForLLM = truncateToolLoopContent(contentForLLM, config.ToolResultMaxChars, "tool output")
 
 			// Add tool result message
 			toolResultMsg := providers.Message{
@@ -169,4 +174,16 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 		Content:    finalContent,
 		Iterations: iteration,
 	}, nil
+}
+
+func truncateToolLoopContent(content string, limit int, label string) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" || limit <= 0 || len(trimmed) <= limit {
+		return trimmed
+	}
+	if len(label) > 80 {
+		label = label[:80]
+	}
+	suffix := fmt.Sprintf("\n\n[%s truncated: showing first %d of %d chars]", label, limit, len(trimmed))
+	return trimmed[:limit] + suffix
 }

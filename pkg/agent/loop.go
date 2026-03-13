@@ -258,6 +258,9 @@ func NewAgentLoopWithOptions(cfg *config.Config, msgBus *bus.MessageBus, provide
 	if profile == ToolProfileDefault {
 		// Create subagent manager with its own tool registry
 		subagentManager := tools.NewSubagentManager(provider, cfg.Agents.Defaults.Model, workspace, msgBus, cfg.Agents.Defaults.MaxToolIterations)
+		if cfg.EffectiveMode() == config.ModePhi {
+			subagentManager.SetToolResultMaxChars(localToolResultMaxChars)
+		}
 		subagentTools := createToolRegistry(workspace, restrict, cfg, msgBus, ToolProfileDefault)
 		// Subagent doesn't need spawn/subagent tools to avoid recursion
 		subagentManager.SetTools(subagentTools)
