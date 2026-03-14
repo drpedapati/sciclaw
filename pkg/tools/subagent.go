@@ -3,6 +3,9 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +20,47 @@ func defaultSubagentLLMOptions() map[string]any {
 		"reasoning_effort": "high",
 		"thinking":         "adaptive",
 	}
+}
+
+func buildSubagentSystemPrompt(workspace string) string {
+	parts := []string{
+		fmt.Sprintf(`You are sciClaw operating as a subagent inside the workspace at: %s
+
+Complete the given task independently and report the result clearly.
+Use tools when they materially improve correctness.
+
+Important rules:
+- Follow the workspace bootstrap files and tool policy below.
+- PubMed-first verification: For citation checks, PMID lookup, and PubMed literature verification, start with the installed `+"`pubmed`"+` CLI via `+"`exec`"+`.
+- Do not start with `+"`web_fetch`"+` on PubMed or publisher pages when the task is bibliographic verification.`, workspace),
+	}
+
+	if bootstrap := loadSubagentBootstrapFiles(workspace); bootstrap != "" {
+		parts = append(parts, bootstrap)
+	}
+
+	return strings.Join(parts, "\n\n---\n\n")
+}
+
+func loadSubagentBootstrapFiles(workspace string) string {
+	files := []string{"AGENTS.md", "SOUL.md", "USER.md", "IDENTITY.md", "TOOLS.md"}
+	primaryWorkspace := filepath.Clean(workspace)
+	fallbackWorkspace := filepath.Clean(filepath.Join(os.Getenv("HOME"), "sciclaw"))
+
+	var result strings.Builder
+	for _, filename := range files {
+		candidates := []string{filepath.Join(primaryWorkspace, filename)}
+		if fallbackWorkspace != "" && fallbackWorkspace != "." && fallbackWorkspace != primaryWorkspace {
+			candidates = append(candidates, filepath.Join(fallbackWorkspace, filename))
+		}
+		for _, filePath := range candidates {
+			if data, err := os.ReadFile(filePath); err == nil {
+				result.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data)))
+				break
+			}
+		}
+	}
+	return strings.TrimSpace(result.String())
 }
 
 type SubagentTask struct {
@@ -119,9 +163,7 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 	task.Created = time.Now().UnixMilli()
 
 	// Build system prompt for subagent
-	systemPrompt := `You are a subagent. Complete the given task independently and report the result.
-You have access to tools - use them as needed to complete your task.
-After completing the task, provide a clear summary of what was done.`
+	systemPrompt := buildSubagentSystemPrompt(sm.workspace)
 
 	messages := []providers.Message{
 		{
@@ -288,12 +330,13 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	if t.manager == nil {
 		return ErrorResult("Subagent manager not configured").WithError(fmt.Errorf("manager is nil"))
 	}
+	sm := t.manager
 
 	// Build messages for subagent
 	messages := []providers.Message{
 		{
 			Role:    "system",
-			Content: "You are a subagent. Complete the given task independently and provide a clear, concise result.",
+			Content: buildSubagentSystemPrompt(sm.workspace),
 		},
 		{
 			Role:    "user",
@@ -302,7 +345,6 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	// Use RunToolLoop to execute with tools (same as async SpawnTool)
-	sm := t.manager
 	sm.mu.RLock()
 	tools := sm.tools
 	maxIter := sm.maxIterations

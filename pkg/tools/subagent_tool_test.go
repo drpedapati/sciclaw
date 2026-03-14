@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,29 @@ func (p *capturingLLMProvider) SupportsTools() bool {
 }
 
 func (p *capturingLLMProvider) GetContextWindow() int {
+	return 4096
+}
+
+type promptCapturingLLMProvider struct {
+	lastMessages []providers.Message
+}
+
+func (p *promptCapturingLLMProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, options map[string]interface{}) (*providers.LLMResponse, error) {
+	p.lastMessages = append([]providers.Message(nil), messages...)
+	return &providers.LLMResponse{
+		Content: "ok",
+	}, nil
+}
+
+func (p *promptCapturingLLMProvider) GetDefaultModel() string {
+	return "test-model"
+}
+
+func (p *promptCapturingLLMProvider) SupportsTools() bool {
+	return true
+}
+
+func (p *promptCapturingLLMProvider) GetContextWindow() int {
 	return 4096
 }
 
@@ -202,6 +227,66 @@ func TestSubagentTool_Execute_Success(t *testing.T) {
 	}
 	if !strings.Contains(result.ForLLM, "Task completed:") {
 		t.Errorf("ForLLM should contain task result, got: %s", result.ForLLM)
+	}
+}
+
+func TestSubagentTool_Execute_UsesWorkspaceBootstrapPrompt(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "TOOLS.md"), []byte("# Tools\nUse pubmed-cli directly.\n"), 0644); err != nil {
+		t.Fatalf("write TOOLS.md: %v", err)
+	}
+	provider := &promptCapturingLLMProvider{}
+	manager := NewSubagentManager(provider, "test-model", workspace, nil)
+	tool := NewSubagentTool(manager)
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"task": "Verify PMID 24001701",
+	})
+	if result == nil || result.IsError {
+		t.Fatalf("expected successful result, got %#v", result)
+	}
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("expected provider to receive messages")
+	}
+	systemPrompt := provider.lastMessages[0].Content
+	if !strings.Contains(systemPrompt, "PubMed-first verification") {
+		t.Fatalf("expected subagent system prompt to include PubMed-first rule, got: %s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "## TOOLS.md") {
+		t.Fatalf("expected subagent system prompt to include TOOLS.md bootstrap, got: %s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Use pubmed-cli directly.") {
+		t.Fatalf("expected subagent system prompt to include workspace TOOLS content, got: %s", systemPrompt)
+	}
+}
+
+func TestSubagentTool_Execute_FallsBackToGlobalBootstrapPrompt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	globalWorkspace := filepath.Join(home, "sciclaw")
+	if err := os.MkdirAll(globalWorkspace, 0755); err != nil {
+		t.Fatalf("mkdir global workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalWorkspace, "TOOLS.md"), []byte("# Global Tools\nUse pubmed from exec.\n"), 0644); err != nil {
+		t.Fatalf("write global TOOLS.md: %v", err)
+	}
+
+	provider := &promptCapturingLLMProvider{}
+	manager := NewSubagentManager(provider, "test-model", t.TempDir(), nil)
+	tool := NewSubagentTool(manager)
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"task": "Check a paper",
+	})
+	if result == nil || result.IsError {
+		t.Fatalf("expected successful result, got %#v", result)
+	}
+	systemPrompt := provider.lastMessages[0].Content
+	if !strings.Contains(systemPrompt, "## TOOLS.md") {
+		t.Fatalf("expected fallback TOOLS.md in prompt, got: %s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Use pubmed from exec.") {
+		t.Fatalf("expected fallback TOOLS.md content in prompt, got: %s", systemPrompt)
 	}
 }
 
