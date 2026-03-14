@@ -41,6 +41,8 @@ runcmd:
         QUARTO_SHA256="$QUARTO_SHA256_AMD64"
         IRL_SHA256="$IRL_SHA256_AMD64"
         DOCX_REVIEW_SHA256="$DOCX_REVIEW_SHA256_AMD64"
+        XLSX_REVIEW_SHA256="$XLSX_REVIEW_SHA256_AMD64"
+        PPTX_REVIEW_SHA256="$PPTX_REVIEW_SHA256_AMD64"
         PUBMED_CLI_SHA256="$PUBMED_CLI_SHA256_AMD64"
         SCICLAW_SHA256="$SCICLAW_SHA256_AMD64"
         ;;
@@ -51,6 +53,8 @@ runcmd:
         QUARTO_SHA256="$QUARTO_SHA256_ARM64"
         IRL_SHA256="$IRL_SHA256_ARM64"
         DOCX_REVIEW_SHA256="$DOCX_REVIEW_SHA256_ARM64"
+        XLSX_REVIEW_SHA256="$XLSX_REVIEW_SHA256_ARM64"
+        PPTX_REVIEW_SHA256="$PPTX_REVIEW_SHA256_ARM64"
         PUBMED_CLI_SHA256="$PUBMED_CLI_SHA256_ARM64"
         SCICLAW_SHA256="$SCICLAW_SHA256_ARM64"
         ;;
@@ -91,6 +95,18 @@ runcmd:
       "https://github.com/drpedapati/docx-review/releases/download/v${DOCX_REVIEW_VERSION}/docx-review-linux-${ARCH}"
     printf '%s  %s\n' "$DOCX_REVIEW_SHA256" "/tmp/docx-review" | sha256sum -c -
     install -m 0755 /tmp/docx-review /usr/local/bin/docx-review
+
+    # xlsx-review
+    curl -fsSL -o /tmp/xlsx-review \
+      "https://github.com/drpedapati/xlsx-review/releases/download/v${XLSX_REVIEW_VERSION}/xlsx-review-linux-${ARCH}"
+    printf '%s  %s\n' "$XLSX_REVIEW_SHA256" "/tmp/xlsx-review" | sha256sum -c -
+    install -m 0755 /tmp/xlsx-review /usr/local/bin/xlsx-review
+
+    # pptx-review
+    curl -fsSL -o /tmp/pptx-review \
+      "https://github.com/drpedapati/pptx-review/releases/download/v${PPTX_REVIEW_VERSION}/pptx-review-linux-${ARCH}"
+    printf '%s  %s\n' "$PPTX_REVIEW_SHA256" "/tmp/pptx-review" | sha256sum -c -
+    install -m 0755 /tmp/pptx-review /usr/local/bin/pptx-review
 
     # pubmed-cli
     curl -fsSL -o /tmp/pubmed \
@@ -135,7 +151,8 @@ if os.path.exists(cfg_path):
         json.dump(cfg, f, indent=2)
 PY'
 
-    rm -rf /tmp/uv* /tmp/quarto.tgz /tmp/irl /tmp/docx-review /tmp/pubmed \
+    rm -rf /tmp/uv* /tmp/quarto.tgz /tmp/irl /tmp/docx-review /tmp/xlsx-review \
+           /tmp/pptx-review /tmp/pubmed \
            /tmp/sciclaw /tmp/sciclaw-source.tgz "/tmp/sciclaw-${SCICLAW_VERSION}"
 
     echo "✓ sciClaw environment ready"

@@ -136,8 +136,11 @@ render_cloud_init() {
   }
 
   # If the host binary provides its version, override toolchain.env's pinned
-  # version so the VM always matches the host. Clear SHA checksums so
-  # cloud-init skips verification (the host already trusts this release).
+  # sciClaw version so the VM always matches the host. Companion review-tool
+  # versions still come from deploy/toolchain.env and should be kept current
+  # there so VM/bootstrap installs stay aligned with the Homebrew path.
+  # Clear sciClaw SHA checksums so cloud-init skips verification (the host
+  # already trusts this release).
   if [ -n "${SCICLAW_HOST_VERSION:-}" ]; then
     local hv="${SCICLAW_HOST_VERSION#v}"   # strip leading v
     sed -i.bak \

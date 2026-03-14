@@ -86,7 +86,7 @@ cd sciclaw
 make deps && make install
 ```
 
-Homebrew pulls companion tools automatically (ImageMagick, IRL, ripgrep, docx-review, pubmed-cli). For binary/source installs, run `sciclaw doctor` for hints.
+Homebrew pulls companion tools automatically (ImageMagick, IRL, ripgrep, docx-review, xlsx-review, pptx-review, pubmed-cli). For binary/source installs, run `sciclaw doctor` for hints. VM/bootstrap provisioning uses `deploy/toolchain.env` and installs the same core review companions.
 
 After any install method, initialize once:
 ```bash
@@ -331,7 +331,7 @@ docker compose run --rm sciclaw-agent -m "Hello"    # one-shot
 ```
 
 The Docker image is a full runtime and includes:
-`python3`, `uv`, `ripgrep`, `imagemagick`, `pandoc`, `quarto`, `docx-review`, `pubmed-cli`, and `irl`.
+`python3`, `uv`, `ripgrep`, `imagemagick`, `pandoc`, `quarto`, `docx-review`, `xlsx-review`, `pptx-review`, `pubmed-cli`, and `irl`.
 
 ## Troubleshooting
 

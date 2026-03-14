@@ -298,7 +298,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 	}
 
 	// Key external CLIs
-	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-docx-review"))
+	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "install via Homebrew: brew tap drpedapati/tap && brew install sciclaw-docx-review (or reprovision the VM/bootstrap environment to pick up bundled companion tools)"))
 	quartoHint := "brew install --cask quarto"
 	if runtime.GOOS == "linux" {
 		quartoHint = "brew tap drpedapati/tap && brew install sciclaw-quarto"
@@ -306,7 +306,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 	add(checkBinaryWithHint("quarto", []string{"--version"}, 3*time.Second, quartoHint))
 	// PubMed CLI is usually `pubmed` from `pubmed-cli` formula; accept either name.
 	pubmed := checkBinary("pubmed", []string{"--help"}, 3*time.Second)
-	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-pubmed-cli")
+	pubmedcli := checkBinaryWithHint("pubmed-cli", []string{"--help"}, 3*time.Second, "install via Homebrew: brew tap drpedapati/tap && brew install sciclaw-pubmed-cli (or reprovision the VM/bootstrap environment to pick up bundled companion tools)")
 	if pubmedcli.Status == doctorOK {
 		add(pubmedcli)
 	} else if pubmed.Status == doctorOK {
@@ -329,8 +329,8 @@ func runDoctor(opts doctorOptions) doctorReport {
 	add(checkBinaryWithHint("irl", []string{"--version"}, 3*time.Second, "brew install irl"))
 	add(checkBinaryWithHint("pandoc", []string{"-v"}, 3*time.Second, "brew install pandoc"))
 	add(checkBinaryWithHint("magick", []string{"-version"}, 3*time.Second, "brew install imagemagick"))
-	add(checkBinaryWithHint("xlsx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-xlsx-review"))
-	add(checkBinaryWithHint("pptx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-pptx-review"))
+	add(checkBinaryWithHint("xlsx-review", []string{"--version"}, 3*time.Second, "install via Homebrew: brew tap drpedapati/tap && brew install sciclaw-xlsx-review (or reprovision the VM/bootstrap environment to pick up bundled companion tools)"))
+	add(checkBinaryWithHint("pptx-review", []string{"--version"}, 3*time.Second, "install via Homebrew: brew tap drpedapati/tap && brew install sciclaw-pptx-review (or reprovision the VM/bootstrap environment to pick up bundled companion tools)"))
 	add(checkOptionalBinaryWithHint("pdf-form-filler", []string{"--help"}, 3*time.Second, "brew install pdf-form-filler"))
 	add(checkPandocNIHTemplate())
 	add(checkBinaryWithHint("rg", []string{"--version"}, 3*time.Second, "brew install ripgrep"))
