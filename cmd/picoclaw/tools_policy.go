@@ -8,6 +8,14 @@ import (
 )
 
 const toolsCLIFirstPolicyHeading = "## Critical CLI-First Rules"
+const toolsCLIFirstPolicyAntiPatternHeading = "### Anti-Pattern (Avoid)"
+
+var toolsCLIFirstPolicyRequiredMarkers = []string{
+	"docx_review_read",
+	"xlsx_review_read",
+	"pptx_review_read",
+	"pdf_form_inspect",
+}
 
 const toolsCLIFirstPolicySection = `
 ## Critical CLI-First Rules
@@ -53,20 +61,74 @@ func ensureToolsCLIFirstPolicy(workspace string) error {
 	if err != nil {
 		return fmt.Errorf("read TOOLS.md: %w", err)
 	}
-	content := string(contentBytes)
-	if strings.Contains(content, toolsCLIFirstPolicyHeading) {
+	updated, changed := upsertToolsCLIFirstPolicy(string(contentBytes))
+	if !changed {
 		return nil
 	}
-
-	addition := strings.TrimSpace(toolsCLIFirstPolicySection)
-	updated := strings.TrimRight(content, "\n")
-	if updated != "" {
-		updated += "\n\n"
-	}
-	updated += addition + "\n"
 
 	if err := os.WriteFile(toolsPath, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("write TOOLS.md: %w", err)
 	}
 	return nil
+}
+
+func toolsCLIFirstPolicyCurrent(content string) bool {
+	if !strings.Contains(content, toolsCLIFirstPolicyHeading) {
+		return false
+	}
+	for _, marker := range toolsCLIFirstPolicyRequiredMarkers {
+		if !strings.Contains(content, marker) {
+			return false
+		}
+	}
+	return true
+}
+
+func upsertToolsCLIFirstPolicy(content string) (string, bool) {
+	addition := strings.TrimSpace(toolsCLIFirstPolicySection)
+	if toolsCLIFirstPolicyCurrent(content) {
+		return content, false
+	}
+
+	start := strings.Index(content, toolsCLIFirstPolicyHeading)
+	if start < 0 {
+		updated := strings.TrimRight(content, "\n")
+		if updated != "" {
+			updated += "\n\n"
+		}
+		updated += addition + "\n"
+		return updated, true
+	}
+
+	end := findToolsCLIFirstPolicySectionEnd(content, start)
+	prefix := strings.TrimRight(content[:start], "\n")
+	suffix := strings.TrimLeft(content[end:], "\n")
+	updated := prefix
+	if updated != "" {
+		updated += "\n\n"
+	}
+	updated += addition
+	if suffix != "" {
+		updated += "\n\n" + suffix
+	} else {
+		updated += "\n"
+	}
+	return updated, true
+}
+
+func findToolsCLIFirstPolicySectionEnd(content string, start int) int {
+	if start < 0 || start >= len(content) {
+		return len(content)
+	}
+	searchFrom := start + len(toolsCLIFirstPolicyHeading)
+	if next := strings.Index(content[searchFrom:], "\n## "); next >= 0 {
+		return searchFrom + next
+	}
+	if antiPattern := strings.Index(content[searchFrom:], toolsCLIFirstPolicyAntiPatternHeading); antiPattern >= 0 {
+		segmentStart := searchFrom + antiPattern
+		if closingFence := strings.Index(content[segmentStart:], "\n```"); closingFence >= 0 {
+			return segmentStart + closingFence + len("\n```")
+		}
+	}
+	return len(content)
 }

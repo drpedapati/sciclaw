@@ -88,7 +88,7 @@ func doctorCmd() {
 func doctorHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nDoctor:")
-	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, service health, and key external tools (docx-review, quarto, ImageMagick, irl, pandoc, PubMed CLI, optional pdf-form-filler).\n", commandName)
+	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, service health, and key external tools (docx-review, xlsx-review, pptx-review, quarto, ImageMagick, irl, pandoc, PubMed CLI, optional pdf-form-filler).\n", commandName)
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --json        Machine-readable output")
@@ -329,6 +329,8 @@ func runDoctor(opts doctorOptions) doctorReport {
 	add(checkBinaryWithHint("irl", []string{"--version"}, 3*time.Second, "brew install irl"))
 	add(checkBinaryWithHint("pandoc", []string{"-v"}, 3*time.Second, "brew install pandoc"))
 	add(checkBinaryWithHint("magick", []string{"-version"}, 3*time.Second, "brew install imagemagick"))
+	add(checkBinaryWithHint("xlsx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-xlsx-review"))
+	add(checkBinaryWithHint("pptx-review", []string{"--version"}, 3*time.Second, "brew tap drpedapati/tap && brew install sciclaw-pptx-review"))
 	add(checkOptionalBinaryWithHint("pdf-form-filler", []string{"--help"}, 3*time.Second, "brew install pdf-form-filler"))
 	add(checkPandocNIHTemplate())
 	add(checkBinaryWithHint("rg", []string{"--version"}, 3*time.Second, "brew install ripgrep"))
@@ -1161,8 +1163,24 @@ func checkToolsPolicy(workspace string, opts doctorOptions) doctorCheck {
 		}
 	}
 
-	if strings.Contains(string(content), toolsCLIFirstPolicyHeading) {
-		return doctorCheck{Name: "tools.policy", Status: doctorOK, Message: "CLI-first policy present", Data: map[string]string{"path": toolsPath}}
+	contentText := string(content)
+	if toolsCLIFirstPolicyCurrent(contentText) {
+		return doctorCheck{Name: "tools.policy", Status: doctorOK, Message: "CLI-first policy current", Data: map[string]string{"path": toolsPath}}
+	}
+
+	if strings.Contains(contentText, toolsCLIFirstPolicyHeading) {
+		data := map[string]string{
+			"path": toolsPath,
+			"hint": fmt.Sprintf("run: %s doctor --fix", invokedCLIName()),
+		}
+		if opts.Fix {
+			if err := ensureToolsCLIFirstPolicy(workspace); err != nil {
+				data["fix_error"] = err.Error()
+			} else {
+				return doctorCheck{Name: "tools.policy", Status: doctorOK, Message: "CLI-first policy refreshed", Data: map[string]string{"path": toolsPath}}
+			}
+		}
+		return doctorCheck{Name: "tools.policy", Status: doctorWarn, Message: "CLI-first policy stale", Data: data}
 	}
 
 	data := map[string]string{

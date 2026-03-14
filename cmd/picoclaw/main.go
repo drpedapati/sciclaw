@@ -641,9 +641,9 @@ func onboard() {
 	fmt.Printf("  %d. Start gateway: %s gateway\n", step, invokedCLIName())
 	fmt.Println("\nCompanion tools:")
 	if runtime.GOOS == "linux" {
-		fmt.Println("  If you installed via Homebrew, Quarto, ImageMagick, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
+		fmt.Println("  If you installed via Homebrew, Quarto, ImageMagick, IRL, ripgrep, docx-review, xlsx-review, pptx-review, and pubmed-cli are installed automatically.")
 	} else {
-		fmt.Println("  If you installed via Homebrew, ImageMagick, IRL, ripgrep, docx-review, and pubmed-cli are installed automatically.")
+		fmt.Println("  If you installed via Homebrew, ImageMagick, IRL, ripgrep, docx-review, xlsx-review, pptx-review, and pubmed-cli are installed automatically.")
 		fmt.Println("  Install Quarto with: brew install --cask quarto")
 	}
 	fmt.Println("  Optional: brew install pdf-form-filler  # inspect/schema/fill AcroForm PDFs")

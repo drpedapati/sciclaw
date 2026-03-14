@@ -63,6 +63,12 @@ func TestTemplateContentBranding(t *testing.T) {
 	if !strings.Contains(byPath["TOOLS.md"], "Critical CLI-First Rules") {
 		t.Fatalf("TOOLS.md missing CLI-first guidance")
 	}
+	if !strings.Contains(byPath["TOOLS.md"], "xlsx_review_read") {
+		t.Fatalf("TOOLS.md missing xlsx typed-tool guidance")
+	}
+	if !strings.Contains(byPath["TOOLS.md"], "pptx_review_read") {
+		t.Fatalf("TOOLS.md missing pptx typed-tool guidance")
+	}
 	if !strings.Contains(byPath["AGENTS.md"], "`docx-review`") {
 		t.Fatalf("AGENTS.md missing docx-review baseline entry")
 	}
