@@ -25,6 +25,11 @@ type ClaudeAgentProvider struct {
 	tokenSource func() (string, error)
 }
 
+type bridgeThinkingConfig struct {
+	Type         string `json:"type,omitempty"`
+	BudgetTokens int    `json:"budgetTokens,omitempty"`
+}
+
 func NewClaudeAgentProvider(workspace, oauthToken string) *ClaudeAgentProvider {
 	return &ClaudeAgentProvider{
 		command:    resolveClaudeAgentCommand(),
@@ -103,16 +108,7 @@ func (p *ClaudeAgentProvider) Chat(ctx context.Context, messages []Message, tool
 		)
 	}
 
-	req := claudeAgentBridgeRequest{
-		OAuthToken: tok,
-		Model:      model,
-		Workspace:  expandedWorkspaceOrDefault(p.workspace),
-		Messages:   messages,
-		Tools:      tools,
-	}
-	if effort, ok := options["reasoning_effort"].(string); ok && effort != "" {
-		req.Effort = effort
-	}
+	req := buildClaudeAgentBridgeRequest(messages, tools, model, options, p.workspace, tok)
 
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -172,25 +168,28 @@ func wrapClaudeAgentBridgeError(msg string) error {
 }
 
 type claudeAgentBridgeRequest struct {
-	OAuthToken string           `json:"oauth_token,omitempty"`
-	Model      string           `json:"model,omitempty"`
-	Workspace  string           `json:"workspace,omitempty"`
-	Messages   []Message        `json:"messages"`
-	Tools      []ToolDefinition `json:"tools,omitempty"`
-	Effort     string           `json:"effort,omitempty"`
+	OAuthToken            string                `json:"oauth_token,omitempty"`
+	Model                 string                `json:"model,omitempty"`
+	Workspace             string                `json:"workspace,omitempty"`
+	Messages              []Message             `json:"messages"`
+	Tools                 []ToolDefinition      `json:"tools,omitempty"`
+	Effort                string                `json:"effort,omitempty"`
+	Thinking              *bridgeThinkingConfig `json:"thinking,omitempty"`
+	PersistSession        bool                  `json:"persist_session"`
+	AdditionalDirectories []string              `json:"additional_directories,omitempty"`
 }
 
 type claudeAgentBridgeResponse struct {
-	Type         string         `json:"type"`
-	Subtype      string         `json:"subtype"`
-	IsError      bool           `json:"is_error"`
-	Error        string         `json:"error"`
-	Result       string         `json:"result"`
-	Content      string         `json:"content"`
-	ToolCalls    []ToolCall     `json:"tool_calls"`
-	FinishReason string         `json:"finish_reason"`
-	SessionID    string         `json:"session_id"`
-	Usage        *bridgeUsage   `json:"usage"`
+	Type         string       `json:"type"`
+	Subtype      string       `json:"subtype"`
+	IsError      bool         `json:"is_error"`
+	Error        string       `json:"error"`
+	Result       string       `json:"result"`
+	Content      string       `json:"content"`
+	ToolCalls    []ToolCall   `json:"tool_calls"`
+	FinishReason string       `json:"finish_reason"`
+	SessionID    string       `json:"session_id"`
+	Usage        *bridgeUsage `json:"usage"`
 }
 
 type bridgeUsage struct {
@@ -230,5 +229,158 @@ func (r *claudeAgentBridgeResponse) toLLMResponse() *LLMResponse {
 			ContentSource:  "claude_agent_bridge",
 			ToolCallSource: "claude_agent_bridge",
 		},
+	}
+}
+
+func buildClaudeAgentBridgeRequest(messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, workspace, oauthToken string) claudeAgentBridgeRequest {
+	req := claudeAgentBridgeRequest{
+		OAuthToken:     oauthToken,
+		Model:          model,
+		Workspace:      expandedWorkspaceOrDefault(workspace),
+		Messages:       messages,
+		Tools:          tools,
+		PersistSession: false,
+	}
+
+	if effort, ok := getStringOption(options, "reasoning_effort"); ok && effort != "" {
+		req.Effort = effort
+	}
+	if thinking := buildClaudeAgentBridgeThinking(options, req.Effort); thinking != nil {
+		req.Thinking = thinking
+	}
+	if persist, ok := getBoolOption(options, "persist_session", "persistence"); ok {
+		req.PersistSession = persist
+	}
+	if dirs := getStringSliceOption(options, "additional_directories", "additionalDirectories"); len(dirs) > 0 {
+		req.AdditionalDirectories = expandProviderHomePaths(dirs)
+	}
+
+	return req
+}
+
+func buildClaudeAgentBridgeThinking(options map[string]interface{}, effort string) *bridgeThinkingConfig {
+	if options == nil {
+		if effort != "" {
+			return &bridgeThinkingConfig{Type: "adaptive"}
+		}
+		return nil
+	}
+	if raw, ok := options["thinking"]; ok {
+		switch v := raw.(type) {
+		case string:
+			return normalizeBridgeThinkingConfig(v, 0)
+		case map[string]interface{}:
+			kind, _ := v["type"].(string)
+			budget := intOption(v["budgetTokens"])
+			if budget == 0 {
+				budget = intOption(v["budget_tokens"])
+			}
+			return normalizeBridgeThinkingConfig(kind, budget)
+		case map[string]string:
+			return normalizeBridgeThinkingConfig(v["type"], 0)
+		}
+	}
+	if effort != "" {
+		return &bridgeThinkingConfig{Type: "adaptive"}
+	}
+	return nil
+}
+
+func normalizeBridgeThinkingConfig(kind string, budget int) *bridgeThinkingConfig {
+	switch strings.TrimSpace(kind) {
+	case "adaptive":
+		return &bridgeThinkingConfig{Type: "adaptive"}
+	case "enabled":
+		cfg := &bridgeThinkingConfig{Type: "enabled"}
+		if budget > 0 {
+			cfg.BudgetTokens = budget
+		}
+		return cfg
+	case "disabled":
+		return &bridgeThinkingConfig{Type: "disabled"}
+	default:
+		return nil
+	}
+}
+
+func getStringOption(options map[string]interface{}, key string) (string, bool) {
+	if options == nil {
+		return "", false
+	}
+	raw, ok := options[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := raw.(string)
+	return strings.TrimSpace(s), ok
+}
+
+func getBoolOption(options map[string]interface{}, keys ...string) (bool, bool) {
+	if options == nil {
+		return false, false
+	}
+	for _, key := range keys {
+		if raw, ok := options[key]; ok {
+			if v, ok := raw.(bool); ok {
+				return v, true
+			}
+		}
+	}
+	return false, false
+}
+
+func getStringSliceOption(options map[string]interface{}, keys ...string) []string {
+	if options == nil {
+		return nil
+	}
+	for _, key := range keys {
+		raw, ok := options[key]
+		if !ok {
+			continue
+		}
+		switch v := raw.(type) {
+		case []string:
+			return compactStrings(v)
+		case []interface{}:
+			out := make([]string, 0, len(v))
+			for _, item := range v {
+				if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+					out = append(out, strings.TrimSpace(s))
+				}
+			}
+			return out
+		}
+	}
+	return nil
+}
+
+func compactStrings(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, item := range in {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func expandProviderHomePaths(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, item := range in {
+		out = append(out, expandProviderHomePath(item))
+	}
+	return out
+}
+
+func intOption(raw interface{}) int {
+	switch v := raw.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
 	}
 }

@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -118,6 +119,98 @@ func TestClaudeAgentProvider_ChatBridgeError(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "fresh anthropic oauth token") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestClaudeAgentProvider_ChatRequestPassthrough(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	requestPath := filepath.Join(t.TempDir(), "request.json")
+	mockJSON := `{"type":"result","subtype":"success","is_error":false,"content":"OK","tool_calls":[],"finish_reason":"stop"}`
+	script := createMockClaudeAgentBridge(t, mockJSON, "", 0, requestPath)
+
+	p := NewClaudeAgentProvider("~/workspace", "sk-ant-oat-test")
+	p.command = script
+
+	_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Hello"}}, nil, "anthropic/claude-sonnet-4.6", map[string]interface{}{
+		"reasoning_effort":       "high",
+		"persist_session":        true,
+		"additional_directories": []string{"~/notes", "/tmp/shared"},
+		"max_tokens":             2048,
+		"temperature":            0.3,
+	})
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+
+	payload, err := os.ReadFile(requestPath)
+	if err != nil {
+		t.Fatalf("ReadFile(request) error = %v", err)
+	}
+	var req map[string]interface{}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		t.Fatalf("Unmarshal(request) error = %v", err)
+	}
+	if req["effort"] != "high" {
+		t.Fatalf("effort = %#v, want high", req["effort"])
+	}
+	thinking, ok := req["thinking"].(map[string]interface{})
+	if !ok || thinking["type"] != "adaptive" {
+		t.Fatalf("thinking = %#v, want adaptive", req["thinking"])
+	}
+	if req["persist_session"] != true {
+		t.Fatalf("persist_session = %#v, want true", req["persist_session"])
+	}
+	dirs, ok := req["additional_directories"].([]interface{})
+	if !ok || len(dirs) != 2 {
+		t.Fatalf("additional_directories = %#v, want 2 entries", req["additional_directories"])
+	}
+	if dirs[0] != filepath.Join(os.Getenv("HOME"), "notes") {
+		t.Fatalf("additional_directories[0] = %#v, want expanded home path", dirs[0])
+	}
+	if _, ok := req["max_tokens"]; ok {
+		t.Fatalf("request should not include unsupported max_tokens: %s", string(payload))
+	}
+	if _, ok := req["temperature"]; ok {
+		t.Fatalf("request should not include unsupported temperature: %s", string(payload))
+	}
+}
+
+func TestClaudeAgentProvider_ChatThinkingBudgetPassthrough(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	requestPath := filepath.Join(t.TempDir(), "request.json")
+	mockJSON := `{"type":"result","subtype":"success","is_error":false,"content":"OK","tool_calls":[],"finish_reason":"stop"}`
+	script := createMockClaudeAgentBridge(t, mockJSON, "", 0, requestPath)
+
+	p := NewClaudeAgentProvider("~/workspace", "sk-ant-oat-test")
+	p.command = script
+
+	_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Hello"}}, nil, "anthropic/claude-sonnet-4.6", map[string]interface{}{
+		"thinking": map[string]interface{}{
+			"type":         "enabled",
+			"budgetTokens": 2048,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+
+	payload, err := os.ReadFile(requestPath)
+	if err != nil {
+		t.Fatalf("ReadFile(request) error = %v", err)
+	}
+	var req map[string]interface{}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		t.Fatalf("Unmarshal(request) error = %v", err)
+	}
+	thinking, ok := req["thinking"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("thinking = %#v, want object", req["thinking"])
+	}
+	if thinking["type"] != "enabled" {
+		t.Fatalf("thinking.type = %#v, want enabled", thinking["type"])
+	}
+	if thinking["budgetTokens"] != float64(2048) {
+		t.Fatalf("thinking.budgetTokens = %#v, want 2048", thinking["budgetTokens"])
 	}
 }
 
