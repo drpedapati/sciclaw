@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -33,6 +34,29 @@ func (m *MockLLMProvider) SupportsTools() bool {
 }
 
 func (m *MockLLMProvider) GetContextWindow() int {
+	return 4096
+}
+
+type capturingLLMProvider struct {
+	lastOptions map[string]interface{}
+}
+
+func (p *capturingLLMProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, options map[string]interface{}) (*providers.LLMResponse, error) {
+	p.lastOptions = options
+	return &providers.LLMResponse{
+		Content: "ok",
+	}, nil
+}
+
+func (p *capturingLLMProvider) GetDefaultModel() string {
+	return "test-model"
+}
+
+func (p *capturingLLMProvider) SupportsTools() bool {
+	return true
+}
+
+func (p *capturingLLMProvider) GetContextWindow() int {
 	return 4096
 }
 
@@ -202,6 +226,61 @@ func TestSubagentTool_Execute_NoLabel(t *testing.T) {
 	// ForLLM should show (unnamed) for missing label
 	if !strings.Contains(result.ForLLM, "(unnamed)") {
 		t.Errorf("ForLLM should show '(unnamed)' for missing label, got: %s", result.ForLLM)
+	}
+}
+
+func TestSubagentTool_Execute_IncludesReasoningOptions(t *testing.T) {
+	provider := &capturingLLMProvider{}
+	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
+	tool := NewSubagentTool(manager)
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"task": "Use tools if needed.",
+	})
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.ForLLM)
+	}
+	if provider.lastOptions == nil {
+		t.Fatal("expected provider to receive options")
+	}
+	if got := provider.lastOptions["reasoning_effort"]; got != "high" {
+		t.Fatalf("reasoning_effort = %#v, want high", got)
+	}
+	if got := provider.lastOptions["thinking"]; got != "adaptive" {
+		t.Fatalf("thinking = %#v, want adaptive", got)
+	}
+}
+
+func TestSubagentManagerSpawn_IncludesReasoningOptions(t *testing.T) {
+	provider := &capturingLLMProvider{}
+	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
+
+	ctx := context.Background()
+	done := make(chan struct{})
+	_, err := manager.Spawn(ctx, "Use tools if needed.", "test", "discord", "room-1", func(_ context.Context, result *ToolResult) {
+		if result == nil || result.IsError {
+			t.Errorf("unexpected async result: %#v", result)
+		}
+		close(done)
+	})
+	if err != nil {
+		t.Fatalf("Spawn returned error: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for subagent task")
+	}
+
+	if provider.lastOptions == nil {
+		t.Fatal("expected provider to receive options")
+	}
+	if got := provider.lastOptions["reasoning_effort"]; got != "high" {
+		t.Fatalf("reasoning_effort = %#v, want high", got)
+	}
+	if got := provider.lastOptions["thinking"]; got != "adaptive" {
+		t.Fatalf("thinking = %#v, want adaptive", got)
 	}
 }
 

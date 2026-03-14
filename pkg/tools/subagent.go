@@ -10,6 +10,15 @@ import (
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
+func defaultSubagentLLMOptions() map[string]any {
+	return map[string]any{
+		"max_tokens":       4096,
+		"temperature":      0.7,
+		"reasoning_effort": "high",
+		"thinking":         "adaptive",
+	}
+}
+
 type SubagentTask struct {
 	ID            string
 	Task          string
@@ -149,10 +158,7 @@ After completing the task, provide a clear summary of what was done.`
 		Tools:              tools,
 		MaxIterations:      maxIter,
 		ToolResultMaxChars: toolResultMaxChars,
-		LLMOptions: map[string]any{
-			"max_tokens":  4096,
-			"temperature": 0.7,
-		},
+		LLMOptions:         defaultSubagentLLMOptions(),
 	}, messages, task.OriginChannel, task.OriginChatID)
 
 	sm.mu.Lock()
@@ -309,10 +315,7 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 		Tools:              tools,
 		MaxIterations:      maxIter,
 		ToolResultMaxChars: toolResultMaxChars,
-		LLMOptions: map[string]any{
-			"max_tokens":  4096,
-			"temperature": 0.7,
-		},
+		LLMOptions:         defaultSubagentLLMOptions(),
 	}, messages, t.originChannel, t.originChatID)
 
 	if err != nil {
