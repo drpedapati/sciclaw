@@ -31,7 +31,7 @@ const (
 )
 
 type ProgressMessenger interface {
-	SendOrEditProgress(ctx context.Context, channelName, chatID, messageID, content string) (string, error)
+	SendOrEditProgress(ctx context.Context, channelName, chatID, messageID string, msg bus.OutboundMessage) (string, error)
 }
 
 type handlerResolverFunc func(target LoopTarget) (JobRunner, error)
@@ -486,8 +486,10 @@ func (p *progressReporter) sendLocked(record JobRecord) {
 		return
 	}
 
-	content := formatProgressMessage(record)
-	messageID, err := p.manager.progress.SendOrEditProgress(p.ctx, record.Channel, record.ChatID, record.StatusMessageID, content)
+	message := formatProgressOutbound(record)
+	message.Channel = record.Channel
+	message.ChatID = record.ChatID
+	messageID, err := p.manager.progress.SendOrEditProgress(p.ctx, record.Channel, record.ChatID, record.StatusMessageID, message)
 	if err != nil {
 		logger.WarnCF("jobs", "Failed to send progress update", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
 		return
@@ -721,6 +723,72 @@ func formatProgressMessage(record JobRecord) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func formatProgressOutbound(record JobRecord) bus.OutboundMessage {
+	return bus.OutboundMessage{
+		Content: formatProgressMessage(record),
+		Embeds: []bus.OutboundEmbed{formatProgressEmbed(record)},
+	}
+}
+
+func formatProgressEmbed(record JobRecord) bus.OutboundEmbed {
+	embed := bus.OutboundEmbed{
+		Title:         fmt.Sprintf("sciClaw · %s", record.ShortID),
+		Description:   formatJobCardAsk(record),
+		Color:         jobStateColor(record.State),
+		TimestampUnix: record.UpdatedAt / 1000,
+	}
+
+	embed.Fields = append(embed.Fields,
+		bus.OutboundEmbedField{Name: "Status", Value: humanizePhase(record.Phase), Inline: true},
+		bus.OutboundEmbedField{Name: "Started", Value: formatDiscordRelativeTimestamp(record.StartedAt), Inline: true},
+	)
+
+	if detail := strings.TrimSpace(record.Detail); detail != "" && !strings.EqualFold(detail, humanizePhase(record.Phase)) {
+		embed.Fields = append(embed.Fields, bus.OutboundEmbedField{
+			Name:   "Detail",
+			Value:  utils.Truncate(detail, 240),
+			Inline: false,
+		})
+	}
+
+	switch record.State {
+	case JobStateQueued, JobStateRunning:
+		embed.Footer = fmt.Sprintf("status %s · cancel %s", record.ShortID, record.ShortID)
+	case JobStateDone:
+		embed.Footer = "Done. Full reply below."
+	case JobStateCancelled:
+		embed.Footer = "Cancelled."
+	case JobStateFailed, JobStateInterrupted:
+		if strings.TrimSpace(record.LastError) != "" {
+			embed.Fields = append(embed.Fields, bus.OutboundEmbedField{
+				Name:   "Last error",
+				Value:  utils.Truncate(strings.TrimSpace(record.LastError), 240),
+				Inline: false,
+			})
+		}
+		embed.Footer = strings.ToUpper(string(record.State[:1])) + string(record.State[1:]) + "."
+	}
+
+	return embed
+}
+
+func jobStateColor(state JobState) int {
+	switch state {
+	case JobStateQueued:
+		return 0x3B82F6
+	case JobStateRunning:
+		return 0xF59E0B
+	case JobStateDone:
+		return 0x10B981
+	case JobStateCancelled:
+		return 0x6B7280
+	case JobStateFailed, JobStateInterrupted:
+		return 0xEF4444
+	default:
+		return 0x64748B
+	}
 }
 
 func formatActiveJobStatus(record JobRecord, includeControlHint bool) string {

@@ -347,7 +347,7 @@ func (m *Manager) SendToChannel(ctx context.Context, channelName, chatID, conten
 	return channel.Send(ctx, msg)
 }
 
-func (m *Manager) SendOrEditProgress(ctx context.Context, channelName, chatID, messageID, content string) (string, error) {
+func (m *Manager) SendOrEditProgress(ctx context.Context, channelName, chatID, messageID string, msg bus.OutboundMessage) (string, error) {
 	m.mu.RLock()
 	channel, exists := m.channels[channelName]
 	m.mu.RUnlock()
@@ -356,25 +356,17 @@ func (m *Manager) SendOrEditProgress(ctx context.Context, channelName, chatID, m
 	}
 
 	if progressCh, ok := channel.(ProgressChannel); ok {
-		return progressCh.SendOrEditProgress(ctx, chatID, messageID, content)
+		return progressCh.SendOrEditProgress(ctx, chatID, messageID, msg)
 	}
 
 	if strings.TrimSpace(messageID) != "" {
-		if err := channel.Send(ctx, bus.OutboundMessage{
-			Channel: channelName,
-			ChatID:  chatID,
-			Content: content,
-		}); err != nil {
+		if err := channel.Send(ctx, msg); err != nil {
 			return "", err
 		}
 		return messageID, nil
 	}
 
-	if err := channel.Send(ctx, bus.OutboundMessage{
-		Channel: channelName,
-		ChatID:  chatID,
-		Content: content,
-	}); err != nil {
+	if err := channel.Send(ctx, msg); err != nil {
 		return "", err
 	}
 	return "", nil

@@ -19,10 +19,14 @@ type fakeProgressMessenger struct {
 	editFail bool
 }
 
-func (m *fakeProgressMessenger) SendOrEditProgress(_ context.Context, channelName, chatID, messageID, content string) (string, error) {
+func (m *fakeProgressMessenger) SendOrEditProgress(_ context.Context, channelName, chatID, messageID string, msg bus.OutboundMessage) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls = append(m.calls, fmt.Sprintf("%s|%s|%s", channelName, chatID, content))
+	title := ""
+	if len(msg.Embeds) > 0 {
+		title = msg.Embeds[0].Title
+	}
+	m.calls = append(m.calls, fmt.Sprintf("%s|%s|%s|%s", channelName, chatID, msg.Content, title))
 	if messageID != "" && m.editFail {
 		return "", fmt.Errorf("edit failed")
 	}

@@ -22,7 +22,7 @@ func newTestDiscordChannel() *DiscordChannel {
 		typingEvery: 10 * time.Millisecond,
 	}
 	ch.sendTypingFn = func(channelID string) error { return nil }
-	ch.sendMessageFn = func(channelID, content string) error { return nil }
+	ch.sendMessageFn = func(channelID string, msg bus.OutboundMessage) error { return nil }
 	ch.setRunning(true)
 	return ch
 }
@@ -138,7 +138,7 @@ func TestDiscordTypingAutoExpiresOnTimeout(t *testing.T) {
 		typingEvery: 5 * time.Millisecond,
 	}
 	ch.sendTypingFn = func(channelID string) error { return nil }
-	ch.sendMessageFn = func(channelID, content string) error { return nil }
+	ch.sendMessageFn = func(channelID string, msg bus.OutboundMessage) error { return nil }
 	ch.setRunning(true)
 
 	// Override the typing context to use a very short timeout for the test.
@@ -211,10 +211,10 @@ func TestSplitDiscordMessage_RespectsLimit(t *testing.T) {
 func TestDiscordSend_SendsChunkedMessages(t *testing.T) {
 	ch := newTestDiscordChannel()
 	var mu sync.Mutex
-	var sent []string
-	ch.sendMessageFn = func(channelID, content string) error {
+	var sent []bus.OutboundMessage
+	ch.sendMessageFn = func(channelID string, msg bus.OutboundMessage) error {
 		mu.Lock()
-		sent = append(sent, content)
+		sent = append(sent, msg)
 		mu.Unlock()
 		return nil
 	}
@@ -230,14 +230,24 @@ func TestDiscordSend_SendsChunkedMessages(t *testing.T) {
 
 	mu.Lock()
 	count := len(sent)
-	copySent := append([]string(nil), sent...)
+	copySent := append([]bus.OutboundMessage(nil), sent...)
 	mu.Unlock()
 
 	if count != 3 {
 		t.Fatalf("expected 3 sent chunks, got %d", count)
 	}
 	for i, chunk := range copySent {
-		if n := len([]rune(chunk)); n > discordMaxRunes {
+		if len(chunk.Embeds) != 0 {
+			t.Fatalf("unexpected embeds on chunk %d: %#v", i, chunk.Embeds)
+		}
+		if chunk.ChatID != "chan-3" {
+			t.Fatalf("chunk %d chat id = %q, want chan-3", i, chunk.ChatID)
+		}
+		if chunk.Channel != "discord" {
+			t.Fatalf("chunk %d channel = %q, want discord", i, chunk.Channel)
+		}
+		content := chunk.Content
+		if n := len([]rune(content)); n > discordMaxRunes {
 			t.Fatalf("chunk %d exceeds limit: %d", i, n)
 		}
 	}
@@ -245,20 +255,21 @@ func TestDiscordSend_SendsChunkedMessages(t *testing.T) {
 
 func TestDiscordSendOrEditProgressEditsExistingMessage(t *testing.T) {
 	ch := newTestDiscordChannel()
-	var edited []string
-	ch.editMessageFn = func(channelID, messageID, content string) error {
-		edited = append(edited, channelID+"|"+messageID+"|"+content)
+	var edited []bus.OutboundMessage
+	ch.editMessageFn = func(channelID, messageID string, msg bus.OutboundMessage) error {
+		edited = append(edited, msg)
 		return nil
 	}
+	progress := bus.OutboundMessage{Content: "Thinking", Embeds: []bus.OutboundEmbed{{Title: "sciClaw · J1"}}}
 
-	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "progress-123", "Thinking")
+	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "progress-123", progress)
 	if err != nil {
 		t.Fatalf("SendOrEditProgress: %v", err)
 	}
 	if id != "progress-123" {
 		t.Fatalf("message id = %q, want progress-123", id)
 	}
-	if len(edited) != 1 || !strings.Contains(edited[0], "Thinking") {
+	if len(edited) != 1 || edited[0].Content != "Thinking" || len(edited[0].Embeds) != 1 || edited[0].Embeds[0].Title != "sciClaw · J1" {
 		t.Fatalf("expected progress edit call, got %#v", edited)
 	}
 }
@@ -311,11 +322,17 @@ func TestDiscordProcessIncomingMessage_PublishesReplyMetadata(t *testing.T) {
 
 func TestDiscordSendOrEditProgressReturnsMessageIDForNewProgressMessage(t *testing.T) {
 	ch := newTestDiscordChannel()
-	ch.sendProgressMessageFn = func(channelID, content string) (string, error) {
+	ch.sendProgressMessageFn = func(channelID string, msg bus.OutboundMessage) (string, error) {
+		if msg.Content != "Thinking" {
+			t.Fatalf("content = %q, want Thinking", msg.Content)
+		}
+		if len(msg.Embeds) != 1 || msg.Embeds[0].Title != "sciClaw · J1" {
+			t.Fatalf("unexpected embeds: %#v", msg.Embeds)
+		}
 		return "progress-123", nil
 	}
 
-	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "", "Thinking")
+	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "", bus.OutboundMessage{Content: "Thinking", Embeds: []bus.OutboundEmbed{{Title: "sciClaw · J1"}}})
 	if err != nil {
 		t.Fatalf("SendOrEditProgress: %v", err)
 	}
@@ -326,19 +343,25 @@ func TestDiscordSendOrEditProgressReturnsMessageIDForNewProgressMessage(t *testi
 
 func TestDiscordSendOrEditProgressFallsBackToNewMessageOnEditFailure(t *testing.T) {
 	ch := newTestDiscordChannel()
-	ch.editMessageFn = func(channelID, messageID, content string) error {
+	ch.editMessageFn = func(channelID, messageID string, msg bus.OutboundMessage) error {
 		return os.ErrNotExist
 	}
 	ch.session = &discordgo.Session{}
 	ch.sendMessageFn = nil
 	called := 0
 	ch.session = &discordgo.Session{}
-	ch.sendMessageFn = func(channelID, content string) error {
+	ch.sendMessageFn = func(channelID string, msg bus.OutboundMessage) error {
+		if msg.Content != "Thinking" {
+			t.Fatalf("content = %q, want Thinking", msg.Content)
+		}
+		if len(msg.Embeds) != 1 || msg.Embeds[0].Title != "sciClaw · J1" {
+			t.Fatalf("unexpected embeds: %#v", msg.Embeds)
+		}
 		called++
 		return nil
 	}
 
-	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "progress-123", "Thinking")
+	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "progress-123", bus.OutboundMessage{Content: "Thinking", Embeds: []bus.OutboundEmbed{{Title: "sciClaw · J1"}}})
 	if err != nil {
 		t.Fatalf("SendOrEditProgress: %v", err)
 	}
@@ -371,9 +394,9 @@ func TestDiscordSend_WithAttachments_RoutesCaptionsAndRemainingText(t *testing.T
 		mu.Unlock()
 		return nil
 	}
-	ch.sendMessageFn = func(channelID, content string) error {
+	ch.sendMessageFn = func(channelID string, msg bus.OutboundMessage) error {
 		mu.Lock()
-		sentMessages = append(sentMessages, content)
+		sentMessages = append(sentMessages, msg.Content)
 		mu.Unlock()
 		return nil
 	}

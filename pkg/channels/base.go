@@ -23,7 +23,7 @@ type Channel interface {
 // single in-channel progress message in place.
 type ProgressChannel interface {
 	Channel
-	SendOrEditProgress(ctx context.Context, chatID, messageID, content string) (string, error)
+	SendOrEditProgress(ctx context.Context, chatID, messageID string, msg bus.OutboundMessage) (string, error)
 }
 
 type BaseChannel struct {

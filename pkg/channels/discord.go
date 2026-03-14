@@ -43,11 +43,11 @@ type DiscordChannel struct {
 	typingMu              sync.Mutex
 	typing                map[string]*typingState
 	typingEvery           time.Duration
-	sendMessageFn         func(channelID, content string) error
-	sendProgressMessageFn func(channelID, content string) (string, error)
+	sendMessageFn         func(channelID string, msg bus.OutboundMessage) error
+	sendProgressMessageFn func(channelID string, msg bus.OutboundMessage) (string, error)
 	sendFileFn            func(channelID, content string, attachment bus.OutboundAttachment) error
 	sendTypingFn          func(channelID string) error
-	editMessageFn         func(channelID, messageID, content string) error
+	editMessageFn         func(channelID, messageID string, msg bus.OutboundMessage) error
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -70,16 +70,16 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		ctx:         context.Background(),
 		typing:      make(map[string]*typingState),
 		typingEvery: typingInterval,
-		sendMessageFn: func(channelID, content string) error {
-			_, err := session.ChannelMessageSend(channelID, content)
+		sendMessageFn: func(channelID string, msg bus.OutboundMessage) error {
+			_, err := session.ChannelMessageSendComplex(channelID, discordMessageSend(msg))
 			return err
 		},
-		sendProgressMessageFn: func(channelID, content string) (string, error) {
-			msg, err := session.ChannelMessageSend(channelID, content)
+		sendProgressMessageFn: func(channelID string, msg bus.OutboundMessage) (string, error) {
+			sent, err := session.ChannelMessageSendComplex(channelID, discordMessageSend(msg))
 			if err != nil {
 				return "", err
 			}
-			return msg.ID, nil
+			return sent.ID, nil
 		},
 		sendFileFn: func(channelID, content string, attachment bus.OutboundAttachment) error {
 			return sendDiscordAttachment(session, channelID, content, attachment)
@@ -87,8 +87,8 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		sendTypingFn: func(channelID string) error {
 			return session.ChannelTyping(channelID)
 		},
-		editMessageFn: func(channelID, messageID, content string) error {
-			_, err := session.ChannelMessageEdit(channelID, messageID, content)
+		editMessageFn: func(channelID, messageID string, msg bus.OutboundMessage) error {
+			_, err := session.ChannelMessageEditComplex(discordMessageEdit(channelID, messageID, msg))
 			return err
 		},
 	}, nil
@@ -207,7 +207,7 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 			return
 		}
 		for _, chunk := range chunks {
-			if err := c.sendMessage(channelID, chunk); err != nil {
+			if err := c.sendMessage(channelID, bus.OutboundMessage{Channel: msg.Channel, ChatID: msg.ChatID, Content: chunk}); err != nil {
 				done <- err
 				return
 			}
@@ -226,7 +226,7 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 	}
 }
 
-func (c *DiscordChannel) SendOrEditProgress(ctx context.Context, chatID, messageID, content string) (string, error) {
+func (c *DiscordChannel) SendOrEditProgress(ctx context.Context, chatID, messageID string, msg bus.OutboundMessage) (string, error) {
 	channelID := strings.TrimSpace(chatID)
 	if channelID == "" {
 		return "", fmt.Errorf("channel ID is empty")
@@ -238,15 +238,15 @@ func (c *DiscordChannel) SendOrEditProgress(ctx context.Context, chatID, message
 	c.stopTyping(channelID)
 
 	if strings.TrimSpace(messageID) == "" {
-		id, err := c.sendProgressMessage(channelID, content)
+		id, err := c.sendProgressMessage(channelID, msg)
 		if err != nil {
 			return "", err
 		}
 		return id, nil
 	}
 
-	if err := c.editProgressMessage(channelID, messageID, content); err != nil {
-		id, sendErr := c.sendProgressMessage(channelID, content)
+	if err := c.editProgressMessage(channelID, messageID, msg); err != nil {
+		id, sendErr := c.sendProgressMessage(channelID, msg)
 		if sendErr != nil {
 			return "", fmt.Errorf("edit progress message: %w (fallback send failed: %v)", err, sendErr)
 		}
@@ -271,7 +271,7 @@ func (c *DiscordChannel) sendMessageWithAttachments(channelID string, chunks []s
 	}
 
 	for _, chunk := range remainingChunks {
-		if err := c.sendMessage(channelID, chunk); err != nil {
+		if err := c.sendMessage(channelID, bus.OutboundMessage{Channel: "discord", ChatID: channelID, Content: chunk}); err != nil {
 			return err
 		}
 	}
@@ -513,45 +513,45 @@ func (c *DiscordChannel) downloadAttachment(url, filename string) string {
 	})
 }
 
-func (c *DiscordChannel) sendMessage(channelID, content string) error {
+func (c *DiscordChannel) sendMessage(channelID string, msg bus.OutboundMessage) error {
 	if c.sendMessageFn != nil {
-		return c.sendMessageFn(channelID, content)
+		return c.sendMessageFn(channelID, msg)
 	}
 	if c.session == nil {
 		return fmt.Errorf("discord session is nil")
 	}
-	_, err := c.session.ChannelMessageSend(channelID, content)
+	_, err := c.session.ChannelMessageSendComplex(channelID, discordMessageSend(msg))
 	return err
 }
 
-func (c *DiscordChannel) sendProgressMessage(channelID, content string) (string, error) {
+func (c *DiscordChannel) sendProgressMessage(channelID string, msg bus.OutboundMessage) (string, error) {
 	if c.sendProgressMessageFn != nil {
-		return c.sendProgressMessageFn(channelID, content)
+		return c.sendProgressMessageFn(channelID, msg)
 	}
 	if c.session == nil {
 		return "", fmt.Errorf("discord session is nil")
 	}
 	if c.sendMessageFn != nil {
-		if err := c.sendMessageFn(channelID, content); err != nil {
+		if err := c.sendMessageFn(channelID, msg); err != nil {
 			return "", err
 		}
 		return "", nil
 	}
-	msg, err := c.session.ChannelMessageSend(channelID, content)
+	sent, err := c.session.ChannelMessageSendComplex(channelID, discordMessageSend(msg))
 	if err != nil {
 		return "", err
 	}
-	return msg.ID, nil
+	return sent.ID, nil
 }
 
-func (c *DiscordChannel) editProgressMessage(channelID, messageID, content string) error {
+func (c *DiscordChannel) editProgressMessage(channelID, messageID string, msg bus.OutboundMessage) error {
 	if c.editMessageFn != nil {
-		return c.editMessageFn(channelID, messageID, content)
+		return c.editMessageFn(channelID, messageID, msg)
 	}
 	if c.session == nil {
 		return fmt.Errorf("discord session is nil")
 	}
-	_, err := c.session.ChannelMessageEdit(channelID, messageID, content)
+	_, err := c.session.ChannelMessageEditComplex(discordMessageEdit(channelID, messageID, msg))
 	return err
 }
 
@@ -563,6 +563,62 @@ func (c *DiscordChannel) sendFile(channelID, content string, attachment bus.Outb
 		return fmt.Errorf("discord session is nil")
 	}
 	return sendDiscordAttachment(c.session, channelID, content, attachment)
+}
+
+func discordMessageSend(msg bus.OutboundMessage) *discordgo.MessageSend {
+	send := &discordgo.MessageSend{}
+	if len(msg.Embeds) == 0 {
+		send.Content = msg.Content
+	} else {
+		send.Content = ""
+	}
+	send.Embeds = discordEmbeds(msg.Embeds)
+	return send
+}
+
+func discordMessageEdit(channelID, messageID string, msg bus.OutboundMessage) *discordgo.MessageEdit {
+	content := msg.Content
+	if len(msg.Embeds) > 0 {
+		content = ""
+	}
+	embeds := discordEmbeds(msg.Embeds)
+	return &discordgo.MessageEdit{
+		ID:      messageID,
+		Channel: channelID,
+		Content: &content,
+		Embeds:  &embeds,
+	}
+}
+
+func discordEmbeds(embeds []bus.OutboundEmbed) []*discordgo.MessageEmbed {
+	if len(embeds) == 0 {
+		return nil
+	}
+	out := make([]*discordgo.MessageEmbed, 0, len(embeds))
+	for _, embed := range embeds {
+		fields := make([]*discordgo.MessageEmbedField, 0, len(embed.Fields))
+		for _, field := range embed.Fields {
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name:   field.Name,
+				Value:  field.Value,
+				Inline: field.Inline,
+			})
+		}
+		msgEmbed := &discordgo.MessageEmbed{
+			Title:       embed.Title,
+			Description: embed.Description,
+			Color:       embed.Color,
+			Fields:      fields,
+		}
+		if strings.TrimSpace(embed.Footer) != "" {
+			msgEmbed.Footer = &discordgo.MessageEmbedFooter{Text: embed.Footer}
+		}
+		if embed.TimestampUnix > 0 {
+			msgEmbed.Timestamp = time.Unix(embed.TimestampUnix, 0).UTC().Format(time.RFC3339)
+		}
+		out = append(out, msgEmbed)
+	}
+	return out
 }
 
 func (c *DiscordChannel) sendTyping(channelID string) error {
