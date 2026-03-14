@@ -20,7 +20,8 @@ var toolsCLIFirstPolicyRequiredMarkers = []string{
 const toolsCLIFirstPolicySection = `
 ## Critical CLI-First Rules
 
-- For PubMed literature tasks, use the installed ` + "`pubmed`/`pubmed-cli`" + ` directly.
+- For PubMed literature tasks, prefer ` + "`pubmed_search`" + ` and ` + "`pubmed_fetch`" + ` first.
+- Use the installed ` + "`pubmed`/`pubmed-cli`" + ` directly only for advanced flags or workflows not covered by the typed tools.
 - Do not scrape ` + "`pubmed.ncbi.nlm.nih.gov`" + ` with ` + "`web_fetch`" + ` when ` + "`pubmed`" + ` CLI is available.
 - Do not wrap CLI tools in Python subprocess calls when direct CLI calls are sufficient.
 - For new Word documents, write Markdown and convert with ` + "`pandoc ... -o file.docx`" + `.
@@ -41,6 +42,10 @@ const toolsCLIFirstPolicySection = `
 ` + "```bash" + `
 pubmed search "schizophrenia treatment" --json --limit 20
 pubmed fetch 41705278 41704932 41704822 --json
+
+# Typed tools are preferred when available
+pubmed_search(query="schizophrenia treatment", limit=20)
+pubmed_fetch(pmids=["41705278","41704932","41704822"])
 ` + "```" + `
 
 ### Anti-Pattern (Avoid)

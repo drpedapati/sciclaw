@@ -98,6 +98,12 @@ func TestNewAgentLoopWithExternalReadOnlyProfileRestrictsTools(t *testing.T) {
 	if _, ok := al.tools.Get("web_fetch"); !ok {
 		t.Fatal("expected web_fetch tool")
 	}
+	if _, ok := al.tools.Get("pubmed_search"); !ok {
+		t.Fatal("expected pubmed_search tool")
+	}
+	if _, ok := al.tools.Get("pubmed_fetch"); !ok {
+		t.Fatal("expected pubmed_fetch tool")
+	}
 	for _, blocked := range []string{"exec", "message", "read_file", "write_file", "spawn", "subagent"} {
 		if _, ok := al.tools.Get(blocked); ok {
 			t.Fatalf("did not expect %s tool in external readonly profile", blocked)
@@ -153,11 +159,11 @@ func TestExternalReadOnlyRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
 	if !strings.Contains(systemPrompt, "## Runtime Constraints") {
 		t.Fatalf("expected runtime constraints in system prompt, got: %s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "Only `web_search` and `web_fetch` are available.") {
+	if !strings.Contains(systemPrompt, "`pubmed_search`") || !strings.Contains(systemPrompt, "`pubmed_fetch`") {
 		t.Fatalf("expected external readonly tool list in system prompt, got: %s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "`exec`, the PubMed CLI") {
-		t.Fatalf("expected exec/pubmed unavailability note in system prompt, got: %s", systemPrompt)
+	if !strings.Contains(systemPrompt, "`exec`, file mutation, and outbound message tools are unavailable") {
+		t.Fatalf("expected exec/file/outbound unavailability note in system prompt, got: %s", systemPrompt)
 	}
 }
 

@@ -252,6 +252,9 @@ func TestSubagentTool_Execute_UsesWorkspaceBootstrapPrompt(t *testing.T) {
 	if !strings.Contains(systemPrompt, "PubMed-first verification") {
 		t.Fatalf("expected subagent system prompt to include PubMed-first rule, got: %s", systemPrompt)
 	}
+	if !strings.Contains(systemPrompt, "`pubmed_search`") || !strings.Contains(systemPrompt, "`pubmed_fetch`") {
+		t.Fatalf("expected subagent system prompt to include typed PubMed tools, got: %s", systemPrompt)
+	}
 	if !strings.Contains(systemPrompt, "## TOOLS.md") {
 		t.Fatalf("expected subagent system prompt to include TOOLS.md bootstrap, got: %s", systemPrompt)
 	}

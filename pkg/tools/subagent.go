@@ -31,7 +31,7 @@ Use tools when they materially improve correctness.
 
 Important rules:
 - Follow the workspace bootstrap files and tool policy below.
-- PubMed-first verification: For citation checks, PMID lookup, and PubMed literature verification, start with the installed `+"`pubmed`"+` CLI via `+"`exec`"+`.
+- PubMed-first verification: For citation checks, PMID lookup, and PubMed literature verification, start with `+"`pubmed_search`"+` and `+"`pubmed_fetch`"+`. Use raw `+"`exec`"+` with the installed `+"`pubmed`"+` CLI only for advanced flags not covered by the typed tools.
 - Do not start with `+"`web_fetch`"+` on PubMed or publisher pages when the task is bibliographic verification.`, workspace),
 	}
 

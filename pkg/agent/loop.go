@@ -120,6 +120,15 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry := tools.NewToolRegistry()
 
 	if profile == ToolProfileExternalReadOnly {
+		pubmedSearchTool := tools.NewPubMedSearchTool(workspace)
+		pubmedFetchTool := tools.NewPubMedFetchTool(workspace)
+		if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
+			env := map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey}
+			pubmedSearchTool.SetExtraEnv(env)
+			pubmedFetchTool.SetExtraEnv(env)
+		}
+		registry.Register(pubmedSearchTool)
+		registry.Register(pubmedFetchTool)
 		if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 			BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
 			BraveMaxResults:      cfg.Tools.Web.Brave.MaxResults,
@@ -174,10 +183,15 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		execTool.SetTimeout(time.Duration(cfg.Agents.Defaults.ExecTimeout) * time.Second)
 	}
 	pubmedExportTool := tools.NewPubMedExportTool(workspace, restrict)
+	pubmedSearchTool := tools.NewPubMedSearchTool(workspace)
+	pubmedFetchTool := tools.NewPubMedFetchTool(workspace)
 	pubmedExportTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
-		execTool.SetExtraEnv(map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey})
-		pubmedExportTool.SetExtraEnv(map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey})
+		env := map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey}
+		execTool.SetExtraEnv(env)
+		pubmedExportTool.SetExtraEnv(env)
+		pubmedSearchTool.SetExtraEnv(env)
+		pubmedFetchTool.SetExtraEnv(env)
 	}
 	docxReviewReadTool := tools.NewDOCXReviewReadTool(workspace, restrict)
 	docxReviewReadTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
@@ -204,6 +218,8 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	pdfFormFillTool := tools.NewPDFFormFillTool(workspace, restrict)
 	pdfFormFillTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	registry.Register(execTool)
+	registry.Register(pubmedSearchTool)
+	registry.Register(pubmedFetchTool)
 	registry.Register(pubmedExportTool)
 	registry.Register(docxReviewReadTool)
 	registry.Register(docxReviewDiffTool)
@@ -1656,8 +1672,8 @@ func toolProfileRuntimeConstraints(profile ToolProfile) string {
 	case ToolProfileExternalReadOnly:
 		return `## Runtime Constraints
 This run is in external-readonly mode.
-Only ` + "`web_search`" + ` and ` + "`web_fetch`" + ` are available.
-` + "`exec`" + `, the PubMed CLI, file mutation, and outbound message tools are unavailable in this run.
+Only ` + "`web_search`" + `, ` + "`web_fetch`" + `, ` + "`pubmed_search`" + `, and ` + "`pubmed_fetch`" + ` are available.
+` + "`exec`" + `, file mutation, and outbound message tools are unavailable in this run.
 Do not claim you can use unavailable tools. Use the available web tools honestly within these constraints.`
 	default:
 		return ""

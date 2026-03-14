@@ -158,7 +158,7 @@ Your workspace is at: %s
 
 4. **Reproducibility** - Prefer idempotent actions and report assumptions/uncertainty.
 
-5. **PubMed-first verification** - For citation checks, PMID lookup, and PubMed literature verification, start with the installed `+"`pubmed`"+` CLI via `+"`exec`"+`. Do not start with `+"`web_fetch`"+` on PubMed or publisher pages when the task is bibliographic verification.`,
+5. **PubMed-first verification** - For citation checks, PMID lookup, and PubMed literature verification, start with the dedicated `+"`pubmed_search`"+` and `+"`pubmed_fetch`"+` tools. Use raw `+"`exec`"+` with the installed `+"`pubmed`"+` CLI only for advanced PubMed flags not covered by the typed tools. Do not start with `+"`web_fetch`"+` on PubMed or publisher pages when the task is bibliographic verification.`,
 		versionStr, versionStr, now, runtime, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
 }
 

@@ -222,7 +222,7 @@ func (t *WebSearchTool) Name() string {
 }
 
 func (t *WebSearchTool) Description() string {
-	return "Search the web for current information. Returns titles, URLs, and snippets from search results. Do not use this as the first step for PubMed citation verification when the installed `pubmed` CLI can answer the query directly."
+	return "Search the web for current information. Returns titles, URLs, and snippets from search results. Do not use this as the first step for PubMed citation verification when `pubmed_search` or `pubmed_fetch` can answer the query directly."
 }
 
 func (t *WebSearchTool) Parameters() map[string]interface{} {
@@ -286,7 +286,7 @@ func (t *WebFetchTool) Name() string {
 }
 
 func (t *WebFetchTool) Description() string {
-	return "Fetch a URL and extract readable content (HTML to text). Use this for general web pages like weather, news, and articles. Do not use this as the first step for PubMed citation verification or bibliographic lookup when the installed `pubmed` CLI is available."
+	return "Fetch a URL and extract readable content (HTML to text). Use this for general web pages like weather, news, and articles. Do not use this as the first step for PubMed citation verification or bibliographic lookup when `pubmed_search` or `pubmed_fetch` is available."
 }
 
 func (t *WebFetchTool) Parameters() map[string]interface{} {
