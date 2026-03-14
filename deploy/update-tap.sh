@@ -56,6 +56,13 @@ echo "  linux-arm64:  ${sha_linux_arm64}"
 echo "  linux-amd64:  ${sha_linux_amd64}"
 echo "  source:       ${sha_source}"
 
+claude_agent_dep=""
+claude_agent_test=""
+if [ "${formula_name}" = "sciclaw-dev" ]; then
+  claude_agent_dep='  depends_on "sciclaw-claude-agent"'
+  claude_agent_test='    assert_match "stdin/stdout bridge", shell_output("#{Formula["sciclaw-claude-agent"].opt_bin}/sciclaw-claude-agent --help")'
+fi
+
 # Clone tap, render formula, push
 echo "  Updating tap formula: ${formula_path}"
 gh repo clone "${tap_repo}" "${tmpdir}/tap" -- --depth 1 -q
@@ -75,6 +82,7 @@ class ${formula_class} < Formula
   depends_on "sciclaw-pptx-review"
   depends_on "sciclaw-pubmed-cli"
   depends_on "sciclaw-xlsx-review"
+${claude_agent_dep}
   depends_on "uv"
 
   on_macos do
@@ -162,6 +170,7 @@ class ${formula_class} < Formula
     assert_match "pptx-review", shell_output("#{Formula["sciclaw-pptx-review"].opt_bin}/pptx-review --version")
     assert_match "xlsx-review", shell_output("#{Formula["sciclaw-xlsx-review"].opt_bin}/xlsx-review --version")
     assert_match "PubMed", shell_output("#{Formula["sciclaw-pubmed-cli"].opt_bin}/pubmed --help")
+${claude_agent_test}
     ENV["HOME"] = testpath
     system bin/"sciclaw", "onboard", "--yes"
     assert_path_exists testpath/"sciclaw/AGENTS.md"
