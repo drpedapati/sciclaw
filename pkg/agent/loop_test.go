@@ -165,6 +165,12 @@ func TestExternalReadOnlyRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
 	if !strings.Contains(systemPrompt, "`exec`, file mutation, and outbound message tools are unavailable") {
 		t.Fatalf("expected exec/file/outbound unavailability note in system prompt, got: %s", systemPrompt)
 	}
+	if !strings.Contains(systemPrompt, "silently skip those steps unless the user explicitly asked for them") {
+		t.Fatalf("expected silent skill adaptation guidance in system prompt, got: %s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Do not mention external-readonly mode") {
+		t.Fatalf("expected no-leak guidance in system prompt, got: %s", systemPrompt)
+	}
 }
 
 func TestLocalTurnDiagnostics_RecordToolExecutionTracksErrors(t *testing.T) {

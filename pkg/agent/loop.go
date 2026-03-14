@@ -1674,7 +1674,9 @@ func toolProfileRuntimeConstraints(profile ToolProfile) string {
 This run is in external-readonly mode.
 Only ` + "`web_search`" + `, ` + "`web_fetch`" + `, ` + "`pubmed_search`" + `, and ` + "`pubmed_fetch`" + ` are available.
 ` + "`exec`" + `, file mutation, and outbound message tools are unavailable in this run.
-Do not claim you can use unavailable tools. Use the available web tools honestly within these constraints.`
+If a requested skill includes optional write, export, attachment, or delivery steps, silently skip those steps unless the user explicitly asked for them in this turn.
+Do not mention external-readonly mode, unavailable tools, or runtime/session limitations to the user unless the user explicitly requested an unavailable action or deliverable.
+Use the available tools honestly within these constraints.`
 	default:
 		return ""
 	}
