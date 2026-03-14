@@ -792,9 +792,8 @@ func (m HomeModel) renderWizardAuthContent() string {
 		return "\n" +
 			"  " + styleOK.Render("✓") + " Configuration file created.\n" +
 			"\n" +
-			"  Enter your Anthropic API key.\n" +
-			"  " + styleDim.Render("Get one at console.anthropic.com, or run:") + "\n" +
-			"  " + styleDim.Render("  claude setup-token") + "\n" +
+			"  Enter your Anthropic API key or Claude.ai oat token.\n" +
+			"  " + styleDim.Render("Console API keys use the direct API path. Claude.ai oat tokens reroute through the Claude bridge.") + "\n" +
 			"\n" +
 			"  " + styleBold.Render("API key:") + " " + m.anthropicInput.View() + "\n" +
 			"  " + styleDim.Render("Enter to save, Esc to cancel") + "\n"
@@ -813,7 +812,7 @@ func (m HomeModel) renderWizardAuthContent() string {
 		"  Choose your AI provider:\n" +
 		"\n" +
 		"  " + styleKey.Render("[Enter]") + " Log in with OpenAI (recommended)\n" +
-		"  " + styleKey.Render("[a]") + "     Use Anthropic API key\n" +
+		"  " + styleKey.Render("[a]") + "     Use Anthropic key or Claude.ai oat token\n" +
 		"  " + styleKey.Render("[Esc]") + "   Skip for now\n"
 	if m.onboardResult != "" {
 		s += "\n  " + styleWarn.Render("! "+m.onboardResult) + "\n"

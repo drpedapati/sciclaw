@@ -205,13 +205,35 @@ func (p *HTTPProvider) GetDefaultModel() string {
 	return ""
 }
 
-func createClaudeAuthProvider() (LLMProvider, error) {
+func anthropicWorkspaceFromConfig(cfg *config.Config) string {
+	workspace := strings.TrimSpace(cfg.Agents.Defaults.Workspace)
+	if workspace == "" {
+		return "."
+	}
+	return workspace
+}
+
+func createConfiguredAnthropicProvider(cfg *config.Config) (LLMProvider, error) {
+	workspace := anthropicWorkspaceFromConfig(cfg)
+	if token := strings.TrimSpace(cfg.Providers.Anthropic.APIKey); token != "" {
+		if isAnthropicOAuthToken(token) {
+			return NewClaudeAgentProvider(workspace, token), nil
+		}
+		return NewClaudeProvider(token), nil
+	}
+	return createClaudeAuthProvider(workspace)
+}
+
+func createClaudeAuthProvider(workspace string) (LLMProvider, error) {
 	cred, err := auth.GetCredential("anthropic")
 	if err != nil {
 		return nil, fmt.Errorf("loading auth credentials: %w", err)
 	}
 	if cred == nil {
 		return nil, fmt.Errorf("no credentials for anthropic. Run: picoclaw auth login --provider anthropic")
+	}
+	if isAnthropicOAuthToken(cred.AccessToken) {
+		return NewClaudeAgentProviderWithTokenSource(workspace, cred.AccessToken, createClaudeTokenSource()), nil
 	}
 	return NewClaudeProviderWithTokenSource(cred.AccessToken, createClaudeTokenSource()), nil
 }
@@ -277,10 +299,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			}
 		case "anthropic", "claude":
 			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" || (cfg.Providers.Anthropic.APIKey == "" && hasStoredCredential("anthropic")) {
-				return createClaudeAuthProvider()
-			}
-			if cfg.Providers.Anthropic.APIKey != "" {
-				return NewClaudeProvider(cfg.Providers.Anthropic.APIKey), nil
+				return createConfiguredAnthropicProvider(cfg)
 			}
 		case "openrouter":
 			if cfg.Providers.OpenRouter.APIKey != "" {
@@ -356,12 +375,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			}
 
 		case (strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/")) && (cfg.Providers.Anthropic.APIKey != "" || cfg.Providers.Anthropic.AuthMethod != "" || hasStoredCredential("anthropic")):
-			if cfg.Providers.Anthropic.AuthMethod == "oauth" || cfg.Providers.Anthropic.AuthMethod == "token" || (cfg.Providers.Anthropic.APIKey == "" && hasStoredCredential("anthropic")) {
-				return createClaudeAuthProvider()
-			}
-			if cfg.Providers.Anthropic.APIKey != "" {
-				return NewClaudeProvider(cfg.Providers.Anthropic.APIKey), nil
-			}
+			return createConfiguredAnthropicProvider(cfg)
 
 		case (strings.Contains(lowerModel, "gpt") || strings.HasPrefix(model, "openai/")) && (cfg.Providers.OpenAI.APIKey != "" || cfg.Providers.OpenAI.AuthMethod != "" || hasStoredCredential("openai")):
 			if cfg.Providers.OpenAI.AuthMethod == "oauth" || cfg.Providers.OpenAI.AuthMethod == "token" || (cfg.Providers.OpenAI.APIKey == "" && hasStoredCredential("openai")) {

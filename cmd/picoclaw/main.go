@@ -2225,6 +2225,7 @@ func authHelp() {
 	fmt.Printf("  %s auth login --provider anthropic\n", commandName)
 	fmt.Printf("  %s auth import-op --provider openai --item \"OpenAI Creds\"\n", commandName)
 	fmt.Printf("  %s auth import-op --provider anthropic --item \"Anthropic Token\" --vault \"AI\" --auth-method token\n", commandName)
+	fmt.Println("  Anthropic API keys stay on the direct API path; Claude.ai oat tokens reroute through sciclaw-claude-agent")
 	fmt.Printf("  %s auth logout --provider openai\n", commandName)
 	fmt.Printf("  %s auth status\n", commandName)
 	fmt.Printf("  (Compatibility alias also works: %s)\n", cliName)

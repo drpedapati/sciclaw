@@ -55,6 +55,15 @@ type doctorReport struct {
 	Checks    []doctorCheck `json:"checks"`
 }
 
+func doctorChecksContainName(checks []doctorCheck, name string) bool {
+	for _, c := range checks {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 var execRelativePathPattern = regexp.MustCompile(`(^|[\s'"=])([A-Za-z0-9._-]+/[A-Za-z0-9._*?][^\s'";&|)]*)`)
 
 func doctorCmd() {
@@ -275,6 +284,8 @@ func runDoctor(opts doctorOptions) doctorReport {
 	}
 
 	// Auth store
+	anthropicToken := strings.TrimSpace(cfg.Providers.Anthropic.APIKey)
+	anthropicMethod := strings.TrimSpace(cfg.Providers.Anthropic.AuthMethod)
 	store, err := auth.LoadStore()
 	if err != nil {
 		add(doctorCheck{Name: "auth.store", Status: doctorWarn, Message: err.Error()})
@@ -295,6 +306,53 @@ func runDoctor(opts doctorOptions) doctorReport {
 			}
 			add(doctorCheck{Name: "auth.openai", Status: st, Message: fmt.Sprintf("%s (%s)", msg, cred.AuthMethod)})
 		}
+		if cred, ok := store.Credentials["anthropic"]; ok && cred != nil && strings.TrimSpace(cred.AccessToken) != "" {
+			anthropicToken = strings.TrimSpace(cred.AccessToken)
+			anthropicMethod = strings.TrimSpace(cred.AuthMethod)
+			st := doctorOK
+			msg := "authenticated"
+			if cred.IsExpired() {
+				st, msg = doctorErr, "expired"
+			} else if cred.NeedsRefresh() {
+				st, msg = doctorWarn, "needs refresh"
+			}
+			if strings.HasPrefix(anthropicToken, "sk-ant-oat") {
+				add(doctorCheck{Name: "auth.anthropic", Status: st, Message: fmt.Sprintf("%s (oat token; rerouted through sciclaw-claude-agent)", msg)})
+			} else {
+				add(doctorCheck{Name: "auth.anthropic", Status: st, Message: fmt.Sprintf("%s (%s)", msg, cred.AuthMethod)})
+			}
+		} else if anthropicToken != "" {
+			if strings.HasPrefix(anthropicToken, "sk-ant-oat") {
+				add(doctorCheck{Name: "auth.anthropic", Status: doctorOK, Message: "configured (oat token; rerouted through sciclaw-claude-agent)"})
+			} else {
+				msg := "configured"
+				if anthropicMethod != "" {
+					msg = fmt.Sprintf("configured (%s)", anthropicMethod)
+				}
+				add(doctorCheck{Name: "auth.anthropic", Status: doctorOK, Message: msg})
+			}
+		}
+	}
+
+	if anthropicToken != "" && !doctorChecksContainName(rep.Checks, "auth.anthropic") {
+		if strings.HasPrefix(anthropicToken, "sk-ant-oat") {
+			add(doctorCheck{Name: "auth.anthropic", Status: doctorOK, Message: "configured (oat token; rerouted through sciclaw-claude-agent)"})
+		} else {
+			msg := "configured"
+			if anthropicMethod != "" {
+				msg = fmt.Sprintf("configured (%s)", anthropicMethod)
+			}
+			add(doctorCheck{Name: "auth.anthropic", Status: doctorOK, Message: msg})
+		}
+	}
+
+	if strings.HasPrefix(anthropicToken, "sk-ant-oat") {
+		add(checkBinaryWithHint(
+			"sciclaw-claude-agent",
+			[]string{"--version"},
+			3*time.Second,
+			"install the sciclaw-claude-agent companion or set PICOCLAW_CLAUDE_AGENT_BINARY",
+		))
 	}
 
 	// Key external CLIs
