@@ -39,6 +39,10 @@ Use tools as part of reproducible workflows, not ad-hoc actions.
 - Do not use `docx-review` manifest workflows to create first-draft manuscripts unless the user explicitly requests tracked changes.
 - For common Word review workflows, prefer `docx_review_read`, `docx_review_diff`, and `docx_review_apply` over shelling out to `docx-review` directly.
 - Use raw `docx-review` CLI only as fallback or for advanced modes not covered by typed tools (for example `--textconv`, `--git-setup`, `--create`, or custom flag combinations).
+- For spreadsheet review workflows, prefer `xlsx_review_read`, `xlsx_review_diff`, and `xlsx_review_apply` over shelling out to `xlsx-review` directly.
+- Use raw `xlsx-review` CLI only as fallback or for advanced modes not covered by typed tools (for example `--textconv`, `--git-setup`, `--create`, or custom flag combinations).
+- For presentation review workflows, prefer `pptx_review_read`, `pptx_review_diff`, and `pptx_review_apply` over shelling out to `pptx-review` directly.
+- Use raw `pptx-review` CLI only as fallback or for advanced modes not covered by typed tools (for example `--textconv`, `--git-setup`, or custom flag combinations).
 - For fillable AcroForm PDFs, prefer `pdf_form_inspect`, `pdf_form_schema`, and `pdf_form_fill` over shelling out to `pdf-form-filler` directly.
 - Do not wrap `pdf-form-filler` in Python subprocess calls when dedicated sciClaw PDF form tools are available.
 

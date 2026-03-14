@@ -9,6 +9,13 @@ Source: `https://github.com/anthropics/skills/tree/main/skills/xlsx`
 
 Use this skill for spreadsheet-centric workflows.
 
+When running inside sciClaw, prefer the built-in typed spreadsheet tools over ad-hoc shell calls:
+- `xlsx_review_read`
+- `xlsx_review_diff`
+- `xlsx_review_apply`
+
+Use raw `xlsx-review` CLI only for advanced modes not covered by those typed tools, such as `--create`, `--textconv`, or `--git-setup`.
+
 ## Typical Triggers
 
 - "update this Excel file"

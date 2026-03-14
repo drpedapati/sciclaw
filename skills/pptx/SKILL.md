@@ -9,6 +9,13 @@ Source: `https://github.com/anthropics/skills/tree/main/skills/pptx`
 
 Use this skill when presentations are in scope.
 
+When running inside sciClaw, prefer the built-in typed presentation tools over ad-hoc shell calls:
+- `pptx_review_read`
+- `pptx_review_diff`
+- `pptx_review_apply`
+
+Use raw `pptx-review` CLI only for advanced modes not covered by those typed tools, such as `--textconv` or `--git-setup`.
+
 ## Typical Triggers
 
 - "make a slide deck"

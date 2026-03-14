@@ -30,6 +30,12 @@ func TestEnsureToolsCLIFirstPolicy_AppendsWhenMissing(t *testing.T) {
 	if !strings.Contains(txt, toolsCLIFirstPolicyHeading) {
 		t.Fatalf("CLI-first section missing after ensure")
 	}
+	if !strings.Contains(txt, "xlsx_review_read") {
+		t.Fatalf("xlsx typed-tool guidance missing after ensure")
+	}
+	if !strings.Contains(txt, "pptx_review_read") {
+		t.Fatalf("pptx typed-tool guidance missing after ensure")
+	}
 }
 
 func TestEnsureToolsCLIFirstPolicy_Idempotent(t *testing.T) {

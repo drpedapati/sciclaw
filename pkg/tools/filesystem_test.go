@@ -60,6 +60,46 @@ func TestFilesystemTool_ReadFile_BlockedExtension(t *testing.T) {
 	}
 }
 
+func TestFilesystemTool_ReadFile_BlockedSpreadsheetExtension(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "budget.xlsx")
+	if err := os.WriteFile(testFile, []byte("fake-xlsx-bytes"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	tool := &ReadFileTool{}
+	result := tool.Execute(context.Background(), map[string]interface{}{"path": testFile})
+	if !result.IsError {
+		t.Fatalf("expected blocked extension to return error")
+	}
+	if !strings.Contains(strings.ToLower(result.ForLLM), ".xlsx") {
+		t.Fatalf("expected extension guidance in error, got: %s", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, "xlsx_review_read") {
+		t.Fatalf("expected typed xlsx tool guidance, got: %s", result.ForLLM)
+	}
+}
+
+func TestFilesystemTool_ReadFile_BlockedPresentationExtension(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "slides.pptx")
+	if err := os.WriteFile(testFile, []byte("fake-pptx-bytes"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	tool := &ReadFileTool{}
+	result := tool.Execute(context.Background(), map[string]interface{}{"path": testFile})
+	if !result.IsError {
+		t.Fatalf("expected blocked extension to return error")
+	}
+	if !strings.Contains(strings.ToLower(result.ForLLM), ".pptx") {
+		t.Fatalf("expected extension guidance in error, got: %s", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, "pptx_review_read") {
+		t.Fatalf("expected typed pptx tool guidance, got: %s", result.ForLLM)
+	}
+}
+
 func TestFilesystemTool_ReadFile_BinaryContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "binary.dat")
