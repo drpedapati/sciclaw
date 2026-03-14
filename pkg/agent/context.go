@@ -156,7 +156,9 @@ Your workspace is at: %s
 
 3. **Memory** - When remembering something, write to %s/memory/MEMORY.md
 
-4. **Reproducibility** - Prefer idempotent actions and report assumptions/uncertainty.`,
+4. **Reproducibility** - Prefer idempotent actions and report assumptions/uncertainty.
+
+5. **PubMed-first verification** - For citation checks, PMID lookup, and PubMed literature verification, start with the installed `+"`pubmed`"+` CLI via `+"`exec`"+`. Do not start with `+"`web_fetch`"+` on PubMed or publisher pages when the task is bibliographic verification.`,
 		versionStr, versionStr, now, runtime, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
 }
 

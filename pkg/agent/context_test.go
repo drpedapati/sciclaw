@@ -22,6 +22,12 @@ func TestBuildSystemPromptUsesSciClawIdentity(t *testing.T) {
 	if !strings.Contains(prompt, "Reproducibility") {
 		t.Fatalf("system prompt missing reproducibility rule")
 	}
+	if !strings.Contains(prompt, "PubMed-first verification") {
+		t.Fatalf("system prompt missing PubMed-first verification rule")
+	}
+	if !strings.Contains(prompt, "start with the installed `pubmed` CLI via `exec`") {
+		t.Fatalf("system prompt missing explicit pubmed exec guidance")
+	}
 }
 
 func TestLoadBootstrapFilesIncludesTools(t *testing.T) {

@@ -294,3 +294,18 @@ func TestWebFetch_BlocksPubMedWhenCLIAvailable(t *testing.T) {
 		t.Fatalf("expected PubMed CLI guidance, got: %s", result.ForLLM)
 	}
 }
+
+func TestWebTool_DescriptionsWarnAboutPubMedVerification(t *testing.T) {
+	search := NewWebSearchTool(WebSearchToolOptions{BraveAPIKey: "test-key", BraveMaxResults: 5, BraveEnabled: true})
+	if search == nil {
+		t.Fatal("expected search tool")
+	}
+	if !strings.Contains(search.Description(), "PubMed citation verification") {
+		t.Fatalf("expected web_search description to warn about PubMed verification, got: %s", search.Description())
+	}
+
+	fetch := NewWebFetchTool(50000)
+	if !strings.Contains(fetch.Description(), "PubMed citation verification") {
+		t.Fatalf("expected web_fetch description to warn about PubMed verification, got: %s", fetch.Description())
+	}
+}
