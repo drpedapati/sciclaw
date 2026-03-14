@@ -885,6 +885,33 @@ func TestProcessDirectWithChannel_LocalModePrefetchesURL(t *testing.T) {
 	}
 }
 
+func TestPickLocalPrefetchTool_SkipsPubMedCitationQueries(t *testing.T) {
+	tests := []string{
+		"What's the latest PubMed on triple GLP agonists?",
+		"Can you verify PMID 24001701?",
+		`<@bot> the "Detecting" paper is Jeon S et al 2013. Isn't that correct?`,
+		"Please check this citation: https://pubmed.ncbi.nlm.nih.gov/24001701/",
+	}
+	for _, input := range tests {
+		if toolName, args, ok := pickLocalPrefetchTool(input); ok {
+			t.Fatalf("expected no prefetch for %q, got %s %+v", input, toolName, args)
+		}
+	}
+}
+
+func TestPickLocalPrefetchTool_StillPrefetchesGeneralCurrentInfo(t *testing.T) {
+	toolName, args, ok := pickLocalPrefetchTool("What's the latest FDA news on tirzepatide?")
+	if !ok {
+		t.Fatal("expected prefetch for general current-info query")
+	}
+	if toolName != "web_search" {
+		t.Fatalf("expected web_search, got %s", toolName)
+	}
+	if got := args["query"]; got != "What's the latest FDA news on tirzepatide?" {
+		t.Fatalf("unexpected query arg: %#v", got)
+	}
+}
+
 func TestProcessDirectWithChannel_CloudModeSkipsLocalPrefetch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")

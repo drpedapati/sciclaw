@@ -109,6 +109,11 @@ var localPrefetchCurrentInfoKeywords = []string{
 	"just happened", "what's happening", "what is happening", "update",
 }
 
+var localPrefetchCitationKeywords = []string{
+	"pubmed", "pmid", "doi", "citation", "bibliograph", "literature search",
+	"literature review", "systematic review", "meta-analysis", "et al",
+}
+
 // createToolRegistry creates a tool registry with common tools.
 // This is shared between main agent and subagents.
 func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus, profile ToolProfile) *tools.ToolRegistry {
@@ -1576,6 +1581,9 @@ func pickLocalPrefetchTool(userMessage string) (string, map[string]interface{}, 
 	if msg == "" {
 		return "", nil, false
 	}
+	if messageLooksPubMedCitationTask(msg) {
+		return "", nil, false
+	}
 	if u := firstHTTPURL(msg); u != "" {
 		return "web_fetch", map[string]interface{}{"url": u}, true
 	}
@@ -1607,6 +1615,34 @@ func messageLooksCurrentInfo(text string) bool {
 	for _, kw := range localPrefetchCurrentInfoKeywords {
 		if strings.Contains(lower, kw) {
 			return true
+		}
+	}
+	return false
+}
+
+func messageLooksPubMedCitationTask(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if lower == "" {
+		return false
+	}
+	for _, kw := range localPrefetchCitationKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	if strings.Contains(lower, "author") && strings.Contains(lower, "year") {
+		return true
+	}
+	if strings.Contains(lower, "paper") && strings.Contains(lower, "correct") {
+		return true
+	}
+	if u := firstHTTPURL(text); u != "" {
+		parsed, err := url.Parse(u)
+		if err == nil {
+			host := strings.ToLower(parsed.Hostname())
+			if host == "pubmed.ncbi.nlm.nih.gov" || strings.HasSuffix(host, ".pubmed.ncbi.nlm.nih.gov") {
+				return true
+			}
 		}
 	}
 	return false
