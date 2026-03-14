@@ -677,6 +677,10 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		// URL literals are not filesystem paths and should not trigger
 		// workspace path checks.
 		pathScanInput = stripURLSegments(pathScanInput)
+		// jq inline filter programs are not filesystem paths, but operators like
+		// `//` can look like absolute-path prefixes to the generic scanner.
+		// Strip only the filter expression while leaving actual jq file args visible.
+		pathScanInput = stripJQFilterSegments(pathScanInput)
 		// Also strip relative path patterns like ./ and ../ which can cause
 		// false positives (e.g., './backups/*' would extract '/backups/*')
 		pathScanInput = stripRelativePathPrefixes(pathScanInput)
@@ -825,6 +829,196 @@ func stripRelativePathPrefixes(s string) string {
 		return strings.Repeat(" ", len(match))
 	})
 	return result
+}
+
+type shellWordToken struct {
+	raw       string
+	value     string
+	start     int
+	end       int
+	separator bool
+}
+
+func stripJQFilterSegments(s string) string {
+	tokens := scanShellWordTokens(s)
+	if len(tokens) == 0 {
+		return s
+	}
+
+	out := []byte(s)
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		if tok.separator || (tok.value != "jq" && tok.value != "gojq") {
+			continue
+		}
+		filterIdx := findJQFilterToken(tokens, i+1)
+		if filterIdx == -1 {
+			continue
+		}
+		for j := tokens[filterIdx].start; j < tokens[filterIdx].end; j++ {
+			out[j] = ' '
+		}
+	}
+	return string(out)
+}
+
+func findJQFilterToken(tokens []shellWordToken, start int) int {
+	expectValueArgs := 0
+	filterFromFile := false
+	for i := start; i < len(tokens); i++ {
+		tok := tokens[i]
+		if tok.separator {
+			return -1
+		}
+		if expectValueArgs > 0 {
+			expectValueArgs--
+			continue
+		}
+		if tok.value == "--" {
+			if filterFromFile {
+				return -1
+			}
+			if i+1 < len(tokens) && !tokens[i+1].separator {
+				return i + 1
+			}
+			return -1
+		}
+		if count, fromFile := jqOptionValueCount(tok.value); count > 0 {
+			expectValueArgs = count
+			filterFromFile = filterFromFile || fromFile
+			continue
+		}
+		if strings.HasPrefix(tok.value, "-") {
+			continue
+		}
+		if filterFromFile {
+			return -1
+		}
+		return i
+	}
+	return -1
+}
+
+func jqOptionValueCount(flag string) (count int, fromFile bool) {
+	switch flag {
+	case "-f", "--from-file", "-L", "--library-path":
+		return 1, flag == "-f" || flag == "--from-file"
+	case "--arg", "--argjson", "--argfile", "--rawfile", "--slurpfile":
+		return 2, false
+	default:
+		return 0, false
+	}
+}
+
+func scanShellWordTokens(s string) []shellWordToken {
+	var tokens []shellWordToken
+	for i := 0; i < len(s); {
+		switch s[i] {
+		case ' ', '\t', '\n', '\r':
+			i++
+			continue
+		case '|', ';', '&', '(', ')':
+			tokens = append(tokens, shellWordToken{
+				raw:       s[i : i+1],
+				value:     s[i : i+1],
+				start:     i,
+				end:       i + 1,
+				separator: true,
+			})
+			i++
+			continue
+		}
+
+		start := i
+		for i < len(s) {
+			switch s[i] {
+			case ' ', '\t', '\n', '\r', '|', ';', '&', '(', ')':
+				goto tokenDone
+			case '\'':
+				i++
+				for i < len(s) && s[i] != '\'' {
+					i++
+				}
+				if i < len(s) {
+					i++
+				}
+			case '"':
+				i++
+				for i < len(s) {
+					if s[i] == '\\' && i+1 < len(s) {
+						i += 2
+						continue
+					}
+					if s[i] == '"' {
+						i++
+						break
+					}
+					i++
+				}
+			case '\\':
+				if i+1 < len(s) {
+					i += 2
+				} else {
+					i++
+				}
+			default:
+				i++
+			}
+		}
+	tokenDone:
+		raw := s[start:i]
+		tokens = append(tokens, shellWordToken{
+			raw:   raw,
+			value: shellTokenValue(raw),
+			start: start,
+			end:   i,
+		})
+	}
+	return tokens
+}
+
+func shellTokenValue(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw))
+	for i := 0; i < len(raw); {
+		switch raw[i] {
+		case '\'':
+			i++
+			for i < len(raw) && raw[i] != '\'' {
+				b.WriteByte(raw[i])
+				i++
+			}
+			if i < len(raw) {
+				i++
+			}
+		case '"':
+			i++
+			for i < len(raw) {
+				if raw[i] == '\\' && i+1 < len(raw) {
+					b.WriteByte(raw[i+1])
+					i += 2
+					continue
+				}
+				if raw[i] == '"' {
+					i++
+					break
+				}
+				b.WriteByte(raw[i])
+				i++
+			}
+		case '\\':
+			if i+1 < len(raw) {
+				b.WriteByte(raw[i+1])
+				i += 2
+			} else {
+				i++
+			}
+		default:
+			b.WriteByte(raw[i])
+			i++
+		}
+	}
+	return b.String()
 }
 
 func isAllowedOutsideWorkspacePath(path string) bool {

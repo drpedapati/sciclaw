@@ -371,6 +371,41 @@ func TestShellTool_PubMedAllowsTempPathOutput(t *testing.T) {
 	}
 }
 
+func TestShellTool_PubMedJQFilterNotBlockedByPathGuard(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := `pubmed fetch 123456 --json | jq -r '.[] | "PMID: \(.pmid) Abstract: \((.abstract // "") | gsub("\\n"; " ") | .[0:420])"'`
+	if blocked := tool.guardCommand(cmd, tmpDir); blocked != "" {
+		t.Fatalf("expected pubmed jq pipeline to pass guard, got: %q", blocked)
+	}
+}
+
+func TestShellTool_JQFilterStripStillBlocksOutsideFilePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := `jq -r '.foo // "fallback"' /etc/passwd`
+	blocked := tool.guardCommand(cmd, tmpDir)
+	if !strings.Contains(blocked, "outside working dir") {
+		t.Fatalf("expected jq command with outside file path to remain blocked, got: %q", blocked)
+	}
+}
+
+func TestShellTool_JQFromFileStillBlocksOutsideInputPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewExecTool(tmpDir, false)
+	tool.SetRestrictToWorkspace(true)
+
+	cmd := `jq -f filter.jq /etc/passwd`
+	blocked := tool.guardCommand(cmd, tmpDir)
+	if !strings.Contains(blocked, "outside working dir") {
+		t.Fatalf("expected jq -f command with outside file path to remain blocked, got: %q", blocked)
+	}
+}
+
 func TestShellTool_HeredocURLNotBlockedByPathGuard(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewExecTool(tmpDir, false)
