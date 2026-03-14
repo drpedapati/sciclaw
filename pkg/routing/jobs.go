@@ -628,6 +628,33 @@ func fallbackAskSummary(summary string) string {
 	return strings.TrimSpace(summary)
 }
 
+func formatDiscordRelativeTimestamp(startedAtMillis int64) string {
+	if startedAtMillis <= 0 {
+		return "just now"
+	}
+	return fmt.Sprintf("<t:%d:R>", startedAtMillis/1000)
+}
+
+func formatJobCardHeader(record JobRecord) string {
+	return fmt.Sprintf("**%s** · **%s** · %s", record.ShortID, humanizePhase(record.Phase), formatDiscordRelativeTimestamp(record.StartedAt))
+}
+
+func formatJobCardDetail(record JobRecord) string {
+	detail := strings.TrimSpace(record.Detail)
+	if detail == "" || strings.EqualFold(detail, humanizePhase(record.Phase)) {
+		return ""
+	}
+	return "_" + utils.Truncate(detail, 120) + "_"
+}
+
+func formatJobCardAsk(record JobRecord) string {
+	return "> " + fallbackAskSummary(record.AskSummary)
+}
+
+func formatJobControlHint(record JobRecord) string {
+	return fmt.Sprintf("Reply `%s %s` · `%s %s`", "status", record.ShortID, "cancel", record.ShortID)
+}
+
 func summarizeJobAsk(content string) string {
 	trimmed := compactJobLine(discordMentionPattern.ReplaceAllString(content, ""))
 	if trimmed == "" {
@@ -677,20 +704,13 @@ func selectActiveJob(active []*activeJob, targetID, replyMessageID string) (*act
 }
 
 func formatProgressMessage(record JobRecord) string {
-	lines := []string{
-		"sciClaw is working in the background.",
-		"",
-		fmt.Sprintf("Job: %s", record.ShortID),
-		fmt.Sprintf("Ask: %s", fallbackAskSummary(record.AskSummary)),
-		fmt.Sprintf("Status: %s", humanizePhase(record.Phase)),
+	lines := []string{formatJobCardHeader(record), formatJobCardAsk(record)}
+	if detail := formatJobCardDetail(record); detail != "" {
+		lines = append(lines, detail)
 	}
-	if strings.TrimSpace(record.Detail) != "" && !strings.EqualFold(strings.TrimSpace(record.Detail), humanizePhase(record.Phase)) {
-		lines = append(lines, fmt.Sprintf("Detail: %s", strings.TrimSpace(record.Detail)))
-	}
-	lines = append(lines, fmt.Sprintf("Started: %s ago", time.Since(time.UnixMilli(record.StartedAt)).Round(time.Second)))
 	switch record.State {
 	case JobStateQueued, JobStateRunning:
-		lines = append(lines, "", fmt.Sprintf("Reply with `@sciclaw status %s` to check progress or `@sciclaw cancel %s` to stop this job.", record.ShortID, record.ShortID))
+		lines = append(lines, "", formatJobControlHint(record))
 	case JobStateDone:
 		lines = append(lines, "", "Done. The full reply is below.")
 	case JobStateCancelled:
@@ -704,37 +724,30 @@ func formatProgressMessage(record JobRecord) string {
 }
 
 func formatActiveJobStatus(record JobRecord, includeControlHint bool) string {
-	text := fmt.Sprintf("sciClaw is already working in the background.\n\nJob: %s\nAsk: %s\nStatus: %s", record.ShortID, fallbackAskSummary(record.AskSummary), humanizePhase(record.Phase))
-	if strings.TrimSpace(record.Detail) != "" {
-		text += "\nDetail: " + strings.TrimSpace(record.Detail)
+	lines := []string{formatJobCardHeader(record), formatJobCardAsk(record)}
+	if detail := formatJobCardDetail(record); detail != "" {
+		lines = append(lines, detail)
 	}
-	text += "\nStarted: " + time.Since(time.UnixMilli(record.StartedAt)).Round(time.Second).String() + " ago"
 	if includeControlHint {
-		text += fmt.Sprintf("\n\nReply with `@sciclaw status %s` to check progress or `@sciclaw cancel %s` to stop this job.", record.ShortID, record.ShortID)
+		lines = append(lines, "", formatJobControlHint(record))
 	}
-	return text
+	return strings.Join(lines, "\n")
 }
 
 func formatActiveJobList(records []JobRecord) string {
-	lines := []string{
-		"sciClaw has multiple background jobs running here:",
-		"",
-	}
+	lines := []string{"**Multiple sciClaw jobs are active here**", ""}
 	for _, record := range records {
-		lines = append(lines, fmt.Sprintf("- %s (%s): %s", record.ShortID, record.Class, fallbackAskSummary(record.AskSummary)))
-		lines = append(lines, fmt.Sprintf("  Status: %s", humanizePhase(record.Phase)))
+		lines = append(lines, fmt.Sprintf("- **%s** · %s · %s", record.ShortID, humanizePhase(record.Phase), formatDiscordRelativeTimestamp(record.StartedAt)))
+		lines = append(lines, fmt.Sprintf("  %s", fallbackAskSummary(record.AskSummary)))
 	}
-	lines = append(lines, "", "Reply with `@sciclaw status <job-id>` for details.")
+	lines = append(lines, "", "Reply `status <job-id>` for details.")
 	return strings.Join(lines, "\n")
 }
 
 func formatCancelRequiresJobID(records []JobRecord) string {
-	lines := []string{
-		"More than one sciClaw job is active here. Reply with `@sciclaw cancel <job-id>`.",
-		"",
-	}
+	lines := []string{"**Multiple sciClaw jobs are active here**", "Reply `cancel <job-id>`.", ""}
 	for _, record := range records {
-		lines = append(lines, fmt.Sprintf("- %s (%s): %s", record.ShortID, record.Class, fallbackAskSummary(record.AskSummary)))
+		lines = append(lines, fmt.Sprintf("- **%s** · %s", record.ShortID, fallbackAskSummary(record.AskSummary)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -749,11 +762,11 @@ func formatBusyMessage(records []JobRecord, requestedClass JobClass) string {
 	}
 	switch requestedClass {
 	case JobClassExternalReadOnly:
-		lines = append(lines, "", "sciClaw is not starting another external research job in this workspace right now.")
+		lines = append(lines, "", "Another external research job will wait for an open slot.")
 	default:
-		lines = append(lines, "", "To avoid mixing partial work into a second request, sciClaw is not starting another write-capable job in this workspace yet.")
+		lines = append(lines, "", "Another write-capable job will wait until this one finishes.")
 	}
-	lines = append(lines, "If you need the running job, reply with `@sciclaw status <job-id>` or `@sciclaw cancel <job-id>`.")
+	lines = append(lines, "Reply `status <job-id>` or `cancel <job-id>` if you need the running job.")
 	return strings.Join(lines, "\n")
 }
 

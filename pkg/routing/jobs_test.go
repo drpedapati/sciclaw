@@ -97,7 +97,7 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 		t.Fatalf("second submit: %v", err)
 	}
 	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "already working in the background") {
+	if !strings.Contains(out.Content, "**J") || !strings.Contains(out.Content, "Another write-capable job will wait until this one finishes.") {
 		t.Fatalf("expected busy guidance, got %q", out.Content)
 	}
 
@@ -110,7 +110,7 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 		t.Fatalf("status submit: %v", err)
 	}
 	out = mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "Status:") {
+	if !strings.Contains(out.Content, "**J") || !strings.Contains(out.Content, "> please do work") {
 		t.Fatalf("expected status reply, got %q", out.Content)
 	}
 
@@ -269,7 +269,7 @@ func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 		t.Fatalf("status submit: %v", err)
 	}
 	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "multiple background jobs") {
+	if !strings.Contains(out.Content, "Multiple sciClaw jobs are active here") {
 		t.Fatalf("expected multiple job list, got %q", out.Content)
 	}
 
@@ -316,7 +316,7 @@ func TestJobManagerWritesProgressAndFinalState(t *testing.T) {
 	if len(progress.calls) < 2 {
 		t.Fatalf("expected at least 2 progress updates, got %d", len(progress.calls))
 	}
-	if !strings.Contains(progress.calls[0], "Job: J") || !strings.Contains(progress.calls[0], "Ask: do it") {
+	if !strings.Contains(progress.calls[0], "**J") || !strings.Contains(progress.calls[0], "> do it") || !strings.Contains(progress.calls[0], "<t:") {
 		t.Fatalf("expected progress metadata, got %q", progress.calls[0])
 	}
 	if !strings.Contains(progress.calls[len(progress.calls)-1], "Done. The full reply is below.") {
@@ -356,13 +356,13 @@ func TestJobManagerRefreshesProgressDuringLongRunningPhase(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if countMatchingProgress(progress, "Status: Thinking") >= 2 {
+		if countMatchingProgress(progress, "**Thinking**") >= 2 {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	if got := countMatchingProgress(progress, "Status: Thinking"); got < 2 {
+	if got := countMatchingProgress(progress, "**Thinking**"); got < 2 {
 		t.Fatalf("expected repeated thinking progress updates, got %d calls: %#v", got, progress.calls)
 	}
 
