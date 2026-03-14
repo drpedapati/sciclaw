@@ -130,6 +130,37 @@ func TestExternalReadOnlyRunJobDoesNotPersistSession(t *testing.T) {
 	}
 }
 
+func TestExternalReadOnlyRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	provider := &captureMockProvider{response: "ok"}
+	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), provider, LoopOptions{
+		ToolProfile: ToolProfileExternalReadOnly,
+	})
+
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-1",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-1",
+		Content:    "what species do neuronexus probes record from?",
+	}
+	if _, err := al.RunJob(context.Background(), msg, nil); err != nil {
+		t.Fatalf("RunJob: %v", err)
+	}
+
+	systemPrompt := provider.LastSystemPrompt()
+	if !strings.Contains(systemPrompt, "## Runtime Constraints") {
+		t.Fatalf("expected runtime constraints in system prompt, got: %s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Only `web_search` and `web_fetch` are available.") {
+		t.Fatalf("expected external readonly tool list in system prompt, got: %s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "`exec`, the PubMed CLI") {
+		t.Fatalf("expected exec/pubmed unavailability note in system prompt, got: %s", systemPrompt)
+	}
+}
+
 func TestLocalTurnDiagnostics_RecordToolExecutionTracksErrors(t *testing.T) {
 	diag := newLocalTurnDiagnostics()
 	diag.recordToolExecution(275*time.Millisecond, &tools.ToolResult{IsError: true, Async: true})

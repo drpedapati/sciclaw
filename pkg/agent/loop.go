@@ -802,6 +802,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.Channel,
 		opts.ChatID,
 	)
+	if constraints := toolProfileRuntimeConstraints(al.toolProfile); constraints != "" && len(messages) > 0 && messages[0].Role == "system" {
+		messages[0].Content = strings.TrimSpace(messages[0].Content) + "\n\n" + constraints
+	}
 	logger.InfoCF("agent", "Turn context prepared",
 		map[string]interface{}{
 			"turn_id":         opts.TurnID,
@@ -1646,6 +1649,19 @@ func messageLooksPubMedCitationTask(text string) bool {
 		}
 	}
 	return false
+}
+
+func toolProfileRuntimeConstraints(profile ToolProfile) string {
+	switch profile {
+	case ToolProfileExternalReadOnly:
+		return `## Runtime Constraints
+This run is in external-readonly mode.
+Only ` + "`web_search`" + ` and ` + "`web_fetch`" + ` are available.
+` + "`exec`" + `, the PubMed CLI, file mutation, and outbound message tools are unavailable in this run.
+Do not claim you can use unavailable tools. Use the available web tools honestly within these constraints.`
+	default:
+		return ""
+	}
 }
 
 func compactPrefetchContent(result *tools.ToolResult) string {
