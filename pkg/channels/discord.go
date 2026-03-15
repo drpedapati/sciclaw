@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,11 @@ type typingState struct {
 	cancel  context.CancelFunc
 }
 
+type SlashSkillChoice struct {
+	Name        string
+	Description string
+}
+
 type DiscordChannel struct {
 	*BaseChannel
 	session     *discordgo.Session
@@ -53,6 +59,7 @@ type DiscordChannel struct {
 	listCommandsFn        func(appID, guildID string) ([]*discordgo.ApplicationCommand, error)
 	createCommandFn       func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 	editCommandFn         func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
+	skillCatalogFn        func(channelID, guildID, userID string) ([]SlashSkillChoice, error)
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -113,6 +120,10 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 
 func (c *DiscordChannel) SetTranscriber(transcriber *voice.GroqTranscriber) {
 	c.transcriber = transcriber
+}
+
+func (c *DiscordChannel) SetSlashSkillCatalogCallback(cb func(channelID, guildID, userID string) ([]SlashSkillChoice, error)) {
+	c.skillCatalogFn = cb
 }
 
 // GetChannelMessages fetches recent messages from a Discord channel via the REST API.
@@ -325,6 +336,28 @@ func buildBTWSlashCommand() *discordgo.ApplicationCommand {
 	}
 }
 
+func buildSkillSlashCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        "skill",
+		Description: "Run a task with an explicit skill in the current workspace",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Name:         "name",
+				Description:  "The skill to use",
+				Type:         discordgo.ApplicationCommandOptionString,
+				Required:     true,
+				Autocomplete: true,
+			},
+			{
+				Name:        "prompt",
+				Description: "The task to perform with that skill",
+				Type:        discordgo.ApplicationCommandOptionString,
+				Required:    true,
+			},
+		},
+	}
+}
+
 func interactionAuthor(i *discordgo.Interaction) *discordgo.User {
 	if i == nil {
 		return nil
@@ -335,103 +368,35 @@ func interactionAuthor(i *discordgo.Interaction) *discordgo.User {
 	return i.User
 }
 
-func (c *DiscordChannel) ensureSlashCommands() error {
-	if strings.TrimSpace(c.botUserID) == "" {
-		return fmt.Errorf("bot user id is empty")
-	}
-	if c.listCommandsFn == nil || c.createCommandFn == nil || c.editCommandFn == nil {
-		return fmt.Errorf("discord slash command functions are not configured")
-	}
-	cmd := buildBTWSlashCommand()
-	commands, err := c.listCommandsFn(c.botUserID, "")
-	if err != nil {
-		return err
-	}
-	for _, existing := range commands {
-		if existing == nil || existing.Name != cmd.Name {
+func slashOptionString(options []*discordgo.ApplicationCommandInteractionDataOption, name string) string {
+	for _, opt := range options {
+		if opt == nil || opt.Name != name {
 			continue
 		}
-		if existing.Description == cmd.Description && reflect.DeepEqual(existing.Options, cmd.Options) {
-			return nil
-		}
-		_, err := c.editCommandFn(c.botUserID, "", existing.ID, cmd)
-		return err
+		return strings.TrimSpace(opt.StringValue())
 	}
-	_, err = c.createCommandFn(c.botUserID, "", cmd)
-	return err
+	return ""
 }
 
-func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
-	if m == nil || m.Author == nil {
-		return
-	}
-	c.processIncomingMessage(s, m.Message, false)
-}
-
-func (c *DiscordChannel) handleInteractionCreate(_ *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i == nil || i.Interaction == nil || i.Type != discordgo.InteractionApplicationCommand {
-		return
-	}
-	data := i.ApplicationCommandData()
-	if data.Name != "btw" {
-		return
-	}
-	if c.interactionRespondFn == nil {
-		logger.WarnC("discord", "Interaction responder not configured")
-		return
-	}
-	prompt := ""
-	for _, opt := range data.Options {
-		if opt == nil || opt.Name != "prompt" {
+func focusedSlashOptionString(options []*discordgo.ApplicationCommandInteractionDataOption, name string) string {
+	for _, opt := range options {
+		if opt == nil || opt.Name != name || !opt.Focused {
 			continue
 		}
-		prompt = strings.TrimSpace(opt.StringValue())
-		break
+		return strings.TrimSpace(opt.StringValue())
 	}
-	if prompt == "" {
-		_ = c.interactionRespondFn(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "The `/btw` prompt is required.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-	author := interactionAuthor(i.Interaction)
-	if author == nil {
-		return
-	}
-	if !c.IsAllowed(author.ID) {
-		_ = c.interactionRespondFn(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "You are not allowed to use this sciClaw bot.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-	if err := c.interactionRespondFn(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Flags: discordgo.MessageFlagsEphemeral,
-		},
-	}); err != nil {
-		logger.WarnCF("discord", "Failed to defer /btw interaction", map[string]any{
-			"error": err.Error(),
-		})
-		return
-	}
+	return ""
+}
 
+func buildSlashMetadata(i *discordgo.Interaction, commandName string, author *discordgo.User) map[string]string {
 	senderName := author.Username
 	if author.Discriminator != "" && author.Discriminator != "0" {
 		senderName += "#" + author.Discriminator
 	}
-	metadata := map[string]string{
+	return map[string]string{
 		"interaction_id":     i.ID,
 		"interaction_token":  i.Token,
-		"command_name":       data.Name,
+		"command_name":       commandName,
 		"is_slash_command":   "true",
 		"user_id":            author.ID,
 		"username":           author.Username,
@@ -443,7 +408,278 @@ func (c *DiscordChannel) handleInteractionCreate(_ *discordgo.Session, i *discor
 		"has_direct_mention": "true",
 		"reply_to_bot":       "false",
 	}
-	c.HandleMessage(author.ID, i.ChannelID, "/btw "+prompt, nil, metadata)
+}
+
+func rankSkillChoice(choice SlashSkillChoice, query string) int {
+	if query == "" {
+		return 1
+	}
+	name := strings.ToLower(strings.TrimSpace(choice.Name))
+	desc := strings.ToLower(strings.TrimSpace(choice.Description))
+	switch {
+	case name == query:
+		return 4
+	case strings.HasPrefix(name, query):
+		return 3
+	case strings.Contains(name, query):
+		return 2
+	case strings.Contains(desc, query):
+		return 1
+	default:
+		return 0
+	}
+}
+
+func autocompleteSkillChoices(all []SlashSkillChoice, query string) []*discordgo.ApplicationCommandOptionChoice {
+	query = strings.ToLower(strings.TrimSpace(query))
+	type scored struct {
+		choice SlashSkillChoice
+		score  int
+	}
+	scoredChoices := make([]scored, 0, len(all))
+	for _, choice := range all {
+		score := rankSkillChoice(choice, query)
+		if score == 0 {
+			continue
+		}
+		scoredChoices = append(scoredChoices, scored{choice: choice, score: score})
+	}
+	sort.SliceStable(scoredChoices, func(i, j int) bool {
+		if scoredChoices[i].score != scoredChoices[j].score {
+			return scoredChoices[i].score > scoredChoices[j].score
+		}
+		return strings.ToLower(scoredChoices[i].choice.Name) < strings.ToLower(scoredChoices[j].choice.Name)
+	})
+	if len(scoredChoices) > 25 {
+		scoredChoices = scoredChoices[:25]
+	}
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(scoredChoices))
+	for _, item := range scoredChoices {
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  item.choice.Name,
+			Value: item.choice.Name,
+		})
+	}
+	return choices
+}
+
+func normalizeSkillName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func validateSlashSkill(available []SlashSkillChoice, requested string) (SlashSkillChoice, bool) {
+	target := normalizeSkillName(requested)
+	for _, choice := range available {
+		if normalizeSkillName(choice.Name) == target {
+			return choice, true
+		}
+	}
+	return SlashSkillChoice{}, false
+}
+
+func skillSlashContent(name, prompt string) string {
+	return fmt.Sprintf("Use the skill %q for this task. Read its SKILL.md first and follow it.\n\nTask:\n%s", name, prompt)
+}
+
+func (c *DiscordChannel) ensureSlashCommands() error {
+	if strings.TrimSpace(c.botUserID) == "" {
+		return fmt.Errorf("bot user id is empty")
+	}
+	if c.listCommandsFn == nil || c.createCommandFn == nil || c.editCommandFn == nil {
+		return fmt.Errorf("discord slash command functions are not configured")
+	}
+	commands, err := c.listCommandsFn(c.botUserID, "")
+	if err != nil {
+		return err
+	}
+	existingByName := make(map[string]*discordgo.ApplicationCommand, len(commands))
+	for _, existing := range commands {
+		if existing == nil {
+			continue
+		}
+		existingByName[existing.Name] = existing
+	}
+	for _, cmd := range []*discordgo.ApplicationCommand{buildBTWSlashCommand(), buildSkillSlashCommand()} {
+		existing := existingByName[cmd.Name]
+		if existing == nil {
+			if _, err := c.createCommandFn(c.botUserID, "", cmd); err != nil {
+				return err
+			}
+			continue
+		}
+		if existing.Description == cmd.Description && reflect.DeepEqual(existing.Options, cmd.Options) {
+			continue
+		}
+		if _, err := c.editCommandFn(c.botUserID, "", existing.ID, cmd); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m == nil || m.Author == nil {
+		return
+	}
+	c.processIncomingMessage(s, m.Message, false)
+}
+
+func (c *DiscordChannel) handleInteractionCreate(_ *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i == nil || i.Interaction == nil {
+		return
+	}
+	data := i.ApplicationCommandData()
+	switch i.Type {
+	case discordgo.InteractionApplicationCommandAutocomplete:
+		if data.Name != "skill" || c.interactionRespondFn == nil {
+			return
+		}
+		c.handleSkillAutocomplete(i, data)
+		return
+	case discordgo.InteractionApplicationCommand:
+	default:
+		return
+	}
+	if c.interactionRespondFn == nil {
+		logger.WarnC("discord", "Interaction responder not configured")
+		return
+	}
+	switch data.Name {
+	case "btw":
+		c.handleBTWInteraction(i, data)
+	case "skill":
+		c.handleSkillInteraction(i, data)
+	}
+}
+
+func (c *DiscordChannel) respondInteractionMessage(i *discordgo.Interaction, content string) {
+	if c.interactionRespondFn == nil {
+		return
+	}
+	_ = c.interactionRespondFn(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
+func (c *DiscordChannel) deferInteraction(i *discordgo.Interaction) error {
+	if c.interactionRespondFn == nil {
+		return fmt.Errorf("interaction responder not configured")
+	}
+	return c.interactionRespondFn(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
+func (c *DiscordChannel) publishSlashTask(i *discordgo.InteractionCreate, author *discordgo.User, content string, metadata map[string]string) {
+	c.HandleMessage(author.ID, i.ChannelID, content, nil, metadata)
+}
+
+func (c *DiscordChannel) handleBTWInteraction(i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	prompt := slashOptionString(data.Options, "prompt")
+	if prompt == "" {
+		c.respondInteractionMessage(i.Interaction, "The `/btw` prompt is required.")
+		return
+	}
+	author := interactionAuthor(i.Interaction)
+	if author == nil {
+		return
+	}
+	if !c.IsAllowed(author.ID) {
+		c.respondInteractionMessage(i.Interaction, "You are not allowed to use this sciClaw bot.")
+		return
+	}
+	if err := c.deferInteraction(i.Interaction); err != nil {
+		logger.WarnCF("discord", "Failed to defer /btw interaction", map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+	c.publishSlashTask(i, author, "/btw "+prompt, buildSlashMetadata(i.Interaction, data.Name, author))
+}
+
+func (c *DiscordChannel) handleSkillAutocomplete(i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	author := interactionAuthor(i.Interaction)
+	if author == nil || c.interactionRespondFn == nil {
+		return
+	}
+	query := focusedSlashOptionString(data.Options, "name")
+	var choices []*discordgo.ApplicationCommandOptionChoice
+	if c.IsAllowed(author.ID) && c.skillCatalogFn != nil {
+		available, err := c.skillCatalogFn(i.ChannelID, i.GuildID, author.ID)
+		if err != nil {
+			logger.WarnCF("discord", "Failed to load /skill autocomplete catalog", map[string]any{
+				"error":      err.Error(),
+				"channel_id": i.ChannelID,
+				"guild_id":   i.GuildID,
+				"user_id":    author.ID,
+			})
+		} else {
+			choices = autocompleteSkillChoices(available, query)
+		}
+	}
+	_ = c.interactionRespondFn(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	})
+}
+
+func (c *DiscordChannel) handleSkillInteraction(i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	name := slashOptionString(data.Options, "name")
+	prompt := slashOptionString(data.Options, "prompt")
+	if name == "" {
+		c.respondInteractionMessage(i.Interaction, "The `/skill` name is required.")
+		return
+	}
+	if prompt == "" {
+		c.respondInteractionMessage(i.Interaction, "The `/skill` prompt is required.")
+		return
+	}
+	author := interactionAuthor(i.Interaction)
+	if author == nil {
+		return
+	}
+	if !c.IsAllowed(author.ID) {
+		c.respondInteractionMessage(i.Interaction, "You are not allowed to use this sciClaw bot.")
+		return
+	}
+	if c.skillCatalogFn == nil {
+		c.respondInteractionMessage(i.Interaction, "The `/skill` catalog is not configured on this sciClaw instance.")
+		return
+	}
+	available, err := c.skillCatalogFn(i.ChannelID, i.GuildID, author.ID)
+	if err != nil {
+		logger.WarnCF("discord", "Failed to load /skill catalog", map[string]any{
+			"error":      err.Error(),
+			"channel_id": i.ChannelID,
+			"guild_id":   i.GuildID,
+			"user_id":    author.ID,
+		})
+		c.respondInteractionMessage(i.Interaction, "Unable to load skills for this channel right now.")
+		return
+	}
+	selected, ok := validateSlashSkill(available, name)
+	if !ok {
+		c.respondInteractionMessage(i.Interaction, fmt.Sprintf("The skill %q is not available in this channel.", name))
+		return
+	}
+	if err := c.deferInteraction(i.Interaction); err != nil {
+		logger.WarnCF("discord", "Failed to defer /skill interaction", map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+	metadata := buildSlashMetadata(i.Interaction, data.Name, author)
+	metadata["requested_skill_name"] = selected.Name
+	c.publishSlashTask(i, author, skillSlashContent(selected.Name, prompt), metadata)
 }
 
 func (c *DiscordChannel) handleMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) {

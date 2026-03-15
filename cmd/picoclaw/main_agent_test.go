@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -123,5 +125,77 @@ func TestAttachChannelHistoryCallback_WiresSideLaneLoop(t *testing.T) {
 	}
 	if !strings.Contains(provider.toolResultLog, "hello from history") {
 		t.Fatalf("tool result missing fetched content: %q", provider.toolResultLog)
+	}
+}
+
+func TestListDiscordSlashSkills_UsesMappedWorkspace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	mappedWorkspace := filepath.Join(home, "mapped")
+	if err := os.MkdirAll(filepath.Join(mappedWorkspace, "skills", "workspace-only"), 0755); err != nil {
+		t.Fatalf("mkdir mapped skills: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(mappedWorkspace, "skills", "workspace-only", "SKILL.md"), []byte("---\ndescription: Workspace skill\n---\n# Workspace\n"), 0644); err != nil {
+		t.Fatalf("write mapped SKILL.md: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = filepath.Join(home, "default")
+	cfg.Routing.Enabled = true
+	cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "chan-1",
+			Workspace:      mappedWorkspace,
+			AllowedSenders: []string{"user-1"},
+		},
+	}
+
+	choices, err := listDiscordSlashSkills(cfg, "chan-1", "guild-1", "user-1")
+	if err != nil {
+		t.Fatalf("listDiscordSlashSkills: %v", err)
+	}
+	found := false
+	for _, choice := range choices {
+		if choice.Name == "workspace-only" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected mapped workspace skill in choices, got %#v", choices)
+	}
+}
+
+func TestListDiscordSlashSkills_DeniedSenderGetsNoChoices(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	mappedWorkspace := filepath.Join(home, "mapped")
+	if err := os.MkdirAll(mappedWorkspace, 0755); err != nil {
+		t.Fatalf("mkdir mapped workspace: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = filepath.Join(home, "default")
+	cfg.Routing.Enabled = true
+	cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "chan-1",
+			Workspace:      mappedWorkspace,
+			AllowedSenders: []string{"user-allowed"},
+		},
+	}
+
+	choices, err := listDiscordSlashSkills(cfg, "chan-1", "guild-1", "user-denied")
+	if err != nil {
+		t.Fatalf("listDiscordSlashSkills: %v", err)
+	}
+	if len(choices) != 0 {
+		t.Fatalf("expected no choices for denied sender, got %#v", choices)
 	}
 }

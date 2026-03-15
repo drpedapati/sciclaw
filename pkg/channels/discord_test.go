@@ -356,7 +356,7 @@ func TestDiscordProcessIncomingMessage_RoleMentionDoesNotCountAsBotMention(t *te
 	}
 }
 
-func TestDiscordEnsureSlashCommandsCreatesBTWCommand(t *testing.T) {
+func TestDiscordEnsureSlashCommandsCreatesSlashCommands(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.botUserID = "bot-1"
 	ch.listCommandsFn = func(appID, guildID string) ([]*discordgo.ApplicationCommand, error) {
@@ -365,14 +365,26 @@ func TestDiscordEnsureSlashCommandsCreatesBTWCommand(t *testing.T) {
 		}
 		return nil, nil
 	}
-	created := 0
+	var created []string
 	ch.createCommandFn = func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
-		created++
-		if cmd.Name != "btw" {
+		created = append(created, cmd.Name)
+		switch cmd.Name {
+		case "btw":
+			if len(cmd.Options) != 1 || cmd.Options[0].Name != "prompt" || !cmd.Options[0].Required {
+				t.Fatalf("unexpected btw command options: %#v", cmd.Options)
+			}
+		case "skill":
+			if len(cmd.Options) != 2 {
+				t.Fatalf("unexpected skill command options: %#v", cmd.Options)
+			}
+			if cmd.Options[0].Name != "name" || !cmd.Options[0].Required || !cmd.Options[0].Autocomplete {
+				t.Fatalf("unexpected skill name option: %#v", cmd.Options[0])
+			}
+			if cmd.Options[1].Name != "prompt" || !cmd.Options[1].Required {
+				t.Fatalf("unexpected skill prompt option: %#v", cmd.Options[1])
+			}
+		default:
 			t.Fatalf("unexpected command name: %q", cmd.Name)
-		}
-		if len(cmd.Options) != 1 || cmd.Options[0].Name != "prompt" || !cmd.Options[0].Required {
-			t.Fatalf("unexpected btw command options: %#v", cmd.Options)
 		}
 		return &discordgo.ApplicationCommand{ID: "cmd-1", Name: cmd.Name}, nil
 	}
@@ -384,8 +396,8 @@ func TestDiscordEnsureSlashCommandsCreatesBTWCommand(t *testing.T) {
 	if err := ch.ensureSlashCommands(); err != nil {
 		t.Fatalf("ensureSlashCommands: %v", err)
 	}
-	if created != 1 {
-		t.Fatalf("expected one create call, got %d", created)
+	if len(created) != 2 {
+		t.Fatalf("expected two create calls, got %d (%v)", len(created), created)
 	}
 }
 
@@ -478,6 +490,161 @@ func TestDiscordHandleInteractionCreateBTWRejectsBlankPrompt(t *testing.T) {
 	defer cancel()
 	if _, ok := ch.BaseChannel.bus.ConsumeInbound(ctx); ok {
 		t.Fatal("blank /btw prompt should not reach inbound bus")
+	}
+}
+
+func TestDiscordHandleInteractionCreateSkillPublishesInboundAndDefers(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	ch.skillCatalogFn = func(channelID, guildID, userID string) ([]SlashSkillChoice, error) {
+		if channelID != "chan-1" || guildID != "guild-1" || userID != "user-1" {
+			t.Fatalf("unexpected skill catalog args: %q %q %q", channelID, guildID, userID)
+		}
+		return []SlashSkillChoice{
+			{Name: "pubmed-cli", Description: "PubMed workflows"},
+			{Name: "humanize-text", Description: "Rewrite text naturally"},
+		}, nil
+	}
+	var response *discordgo.InteractionResponse
+	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
+		response = resp
+		return nil
+	}
+	interaction := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			ID:        "ix-2",
+			AppID:     "app-1",
+			Type:      discordgo.InteractionApplicationCommand,
+			Token:     "token-2",
+			GuildID:   "guild-1",
+			ChannelID: "chan-1",
+			Member:    &discordgo.Member{User: &discordgo.User{ID: "user-1", Username: "alice"}},
+			Data: discordgo.ApplicationCommandInteractionData{
+				Name: "skill",
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{Name: "name", Type: discordgo.ApplicationCommandOptionString, Value: "pubmed-cli"},
+					{Name: "prompt", Type: discordgo.ApplicationCommandOptionString, Value: "find the Jeon paper"},
+				},
+			},
+		},
+	}
+
+	ch.handleInteractionCreate(nil, interaction)
+
+	if response == nil {
+		t.Fatal("expected interaction response")
+	}
+	if response.Type != discordgo.InteractionResponseDeferredChannelMessageWithSource {
+		t.Fatalf("unexpected response type: %v", response.Type)
+	}
+	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Fatalf("expected ephemeral deferred response, got %#v", response.Data)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	in, ok := ch.BaseChannel.bus.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("expected inbound message from /skill interaction")
+	}
+	if !strings.Contains(in.Content, `Use the skill "pubmed-cli" for this task.`) {
+		t.Fatalf("unexpected inbound content: %q", in.Content)
+	}
+	if !strings.Contains(in.Content, "find the Jeon paper") {
+		t.Fatalf("unexpected inbound content: %q", in.Content)
+	}
+	if in.Metadata["is_slash_command"] != "true" || in.Metadata["command_name"] != "skill" {
+		t.Fatalf("unexpected slash metadata: %#v", in.Metadata)
+	}
+	if in.Metadata["requested_skill_name"] != "pubmed-cli" {
+		t.Fatalf("requested skill metadata = %q, want pubmed-cli", in.Metadata["requested_skill_name"])
+	}
+}
+
+func TestDiscordHandleInteractionCreateSkillRejectsUnavailableSkill(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	ch.skillCatalogFn = func(channelID, guildID, userID string) ([]SlashSkillChoice, error) {
+		return []SlashSkillChoice{{Name: "pubmed-cli"}}, nil
+	}
+	var response *discordgo.InteractionResponse
+	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
+		response = resp
+		return nil
+	}
+	interaction := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type:      discordgo.InteractionApplicationCommand,
+			ChannelID: "chan-1",
+			Member:    &discordgo.Member{User: &discordgo.User{ID: "user-1", Username: "alice"}},
+			Data: discordgo.ApplicationCommandInteractionData{
+				Name: "skill",
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{Name: "name", Type: discordgo.ApplicationCommandOptionString, Value: "missing-skill"},
+					{Name: "prompt", Type: discordgo.ApplicationCommandOptionString, Value: "do the thing"},
+				},
+			},
+		},
+	}
+
+	ch.handleInteractionCreate(nil, interaction)
+
+	if response == nil || response.Type != discordgo.InteractionResponseChannelMessageWithSource {
+		t.Fatalf("expected immediate validation response, got %#v", response)
+	}
+	if response.Data == nil || !strings.Contains(response.Data.Content, "not available") {
+		t.Fatalf("unexpected validation response: %#v", response.Data)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, ok := ch.BaseChannel.bus.ConsumeInbound(ctx); ok {
+		t.Fatal("unavailable /skill should not reach inbound bus")
+	}
+}
+
+func TestDiscordHandleInteractionCreateSkillAutocompleteReturnsMatches(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	ch.skillCatalogFn = func(channelID, guildID, userID string) ([]SlashSkillChoice, error) {
+		return []SlashSkillChoice{
+			{Name: "pubmed-cli", Description: "PubMed workflows"},
+			{Name: "humanize-text", Description: "Rewrite naturally"},
+			{Name: "send-email", Description: "Send email"},
+		}, nil
+	}
+	var response *discordgo.InteractionResponse
+	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
+		response = resp
+		return nil
+	}
+	interaction := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type:      discordgo.InteractionApplicationCommandAutocomplete,
+			ChannelID: "chan-1",
+			GuildID:   "guild-1",
+			Member:    &discordgo.Member{User: &discordgo.User{ID: "user-1", Username: "alice"}},
+			Data: discordgo.ApplicationCommandInteractionData{
+				Name: "skill",
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{Name: "name", Type: discordgo.ApplicationCommandOptionString, Value: "pub", Focused: true},
+				},
+			},
+		},
+	}
+
+	ch.handleInteractionCreate(nil, interaction)
+
+	if response == nil {
+		t.Fatal("expected autocomplete response")
+	}
+	if response.Type != discordgo.InteractionApplicationCommandAutocompleteResult {
+		t.Fatalf("unexpected response type: %v", response.Type)
+	}
+	if response.Data == nil || len(response.Data.Choices) != 1 {
+		t.Fatalf("unexpected choices: %#v", response.Data)
+	}
+	if response.Data.Choices[0].Name != "pubmed-cli" {
+		t.Fatalf("choice name = %q, want pubmed-cli", response.Data.Choices[0].Name)
 	}
 }
 

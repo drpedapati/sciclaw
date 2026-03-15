@@ -1596,6 +1596,9 @@ func gatewayCmd() {
 		if dc, ok := discordCh.(*channels.DiscordChannel); ok {
 			channelHistoryCB = discordHistoryCallback(dc)
 			attachChannelHistoryCallback(agentLoop, channelHistoryCB)
+			dc.SetSlashSkillCatalogCallback(func(channelID, guildID, userID string) ([]channels.SlashSkillChoice, error) {
+				return listDiscordSlashSkills(cfg, channelID, guildID, userID)
+			})
 			logger.InfoC("tools", "Channel history tool attached to Discord")
 		}
 	}
@@ -2061,6 +2064,49 @@ func discordHistoryCallback(dc *channels.DiscordChannel) tools.FetchChannelHisto
 		}
 		return result, nil
 	}
+}
+
+func listDiscordSlashSkills(cfg *config.Config, channelID, guildID, userID string) ([]channels.SlashSkillChoice, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+	workspace := cfg.WorkspacePath()
+	if cfg.Routing.Enabled {
+		resolver, err := routing.NewResolver(cfg)
+		if err != nil {
+			return nil, err
+		}
+		decision := resolver.Resolve(bus.InboundMessage{
+			Channel:  "discord",
+			ChatID:   strings.TrimSpace(channelID),
+			SenderID: strings.TrimSpace(userID),
+			Metadata: map[string]string{
+				"is_dm":              fmt.Sprintf("%t", strings.TrimSpace(guildID) == ""),
+				"is_mention":         "true",
+				"has_direct_mention": "true",
+				"reply_to_bot":       "false",
+			},
+		})
+		if !decision.Allowed {
+			return nil, nil
+		}
+		workspace = decision.Workspace
+	}
+	globalSkillsDir := filepath.Join(filepath.Dir(getConfigPath()), "skills")
+	builtinSkillsDir := resolveBuiltinSkillsDir(workspace)
+	skillsLoader := skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir)
+	infos := skillsLoader.ListSkills()
+	choices := make([]channels.SlashSkillChoice, 0, len(infos))
+	for _, info := range infos {
+		choices = append(choices, channels.SlashSkillChoice{
+			Name:        info.Name,
+			Description: info.Description,
+		})
+	}
+	sort.Slice(choices, func(i, j int) bool {
+		return strings.ToLower(choices[i].Name) < strings.ToLower(choices[j].Name)
+	})
+	return choices, nil
 }
 
 func isGatewayProcessPID(pid int) (bool, error) {
