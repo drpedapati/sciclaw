@@ -170,9 +170,27 @@ type weatherForecastResponse struct {
 }
 
 func (t *WeatherForecastTool) lookupLocation(ctx context.Context, query string) (weatherLocation, error) {
+	var lastErr error
+	for _, candidate := range candidateWeatherLocationQueries(query) {
+		location, found, err := t.lookupLocationCandidate(ctx, candidate)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if found {
+			return location, nil
+		}
+	}
+	if lastErr != nil {
+		return weatherLocation{}, lastErr
+	}
+	return weatherLocation{}, fmt.Errorf("no weather location matched %q", query)
+}
+
+func (t *WeatherForecastTool) lookupLocationCandidate(ctx context.Context, query string) (weatherLocation, bool, error) {
 	u, err := url.Parse(strings.TrimRight(t.geocodeBaseURL, "/") + "/v1/search")
 	if err != nil {
-		return weatherLocation{}, fmt.Errorf("failed to build weather geocoding request: %v", err)
+		return weatherLocation{}, false, fmt.Errorf("failed to build weather geocoding request: %v", err)
 	}
 	params := u.Query()
 	params.Set("name", query)
@@ -183,22 +201,22 @@ func (t *WeatherForecastTool) lookupLocation(ctx context.Context, query string) 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return weatherLocation{}, fmt.Errorf("failed to create weather geocoding request: %v", err)
+		return weatherLocation{}, false, fmt.Errorf("failed to create weather geocoding request: %v", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return weatherLocation{}, fmt.Errorf("weather geocoding request failed: %v", err)
+		return weatherLocation{}, false, fmt.Errorf("weather geocoding request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return weatherLocation{}, fmt.Errorf("failed to read weather geocoding response: %v", err)
+		return weatherLocation{}, false, fmt.Errorf("failed to read weather geocoding response: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return weatherLocation{}, fmt.Errorf("weather geocoding failed with HTTP %d", resp.StatusCode)
+		return weatherLocation{}, false, fmt.Errorf("weather geocoding failed with HTTP %d", resp.StatusCode)
 	}
 
 	var payload struct {
@@ -213,10 +231,10 @@ func (t *WeatherForecastTool) lookupLocation(ctx context.Context, query string) 
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return weatherLocation{}, fmt.Errorf("failed to parse weather geocoding response: %v", err)
+		return weatherLocation{}, false, fmt.Errorf("failed to parse weather geocoding response: %v", err)
 	}
 	if len(payload.Results) == 0 {
-		return weatherLocation{}, fmt.Errorf("no weather location matched %q", query)
+		return weatherLocation{}, false, nil
 	}
 
 	result := payload.Results[0]
@@ -228,7 +246,7 @@ func (t *WeatherForecastTool) lookupLocation(ctx context.Context, query string) 
 		Latitude:    result.Latitude,
 		Longitude:   result.Longitude,
 		Timezone:    result.Timezone,
-	}, nil
+	}, true, nil
 }
 
 func (t *WeatherForecastTool) fetchForecast(ctx context.Context, place weatherLocation, days int, unitSystem string) (weatherForecastResponse, error) {
@@ -424,6 +442,46 @@ func isISODate(v string) bool {
 	return err == nil
 }
 
+func candidateWeatherLocationQueries(query string) []string {
+	candidates := []string{}
+	seen := map[string]struct{}{}
+	add := func(v string) {
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return
+		}
+		if _, ok := seen[trimmed]; ok {
+			return
+		}
+		seen[trimmed] = struct{}{}
+		candidates = append(candidates, trimmed)
+	}
+
+	add(query)
+	if expanded := expandUSStateAbbreviation(query); expanded != "" {
+		add(expanded)
+	}
+	add(strings.ReplaceAll(query, ",", " "))
+	if parts := strings.Split(query, ","); len(parts) > 1 {
+		add(parts[0])
+	}
+	return candidates
+}
+
+func expandUSStateAbbreviation(query string) string {
+	parts := strings.Split(strings.TrimSpace(query), ",")
+	if len(parts) < 2 {
+		return ""
+	}
+	state := strings.ToUpper(strings.TrimSpace(parts[len(parts)-1]))
+	full, ok := usStateNames[state]
+	if !ok {
+		return ""
+	}
+	parts[len(parts)-1] = full
+	return strings.Join(parts, ", ")
+}
+
 func weatherCodeLabel(code int) string {
 	switch code {
 	case 0:
@@ -465,4 +523,58 @@ func titleWeatherLabel(label string) string {
 		return "Forecast"
 	}
 	return strings.ToUpper(trimmed[:1]) + trimmed[1:]
+}
+
+var usStateNames = map[string]string{
+	"AL": "Alabama",
+	"AK": "Alaska",
+	"AZ": "Arizona",
+	"AR": "Arkansas",
+	"CA": "California",
+	"CO": "Colorado",
+	"CT": "Connecticut",
+	"DE": "Delaware",
+	"FL": "Florida",
+	"GA": "Georgia",
+	"HI": "Hawaii",
+	"ID": "Idaho",
+	"IL": "Illinois",
+	"IN": "Indiana",
+	"IA": "Iowa",
+	"KS": "Kansas",
+	"KY": "Kentucky",
+	"LA": "Louisiana",
+	"ME": "Maine",
+	"MD": "Maryland",
+	"MA": "Massachusetts",
+	"MI": "Michigan",
+	"MN": "Minnesota",
+	"MS": "Mississippi",
+	"MO": "Missouri",
+	"MT": "Montana",
+	"NE": "Nebraska",
+	"NV": "Nevada",
+	"NH": "New Hampshire",
+	"NJ": "New Jersey",
+	"NM": "New Mexico",
+	"NY": "New York",
+	"NC": "North Carolina",
+	"ND": "North Dakota",
+	"OH": "Ohio",
+	"OK": "Oklahoma",
+	"OR": "Oregon",
+	"PA": "Pennsylvania",
+	"RI": "Rhode Island",
+	"SC": "South Carolina",
+	"SD": "South Dakota",
+	"TN": "Tennessee",
+	"TX": "Texas",
+	"UT": "Utah",
+	"VT": "Vermont",
+	"VA": "Virginia",
+	"WA": "Washington",
+	"WV": "West Virginia",
+	"WI": "Wisconsin",
+	"WY": "Wyoming",
+	"DC": "District of Columbia",
 }

@@ -157,3 +157,75 @@ func TestWeatherForecastToolExecute_RejectsOutOfWindowDate(t *testing.T) {
 		t.Fatalf("unexpected error: %s", result.ForLLM)
 	}
 }
+
+func TestWeatherForecastToolExecute_FallsBackFromStateAbbreviation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/search":
+			w.Header().Set("Content-Type", "application/json")
+			query := r.URL.Query().Get("name")
+			if query == "Cincinnati, OH" {
+				_, _ = w.Write([]byte(`{"results":[]}`))
+				return
+			}
+			if query == "Cincinnati, Ohio" || query == "Cincinnati" {
+				_, _ = w.Write([]byte(`{
+					"results": [{
+						"name": "Cincinnati",
+						"admin1": "Ohio",
+						"country": "United States",
+						"country_code": "US",
+						"latitude": 39.1031,
+						"longitude": -84.5120,
+						"timezone": "America/New_York"
+					}]
+				}`))
+				return
+			}
+			t.Fatalf("unexpected geocode query: %s", query)
+		case "/v1/forecast":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"current_units": {
+					"temperature_2m": "°F",
+					"apparent_temperature": "°F",
+					"relative_humidity_2m": "%",
+					"wind_speed_10m": "mph"
+				},
+				"current": {
+					"time": "2026-03-15T09:00",
+					"temperature_2m": 54,
+					"apparent_temperature": 52,
+					"relative_humidity_2m": 61,
+					"weather_code": 2,
+					"wind_speed_10m": 8
+				},
+				"daily_units": {
+					"temperature_2m_max": "°F",
+					"temperature_2m_min": "°F",
+					"precipitation_probability_max": "%",
+					"wind_speed_10m_max": "mph"
+				},
+				"daily": {
+					"time": ["2026-03-15", "2026-03-16"],
+					"weather_code": [1, 2],
+					"temperature_2m_max": [57, 61],
+					"temperature_2m_min": [41, 45],
+					"precipitation_probability_max": [10, 35],
+					"wind_speed_10m_max": [9, 14]
+				}
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	tool := newWeatherForecastToolForTest(server.URL, server.URL, server.Client())
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"location": "Cincinnati, OH",
+	})
+	if result.IsError {
+		t.Fatalf("expected fallback geocoding success, got error: %s", result.ForLLM)
+	}
+}
