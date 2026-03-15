@@ -39,6 +39,9 @@ func TestEnsureToolsCLIFirstPolicy_AppendsWhenMissing(t *testing.T) {
 	if !strings.Contains(txt, "pubmed_search") || !strings.Contains(txt, "pubmed_fetch") {
 		t.Fatalf("typed pubmed guidance missing after ensure")
 	}
+	if !strings.Contains(txt, "weather_forecast") {
+		t.Fatalf("weather tool guidance missing after ensure")
+	}
 }
 
 func TestEnsureToolsCLIFirstPolicy_Idempotent(t *testing.T) {
@@ -81,6 +84,9 @@ func TestEnsureToolsCLIFirstPolicy_RefreshesStaleSection(t *testing.T) {
 	txt := string(after)
 	if !strings.Contains(txt, "pubmed_search") || !strings.Contains(txt, "pubmed_fetch") {
 		t.Fatalf("expected refreshed pubmed guidance, got:\n%s", txt)
+	}
+	if !strings.Contains(txt, "weather_forecast") {
+		t.Fatalf("expected refreshed weather guidance, got:\n%s", txt)
 	}
 	if !strings.Contains(txt, "xlsx_review_read") {
 		t.Fatalf("expected refreshed xlsx guidance, got:\n%s", txt)

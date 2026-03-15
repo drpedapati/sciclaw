@@ -22,6 +22,7 @@ func AccessClassForTool(tool Tool) ToolAccessClass {
 	case "read_file",
 		"list_dir",
 		"word_count",
+		"weather_forecast",
 		"web_search",
 		"web_fetch",
 		"pubmed_search",

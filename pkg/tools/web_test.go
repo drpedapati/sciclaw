@@ -300,11 +300,17 @@ func TestWebTool_DescriptionsWarnAboutPubMedVerification(t *testing.T) {
 	if search == nil {
 		t.Fatal("expected search tool")
 	}
+	if !strings.Contains(search.Description(), "weather_forecast") {
+		t.Fatalf("expected web_search description to prefer weather_forecast, got: %s", search.Description())
+	}
 	if !strings.Contains(search.Description(), "PubMed citation verification") {
 		t.Fatalf("expected web_search description to warn about PubMed verification, got: %s", search.Description())
 	}
 
 	fetch := NewWebFetchTool(50000)
+	if !strings.Contains(fetch.Description(), "weather_forecast") {
+		t.Fatalf("expected web_fetch description to prefer weather_forecast, got: %s", fetch.Description())
+	}
 	if !strings.Contains(fetch.Description(), "PubMed citation verification") {
 		t.Fatalf("expected web_fetch description to warn about PubMed verification, got: %s", fetch.Description())
 	}

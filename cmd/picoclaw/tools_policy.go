@@ -11,6 +11,7 @@ const toolsCLIFirstPolicyHeading = "## Critical CLI-First Rules"
 const toolsCLIFirstPolicyAntiPatternHeading = "### Anti-Pattern (Avoid)"
 
 var toolsCLIFirstPolicyRequiredMarkers = []string{
+	"weather_forecast",
 	"pubmed_search",
 	"pubmed_fetch",
 	"docx_review_read",
@@ -23,6 +24,7 @@ const toolsCLIFirstPolicySection = `
 ## Critical CLI-First Rules
 
 - For PubMed literature tasks, prefer ` + "`pubmed_search`" + ` and ` + "`pubmed_fetch`" + ` first.
+- For weather questions, prefer ` + "`weather_forecast`" + ` over ` + "`web_search`" + ` or ` + "`web_fetch`" + `.
 - Use the installed ` + "`pubmed`/`pubmed-cli`" + ` directly only for advanced flags or workflows not covered by the typed tools.
 - Do not scrape ` + "`pubmed.ncbi.nlm.nih.gov`" + ` with ` + "`web_fetch`" + ` when ` + "`pubmed`" + ` CLI is available.
 - Do not wrap CLI tools in Python subprocess calls when direct CLI calls are sufficient.

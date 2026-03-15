@@ -22,6 +22,7 @@ func TestAccessClassForTool(t *testing.T) {
 		want ToolAccessClass
 	}{
 		{name: "read_file", want: ToolAccessReadOnly},
+		{name: "weather_forecast", want: ToolAccessReadOnly},
 		{name: "web_search", want: ToolAccessReadOnly},
 		{name: "docx_review_diff", want: ToolAccessReadOnly},
 		{name: "write_file", want: ToolAccessMutating},

@@ -232,6 +232,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	wordCountTool := tools.NewWordCountTool(workspace, restrict)
 	wordCountTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	registry.Register(wordCountTool)
+	registry.Register(tools.NewWeatherForecastTool())
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
