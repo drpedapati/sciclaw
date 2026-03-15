@@ -1,4 +1,4 @@
-# RFC: Make `/btw` an Explicit, Coherent Side-Lane Product
+# RFC: `/btw` as a First-Class Read-Only Task
 
 ## Status
 
@@ -6,381 +6,423 @@ Draft
 
 ## Summary
 
-`/btw` should remain an explicit side lane, but it should stop behaving like "main lane minus some tools." The current implementation is operational, but its capability contract is implicit and incomplete. The weather failure exposed the core issue: `/btw` is a separate runtime profile without a deliberately designed set of supported task classes.
+`/btw` should stop being treated as a semi-separate side-lane product and instead become a first-class task in the same workspace with a hard read-only contract.
 
-This RFC proposes:
+The intended model is simple:
 
-- keeping `/btw` explicit rather than inferred
-- treating `/btw` as a distinct product surface with a documented capability matrix
-- adding typed, structured tools for the specific low-risk side questions `/btw` is meant to handle
-- failing fast when `/btw` is asked to do work that belongs in the main queue
-- keeping normal user turns in the main lane and out of reduced runtimes
+- same workspace
+- same session and prompt context
+- same scheduler and job model
+- same cards, queueing, status, and cancel semantics
+- one difference: `/btw` is enforced read-only
+
+This RFC supersedes the earlier framing that treated `/btw` as a distinct side-lane product with its own capability surface. That framing overfit the current implementation. The simpler model is better.
+
+## Why This RFC Exists
+
+The queue-first scheduler fixed the original problem:
+
+- normal user turns are no longer silently downgraded into a reduced runtime
+- normal work now stays full-capability and queues per workspace
+
+That part was correct.
+
+The next issue surfaced with the Cincinnati weather example:
+
+- `/btw` ran correctly as a queued/overlapping task
+- mention handling worked
+- Discord response flow worked
+- but the answer quality was poor because `/btw` had only a narrow tool subset and fell back to generic web search plus a weak fetched page
+
+The wrong conclusion would be:
+
+- "weather is broken"
+- or "the queue system is broken"
+
+The real conclusion is:
+
+- `/btw` is currently implemented as a separate reduced runtime
+- that makes it easy for capability drift and odd gaps to accumulate
+
+The clean fix is not to keep inventing a second product surface. It is to make `/btw` a normal task with one clear property: `read_only=true`.
 
 ## Problem Statement
 
-The queue-first scheduler fixed the worst problem: normal user requests are no longer silently downgraded into a reduced read-only runtime. That was the right change.
+Right now `/btw` is conceptually muddled.
 
-However, `/btw` is still underdefined.
+Users think:
 
-Today `/btw` is:
+- quick side question
+- same assistant
+- same context
+- just don't let it change things
 
-- explicit in the scheduler
-- concurrent with a running main job
-- ephemeral
-- restricted to a small tool set
+The implementation currently behaves more like:
 
-But it is not yet clear what kinds of user requests `/btw` is supposed to handle well.
-
-The current side-lane runtime exposes only:
-
-- `web_search`
-- `web_fetch`
-- `pubmed_search`
-- `pubmed_fetch`
-
-This has two consequences:
-
-1. Some side questions are handled well, especially PubMed lookups.
-2. Many ordinary lightweight questions fall back to generic web search and page scraping, which is fragile.
-
-The live weather example made this obvious:
-
-- user asked `/btw what is the weather in cincinnati tomorrow?`
-- the side lane had no structured weather tool
-- the model used `web_search`, then `web_fetch`
-- it chose a low-quality page and returned a degraded answer after spending far too many tokens and too much time
-
-That was not a queue bug. It was a side-lane capability-design bug.
-
-## Current State
-
-### What `/btw` does well now
-
-- explicit user opt-in
-- does not silently reinterpret ordinary requests
-- can overlap with a running main job
-- does not mutate workspace files or session state
-- works well for PubMed lookup because it has typed PubMed tools
-- has queue-aware Discord cards and controls
-
-### What `/btw` is today in implementation terms
-
-- separate scheduler lane
 - separate tool profile
-- separate runtime constraints
-- ephemeral session behavior
-- reduced tool registry
+- separate runtime prompt
+- separate persistence behavior
+- partially separate capability model
 
-This means `/btw` is not a lightweight alias for the main lane. It is already a distinct runtime surface.
+That is more complexity than the user intent requires.
+
+The core mistake is that `/btw` is being modeled as a mini runtime instead of a normal task with a strict mutation boundary.
+
+## Design Goal
+
+`/btw` should mean exactly this:
+
+- "Run this as a normal task in the current workspace and with the current context, but do not allow any mutation or side effects."
+
+That is the whole concept.
+
+Everything else should follow from that.
+
+## Proposed Model
+
+### 1. `/btw` is a first-class task type
+
+`/btw` is not a different scheduler world.
+
+It is a normal task with:
+
+- the same workspace
+- the same session key
+- the same relevant history/context
+- the same queue/status model
+- a hard read-only execution contract
+
+### 2. `/btw` remains explicit
+
+Normal user turns remain full-capability main tasks.
+
+`/btw` is still opt-in. It is not inferred from wording like:
+
+- search
+- find
+- research
+- quick question
+
+That inference model already caused too much damage.
+
+### 3. Read-only is enforced by the runtime
+
+This is the critical point.
+
+`/btw` must not mean:
+
+- "please try to behave read-only"
+
+It must mean:
+
+- the runtime will prevent mutation and side effects
+
+### 4. Same context, no mutation
+
+The correct mental model is:
+
+- read the same world
+- do not change the world
+
+That means `/btw` should be allowed to:
+
+- read session/history
+- read workspace files
+- use safe lookup tools
+- answer questions from current context
+
+And `/btw` should be blocked from:
+
+- writing files
+- editing files
+- appending files
+- deleting or renaming files
+- shell execution
+- attachments or document delivery
+- outbound side effects beyond the reply itself
+- persistent session mutation if we choose to keep `/btw` ephemeral
 
 ## Gap Analysis
 
-### 1. Capability contract gap
+### 1. Conceptual gap
 
-The biggest problem is that `/btw` does not yet have an explicit product contract.
+Current `/btw` is over-modeled.
 
-Users reasonably infer:
+It behaves like a distinct side product when the real user intent is much simpler:
 
-- "small side question"
-- "quick chat while another job runs"
-- "same assistant, lighter mode"
+- same task system
+- same context
+- read-only contract
 
-But the system actually provides:
+This is the largest design gap.
 
-- a separate runtime with a hardcoded tool subset
-- different persistence semantics
-- different failure modes
+### 2. Runtime/profile gap
 
-That mismatch creates user surprise.
+Today `/btw` is implemented as a separate tool profile with an explicit narrowed registry.
 
-### 2. Tool coverage gap
+That creates two problems:
 
-The side lane is too sparse for the kinds of questions users will naturally ask there.
+- missing capability surprises
+- long-term drift between main-lane and `/btw` behavior
 
-Current coverage is strong for:
+This is why a trivial weather question could end up on generic web tools in a brittle way.
 
-- PubMed lookup
-- generic web search
+### 3. Tooling gap
 
-Current coverage is weak for:
+The real issue is not only missing weather.
 
-- weather
-- other structured current-info lookups
-- quick utility questions that need typed, high-trust sources rather than generic search pages
+The bigger issue is that `/btw` currently gets a hand-picked partial tool set instead of a principled read-only capability mask.
 
-The important detail is that weather is not just a `/btw` problem. There is no dedicated weather tool in the system today. But `/btw` amplifies the problem because it strips the runtime down to generic web plus PubMed.
+That means every time the main system grows, `/btw` risks falling behind unless we remember to hand-curate parity.
 
-### 3. Generic web overuse gap
+### 4. Mutation-boundary gap
 
-In `/btw`, generic web tools are doing too much work.
+The important distinction is not:
 
-That creates predictable failure modes:
+- main lane vs weird side lane
 
-- search snippets used as pseudo-APIs
-- fetches against low-quality SEO pages
-- JS-heavy pages yielding low-quality extracted text
-- slow, token-heavy multi-step retrieval for simple questions
+It is:
 
-For simple side questions, this is the wrong shape of toolchain.
+- mutating vs non-mutating operations
 
-### 4. Skill compatibility gap
+The codebase still encodes too much of `/btw` around the old side-lane concept instead of around a formal read-only contract.
 
-`/btw` still shares much of the broader prompt and skill environment, but most skills were not designed as side-lane skills.
+### 5. State semantics gap
 
-This creates ambiguity:
+Today `/btw` is ephemeral:
 
-- some skills are meaningfully usable in `/btw`
-- some are partially usable if write/export steps are skipped
-- some should be rejected immediately
-
-Right now this boundary is too dependent on model judgment.
-
-### 5. Escalation/refusal gap
-
-`/btw` does not yet have a strong capability-aware refusal layer.
-
-For unsupported work, the best behavior is:
-
-- refuse early
-- explain that the request belongs in the main queue
-- preserve the user’s intent instead of trying to improvise badly
-
-Today the system still leans too much on prompt-based adaptation.
-
-### 6. State/continuity gap
-
-`/btw` is ephemeral:
-
-- it can read current session history and Discord recall context
+- it can read history
 - it does not persist new session state
-- it does not contribute to long-term summary state
 
-This is defensible for disposable side questions, but it means `/btw` is not a true continuing conversational lane.
+This may still be the right decision, but it is a separate policy choice from read-only.
 
-That needs to be explicit in the product design rather than an incidental implementation detail.
+We should not conflate:
 
-### 7. Observability gap
+- read-only
+- non-persistent
 
-The scheduler and cards are in decent shape, but the product does not yet expose a clear capability story for `/btw`.
+Those are related but distinct properties.
 
-What we should be able to answer easily:
+### 6. Escalation gap
 
-- what tool categories `/btw` supports
-- which `/btw` requests escalate to the main queue
-- which tool classes most often fail in `/btw`
-- which domains or tasks are producing low-quality answers
+If `/btw` needs mutation, export, or delivery, the system should refuse immediately and tell the user to submit a normal task.
 
-Today this requires log inspection.
+That boundary should be enforced centrally, not improvised in prompts.
 
-### 8. Testing gap
+### 7. Testing gap
 
-The queue and card path is tested and canaried.
+We have tested:
 
-What is not yet comprehensively tested is the capability contract itself:
+- queue behavior
+- `/btw` command routing
+- cards and controls
 
-- supported `/btw` task classes succeed through the intended tools
-- unsupported `/btw` task classes fail early and cleanly
-- common utility asks do not degrade into brittle generic-web behavior
+We have not yet fully tested the more important contract:
 
-### 9. Naming and mental-model gap
+- can `/btw` see the same context as main tasks?
+- does it reliably refuse mutation?
+- does it avoid falling into degraded tool paths for ordinary side questions?
 
-The implementation moved away from implicit `external_readonly`, which was the right decision. But `/btw` still risks becoming "the weird side runtime" instead of a clearly defined mode.
+### 8. Naming gap
 
-That is a product-design problem, not just a code problem.
+The code still carries legacy naming baggage from `external_readonly` and from the interim side-lane framing.
+
+If the target design is "normal task + read-only contract," the naming should eventually reflect that.
+
+## Non-Goals
+
+- `/btw` should not become full write-capability overlap.
+- `/btw` should not be inferred automatically from natural language.
+- `/btw` should not require skills to carry scheduler metadata.
+- `/btw` should not become a separate mini-agent product.
 
 ## Design Principles
 
-1. `/btw` should be explicit.
-2. Normal user turns stay in the main lane.
-3. `/btw` should support a small number of side-question classes very well.
-4. `/btw` should refuse unsupported work quickly and clearly.
-5. `/btw` should prefer typed, structured tools over generic web tools whenever possible.
-6. `/btw` should remain safe to run concurrently with a main job.
+1. Preserve a single mental model for tasks.
+2. Keep normal work full-capability and queued.
+3. Make `/btw` explicit.
+4. Enforce read-only at runtime, not just in prompt text.
+5. Prefer capability masks over hand-maintained alternate tool worlds.
+6. Escalate to a normal queued task when mutation is required.
 
-## Proposed Direction
+## Proposed Execution Contract
 
-### A. Keep `/btw`, but define supported task classes
+### Allowed in `/btw`
 
-Initial intended categories:
+- reading current session and relevant history
+- reading workspace files
+- reading summaries and recall context
+- using approved non-mutating lookup tools
+- replying in-channel with plain text
 
-- quick current-info lookup
-- quick PubMed/citation lookup
-- quick clarification/chat question
-- quick read-only reference question
+### Disallowed in `/btw`
 
-If a request does not fit those categories, `/btw` should not attempt to stretch.
-
-### B. Build the `/btw` tool profile around those categories
-
-The side-lane tool profile should contain only tools that are:
-
-- read-only
-- low-side-effect
-- high-trust for their task class
-- fast enough for opportunistic use
-
-Examples of the kind of additions that fit this model:
-
-- a typed weather tool
-- other typed structured lookup tools for common side questions
-
-This is better than asking generic search and fetch tools to behave like APIs.
-
-### C. Add a capability-aware refusal/escalation layer
-
-If a `/btw` request needs:
-
-- file writes
-- attachments
-- exports
-- delivery workflows
+- file creation
+- file modification
+- file deletion
 - shell execution
-- richer workspace mutation
+- document generation
+- export workflows
+- attachment delivery
+- background sub-workflows that mutate state
+- persistent state mutation, if ephemeral policy is retained
 
-then the system should refuse immediately and say:
+## Architectural Direction
 
-- send it normally to place it in the main queue
+### A. Keep one scheduler model
 
-This should not depend on the model improvising that boundary.
+The scheduler should think in terms of:
 
-### D. Treat generic web as a fallback, not a primary side-lane contract
+- main tasks
+- `/btw` tasks
 
-`web_search` and `web_fetch` remain useful, but they should not be the primary answer for structured, high-confidence utility questions.
+But both are first-class tasks in the same workspace and same job system.
 
-If `/btw` keeps generic web tools, they should be backed by stronger task routing rules and source preferences.
+The difference is not queue semantics. The difference is the read-only contract.
 
-### E. Make `/btw` intentionally disposable
+### B. Replace partial tool-profile thinking with capability masking
 
-Keep `/btw` ephemeral unless and until there is a strong reason to make it stateful.
+Instead of hand-curating `/btw` as a small alternate tool universe, the system should derive `/btw` behavior from one question:
 
-That means:
+- is this operation mutating or non-mutating?
 
-- it can use current context
-- it should not quietly reshape long-term workspace/session state
+That leads to a cleaner architecture:
 
-This is a feature, not a bug, if we define `/btw` correctly.
+- tools advertise capability classes
+- `/btw` gets only non-mutating capabilities
+- main tasks get both mutating and non-mutating capabilities
+
+This is much easier to reason about than maintaining an arbitrary short list forever.
+
+### C. Preserve context parity where safe
+
+`/btw` should keep the same workspace and read context as the main task.
+
+That avoids the current risk that `/btw` feels like a detached assistant with different awareness.
+
+### D. Centralize refusal and escalation
+
+If a `/btw` task attempts a mutating action, the system should fail fast with a clean response like:
+
+- "That needs a normal task. Send it without `/btw` and I’ll queue it."
+
+This should be enforced centrally, not left to prompt wording.
 
 ## Alternatives Considered
 
-### 1. Remove `/btw` entirely
+### 1. Keep `/btw` as a separate side-lane product
 
 Pros:
 
-- simplest mental model
-- no second runtime surface
+- explicit separation
+- narrow concurrency model
 
 Cons:
 
-- loses safe overlap for small side questions
-- forces every interruption into the main queue
+- unnecessary conceptual overhead
+- capability drift
+- more permanent parity problems
+- users have to learn a second assistant personality
 
-### 2. Give `/btw` main-lane parity
+Rejected.
+
+### 2. Remove `/btw` entirely
 
 Pros:
 
-- fewer surprises from missing tools
+- simplest model
 
 Cons:
 
-- defeats the concurrency-safety purpose
-- increases risk of workspace mutation collisions
-- makes `/btw` an alternate scheduler, not a side lane
+- loses a useful way to ask small side questions during a long-running job
 
-### 3. Keep current `/btw` and just patch prompts
+Rejected for now.
+
+### 3. Give `/btw` main-lane parity
 
 Pros:
 
-- cheapest
+- fewer missing-tool surprises
 
 Cons:
 
-- does not solve capability gaps
-- leaves too much to model improvisation
-- repeats the same class of failures on other utility tasks
+- breaks the safety purpose
+- invites concurrent mutation in the same workspace
 
-## Recommendation
+Rejected.
 
-Choose a narrow, intentional `/btw` product rather than full parity or removal.
+## Recommended Plan
 
-Specifically:
+### Phase 1: Rewrite the design contract
 
-- keep `/btw` explicit
-- keep it read-only and ephemeral
-- give it a deliberately curated typed tool set for common side questions
-- add hard refusal/escalation when a request belongs in the main queue
-- stop treating generic web as the answer to every missing side-lane capability
+Update docs and internal language so `/btw` is defined as:
 
-## Implementation Plan
+- first-class task
+- same workspace/context
+- hard read-only contract
 
-### Phase 1: Capability matrix
+### Phase 2: Introduce capability-based gating
 
-Document the supported `/btw` task classes and their intended tools.
+Move from hand-picked alternate tool sets toward tool capability classes such as:
 
-Deliverables:
+- read-only lookup
+- read-only workspace inspection
+- mutating workspace actions
+- outbound delivery actions
 
-- internal capability matrix
-- user-facing help copy for `/btw`
+Then gate `/btw` against those classes.
 
-### Phase 2: Typed utility tools for `/btw`
+### Phase 3: Preserve or refine ephemeral policy
 
-Add the first missing structured tools for common side questions.
+Decide explicitly whether `/btw` should remain:
 
-Priority candidate:
+- read-only and ephemeral
+nor
+- read-only but session-visible
 
-- weather
+Current recommendation:
 
-Goal:
+- keep ephemeral until there is a strong product reason not to
 
-- a weather question should be one structured call and one short answer
-- not search plus arbitrary page fetches
+### Phase 4: Add fast escalation behavior
 
-### Phase 3: Refusal and escalation rules
+When `/btw` encounters a blocked mutating action, it should immediately redirect the user into the normal queue path.
 
-Implement lane-aware refusal when `/btw` requires main-lane capabilities.
+### Phase 5: Fill obvious read-only gaps
 
-Examples:
+Once the contract is right, add missing high-value read-only tools as needed.
 
-- file creation
-- attachment delivery
-- shell commands
-- multi-step workspace workflows
+Weather is the clearest first example.
 
-### Phase 4: Generic web tightening
+The important order is:
 
-Improve side-lane behavior when generic web is used:
+1. fix the contract
+2. then fill capability gaps
 
-- better source preferences
-- stricter task-routing rules
-- avoid low-trust weather or utility pages when typed sources exist
-
-### Phase 5: Testing and telemetry
-
-Add explicit coverage for:
-
-- successful supported `/btw` categories
-- clean refusal on unsupported `/btw` requests
-- latency and token-budget sanity for common side questions
+Not the other way around.
 
 ## Acceptance Criteria
 
-1. `/btw` behavior is predictable from a documented capability contract.
-2. Simple current-info questions do not require brittle generic-web scraping.
-3. Unsupported `/btw` requests fail fast and route users to the main queue.
-4. `/btw` remains concurrency-safe with a running main job.
-5. Users no longer have to infer what `/btw` can do from trial and error.
+1. `/btw` is understandable as a normal task with read-only enforcement.
+2. `/btw` sees the same relevant context as the main lane.
+3. `/btw` cannot mutate workspace or side-effect state.
+4. Unsupported `/btw` requests escalate cleanly to a normal queued task.
+5. `/btw` no longer feels like a detached half-runtime.
 
 ## Open Questions
 
-1. Which typed utility tools belong in the first `/btw` bundle beyond weather?
-2. Should `/btw` have a token or latency budget stricter than the main lane?
-3. Should `/btw` ever persist its own short-lived conversational state, or stay fully disposable?
-4. Should `/btw` expose a visible "supported uses" help card in Discord?
+1. Should `/btw` keep non-persistent session behavior, or should replies become visible to future task context?
+2. Should tool capability classes be explicit metadata on tools, or inferred from tool type?
+3. Which high-value read-only tools belong in the first pass after contract cleanup?
+4. Should the Discord UI explain `/btw` as "read-only task" instead of "side lane"?
 
 ## Bottom Line
 
-The queue-first scheduler fixed the biggest architectural problem: normal work is no longer silently downgraded.
+The simplest correct model is:
 
-The next problem is different: `/btw` is now explicit, but it is still underdesigned.
+- `/btw` is a first-class task
+- in the same workspace
+- with the same context
+- under a hard read-only contract
 
-The right move is not to make `/btw` equal to the main lane.
-The right move is to make `/btw` a deliberately small, typed, trustworthy side-lane product.
+That is cleaner than maintaining `/btw` as a separate mini product.
