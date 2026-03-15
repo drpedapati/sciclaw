@@ -1,5 +1,17 @@
 # Queue-First Scheduler and Explicit `/btw` Side Lane
 
+## Status
+
+Implemented on `main`, then partially superseded by the cleaner read-only-task framing in [btw-side-lane-rfc.md](/Users/ernie/Documents/irl_projects/260212-sciclaw/docs/issues/btw-side-lane-rfc.md).
+
+Use this document as implementation history for:
+- queue-first main jobs
+- explicit `/btw`
+- stable 5-character job refs
+- queue/status/cancel/force controls
+
+Do not use it as the final conceptual model for `/btw`; the read-only-task RFC is the current design source of truth.
+
 ## Summary
 
 Replace implicit `external_readonly` job classification with a queue-first scheduler:

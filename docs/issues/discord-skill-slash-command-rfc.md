@@ -2,7 +2,16 @@
 
 ## Status
 
-Draft
+Implemented on `main`.
+
+What shipped:
+- real Discord `/skill name:<skill> prompt:<task>` command
+- workspace-aware autocomplete
+- submit-time validation against the routed workspace skill catalog
+- reuse of the normal task pipeline instead of a separate skill runtime
+
+Remaining gap:
+- more live Discord soak on autocomplete/interaction UX
 
 ## Summary
 

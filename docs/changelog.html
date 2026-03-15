@@ -250,17 +250,55 @@
           <div class="track">
             <strong>Stable channel</strong>
             <code>brew install sciclaw</code>
-            <div class="meta">Production track. Most users should stay here.</div>
+            <div class="meta">Production track. Current public stable: <strong>v0.2.3</strong>.</div>
           </div>
           <div class="track">
             <strong>Dev channel</strong>
             <code>brew install sciclaw-dev</code>
-            <div class="meta">Preview track for upcoming features and fixes.</div>
+            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.2.4-dev.20</strong>.</div>
           </div>
         </div>
       </section>
 
       <section class="timeline">
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag dev">dev</span>
+              <span class="rel">v0.2.4-dev.20</span>
+            </div>
+            <span class="date">March 15, 2026</span>
+          </div>
+          <ul>
+            <li>Reworked Discord into a queue-aware workflow with background job cards, explicit <code>/btw</code> read-only tasks, and a real <code>/skill</code> slash command with autocomplete.</li>
+            <li>Added typed <code>pubmed_search</code>, <code>pubmed_fetch</code>, and <code>weather_forecast</code> tools so common scientific and utility lookups stop depending on brittle page scraping.</li>
+            <li>Added Claude.ai oat-token bridge support for Anthropic users and hardened the bridge against empty direct-answer failures.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.4-dev.20" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.3...v0.2.4-dev.20" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.2.3</span>
+            </div>
+            <span class="date">March 11, 2026</span>
+          </div>
+          <ul>
+            <li>Updated the stable line for newer provider-qualified model IDs, including current Claude Sonnet and GPT aliases.</li>
+            <li>Improved model override handling so provider-qualified selections behave predictably.</li>
+            <li>Clarified unmapped-room routing guidance to reduce confusion in shared chat rooms.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.3" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.2...v0.2.3" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
         <article class="item">
           <div class="item-head">
             <div class="tagline">
@@ -371,7 +409,7 @@
       </section>
 
       <p class="foot">
-        Last updated: March 5, 2026. Highlights are curated for user impact from release notes and compare ranges.
+        Last updated: March 15, 2026. Highlights are curated for user impact from release notes and compare ranges.
       </p>
     </div>
   </body>

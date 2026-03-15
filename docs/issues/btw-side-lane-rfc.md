@@ -2,7 +2,17 @@
 
 ## Status
 
-Draft
+Implemented on `main` as the current design direction for `/btw`.
+
+What shipped:
+- explicit `/btw` task routing
+- same-workspace task model
+- read-only capability filtering instead of hidden downgrade from ordinary prompts
+- queue-aware cards and controls
+- typed read-only tools like `weather_forecast`, `pubmed_search`, and `pubmed_fetch`
+
+Remaining gap:
+- broader soak/UX validation under real Discord traffic
 
 ## Summary
 

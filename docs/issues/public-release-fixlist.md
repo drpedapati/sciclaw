@@ -1,5 +1,15 @@
 # Public Release Fix List
 
+## Status
+
+All tracked code blockers in this list were implemented on `main` during the `v0.2.4-dev.*` cycle.
+
+What remains before a public stable release is mostly validation, not missing code:
+- live Discord soak on queue cards and controls
+- live `/btw` soak with the newer read-only capability mask
+- live `/skill` slash-command soak
+- release-note / website doc polish
+
 This checklist tracks concrete pre-release blockers found during multi-review.
 Each item includes a success criterion and a regression test target.
 

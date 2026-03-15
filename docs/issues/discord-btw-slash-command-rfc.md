@@ -2,7 +2,16 @@
 
 ## Status
 
-Draft
+Implemented on `main`.
+
+What shipped:
+- real Discord `/btw` application command registration
+- interaction handling with deferred ephemeral ack
+- routing into the same internal `/btw` task path
+- message-form `/btw` retained for compatibility during transition
+
+Remaining gap:
+- broader live-validation and any future decision about deprecating plain-text `/btw`
 
 ## Summary
 

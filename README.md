@@ -41,6 +41,11 @@ New users should follow [Quick Start](#quick-start) below for the canonical setu
 
 > **Prefer a visual interface?** Run `sciclaw app` to open an interactive dashboard in your terminal — no CLI knowledge needed. A CLI is also available for power users: `sciclaw agent -m "your question"` or `sciclaw agent` for interactive mode.
 
+Discord on current `main`/dev builds also supports:
+- queued background jobs with status/cancel cards
+- `/btw` for explicit read-only side questions in the current workspace
+- `/skill` with workspace-aware autocomplete for explicit skill use
+
 ## Install
 
 ### Homebrew (recommended)
@@ -151,7 +156,7 @@ sciClaw auto-detects the provider from the model name. Set credentials via the o
 | Provider | Models | Auth |
 |----------|--------|------|
 | **OpenAI** | gpt-5.2 (primary), gpt-5.2-chat-latest, gpt-5.2-pro | API key or device-code OAuth |
-| **Anthropic** | claude-opus-4-6, claude-sonnet-4-5 | API key or token paste |
+| **Anthropic** | claude-sonnet-4.6, claude-opus-4-6, claude-haiku-4-5-20251001 | API key, token paste, or Claude.ai oat-token bridge |
 | **Gemini** | gemini-2.5-pro, gemini-2.5-flash | API key |
 | **OpenRouter** | All models via `openrouter/` prefix | API key |
 | **DeepSeek** | deepseek-chat, deepseek-reasoner | API key |
@@ -162,7 +167,7 @@ sciClaw auto-detects the provider from the model name. Set credentials via the o
 
 ## Built-in Skills
 
-Fifteen skills are installed during `sciclaw onboard`:
+Bundled skills include:
 
 ### Research & Literature
 - **scientific-writing** — Manuscript drafting with claim-evidence alignment
@@ -183,6 +188,7 @@ Fifteen skills are installed during `sciclaw onboard`:
 ### Office & Documents
 - **docx-review** — Word tracked-change review, comments, semantic diff, and template population (`--create`, v1.3.0+) ([CLI tool](https://github.com/drpedapati/docx-review))
 - For clean first-draft Word output, use `pandoc ... -o file.docx`; sciClaw injects `--defaults <generated-file>` at runtime to apply a bundled NIH reference template (no global `~/.pandoc/defaults.yaml` required).
+- **acroform-fill** — Fill structured PDF/AcroForm fields safely from typed inputs
 - **pptx** — PowerPoint creation and editing
 - **pdf** — PDF creation, merging, splitting, and extraction
 - **xlsx** — Spreadsheet creation, analysis, and conversion
@@ -199,6 +205,11 @@ Additional skills: [skills catalog](https://github.com/drpedapati/sciclaw-skills
 
 Telegram and Discord are the recommended way to interact with sciClaw. You message it from the app you already have open.
 When the agent generates deliverables (for example `.docx`), it can now send real file attachments back through Discord/Telegram via the `message` tool.
+
+Discord-specific features on current `main`/dev builds:
+- background jobs for long-running requests, with queue-aware progress cards
+- `/btw` slash command for read-only side questions in the same workspace
+- `/skill` slash command with workspace-aware skill autocomplete
 
 <details>
 <summary><strong>Telegram setup</strong> (easiest)</summary>
@@ -241,6 +252,11 @@ sciclaw service install    # register with launchd (macOS) or systemd (Linux)
 sciclaw service start
 sciclaw service status     # check it's running
 ```
+
+For long-running Discord work, sciClaw now keeps the channel responsive:
+- one main job runs per workspace
+- additional main jobs queue instead of being silently downgraded
+- `/btw` stays read-only and does not mutate the workspace
 
 Platform notes:
 - **macOS**: per-user `launchd` (`~/Library/LaunchAgents/io.sciclaw.gateway.plist`)

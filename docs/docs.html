@@ -1163,7 +1163,7 @@
         <div class="callout">
           <div class="callout-title">Provider disclaimer</div>
           <p>sciClaw does not endorse any specific LLM provider. We document multiple options so you can choose what works for your institution, budget, and compliance requirements. A ChatGPT Plus, Team, or Enterprise subscription is the easiest way to get started because it requires no API key management &mdash; just log in with your existing OpenAI account. API key workflows (OpenRouter, Anthropic, Azure, etc.) are equally supported for users who prefer them.</p>
-          <p style="margin-top:8px;">Terms around using an Anthropic Claude subscription (claude.ai consumer plan) for programmatic or agent-based access are currently unclear. We are seeking clarification from Anthropic. In the meantime, use Anthropic&rsquo;s API keys if you intend to use Claude with sciClaw.</p>
+          <p style="margin-top:8px;">Anthropic has two practical paths today: direct API keys, or a Claude.ai oat-token bridge on current dev builds when you authenticate with <code>sciclaw auth login --provider anthropic</code>. Use the path that matches your institution&rsquo;s policy and deployment constraints.</p>
         </div>
 
         <h4>Easy login: OpenAI device code (ChatGPT Plus/Team/Enterprise)</h4>
@@ -1179,7 +1179,7 @@
         </div>
 
         <h4>API key authentication</h4>
-        <p>For providers that don&rsquo;t support OAuth, paste an API key directly into <code>config.json</code>:</p>
+        <p>For providers that don&rsquo;t support device-code OAuth, or when you prefer direct key management, paste an API key directly into <code>config.json</code>:</p>
 
         <pre><code><span class="hl-key">"providers"</span>: {
   <span class="hl-key">"openrouter"</span>: { <span class="hl-key">"api_key"</span>: <span class="hl-string">"sk-or-v1-..."</span> },
@@ -1191,7 +1191,7 @@
         <pre><code><span class="hl-comment"># OpenAI device-code login (ChatGPT Plus/Team/Enterprise)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> openai
 
-<span class="hl-comment"># Anthropic token paste</span>
+<span class="hl-comment"># Anthropic auth (API key or supported oat-token login flow)</span>
 <span class="hl-cmd">sciclaw</span> auth login <span class="hl-flag">--provider</span> anthropic
 
 <span class="hl-comment"># Check status</span>
@@ -1200,7 +1200,7 @@
 <span class="hl-comment"># Remove stored credential</span>
 <span class="hl-cmd">sciclaw</span> auth logout <span class="hl-flag">--provider</span> openai</code></pre>
 
-        <p>Credentials are stored in <code>~/.picoclaw/auth.json</code> with user-only file permissions. A successful login sets <code>providers.&lt;name&gt;.auth_method</code> in the config (<code>oauth</code> or <code>token</code>).</p>
+        <p>Credentials are stored in <code>~/.picoclaw/auth.json</code> with user-only file permissions. A successful login sets <code>providers.&lt;name&gt;.auth_method</code> in the config (<code>oauth</code> or <code>token</code>). On current Anthropic dev builds, oat-token credentials can be routed through the companion Claude bridge automatically when available.</p>
       </div>
 
       <!-- ─── Workspace ─── -->
@@ -1476,6 +1476,7 @@
             <tr><td><code>config</code></td><td><code>~/.picoclaw/config.json</code> exists and loads</td></tr>
             <tr><td><code>workspace</code></td><td>Workspace directory exists</td></tr>
             <tr><td><code>auth.openai</code></td><td>OAuth status: authenticated, expired, or needs refresh</td></tr>
+            <tr><td><code>auth.anthropic</code></td><td>Anthropic auth status, including Claude OAuth/oat-token bridge state when configured</td></tr>
             <tr><td><code>docx-review</code></td><td>Word document CLI tool installed</td></tr>
             <tr><td><code>pubmed-cli</code></td><td>PubMed CLI tool installed (checks both <code>pubmed</code> and <code>pubmed-cli</code> names)</td></tr>
             <tr><td><code>irl</code></td><td>IRL runtime available</td></tr>
@@ -1484,7 +1485,7 @@
             <tr><td><code>uv</code></td><td>Python environment manager available (Linux onboarding + fixes)</td></tr>
             <tr><td><code>python3</code></td><td>Python 3 available</td></tr>
             <tr><td><code>python.venv</code></td><td>Workspace venv exists and required Python packages import cleanly</td></tr>
-            <tr><td><code>skills.baseline</code></td><td>All 13 baseline skills present; detects legacy names (<code>docx</code>, <code>pubmed-database</code>)</td></tr>
+            <tr><td><code>skills.baseline</code></td><td>Bundled skill pack present and legacy names (<code>docx</code>, <code>pubmed-database</code>) repaired or flagged</td></tr>
             <tr><td><code>gateway.telegram</code></td><td>Scans logs for Telegram 409 conflicts (multiple bot instances)</td></tr>
             <tr><td><code>service.backend</code></td><td>Detects service backend (<code>launchd</code>, <code>systemd-user</code>, or unsupported)</td></tr>
             <tr><td><code>service.installed</code></td><td>Checks whether the background service unit/plist is installed</td></tr>
@@ -1528,7 +1529,7 @@
             <tr><td>Framing</td><td>Paired-scientist for hypothesis-driven research loops</td></tr>
             <tr><td>Workspace</td><td>Scientific templates (AGENTS, IDENTITY, SOUL, TOOLS, USER)</td></tr>
             <tr><td>Traceability</td><td>Required: evidence capture, provenance logging, hook audit trails</td></tr>
-            <tr><td>Skills</td><td>13 baseline scientific skills + companion CLI tools</td></tr>
+            <tr><td>Skills</td><td>Bundled scientific skills + companion CLI tools</td></tr>
             <tr><td>Providers</td><td>OpenAI, Azure OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Zhipu</td></tr>
             <tr><td>Reasoning</td><td>Per-invocation <code>--effort</code> control for reasoning models</td></tr>
           </tbody>
@@ -1556,7 +1557,7 @@
       <!-- ─── Skills ─── -->
       <div class="section" id="skills">
         <h3>Baseline Scientific Skills</h3>
-        <p>During <code>sciclaw onboard</code>, thirteen skills are installed into <code>~/sciclaw/skills/</code> by default:</p>
+        <p>During <code>sciclaw onboard</code>, bundled skills are installed into <code>~/sciclaw/skills/</code> by default:</p>
 
         <h4>Research &amp; Literature</h4>
         <ul>
@@ -1569,7 +1570,9 @@
         <ul>
           <li><strong>quarto-authoring</strong> &mdash; Loop-driven <code>.qmd</code> authoring and rendering</li>
           <li><strong>pandoc-docx</strong> &mdash; Clean Word draft generation from Markdown (bundled NIH template auto-applied)</li>
+          <li><strong>imagemagick</strong> &mdash; Reproducible image preprocessing and conversion workflows</li>
           <li><strong>beautiful-mermaid</strong> &mdash; Publication-grade diagram workflows</li>
+          <li><strong>explainer-site</strong> &mdash; Technical single-page explainer site generation</li>
         </ul>
 
         <h4>Evidence &amp; Provenance</h4>
@@ -1581,6 +1584,7 @@
         <h4>Office &amp; Documents</h4>
         <ul>
           <li><strong>docx-review</strong> &mdash; Word documents with tracked changes, comments, semantic diff, and document creation via <code>--create</code> (v1.3.0+) (<a href="https://github.com/drpedapati/docx-review">CLI tool</a>)</li>
+          <li><strong>acroform-fill</strong> &mdash; Typed PDF / AcroForm filling workflows</li>
           <li><strong>pptx</strong> &mdash; PowerPoint creation and editing</li>
           <li><strong>pdf</strong> &mdash; PDF creation, merging, splitting, and extraction</li>
           <li><strong>xlsx</strong> &mdash; Spreadsheet creation, analysis, and conversion</li>
@@ -1730,6 +1734,10 @@
             <tr><td><strong>WhatsApp</strong></td><td>Advanced</td><td>Requires bridge</td></tr>
           </tbody>
         </table>
+        <div class="callout">
+          <div class="callout-title">Current Discord workflow</div>
+          <p>On current builds, long Discord requests run as background jobs with queue-aware progress cards. Discord also supports real slash commands for <code>/btw</code> (read-only side questions) and <code>/skill</code> (explicit skill invocation with autocomplete).</p>
+        </div>
       </div>
 
       <!-- ─── Telegram ─── -->
@@ -1787,9 +1795,14 @@
 <span class="hl-cmd">sciclaw</span> gateway</code></pre>
 
         <ol start="6">
-          <li>Generate an invite URL via OAuth2 (scopes: <code>bot</code>; permissions: Send Messages, Read Message History).</li>
+          <li>Generate an invite URL via OAuth2 (scopes: <code>bot</code> and <code>applications.commands</code>; permissions: Send Messages, Read Message History).</li>
           <li>Use <code>sciclaw service status</code> to confirm the gateway is running in background mode.</li>
         </ol>
+
+        <div class="callout">
+          <div class="callout-title">Background jobs and slash commands</div>
+          <p>Discord rooms now support queue-aware background jobs for long tasks. Exact job controls are exposed through replyable cards, and lightweight side questions can use <code>/btw</code> without interrupting the main workspace job. Explicit skill runs can use <code>/skill</code> with workspace-aware autocomplete.</p>
+        </div>
 
         <div class="callout">
           <div class="callout-title">Warning &mdash; Host + VM conflict</div>

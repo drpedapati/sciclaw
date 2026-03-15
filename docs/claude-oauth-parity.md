@@ -43,6 +43,10 @@ Scope is the sciClaw provider contract, not full Claude Code feature parity.
   - tests: `TestClaudeAgentProvider_ChatSuccess`
 - additional directory passthrough
   - tests: `TestClaudeAgentProvider_ChatRequestPassthrough`
+- empty direct-answer recovery under Claude OAuth bridge
+  - provider now retries once without bridge thinking when a direct-answer turn returns empty content and no tool calls
+  - tests: `TestClaudeAgentProvider_ChatRetriesEmptyDirectAnswerWithoutThinking`
+  - tests: `TestClaudeAgentProvider_ChatDoesNotRetryEmptyDirectAnswerWithoutThinking`
 
 ## Intentionally Not a Parity Target
 
