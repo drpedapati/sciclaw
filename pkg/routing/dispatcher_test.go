@@ -52,3 +52,22 @@ func TestDispatcherSendBlockNotice_InternalChannelSkipsNotice(t *testing.T) {
 		t.Fatal("expected no outbound notice for internal channel")
 	}
 }
+
+func TestDispatcherSendJobSubmitError_UsesBackgroundJobMessage(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	d := NewDispatcher(mb, nil, nil)
+	msg := bus.InboundMessage{Channel: "discord", ChatID: "room-1"}
+	d.sendJobSubmitError(context.Background(), msg, context.DeadlineExceeded)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	out, ok := mb.SubscribeOutbound(ctx)
+	if !ok {
+		t.Fatal("expected outbound submit error")
+	}
+	if out.Content != "Failed to start background job: context deadline exceeded" {
+		t.Fatalf("unexpected job submit error content: %q", out.Content)
+	}
+}

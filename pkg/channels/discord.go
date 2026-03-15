@@ -307,12 +307,12 @@ func (c *DiscordChannel) handleMessageUpdate(s *discordgo.Session, m *discordgo.
 
 // processIncomingMessage is the shared handler for both new messages and edits.
 // When editOnly is true the message is silently dropped unless it mentions the bot.
-func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discordgo.Message, editOnly bool) {
+func (c *DiscordChannel) processIncomingMessage(_ *discordgo.Session, m *discordgo.Message, editOnly bool) {
 	if m.Author == nil {
 		return
 	}
 
-	if m.Author.ID == s.State.User.ID {
+	if strings.TrimSpace(c.botUserID) != "" && m.Author.ID == c.botUserID {
 		return
 	}
 
@@ -363,22 +363,6 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 				isMention = true
 				hasDirectMention = true
 				break
-			}
-		}
-		// Check role mentions - if user mentioned any role, check if bot has that role
-		if !isMention && len(m.MentionRoles) > 0 && m.GuildID != "" {
-			if member, err := s.GuildMember(m.GuildID, c.botUserID); err == nil {
-				for _, mentionedRole := range m.MentionRoles {
-					for _, botRole := range member.Roles {
-						if mentionedRole == botRole {
-							isMention = true
-							break
-						}
-					}
-					if isMention {
-						break
-					}
-				}
 			}
 		}
 		// Check if replying to a bot message

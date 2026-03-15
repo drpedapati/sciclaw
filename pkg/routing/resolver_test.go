@@ -383,6 +383,43 @@ func TestResolve_MentionRequired_AllowsWithMention(t *testing.T) {
 	}
 }
 
+func TestResolve_MentionRequired_RejectsRolePingWithoutDirectMention(t *testing.T) {
+	ws := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "123",
+			Workspace:      ws,
+			AllowedSenders: []string{"u1"},
+		},
+	}
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "123",
+		SenderID: "u1",
+		Metadata: map[string]string{
+			"is_mention":         "true",
+			"has_direct_mention": "false",
+			"reply_to_bot":       "false",
+			"is_dm":              "false",
+		},
+	})
+	if d.Allowed {
+		t.Fatalf("expected mention-required mapping to reject role-only ping, got %+v", d)
+	}
+	if d.Event != EventRouteMentionSkip {
+		t.Fatalf("expected event %s, got %s", EventRouteMentionSkip, d.Event)
+	}
+}
+
 func TestResolve_MentionRequired_DMBypass(t *testing.T) {
 	ws := t.TempDir()
 	cfg := config.DefaultConfig()

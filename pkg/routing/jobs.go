@@ -275,6 +275,9 @@ func NewJobManager(storePath string, cfg config.JobsConfig, msgBus *bus.MessageB
 		allowBTWDuringWrite: cfg.AllowBTWDuringWrite || cfg.AllowReadOnlyDuringWrite,
 		active:              map[string]*targetActiveJobs{},
 	}
+	if err := jm.restoreCounterFromStore(); err != nil {
+		return nil, err
+	}
 	if err := jm.interruptStaleActiveJobs(); err != nil {
 		return nil, err
 	}
@@ -330,6 +333,11 @@ func (jm *JobManager) Submit(ctx context.Context, target LoopTarget, msg bus.Inb
 	if activeSet == nil {
 		activeSet = &targetActiveJobs{}
 		jm.active[targetKey] = activeSet
+	}
+	var recoveredWrite *activeJob
+	if jobClass == JobClassWrite && activeSet.write == nil && len(activeSet.queuedWrites) > 0 {
+		recoveredWrite = activeSet.popQueuedWrite()
+		activeSet.write = recoveredWrite
 	}
 
 	jobID, shortID := jm.nextJobID()
@@ -389,6 +397,10 @@ func (jm *JobManager) Submit(ctx context.Context, target LoopTarget, msg bus.Inb
 	}
 	jm.mu.Unlock()
 
+	if recoveredWrite != nil {
+		go jm.runJob(recoveredWrite.ctx, recoveredWrite.target, recoveredWrite.msg, recoveredWrite)
+	}
+
 	if !startImmediately {
 		if err := jm.store.Save(record); err != nil {
 			return jm.rollbackQueuedSubmission(targetKey, active, fmt.Errorf("persist queued job: %w", err))
@@ -431,8 +443,10 @@ func (jm *JobManager) rollbackQueuedSubmission(targetKey string, active *activeJ
 	}
 
 	jm.mu.Lock()
+	var updatedQueued []JobRecord
 	if activeSet := jm.active[targetKey]; activeSet != nil {
 		activeSet.removeQueuedWrite(record.ID)
+		updatedQueued = jm.reindexQueuedWritesLocked(activeSet)
 		if activeSet.empty() {
 			delete(jm.active, targetKey)
 		}
@@ -445,12 +459,18 @@ func (jm *JobManager) rollbackQueuedSubmission(targetKey string, active *activeJ
 		record.Detail = "Failed to queue background job"
 		record.Summary = record.Detail
 		record.LastError = utils.Truncate(compactJobLine(cause.Error()), 180)
-		record.StatusMessageID = ""
 		record.UpdatedAt = time.Now().UnixMilli()
 	})
 	if err := jm.store.Save(record); err != nil {
 		logger.WarnCF("jobs", "Failed to persist queued rollback state", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
 	}
+	for _, queued := range updatedQueued {
+		if err := jm.store.Save(queued); err != nil {
+			logger.WarnCF("jobs", "Failed to persist reindexed queue after rollback", map[string]interface{}{"job_id": queued.ID, "error": err.Error()})
+		}
+	}
+	record = jm.syncProgressRecord(context.Background(), record)
+	_ = jm.syncProgressRecords(context.Background(), updatedQueued...)
 	return cause
 }
 
@@ -524,24 +544,19 @@ func (jm *JobManager) rehydrateQueuedJobs() error {
 		activeSet.enqueueWrite(active)
 		jm.mu.Unlock()
 	}
-
-	var toStart []*activeJob
+	var updatedQueued []JobRecord
 	jm.mu.Lock()
 	for _, activeSet := range jm.active {
-		if activeSet == nil || activeSet.write != nil {
+		if activeSet == nil {
 			continue
 		}
-		next := activeSet.popQueuedWrite()
-		if next == nil {
-			continue
-		}
-		activeSet.write = next
-		toStart = append(toStart, next)
+		updatedQueued = append(updatedQueued, jm.reindexQueuedWritesLocked(activeSet)...)
 	}
 	jm.mu.Unlock()
-
-	for _, job := range toStart {
-		go jm.runJob(job.ctx, job.target, job.msg, job)
+	for _, record := range updatedQueued {
+		if err := jm.store.Save(record); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -650,6 +665,13 @@ func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
 	job := activeSet.removeQueuedWrite(jobID)
+	if job == nil && activeSet.write != nil {
+		writeRecord := activeSet.write.snapshot()
+		if writeRecord.ID == jobID && writeRecord.State == JobStateQueued {
+			job = activeSet.write
+			activeSet.write = nil
+		}
+	}
 	if job == nil {
 		jm.mu.Unlock()
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
@@ -676,8 +698,8 @@ func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error
 			return JobRecord{}, err
 		}
 	}
-	jm.syncProgressRecord(context.Background(), record)
-	jm.syncProgressRecords(context.Background(), updatedQueued...)
+	record = jm.syncProgressRecord(context.Background(), record)
+	updatedQueued = jm.syncProgressRecords(context.Background(), updatedQueued...)
 	if job.cancel != nil {
 		job.cancel()
 	}
@@ -691,12 +713,28 @@ func (jm *JobManager) forceQueuedJob(targetKey, jobID string) (JobRecord, error)
 		jm.mu.Unlock()
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
+	var updatedQueued []JobRecord
+	if activeSet.write != nil {
+		writeRecord := activeSet.write.snapshot()
+		if writeRecord.ID == jobID && writeRecord.State == JobStateQueued {
+			record := writeRecord
+			updatedQueued = jm.reindexQueuedWritesLocked(activeSet)
+			jm.mu.Unlock()
+			for _, queued := range updatedQueued {
+				if err := jm.store.Save(queued); err != nil {
+					return JobRecord{}, err
+				}
+			}
+			_ = jm.syncProgressRecords(context.Background(), updatedQueued...)
+			return record, nil
+		}
+	}
 	job := activeSet.moveQueuedWriteToFront(jobID)
 	if job == nil {
 		jm.mu.Unlock()
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
-	updatedQueued := jm.reindexQueuedWritesLocked(activeSet)
+	updatedQueued = jm.reindexQueuedWritesLocked(activeSet)
 	record := job.snapshot()
 	jm.mu.Unlock()
 
@@ -708,7 +746,7 @@ func (jm *JobManager) forceQueuedJob(targetKey, jobID string) (JobRecord, error)
 			return JobRecord{}, err
 		}
 	}
-	jm.syncProgressRecords(context.Background(), updatedQueued...)
+	_ = jm.syncProgressRecords(context.Background(), updatedQueued...)
 	return record, nil
 }
 
@@ -746,22 +784,33 @@ func (jm *JobManager) reindexQueuedWritesLocked(activeSet *targetActiveJobs) []J
 	return updated
 }
 
-func (jm *JobManager) syncProgressRecord(ctx context.Context, record JobRecord) {
+func (jm *JobManager) syncProgressRecord(ctx context.Context, record JobRecord) JobRecord {
 	if jm.progress == nil || strings.TrimSpace(record.StatusMessageID) == "" {
-		return
+		return record
 	}
 	message := formatProgressOutbound(record)
 	message.Channel = record.Channel
 	message.ChatID = record.ChatID
-	if _, err := jm.progress.SendOrEditProgress(ctx, record.Channel, record.ChatID, record.StatusMessageID, message); err != nil {
+	messageID, err := jm.progress.SendOrEditProgress(ctx, record.Channel, record.ChatID, record.StatusMessageID, message)
+	if err != nil {
 		logger.WarnCF("jobs", "Failed to sync progress record", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
+		return record
 	}
+	if trimmed := strings.TrimSpace(messageID); trimmed != "" && trimmed != strings.TrimSpace(record.StatusMessageID) {
+		record.StatusMessageID = trimmed
+		if err := jm.store.Save(record); err != nil {
+			logger.WarnCF("jobs", "Failed to persist synced progress record", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
+		}
+	}
+	return record
 }
 
-func (jm *JobManager) syncProgressRecords(ctx context.Context, records ...JobRecord) {
+func (jm *JobManager) syncProgressRecords(ctx context.Context, records ...JobRecord) []JobRecord {
+	updated := make([]JobRecord, 0, len(records))
 	for _, record := range records {
-		jm.syncProgressRecord(ctx, record)
+		updated = append(updated, jm.syncProgressRecord(ctx, record))
 	}
+	return updated
 }
 
 func (jm *JobManager) runJob(ctx context.Context, target LoopTarget, msg bus.InboundMessage, active *activeJob) {
@@ -865,6 +914,37 @@ func (jm *JobManager) sendQueuedStatus(ctx context.Context, active *activeJob, r
 func (jm *JobManager) nextJobID() (string, string) {
 	n := atomic.AddUint64(&jm.counter, 1)
 	return fmt.Sprintf("job-%d-%d", time.Now().UnixMilli(), n), formatShortJobRef(n)
+}
+
+func (jm *JobManager) restoreCounterFromStore() error {
+	records, err := jm.store.All()
+	if err != nil {
+		return err
+	}
+	var maxCounter uint64
+	for _, record := range records {
+		if counter, ok := parseJobCounter(record); ok && counter > maxCounter {
+			maxCounter = counter
+		}
+	}
+	atomic.StoreUint64(&jm.counter, maxCounter)
+	return nil
+}
+
+func parseJobCounter(record JobRecord) (uint64, bool) {
+	if id := strings.TrimSpace(record.ID); id != "" {
+		if idx := strings.LastIndex(id, "-"); idx >= 0 && idx < len(id)-1 {
+			if counter, err := strconv.ParseUint(id[idx+1:], 10, 64); err == nil {
+				return counter, true
+			}
+		}
+	}
+	if shortID := strings.TrimSpace(record.ShortID); shortID != "" {
+		if counter, err := strconv.ParseUint(shortID, 36, 64); err == nil {
+			return counter, true
+		}
+	}
+	return 0, false
 }
 
 type progressReporter struct {

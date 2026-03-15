@@ -62,7 +62,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 					"model":     decision.Runtime.LocalModel,
 					"reason":    err.Error(),
 				})
-				d.sendDispatchError(ctx, msg, decision, err)
+				d.sendJobSubmitError(ctx, msg, err)
 			}
 			continue
 		}
@@ -189,4 +189,19 @@ func (d *Dispatcher) sendDispatchError(ctx context.Context, msg bus.InboundMessa
 		return
 	}
 	d.sendOperationalError(ctx, msg)
+}
+
+func (d *Dispatcher) sendJobSubmitError(ctx context.Context, msg bus.InboundMessage, err error) {
+	if constants.IsInternalChannel(msg.Channel) {
+		return
+	}
+	content := "Failed to start background job"
+	if detail := strings.TrimSpace(err.Error()); detail != "" {
+		content += ": " + detail
+	}
+	d.bus.PublishOutbound(ctx, bus.OutboundMessage{
+		Channel: msg.Channel,
+		ChatID:  msg.ChatID,
+		Content: content,
+	})
 }

@@ -320,6 +320,42 @@ func TestDiscordProcessIncomingMessage_PublishesReplyMetadata(t *testing.T) {
 	}
 }
 
+func TestDiscordProcessIncomingMessage_RoleMentionDoesNotCountAsBotMention(t *testing.T) {
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, bus.NewMessageBus(), nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-1",
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	msg := &discordgo.Message{
+		ID:           "m-role",
+		ChannelID:    "chan-1",
+		GuildID:      "guild-1",
+		Content:      "<@&role-1> status",
+		Author:       &discordgo.User{ID: "user-1", Username: "alice"},
+		MentionRoles: []string{"role-1"},
+	}
+
+	ch.processIncomingMessage(newTestSession("bot-1"), msg, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	in, ok := ch.BaseChannel.bus.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("expected inbound message")
+	}
+	if got := in.Metadata["has_direct_mention"]; got != "false" {
+		t.Fatalf("has_direct_mention = %q, want false", got)
+	}
+	if got := in.Metadata["is_mention"]; got != "false" {
+		t.Fatalf("is_mention = %q, want false", got)
+	}
+}
+
 func TestDiscordSendOrEditProgressReturnsMessageIDForNewProgressMessage(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.sendProgressMessageFn = func(channelID string, msg bus.OutboundMessage) (string, error) {
