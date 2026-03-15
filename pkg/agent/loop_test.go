@@ -85,11 +85,11 @@ func TestLocalTurnDiagnostics_RecordLLMResponseTracksFallbacks(t *testing.T) {
 	}
 }
 
-func TestNewAgentLoopWithExternalReadOnlyProfileRestrictsTools(t *testing.T) {
+func TestNewAgentLoopWithSideLaneProfileRestrictsTools(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Workspace = t.TempDir()
 	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), &mockProvider{}, LoopOptions{
-		ToolProfile: ToolProfileExternalReadOnly,
+		ToolProfile: ToolProfileSideLane,
 	})
 
 	if _, ok := al.tools.Get("web_search"); !ok {
@@ -106,16 +106,31 @@ func TestNewAgentLoopWithExternalReadOnlyProfileRestrictsTools(t *testing.T) {
 	}
 	for _, blocked := range []string{"exec", "message", "read_file", "write_file", "spawn", "subagent"} {
 		if _, ok := al.tools.Get(blocked); ok {
-			t.Fatalf("did not expect %s tool in external readonly profile", blocked)
+			t.Fatalf("did not expect %s tool in side-lane profile", blocked)
 		}
 	}
 }
 
-func TestExternalReadOnlyRunJobDoesNotPersistSession(t *testing.T) {
+func TestLegacyExternalReadOnlyProfileNormalizesToSideLane(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Workspace = t.TempDir()
 	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), &mockProvider{}, LoopOptions{
 		ToolProfile: ToolProfileExternalReadOnly,
+	})
+
+	if al.toolProfile != ToolProfileSideLane {
+		t.Fatalf("expected legacy alias to normalize to %q, got %q", ToolProfileSideLane, al.toolProfile)
+	}
+	if _, ok := al.tools.Get("web_search"); !ok {
+		t.Fatal("expected web_search tool in normalized side lane")
+	}
+}
+
+func TestSideLaneRunJobDoesNotPersistSession(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), &mockProvider{}, LoopOptions{
+		ToolProfile: ToolProfileSideLane,
 	})
 
 	msg := bus.InboundMessage{
@@ -136,12 +151,12 @@ func TestExternalReadOnlyRunJobDoesNotPersistSession(t *testing.T) {
 	}
 }
 
-func TestExternalReadOnlyRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
+func TestSideLaneRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Workspace = t.TempDir()
 	provider := &captureMockProvider{response: "ok"}
 	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), provider, LoopOptions{
-		ToolProfile: ToolProfileExternalReadOnly,
+		ToolProfile: ToolProfileSideLane,
 	})
 
 	msg := bus.InboundMessage{
@@ -160,7 +175,7 @@ func TestExternalReadOnlyRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
 		t.Fatalf("expected runtime constraints in system prompt, got: %s", systemPrompt)
 	}
 	if !strings.Contains(systemPrompt, "`pubmed_search`") || !strings.Contains(systemPrompt, "`pubmed_fetch`") {
-		t.Fatalf("expected external readonly tool list in system prompt, got: %s", systemPrompt)
+		t.Fatalf("expected side-lane tool list in system prompt, got: %s", systemPrompt)
 	}
 	if !strings.Contains(systemPrompt, "`exec`, file mutation, and outbound message tools are unavailable") {
 		t.Fatalf("expected exec/file/outbound unavailability note in system prompt, got: %s", systemPrompt)
@@ -168,7 +183,7 @@ func TestExternalReadOnlyRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
 	if !strings.Contains(systemPrompt, "silently skip those steps unless the user explicitly asked for them") {
 		t.Fatalf("expected silent skill adaptation guidance in system prompt, got: %s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "Do not mention external-readonly mode") {
+	if !strings.Contains(systemPrompt, "Do not mention side-lane mode") {
 		t.Fatalf("expected no-leak guidance in system prompt, got: %s", systemPrompt)
 	}
 }

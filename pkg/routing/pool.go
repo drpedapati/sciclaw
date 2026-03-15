@@ -65,7 +65,7 @@ type AgentLoopPool struct {
 	closed             bool
 	wg                 sync.WaitGroup
 	factory            loopFactory
-	externalJobFactory jobRunnerFactory
+	sideLaneJobFactory jobRunnerFactory
 }
 
 // LoopSetupFunc is an optional callback invoked on each new AgentLoop created by the pool.
@@ -98,7 +98,7 @@ func NewAgentLoopPool(cfg *config.Config, msgBus *bus.MessageBus, setup ...LoopS
 				return nil, fmt.Errorf("creating provider for route target: %w", err)
 			}
 			al := agent.NewAgentLoopWithOptions(cloned, msgBus, loopProvider, agent.LoopOptions{
-				ToolProfile: agent.ToolProfileExternalReadOnly,
+				ToolProfile: agent.ToolProfileSideLane,
 			})
 			for _, fn := range setup {
 				fn(al)
@@ -112,12 +112,12 @@ func NewAgentLoopPoolWithFactory(factory loopFactory) *AgentLoopPool {
 	return NewAgentLoopPoolWithFactories(factory, nil)
 }
 
-func NewAgentLoopPoolWithFactories(factory loopFactory, external jobRunnerFactory) *AgentLoopPool {
+func NewAgentLoopPoolWithFactories(factory loopFactory, sideLane jobRunnerFactory) *AgentLoopPool {
 	return &AgentLoopPool{
 		loops:              map[string]*loopEntry{},
 		creating:           map[string]*inflightCreation{},
 		factory:            factory,
-		externalJobFactory: external,
+		sideLaneJobFactory: sideLane,
 	}
 }
 
@@ -173,11 +173,17 @@ func (p *AgentLoopPool) ResolveJobHandler(target LoopTarget) (JobRunner, error) 
 	return entry, nil
 }
 
-func (p *AgentLoopPool) ResolveExternalReadOnlyJobHandler(target LoopTarget) (JobRunner, error) {
-	if p.externalJobFactory == nil {
-		return nil, fmt.Errorf("external readonly job runner is not configured")
+func (p *AgentLoopPool) ResolveSideLaneJobHandler(target LoopTarget) (JobRunner, error) {
+	if p.sideLaneJobFactory == nil {
+		return nil, fmt.Errorf("side-lane job runner is not configured")
 	}
-	return p.externalJobFactory(target.normalized())
+	return p.sideLaneJobFactory(target.normalized())
+}
+
+// ResolveExternalReadOnlyJobHandler keeps the current scheduler integration
+// compiling until JobClassExternalReadOnly is renamed to a side-lane concept.
+func (p *AgentLoopPool) ResolveExternalReadOnlyJobHandler(target LoopTarget) (JobRunner, error) {
+	return p.ResolveSideLaneJobHandler(target)
 }
 
 func (e *loopEntry) HandleInbound(ctx context.Context, msg bus.InboundMessage) {

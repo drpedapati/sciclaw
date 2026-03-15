@@ -69,12 +69,30 @@ type AgentLoop struct {
 type ToolProfile string
 
 const (
-	ToolProfileDefault          ToolProfile = "default"
+	ToolProfileDefault  ToolProfile = "default"
+	ToolProfileSideLane ToolProfile = "side_lane"
+	// ToolProfileExternalReadOnly is a legacy alias kept until the scheduler
+	// class names are renamed. New call sites should use ToolProfileSideLane.
 	ToolProfileExternalReadOnly ToolProfile = "external_readonly"
 )
 
 type LoopOptions struct {
 	ToolProfile ToolProfile
+}
+
+func (p ToolProfile) normalized() ToolProfile {
+	switch strings.ToLower(strings.TrimSpace(string(p))) {
+	case "", string(ToolProfileDefault):
+		return ToolProfileDefault
+	case string(ToolProfileSideLane), string(ToolProfileExternalReadOnly):
+		return ToolProfileSideLane
+	default:
+		return p
+	}
+}
+
+func (p ToolProfile) isSideLane() bool {
+	return p.normalized() == ToolProfileSideLane
 }
 
 // processOptions configures how a message is processed
@@ -119,7 +137,7 @@ var localPrefetchCitationKeywords = []string{
 func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus, profile ToolProfile) *tools.ToolRegistry {
 	registry := tools.NewToolRegistry()
 
-	if profile == ToolProfileExternalReadOnly {
+	if profile.isSideLane() {
 		pubmedSearchTool := tools.NewPubMedSearchTool(workspace)
 		pubmedFetchTool := tools.NewPubMedFetchTool(workspace)
 		if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
@@ -288,10 +306,7 @@ func NewAgentLoopWithOptions(cfg *config.Config, msgBus *bus.MessageBus, provide
 	restrict := cfg.Agents.Defaults.RestrictToWorkspace
 
 	// Create tool registry for main agent
-	profile := opts.ToolProfile
-	if profile == "" {
-		profile = ToolProfileDefault
-	}
+	profile := opts.ToolProfile.normalized()
 	toolsRegistry := createToolRegistry(workspace, restrict, cfg, msgBus, profile)
 
 	if profile == ToolProfileDefault {
@@ -628,9 +643,9 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 		ChatID:          msg.ChatID,
 		UserMessage:     msg.Content,
 		DefaultResponse: defaultEmptyAssistantResponse,
-		EnableSummary:   al.toolProfile == ToolProfileDefault,
+		EnableSummary:   !al.toolProfile.isSideLane(),
 		SendResponse:    false,
-		Ephemeral:       al.toolProfile == ToolProfileExternalReadOnly,
+		Ephemeral:       al.toolProfile.isSideLane(),
 		OnProgress:      onProgress,
 	})
 }
@@ -1668,14 +1683,14 @@ func messageLooksPubMedCitationTask(text string) bool {
 }
 
 func toolProfileRuntimeConstraints(profile ToolProfile) string {
-	switch profile {
-	case ToolProfileExternalReadOnly:
+	switch profile.normalized() {
+	case ToolProfileSideLane:
 		return `## Runtime Constraints
-This run is in external-readonly mode.
+This run is in side-lane mode.
 Only ` + "`web_search`" + `, ` + "`web_fetch`" + `, ` + "`pubmed_search`" + `, and ` + "`pubmed_fetch`" + ` are available.
 ` + "`exec`" + `, file mutation, and outbound message tools are unavailable in this run.
 If a requested skill includes optional write, export, attachment, or delivery steps, silently skip those steps unless the user explicitly asked for them in this turn.
-Do not mention external-readonly mode, unavailable tools, or runtime/session limitations to the user unless the user explicitly requested an unavailable action or deliverable.
+Do not mention side-lane mode, unavailable tools, or runtime/session limitations to the user unless the user explicitly requested an unavailable action or deliverable.
 Use the available tools honestly within these constraints.`
 	default:
 		return ""

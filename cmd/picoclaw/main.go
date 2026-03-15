@@ -1613,17 +1613,17 @@ func gatewayCmd() {
 	defer cancel()
 	var loopPool *routing.AgentLoopPool
 	var jobManager *routing.JobManager
-	externalReadOnlyResolver := func(target routing.LoopTarget) (routing.JobRunner, error) {
+	sideLaneResolver := func(target routing.LoopTarget) (routing.JobRunner, error) {
 		cloned, err := routing.CloneConfigForTarget(cfg, target)
 		if err != nil {
 			return nil, err
 		}
 		loopProvider, err := providers.CreateProvider(cloned)
 		if err != nil {
-			return nil, fmt.Errorf("creating provider for read-only job: %w", err)
+			return nil, fmt.Errorf("creating provider for side-lane job: %w", err)
 		}
 		al := agent.NewAgentLoopWithOptions(cloned, msgBus, loopProvider, agent.LoopOptions{
-			ToolProfile: agent.ToolProfileExternalReadOnly,
+			ToolProfile: agent.ToolProfileSideLane,
 		})
 		return al, nil
 	}
@@ -1644,7 +1644,7 @@ func gatewayCmd() {
 			fmt.Printf("Warning: background jobs disabled: %v\n", jmErr)
 		} else {
 			jobManager = jm
-			jobManager.SetExternalReadOnlyResolver(externalReadOnlyResolver)
+			jobManager.SetExternalReadOnlyResolver(sideLaneResolver)
 			fmt.Println("✓ Discord background jobs enabled")
 		}
 	}
@@ -1666,7 +1666,7 @@ func gatewayCmd() {
 		}
 		loopPool = routing.NewAgentLoopPool(cfg, msgBus, poolSetup...)
 		if jobManager != nil {
-			jobManager.SetExternalReadOnlyResolver(loopPool.ResolveExternalReadOnlyJobHandler)
+			jobManager.SetExternalReadOnlyResolver(loopPool.ResolveSideLaneJobHandler)
 		}
 		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
 		if jobManager != nil {

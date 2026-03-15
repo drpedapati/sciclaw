@@ -326,3 +326,57 @@ func TestAgentLoopPool_SerializesDispatchAndRunJobOnSameHandler(t *testing.T) {
 		t.Fatal("timed out waiting for background job to finish")
 	}
 }
+
+func TestAgentLoopPool_ResolveSideLaneJobHandlerUsesConfiguredFactory(t *testing.T) {
+	expected := &blockingJobHandler{
+		inboundStarted: make(chan struct{}),
+		jobStarted:     make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	target := LoopTarget{Workspace: "/tmp/ws-side-lane"}
+	pool := NewAgentLoopPoolWithFactories(
+		func(_ LoopTarget) (inboundHandler, error) {
+			return &fakeHandler{received: make(chan bus.InboundMessage, 1)}, nil
+		},
+		func(got LoopTarget) (JobRunner, error) {
+			if got.normalized() != target.normalized() {
+				t.Fatalf("unexpected target: %#v", got)
+			}
+			return expected, nil
+		},
+	)
+	defer pool.Close()
+
+	runner, err := pool.ResolveSideLaneJobHandler(target)
+	if err != nil {
+		t.Fatalf("ResolveSideLaneJobHandler: %v", err)
+	}
+	if runner != expected {
+		t.Fatalf("expected configured side-lane runner, got %T", runner)
+	}
+}
+
+func TestAgentLoopPool_ResolveExternalReadOnlyJobHandlerDelegatesToSideLane(t *testing.T) {
+	expected := &blockingJobHandler{
+		inboundStarted: make(chan struct{}),
+		jobStarted:     make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	pool := NewAgentLoopPoolWithFactories(
+		func(_ LoopTarget) (inboundHandler, error) {
+			return &fakeHandler{received: make(chan bus.InboundMessage, 1)}, nil
+		},
+		func(_ LoopTarget) (JobRunner, error) {
+			return expected, nil
+		},
+	)
+	defer pool.Close()
+
+	runner, err := pool.ResolveExternalReadOnlyJobHandler(LoopTarget{Workspace: "/tmp/ws-legacy"})
+	if err != nil {
+		t.Fatalf("ResolveExternalReadOnlyJobHandler: %v", err)
+	}
+	if runner != expected {
+		t.Fatalf("expected legacy resolver to delegate to side-lane runner, got %T", runner)
+	}
+}

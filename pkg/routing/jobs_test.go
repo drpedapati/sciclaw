@@ -51,16 +51,18 @@ func (r *fakeJobRunner) HandleInbound(context.Context, bus.InboundMessage) {}
 func (r *fakeJobRunner) RunJob(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, error) {
 	r.mu.Lock()
 	r.runs++
+	started := r.started
+	block := r.block
 	r.mu.Unlock()
-	if r.started != nil {
-		close(r.started)
+	if started != nil {
+		close(started)
 	}
 	if onProgress != nil {
 		onProgress("thinking", "Thinking")
 	}
-	if r.block != nil {
+	if block != nil {
 		select {
-		case <-r.block:
+		case <-block:
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
@@ -100,9 +102,12 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 	if err := jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "another request"}); err != nil {
 		t.Fatalf("second submit: %v", err)
 	}
-	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "**J") || !strings.Contains(out.Content, "Another write-capable job will wait until this one finishes.") {
-		t.Fatalf("expected busy guidance, got %q", out.Content)
+	waitForQueuedWrite(t, jm, target.key(), 1)
+	jm.mu.Lock()
+	queuedID := jm.active[target.key()].queuedWrites[0].snapshot().ShortID
+	jm.mu.Unlock()
+	if !progressHas(progress, queuedID) {
+		t.Fatalf("expected queued progress card for %s, calls=%v", queuedID, progress.calls)
 	}
 
 	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
@@ -113,35 +118,32 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("status submit: %v", err)
 	}
-	out = mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "**J") || !strings.Contains(out.Content, "> please do work") {
-		t.Fatalf("expected status reply, got %q", out.Content)
+	out := mustNextOutbound(t, mb)
+	if !strings.Contains(out.Content, "sciClaw jobs in this workspace") || !strings.Contains(out.Content, queuedID) {
+		t.Fatalf("expected multi-job status reply, got %q", out.Content)
 	}
 
 	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
 		Channel:  "discord",
 		ChatID:   "room-1",
-		Content:  "cancel",
+		Content:  "cancel " + queuedID,
 		Metadata: map[string]string{"has_direct_mention": "true"},
 	}); err != nil {
 		t.Fatalf("cancel submit: %v", err)
 	}
 	out = mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "stopping job J") {
-		t.Fatalf("expected cancel ack, got %q", out.Content)
+	if !strings.Contains(out.Content, "removed queued job "+queuedID) {
+		t.Fatalf("expected queued cancel ack, got %q", out.Content)
 	}
 
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		jm.mu.Lock()
-		_, ok := jm.active[target.key()]
-		jm.mu.Unlock()
-		if !ok {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	close(runner.block)
+	waitForNoActiveJobs(t, jm, target.key())
+
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if runner.runs != 1 {
+		t.Fatalf("expected queued job to stay cancelled, runs=%d", runner.runs)
 	}
-	t.Fatal("timed out waiting for cancelled job cleanup")
 }
 
 func TestJobManagerAllowsExternalReadOnlyOverlap(t *testing.T) {
@@ -184,7 +186,7 @@ func TestJobManagerAllowsExternalReadOnlyOverlap(t *testing.T) {
 	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
 		Channel: "discord",
 		ChatID:  "room-1",
-		Content: "collect some images of related probes",
+		Content: "/btw collect some images of related probes",
 	}); err != nil {
 		t.Fatalf("readonly submit: %v", err)
 	}
@@ -261,7 +263,7 @@ func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
 	_ = jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "please update the workspace files"})
 	<-writeRunner.started
-	_ = jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "collect some images of related probes"})
+	_ = jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "/btw collect some images of related probes"})
 	<-readRunner.started
 
 	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
@@ -273,7 +275,7 @@ func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 		t.Fatalf("status submit: %v", err)
 	}
 	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "Multiple sciClaw jobs are active here") {
+	if !strings.Contains(out.Content, "sciClaw jobs in this workspace") {
 		t.Fatalf("expected multiple job list, got %q", out.Content)
 	}
 
@@ -320,7 +322,7 @@ func TestJobManagerWritesProgressAndFinalState(t *testing.T) {
 	if len(progress.calls) < 2 {
 		t.Fatalf("expected at least 2 progress updates, got %d", len(progress.calls))
 	}
-	if !strings.Contains(progress.calls[0], "**J") || !strings.Contains(progress.calls[0], "> do it") || !strings.Contains(progress.calls[0], "<t:") {
+	if !strings.Contains(progress.calls[0], "sciClaw ·") || !strings.Contains(progress.calls[0], "> do it") || !strings.Contains(progress.calls[0], "<t:") {
 		t.Fatalf("expected progress metadata, got %q", progress.calls[0])
 	}
 	if !strings.Contains(progress.calls[len(progress.calls)-1], "Done. The full reply is below.") {
@@ -385,6 +387,82 @@ func TestJobManagerRefreshesProgressDuringLongRunningPhase(t *testing.T) {
 	t.Fatal("timed out waiting for long-running job cleanup")
 }
 
+func TestJobManagerOrdinaryResearchTurnQueuesMainLane(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	writeRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	readRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:                  true,
+		MaxConcurrent:            2,
+		ProgressUpdateSeconds:    1,
+		DiscordAsyncDefault:      true,
+		AllowReadOnlyDuringWrite: true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return writeRunner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+	jm.SetExternalReadOnlyResolver(func(target LoopTarget) (JobRunner, error) {
+		return readRunner, nil
+	})
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel: "discord",
+		ChatID:  "room-1",
+		Content: "please update the workspace files",
+	}); err != nil {
+		t.Fatalf("write submit: %v", err)
+	}
+	select {
+	case <-writeRunner.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for write job start")
+	}
+
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel: "discord",
+		ChatID:  "room-1",
+		Content: "collect some images of related probes",
+	}); err != nil {
+		t.Fatalf("ordinary research submit: %v", err)
+	}
+	waitForQueuedWrite(t, jm, target.key(), 1)
+
+	select {
+	case <-readRunner.started:
+		t.Fatal("ordinary research turn should not start external readonly lane implicitly")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	writeRunner.mu.Lock()
+	if writeRunner.runs != 1 {
+		writeRunner.mu.Unlock()
+		t.Fatalf("expected only first write to be running, runs=%d", writeRunner.runs)
+	}
+	writeRunner.mu.Unlock()
+
+	nextBlock := make(chan struct{})
+	nextStarted := make(chan struct{})
+	writeRunner.started = nextStarted
+	oldBlock := writeRunner.block
+	writeRunner.block = nextBlock
+	close(oldBlock)
+
+	select {
+	case <-nextStarted:
+	case <-time.After(time.Second):
+		t.Fatal("queued main-lane job did not start after the first write completed")
+	}
+
+	close(nextBlock)
+	waitForNoActiveJobs(t, jm, target.key())
+}
+
 func mustNextOutbound(t *testing.T, mb *bus.MessageBus) bus.OutboundMessage {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -421,6 +499,36 @@ func countMatchingProgress(progress *fakeProgressMessenger, needle string) int {
 		}
 	}
 	return count
+}
+
+func progressHas(progress *fakeProgressMessenger, needle string) bool {
+	progress.mu.Lock()
+	defer progress.mu.Unlock()
+	for _, call := range progress.calls {
+		if strings.Contains(call, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForQueuedWrite(t *testing.T, jm *JobManager, targetKey string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		jm.mu.Lock()
+		activeSet := jm.active[targetKey]
+		got := 0
+		if activeSet != nil {
+			got = len(activeSet.queuedWrites)
+		}
+		jm.mu.Unlock()
+		if got == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d queued writes for %s", want, targetKey)
 }
 
 func waitForNoActiveJobs(t *testing.T, jm *JobManager, targetKey string) {
