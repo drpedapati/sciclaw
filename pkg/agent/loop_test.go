@@ -111,7 +111,7 @@ func TestNewAgentLoopWithSideLaneProfileRestrictsTools(t *testing.T) {
 	}
 }
 
-func TestLegacyExternalReadOnlyProfileNormalizesToSideLane(t *testing.T) {
+func TestLegacyExternalReadOnlyProfileAliasNormalizesToSideLane(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Workspace = t.TempDir()
 	al := NewAgentLoopWithOptions(cfg, bus.NewMessageBus(), &mockProvider{}, LoopOptions{

@@ -356,7 +356,32 @@ func TestAgentLoopPool_ResolveSideLaneJobHandlerUsesConfiguredFactory(t *testing
 	}
 }
 
-func TestAgentLoopPool_ResolveExternalReadOnlyJobHandlerDelegatesToSideLane(t *testing.T) {
+func TestAgentLoopPool_ResolveBTWJobHandlerDelegatesToSideLane(t *testing.T) {
+	expected := &blockingJobHandler{
+		inboundStarted: make(chan struct{}),
+		jobStarted:     make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	pool := NewAgentLoopPoolWithFactories(
+		func(_ LoopTarget) (inboundHandler, error) {
+			return &fakeHandler{received: make(chan bus.InboundMessage, 1)}, nil
+		},
+		func(_ LoopTarget) (JobRunner, error) {
+			return expected, nil
+		},
+	)
+	defer pool.Close()
+
+	runner, err := pool.ResolveBTWJobHandler(LoopTarget{Workspace: "/tmp/ws-btw"})
+	if err != nil {
+		t.Fatalf("ResolveBTWJobHandler: %v", err)
+	}
+	if runner != expected {
+		t.Fatalf("expected /btw resolver to delegate to side-lane runner, got %T", runner)
+	}
+}
+
+func TestAgentLoopPool_ResolveExternalReadOnlyJobHandlerLegacyAliasDelegatesToBTW(t *testing.T) {
 	expected := &blockingJobHandler{
 		inboundStarted: make(chan struct{}),
 		jobStarted:     make(chan struct{}),
@@ -377,6 +402,6 @@ func TestAgentLoopPool_ResolveExternalReadOnlyJobHandlerDelegatesToSideLane(t *t
 		t.Fatalf("ResolveExternalReadOnlyJobHandler: %v", err)
 	}
 	if runner != expected {
-		t.Fatalf("expected legacy resolver to delegate to side-lane runner, got %T", runner)
+		t.Fatalf("expected legacy resolver to delegate to /btw side-lane runner, got %T", runner)
 	}
 }

@@ -71,8 +71,9 @@ type ToolProfile string
 const (
 	ToolProfileDefault  ToolProfile = "default"
 	ToolProfileSideLane ToolProfile = "side_lane"
-	// ToolProfileExternalReadOnly is a legacy alias kept until the scheduler
-	// class names are renamed. New call sites should use ToolProfileSideLane.
+	// ToolProfileExternalReadOnly is a legacy alias for the old implicit
+	// scheduler naming. The queue-first scheduler now uses an explicit /btw
+	// side lane; new call sites should use ToolProfileSideLane.
 	ToolProfileExternalReadOnly ToolProfile = "external_readonly"
 )
 
@@ -1686,7 +1687,7 @@ func toolProfileRuntimeConstraints(profile ToolProfile) string {
 	switch profile.normalized() {
 	case ToolProfileSideLane:
 		return `## Runtime Constraints
-This run is in side-lane mode.
+This run is in the explicit /btw side lane.
 Only ` + "`web_search`" + `, ` + "`web_fetch`" + `, ` + "`pubmed_search`" + `, and ` + "`pubmed_fetch`" + ` are available.
 ` + "`exec`" + `, file mutation, and outbound message tools are unavailable in this run.
 If a requested skill includes optional write, export, attachment, or delivery steps, silently skip those steps unless the user explicitly asked for them in this turn.

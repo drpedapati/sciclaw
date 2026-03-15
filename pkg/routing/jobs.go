@@ -41,8 +41,8 @@ type JobClass string
 const (
 	JobClassWrite JobClass = "write"
 	JobClassBTW   JobClass = "btw"
-	// JobClassExternalReadOnly is a legacy alias kept until the scheduler
-	// rename is complete.
+	// JobClassExternalReadOnly is a legacy alias for pre-/btw scheduler
+	// naming. New code should use JobClassBTW.
 	JobClassExternalReadOnly JobClass = JobClassBTW
 )
 
@@ -120,7 +120,7 @@ func (s *targetActiveJobs) clear(class JobClass) {
 
 func (s *targetActiveJobs) jobForClass(class JobClass) *activeJob {
 	switch class {
-	case JobClassExternalReadOnly:
+	case JobClassBTW:
 		return s.btw
 	default:
 		return s.write
@@ -215,14 +215,14 @@ func (s *targetActiveJobs) moveQueuedWriteToFront(jobID string) *activeJob {
 }
 
 type JobManager struct {
-	bus                      *bus.MessageBus
-	progress                 ProgressMessenger
-	resolve                  handlerResolverFunc
-	resolveExternal          handlerResolverFunc
-	progressInterval         time.Duration
-	store                    *jobStore
-	semaphore                chan struct{}
-	allowReadOnlyDuringWrite bool
+	bus                 *bus.MessageBus
+	progress            ProgressMessenger
+	resolve             handlerResolverFunc
+	resolveSideLane     handlerResolverFunc
+	progressInterval    time.Duration
+	store               *jobStore
+	semaphore           chan struct{}
+	allowBTWDuringWrite bool
 
 	mu      sync.Mutex
 	active  map[string]*targetActiveJobs
@@ -263,14 +263,14 @@ func NewJobManager(storePath string, cfg config.JobsConfig, msgBus *bus.MessageB
 		return nil, err
 	}
 	jm := &JobManager{
-		bus:                      msgBus,
-		progress:                 progress,
-		resolve:                  resolve,
-		progressInterval:         progressEvery,
-		store:                    store,
-		semaphore:                make(chan struct{}, maxConcurrent),
-		allowReadOnlyDuringWrite: cfg.AllowReadOnlyDuringWrite,
-		active:                   map[string]*targetActiveJobs{},
+		bus:                 msgBus,
+		progress:            progress,
+		resolve:             resolve,
+		progressInterval:    progressEvery,
+		store:               store,
+		semaphore:           make(chan struct{}, maxConcurrent),
+		allowBTWDuringWrite: cfg.AllowBTWDuringWrite || cfg.AllowReadOnlyDuringWrite,
+		active:              map[string]*targetActiveJobs{},
 	}
 	if err := jm.interruptStaleActiveJobs(); err != nil {
 		return nil, err
@@ -278,10 +278,16 @@ func NewJobManager(storePath string, cfg config.JobsConfig, msgBus *bus.MessageB
 	return jm, nil
 }
 
-func (jm *JobManager) SetExternalReadOnlyResolver(resolve handlerResolverFunc) {
+func (jm *JobManager) SetSideLaneResolver(resolve handlerResolverFunc) {
 	jm.mu.Lock()
-	jm.resolveExternal = resolve
+	jm.resolveSideLane = resolve
 	jm.mu.Unlock()
+}
+
+// SetExternalReadOnlyResolver is a legacy alias for pre-/btw scheduler
+// naming. New call sites should use SetSideLaneResolver.
+func (jm *JobManager) SetExternalReadOnlyResolver(resolve handlerResolverFunc) {
+	jm.SetSideLaneResolver(resolve)
 }
 
 func (jm *JobManager) ShouldHandleChannel(channel string) bool {
@@ -291,7 +297,7 @@ func (jm *JobManager) ShouldHandleChannel(channel string) bool {
 func (jm *JobManager) resolveForClass(class JobClass, target LoopTarget) (JobRunner, error) {
 	if class == JobClassBTW {
 		jm.mu.Lock()
-		resolve := jm.resolveExternal
+		resolve := jm.resolveSideLane
 		jm.mu.Unlock()
 		if resolve == nil {
 			return nil, fmt.Errorf("/btw job runner is not configured")
@@ -355,15 +361,15 @@ func (jm *JobManager) Submit(ctx context.Context, target LoopTarget, msg bus.Inb
 		if activeSet.write != nil {
 			activeWrite = activeSet.write.snapshot()
 			queuedPosition = activeSet.enqueueWrite(active)
-			record.Detail = fmt.Sprintf("Queued behind %s · position %d", activeWrite.ShortID, queuedPosition)
+			record.Detail = fmt.Sprintf("Queued in main lane · behind %s · position %d", activeWrite.ShortID, queuedPosition)
 			record.Summary = record.Detail
 			active.record = record
 		} else {
 			activeSet.set(jobClass, active)
 			startImmediately = true
 		}
-	case JobClassExternalReadOnly:
-		if activeSet.jobForClass(jobClass) != nil || (!jm.allowReadOnlyDuringWrite && activeSet.write != nil) || activeSet.isFull() {
+	case JobClassBTW:
+		if activeSet.jobForClass(jobClass) != nil || (!jm.allowBTWDuringWrite && activeSet.write != nil) || activeSet.isFull() {
 			jm.mu.Unlock()
 			return jm.sendBusy(ctx, msg, snapshotActiveJobs(knownJobs), jobClass)
 		}
@@ -429,14 +435,14 @@ func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage,
 	record := selected.snapshot()
 	switch control.Kind {
 	case jobControlStatus:
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobStatus(record, false))
+		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobStatus(record, true))
 	case jobControlCancel:
 		if record.State == JobStateQueued {
 			cancelled, cancelErr := jm.cancelQueuedJob(targetKey, record.ID)
 			if cancelErr != nil {
 				return jm.sendText(ctx, msg.Channel, msg.ChatID, cancelErr.Error())
 			}
-			return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw removed queued job %s.\n\nAsk: %s", cancelled.ShortID, fallbackAskSummary(cancelled.AskSummary)))
+			return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw removed queued job %s from the main queue.\n\nAsk: %s", cancelled.ShortID, fallbackAskSummary(cancelled.AskSummary)))
 		}
 		selected.cancel()
 		return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw is stopping job %s.\n\nAsk: %s", record.ShortID, fallbackAskSummary(record.AskSummary)))
@@ -448,7 +454,7 @@ func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage,
 		if forceErr != nil {
 			return jm.sendText(ctx, msg.Channel, msg.ChatID, forceErr.Error())
 		}
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw moved job %s to the front of the queue.\n\nAsk: %s", forced.ShortID, fallbackAskSummary(forced.AskSummary)))
+		return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw moved job %s to the front of the main queue.\n\nAsk: %s", forced.ShortID, fallbackAskSummary(forced.AskSummary)))
 	default:
 		return nil
 	}
@@ -468,7 +474,7 @@ func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error
 	record := job.update(func(record *JobRecord) {
 		record.State = JobStateCancelled
 		record.Phase = "cancelled"
-		record.Detail = "Cancelled while queued"
+		record.Detail = "Removed from main queue"
 		record.Summary = record.Detail
 		record.UpdatedAt = time.Now().UnixMilli()
 		record.LastError = ""
@@ -497,7 +503,7 @@ func (jm *JobManager) forceQueuedJob(targetKey, jobID string) (JobRecord, error)
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
 	record := job.update(func(record *JobRecord) {
-		record.Detail = "Queued at the front"
+		record.Detail = "Queued in main lane · next up"
 		record.Summary = record.Detail
 		record.UpdatedAt = time.Now().UnixMilli()
 	})
@@ -579,7 +585,7 @@ func (jm *JobManager) sendText(ctx context.Context, channel, chatID, content str
 func (jm *JobManager) sendQueuedStatus(ctx context.Context, active *activeJob, running JobRecord, position int) error {
 	record := active.snapshot()
 	if strings.TrimSpace(record.Detail) == "" && position > 0 {
-		record.Detail = fmt.Sprintf("Queued behind %s · position %d", running.ShortID, position)
+		record.Detail = fmt.Sprintf("Queued in main lane · behind %s · position %d", running.ShortID, position)
 	}
 	message := formatProgressOutbound(record)
 	message.Channel = record.Channel
@@ -755,12 +761,12 @@ func (p *progressReporter) complete(state JobState, phase, detail string, err er
 
 type jobControl int
 
-	const (
-		jobControlNone jobControl = iota
-		jobControlStatus
-		jobControlCancel
-		jobControlForce
-	)
+const (
+	jobControlNone jobControl = iota
+	jobControlStatus
+	jobControlCancel
+	jobControlForce
+)
 
 type parsedJobControl struct {
 	Kind     jobControl
@@ -856,7 +862,7 @@ func formatDiscordRelativeTimestamp(startedAtMillis int64) string {
 }
 
 func formatJobCardHeader(record JobRecord) string {
-	return fmt.Sprintf("**%s** · **%s** · %s", record.ShortID, humanizePhase(record.Phase), formatDiscordRelativeTimestamp(record.StartedAt))
+	return fmt.Sprintf("**%s** · **%s** · %s · %s", record.ShortID, humanizePhase(record.Phase), jobLaneLabel(record.Class), formatDiscordRelativeTimestamp(record.StartedAt))
 }
 
 func formatJobCardDetail(record JobRecord) string {
@@ -873,9 +879,12 @@ func formatJobCardAsk(record JobRecord) string {
 
 func formatJobControlHint(record JobRecord) string {
 	if record.State == JobStateQueued {
-		return fmt.Sprintf("Reply `status %s` · `cancel %s` · `force %s`", record.ShortID, record.ShortID, record.ShortID)
+		return fmt.Sprintf("Controls: `status %s` · `force %s` to move next · `cancel %s` to drop from queue", record.ShortID, record.ShortID, record.ShortID)
 	}
-	return fmt.Sprintf("Reply `status %s` · `cancel %s`", record.ShortID, record.ShortID)
+	if record.Class == JobClassBTW {
+		return fmt.Sprintf("Controls: `status %s` · `cancel %s` to clear /btw", record.ShortID, record.ShortID)
+	}
+	return fmt.Sprintf("Controls: `status %s` · `cancel %s` to stop it", record.ShortID, record.ShortID)
 }
 
 func summarizeJobAsk(content string) string {
@@ -935,7 +944,7 @@ func formatProgressMessage(record JobRecord) string {
 	case JobStateQueued, JobStateRunning:
 		lines = append(lines, "", formatJobControlHint(record))
 	case JobStateDone:
-		lines = append(lines, "", "Done. The full reply is below.")
+		lines = append(lines, "", "Done. Reply below.")
 	case JobStateCancelled:
 		lines = append(lines, "", "This job was cancelled.")
 	case JobStateFailed, JobStateInterrupted:
@@ -962,6 +971,7 @@ func formatProgressEmbed(record JobRecord) bus.OutboundEmbed {
 	}
 
 	embed.Fields = append(embed.Fields,
+		bus.OutboundEmbedField{Name: "Lane", Value: jobLaneLabel(record.Class), Inline: true},
 		bus.OutboundEmbedField{Name: "Status", Value: humanizePhase(record.Phase), Inline: true},
 		bus.OutboundEmbedField{Name: "Started", Value: formatDiscordRelativeTimestamp(record.StartedAt), Inline: true},
 	)
@@ -976,9 +986,9 @@ func formatProgressEmbed(record JobRecord) bus.OutboundEmbed {
 
 	switch record.State {
 	case JobStateQueued, JobStateRunning:
-		embed.Footer = strings.TrimPrefix(formatJobControlHint(record), "Reply ")
+		embed.Footer = strings.TrimPrefix(formatJobControlHint(record), "Controls: ")
 	case JobStateDone:
-		embed.Footer = "Done. Full reply below."
+		embed.Footer = "Done. Reply below."
 	case JobStateCancelled:
 		embed.Footer = "Cancelled."
 	case JobStateFailed, JobStateInterrupted:
@@ -1026,17 +1036,26 @@ func formatActiveJobStatus(record JobRecord, includeControlHint bool) string {
 func formatActiveJobList(records []JobRecord) string {
 	lines := []string{"**sciClaw jobs in this workspace**", ""}
 	for _, record := range records {
-		lines = append(lines, fmt.Sprintf("- **%s** · %s · %s", record.ShortID, humanizePhase(record.Phase), formatDiscordRelativeTimestamp(record.StartedAt)))
+		lines = append(lines, fmt.Sprintf("- **%s** · %s · %s · %s", record.ShortID, jobLaneLabel(record.Class), humanizePhase(record.Phase), formatDiscordRelativeTimestamp(record.StartedAt)))
 		lines = append(lines, fmt.Sprintf("  %s", fallbackAskSummary(record.AskSummary)))
+		if detail := formatJobCardDetail(record); detail != "" {
+			lines = append(lines, fmt.Sprintf("  %s", detail))
+		}
 	}
-	lines = append(lines, "", "Reply `status <job-id>` for details.")
+	lines = append(lines, "", "Use `status <job-id>` for details · `cancel <job-id>` to stop one.")
+	if hasQueuedMainLane(records) {
+		lines = append(lines, "Queued main-lane jobs can use `force <job-id>` to move next.")
+	}
 	return strings.Join(lines, "\n")
 }
 
 func formatCancelRequiresJobID(records []JobRecord) string {
-	lines := []string{"**sciClaw jobs in this workspace**", "Reply `cancel <job-id>`.", ""}
+	lines := []string{"**sciClaw jobs in this workspace**", "Use `cancel <job-id>` to stop one.", ""}
 	for _, record := range records {
-		lines = append(lines, fmt.Sprintf("- **%s** · %s", record.ShortID, fallbackAskSummary(record.AskSummary)))
+		lines = append(lines, fmt.Sprintf("- **%s** · %s · %s", record.ShortID, jobLaneLabel(record.Class), fallbackAskSummary(record.AskSummary)))
+	}
+	if hasQueuedMainLane(records) {
+		lines = append(lines, "", "Queued main-lane jobs can also use `force <job-id>` to move next.")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1050,13 +1069,36 @@ func formatBusyMessage(records []JobRecord, requestedClass JobClass) string {
 		lines = []string{formatActiveJobList(records)}
 	}
 	switch requestedClass {
-	case JobClassExternalReadOnly:
-		lines = append(lines, "", "The explicit `/btw` side lane is already busy for this workspace.")
+	case JobClassBTW:
+		lines = append(lines, "", "The /btw lane is already in use in this workspace.")
+		lines = append(lines, "Use `status <job-id>` to inspect it or `cancel <job-id>` to clear it.")
+		lines = append(lines, "If this can wait, resend it without `/btw` to place it in the main queue.")
 	default:
-		lines = append(lines, "", "Main workspace jobs are queued automatically.")
+		lines = append(lines, "", "Main-lane work is queued in this workspace.")
+		if hasQueuedMainLane(records) {
+			lines = append(lines, "Queued main-lane jobs can use `force <job-id>` to move next.")
+		}
+		lines = append(lines, "Use `status <job-id>` or `cancel <job-id>` if you need to manage one.")
 	}
-	lines = append(lines, "Reply `status <job-id>` or `cancel <job-id>` if you need the running job.")
 	return strings.Join(lines, "\n")
+}
+
+func jobLaneLabel(class JobClass) string {
+	switch class {
+	case JobClassBTW:
+		return "/btw lane"
+	default:
+		return "main lane"
+	}
+}
+
+func hasQueuedMainLane(records []JobRecord) bool {
+	for _, record := range records {
+		if record.Class == JobClassWrite && record.State == JobStateQueued {
+			return true
+		}
+	}
+	return false
 }
 
 func (jm *JobManager) sendBusy(ctx context.Context, msg bus.InboundMessage, records []JobRecord, requestedClass JobClass) error {

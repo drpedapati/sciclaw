@@ -1613,7 +1613,7 @@ func gatewayCmd() {
 	defer cancel()
 	var loopPool *routing.AgentLoopPool
 	var jobManager *routing.JobManager
-	sideLaneResolver := func(target routing.LoopTarget) (routing.JobRunner, error) {
+	btwLaneResolver := func(target routing.LoopTarget) (routing.JobRunner, error) {
 		cloned, err := routing.CloneConfigForTarget(cfg, target)
 		if err != nil {
 			return nil, err
@@ -1644,7 +1644,7 @@ func gatewayCmd() {
 			fmt.Printf("Warning: background jobs disabled: %v\n", jmErr)
 		} else {
 			jobManager = jm
-			jobManager.SetExternalReadOnlyResolver(sideLaneResolver)
+			jobManager.SetSideLaneResolver(btwLaneResolver)
 			fmt.Println("✓ Discord background jobs enabled")
 		}
 	}
@@ -1666,7 +1666,7 @@ func gatewayCmd() {
 		}
 		loopPool = routing.NewAgentLoopPool(cfg, msgBus, poolSetup...)
 		if jobManager != nil {
-			jobManager.SetExternalReadOnlyResolver(loopPool.ResolveSideLaneJobHandler)
+			jobManager.SetSideLaneResolver(loopPool.ResolveBTWJobHandler)
 		}
 		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
 		if jobManager != nil {

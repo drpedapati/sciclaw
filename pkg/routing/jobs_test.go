@@ -106,8 +106,14 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 	jm.mu.Lock()
 	queuedID := jm.active[target.key()].queuedWrites[0].snapshot().ShortID
 	jm.mu.Unlock()
+	if len(queuedID) != 5 {
+		t.Fatalf("expected stable 5-char queued ref, got %q", queuedID)
+	}
 	if !progressHas(progress, queuedID) {
 		t.Fatalf("expected queued progress card for %s, calls=%v", queuedID, progress.calls)
+	}
+	if !progressHas(progress, "force "+queuedID) || !progressHas(progress, "drop from queue") {
+		t.Fatalf("expected queued progress card to include force/cancel hint for %s, calls=%v", queuedID, progress.calls)
 	}
 
 	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
@@ -146,7 +152,7 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 	}
 }
 
-func TestJobManagerAllowsExternalReadOnlyOverlap(t *testing.T) {
+func TestJobManagerAllowsBTWOverlap(t *testing.T) {
 	mb := bus.NewMessageBus()
 	defer mb.Close()
 
@@ -154,18 +160,18 @@ func TestJobManagerAllowsExternalReadOnlyOverlap(t *testing.T) {
 	writeRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
 	readRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
 	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
-		Enabled:                  true,
-		MaxConcurrent:            2,
-		ProgressUpdateSeconds:    1,
-		DiscordAsyncDefault:      true,
-		AllowReadOnlyDuringWrite: true,
+		Enabled:               true,
+		MaxConcurrent:         2,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+		AllowBTWDuringWrite:   true,
 	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
 		return writeRunner, nil
 	})
 	if err != nil {
 		t.Fatalf("NewJobManager: %v", err)
 	}
-	jm.SetExternalReadOnlyResolver(func(target LoopTarget) (JobRunner, error) {
+	jm.SetSideLaneResolver(func(target LoopTarget) (JobRunner, error) {
 		return readRunner, nil
 	})
 
@@ -188,12 +194,12 @@ func TestJobManagerAllowsExternalReadOnlyOverlap(t *testing.T) {
 		ChatID:  "room-1",
 		Content: "/btw collect some images of related probes",
 	}); err != nil {
-		t.Fatalf("readonly submit: %v", err)
+		t.Fatalf("/btw submit: %v", err)
 	}
 	select {
 	case <-readRunner.started:
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for readonly job start")
+		t.Fatal("timed out waiting for /btw job start")
 	}
 
 	close(writeRunner.block)
@@ -245,18 +251,18 @@ func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 	writeRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
 	readRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
 	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
-		Enabled:                  true,
-		MaxConcurrent:            2,
-		ProgressUpdateSeconds:    1,
-		DiscordAsyncDefault:      true,
-		AllowReadOnlyDuringWrite: true,
+		Enabled:               true,
+		MaxConcurrent:         2,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+		AllowBTWDuringWrite:   true,
 	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
 		return writeRunner, nil
 	})
 	if err != nil {
 		t.Fatalf("NewJobManager: %v", err)
 	}
-	jm.SetExternalReadOnlyResolver(func(target LoopTarget) (JobRunner, error) {
+	jm.SetSideLaneResolver(func(target LoopTarget) (JobRunner, error) {
 		return readRunner, nil
 	})
 
@@ -277,6 +283,9 @@ func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 	out := mustNextOutbound(t, mb)
 	if !strings.Contains(out.Content, "sciClaw jobs in this workspace") {
 		t.Fatalf("expected multiple job list, got %q", out.Content)
+	}
+	if !strings.Contains(out.Content, "/btw lane") {
+		t.Fatalf("expected job list to label /btw lane, got %q", out.Content)
 	}
 
 	close(writeRunner.block)
@@ -325,9 +334,65 @@ func TestJobManagerWritesProgressAndFinalState(t *testing.T) {
 	if !strings.Contains(progress.calls[0], "sciClaw ·") || !strings.Contains(progress.calls[0], "> do it") || !strings.Contains(progress.calls[0], "<t:") {
 		t.Fatalf("expected progress metadata, got %q", progress.calls[0])
 	}
-	if !strings.Contains(progress.calls[len(progress.calls)-1], "Done. The full reply is below.") {
+	if !strings.Contains(progress.calls[len(progress.calls)-1], "Done. Reply below.") {
 		t.Fatalf("expected final progress update, got %q", progress.calls[len(progress.calls)-1])
 	}
+}
+
+func TestJobManagerBTWBusyMessageExplainsQueueOptions(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	writeRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	btwRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         2,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+		AllowBTWDuringWrite:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return writeRunner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+	jm.SetSideLaneResolver(func(target LoopTarget) (JobRunner, error) {
+		return btwRunner, nil
+	})
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel: "discord",
+		ChatID:  "room-1",
+		Content: "/btw collect some images of related probes",
+	}); err != nil {
+		t.Fatalf("first /btw submit: %v", err)
+	}
+	select {
+	case <-btwRunner.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first /btw job start")
+	}
+
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel: "discord",
+		ChatID:  "room-1",
+		Content: "/btw collect more probe images",
+	}); err != nil {
+		t.Fatalf("second /btw submit: %v", err)
+	}
+	out := mustNextOutbound(t, mb)
+	if !strings.Contains(out.Content, "The /btw lane is already in use") {
+		t.Fatalf("expected /btw busy message, got %q", out.Content)
+	}
+	if !strings.Contains(out.Content, "cancel <job-id>") || !strings.Contains(out.Content, "place it in the main queue") {
+		t.Fatalf("expected /btw busy message to explain cancel or main-queue fallback, got %q", out.Content)
+	}
+
+	close(btwRunner.block)
+	waitForNoActiveJobs(t, jm, target.key())
 }
 
 func TestJobManagerRefreshesProgressDuringLongRunningPhase(t *testing.T) {
@@ -395,18 +460,18 @@ func TestJobManagerOrdinaryResearchTurnQueuesMainLane(t *testing.T) {
 	writeRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
 	readRunner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
 	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
-		Enabled:                  true,
-		MaxConcurrent:            2,
-		ProgressUpdateSeconds:    1,
-		DiscordAsyncDefault:      true,
-		AllowReadOnlyDuringWrite: true,
+		Enabled:               true,
+		MaxConcurrent:         2,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+		AllowBTWDuringWrite:   true,
 	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
 		return writeRunner, nil
 	})
 	if err != nil {
 		t.Fatalf("NewJobManager: %v", err)
 	}
-	jm.SetExternalReadOnlyResolver(func(target LoopTarget) (JobRunner, error) {
+	jm.SetSideLaneResolver(func(target LoopTarget) (JobRunner, error) {
 		return readRunner, nil
 	})
 
@@ -435,7 +500,7 @@ func TestJobManagerOrdinaryResearchTurnQueuesMainLane(t *testing.T) {
 
 	select {
 	case <-readRunner.started:
-		t.Fatal("ordinary research turn should not start external readonly lane implicitly")
+		t.Fatal("ordinary research turn should not start the explicit /btw lane implicitly")
 	case <-time.After(100 * time.Millisecond):
 	}
 

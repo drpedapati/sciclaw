@@ -180,10 +180,15 @@ func (p *AgentLoopPool) ResolveSideLaneJobHandler(target LoopTarget) (JobRunner,
 	return p.sideLaneJobFactory(target.normalized())
 }
 
-// ResolveExternalReadOnlyJobHandler keeps the current scheduler integration
-// compiling until JobClassExternalReadOnly is renamed to a side-lane concept.
-func (p *AgentLoopPool) ResolveExternalReadOnlyJobHandler(target LoopTarget) (JobRunner, error) {
+// ResolveBTWJobHandler is the explicit /btw side-lane resolver.
+func (p *AgentLoopPool) ResolveBTWJobHandler(target LoopTarget) (JobRunner, error) {
 	return p.ResolveSideLaneJobHandler(target)
+}
+
+// ResolveExternalReadOnlyJobHandler is a legacy alias for the pre-queue
+// scheduler naming. New call sites should resolve the explicit /btw side lane.
+func (p *AgentLoopPool) ResolveExternalReadOnlyJobHandler(target LoopTarget) (JobRunner, error) {
+	return p.ResolveBTWJobHandler(target)
 }
 
 func (e *loopEntry) HandleInbound(ctx context.Context, msg bus.InboundMessage) {

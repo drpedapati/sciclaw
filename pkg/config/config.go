@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -261,11 +262,14 @@ type GatewayConfig struct {
 }
 
 type JobsConfig struct {
-	Enabled                  bool `json:"enabled" env:"PICOCLAW_JOBS_ENABLED"`
-	MaxConcurrent            int  `json:"max_concurrent" env:"PICOCLAW_JOBS_MAX_CONCURRENT"`
-	ProgressUpdateSeconds    int  `json:"progress_update_seconds" env:"PICOCLAW_JOBS_PROGRESS_UPDATE_SECONDS"`
-	DiscordAsyncDefault      bool `json:"discord_async_default" env:"PICOCLAW_JOBS_DISCORD_ASYNC_DEFAULT"`
-	AllowReadOnlyDuringWrite bool `json:"allow_read_only_during_write" env:"PICOCLAW_JOBS_ALLOW_READ_ONLY_DURING_WRITE"`
+	Enabled               bool `json:"enabled" env:"PICOCLAW_JOBS_ENABLED"`
+	MaxConcurrent         int  `json:"max_concurrent" env:"PICOCLAW_JOBS_MAX_CONCURRENT"`
+	ProgressUpdateSeconds int  `json:"progress_update_seconds" env:"PICOCLAW_JOBS_PROGRESS_UPDATE_SECONDS"`
+	DiscordAsyncDefault   bool `json:"discord_async_default" env:"PICOCLAW_JOBS_DISCORD_ASYNC_DEFAULT"`
+	AllowBTWDuringWrite   bool `json:"allow_btw_during_write" env:"PICOCLAW_JOBS_ALLOW_BTW_DURING_WRITE"`
+	// AllowReadOnlyDuringWrite is a legacy compatibility alias for the old
+	// external_readonly lane. New code should use AllowBTWDuringWrite.
+	AllowReadOnlyDuringWrite bool `json:"-" env:"PICOCLAW_JOBS_ALLOW_READ_ONLY_DURING_WRITE"`
 }
 
 type BraveConfig struct {
@@ -412,6 +416,7 @@ func DefaultConfig() *Config {
 			MaxConcurrent:            4,
 			ProgressUpdateSeconds:    5,
 			DiscordAsyncDefault:      true,
+			AllowBTWDuringWrite:      true,
 			AllowReadOnlyDuringWrite: true,
 		},
 		Tools: ToolsConfig{
@@ -464,6 +469,9 @@ func LoadConfig(path string) (*Config, error) {
 	if err := env.Parse(cfg); err != nil {
 		return nil, err
 	}
+	if err := normalizeJobsConfig(&cfg.Jobs, data); err != nil {
+		return nil, err
+	}
 	normalizeDiscordArchiveConfig(&cfg.Channels.Discord.Archive)
 	if cfg.Agents.Defaults.MaxToolIterations < 0 {
 		cfg.Agents.Defaults.MaxToolIterations = 0
@@ -491,6 +499,56 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func normalizeJobsConfig(jobs *JobsConfig, rawConfig []byte) error {
+	if jobs == nil {
+		return nil
+	}
+
+	type jobsAliasSource struct {
+		Jobs struct {
+			AllowBTWDuringWrite      *bool `json:"allow_btw_during_write"`
+			AllowReadOnlyDuringWrite *bool `json:"allow_read_only_during_write"`
+		} `json:"jobs"`
+	}
+
+	if len(rawConfig) > 0 {
+		var alias jobsAliasSource
+		if err := json.Unmarshal(rawConfig, &alias); err != nil {
+			return err
+		}
+		switch {
+		case alias.Jobs.AllowBTWDuringWrite != nil:
+			jobs.AllowBTWDuringWrite = *alias.Jobs.AllowBTWDuringWrite
+			jobs.AllowReadOnlyDuringWrite = *alias.Jobs.AllowBTWDuringWrite
+		case alias.Jobs.AllowReadOnlyDuringWrite != nil:
+			jobs.AllowBTWDuringWrite = *alias.Jobs.AllowReadOnlyDuringWrite
+			jobs.AllowReadOnlyDuringWrite = *alias.Jobs.AllowReadOnlyDuringWrite
+		}
+	}
+
+	if raw, ok := os.LookupEnv("PICOCLAW_JOBS_ALLOW_READ_ONLY_DURING_WRITE"); ok {
+		value, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err != nil {
+			return fmt.Errorf("parse PICOCLAW_JOBS_ALLOW_READ_ONLY_DURING_WRITE: %w", err)
+		}
+		jobs.AllowBTWDuringWrite = value
+		jobs.AllowReadOnlyDuringWrite = value
+	}
+	if raw, ok := os.LookupEnv("PICOCLAW_JOBS_ALLOW_BTW_DURING_WRITE"); ok {
+		value, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err != nil {
+			return fmt.Errorf("parse PICOCLAW_JOBS_ALLOW_BTW_DURING_WRITE: %w", err)
+		}
+		jobs.AllowBTWDuringWrite = value
+		jobs.AllowReadOnlyDuringWrite = value
+	}
+
+	if jobs.AllowBTWDuringWrite != jobs.AllowReadOnlyDuringWrite {
+		jobs.AllowReadOnlyDuringWrite = jobs.AllowBTWDuringWrite
+	}
+	return nil
 }
 
 func SaveConfig(path string, cfg *Config) error {

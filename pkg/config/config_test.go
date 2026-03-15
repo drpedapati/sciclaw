@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -231,6 +232,63 @@ func TestLoadConfig_NormalizesDiscordArchive(t *testing.T) {
 	}
 	if got.RecallMinScore != 0.20 {
 		t.Fatalf("RecallMinScore=%f, want 0.20", got.RecallMinScore)
+	}
+}
+
+func TestLoadConfig_JobsLegacyReadOnlyAliasLoadsBTWSetting(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.json")
+
+	raw := `{
+  "jobs": {
+    "allow_read_only_during_write": false
+  }
+}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	if cfg.Jobs.AllowBTWDuringWrite {
+		t.Fatal("AllowBTWDuringWrite should inherit the legacy read-only alias value")
+	}
+	if cfg.Jobs.AllowReadOnlyDuringWrite {
+		t.Fatal("legacy alias field should stay normalized to the btw value")
+	}
+}
+
+func TestSaveConfig_JobsOmitsLegacyReadOnlyAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.json")
+
+	cfg := DefaultConfig()
+	cfg.Jobs.AllowBTWDuringWrite = true
+	cfg.Jobs.AllowReadOnlyDuringWrite = true
+
+	if err := SaveConfig(path, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(data), "allow_read_only_during_write") {
+		t.Fatalf("saved config should not emit legacy jobs key: %s", string(data))
+	}
+
+	var parsed struct {
+		Jobs map[string]json.RawMessage `json:"jobs"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("unmarshal saved config: %v", err)
+	}
+	if _, ok := parsed.Jobs["allow_btw_during_write"]; !ok {
+		t.Fatalf("saved config should include allow_btw_during_write: %s", string(data))
 	}
 }
 
