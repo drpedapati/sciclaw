@@ -356,6 +356,131 @@ func TestDiscordProcessIncomingMessage_RoleMentionDoesNotCountAsBotMention(t *te
 	}
 }
 
+func TestDiscordEnsureSlashCommandsCreatesBTWCommand(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	ch.listCommandsFn = func(appID, guildID string) ([]*discordgo.ApplicationCommand, error) {
+		if appID != "bot-1" || guildID != "" {
+			t.Fatalf("unexpected list args: %q %q", appID, guildID)
+		}
+		return nil, nil
+	}
+	created := 0
+	ch.createCommandFn = func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
+		created++
+		if cmd.Name != "btw" {
+			t.Fatalf("unexpected command name: %q", cmd.Name)
+		}
+		if len(cmd.Options) != 1 || cmd.Options[0].Name != "prompt" || !cmd.Options[0].Required {
+			t.Fatalf("unexpected btw command options: %#v", cmd.Options)
+		}
+		return &discordgo.ApplicationCommand{ID: "cmd-1", Name: cmd.Name}, nil
+	}
+	ch.editCommandFn = func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
+		t.Fatalf("did not expect edit")
+		return nil, nil
+	}
+
+	if err := ch.ensureSlashCommands(); err != nil {
+		t.Fatalf("ensureSlashCommands: %v", err)
+	}
+	if created != 1 {
+		t.Fatalf("expected one create call, got %d", created)
+	}
+}
+
+func TestDiscordHandleInteractionCreateBTWPublishesInboundAndDefers(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	var response *discordgo.InteractionResponse
+	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
+		response = resp
+		return nil
+	}
+	interaction := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			ID:        "ix-1",
+			AppID:     "app-1",
+			Type:      discordgo.InteractionApplicationCommand,
+			Token:     "token-1",
+			GuildID:   "guild-1",
+			ChannelID: "chan-1",
+			Member:    &discordgo.Member{User: &discordgo.User{ID: "user-1", Username: "alice"}},
+			Data: discordgo.ApplicationCommandInteractionData{
+				Name: "btw",
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{Name: "prompt", Type: discordgo.ApplicationCommandOptionString, Value: "what is this channel about"},
+				},
+			},
+		},
+	}
+
+	ch.handleInteractionCreate(nil, interaction)
+
+	if response == nil {
+		t.Fatal("expected interaction response")
+	}
+	if response.Type != discordgo.InteractionResponseDeferredChannelMessageWithSource {
+		t.Fatalf("unexpected response type: %v", response.Type)
+	}
+	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Fatalf("expected ephemeral deferred response, got %#v", response.Data)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	in, ok := ch.BaseChannel.bus.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("expected inbound message from /btw interaction")
+	}
+	if in.Content != "/btw what is this channel about" {
+		t.Fatalf("unexpected inbound content: %q", in.Content)
+	}
+	if in.Metadata["is_slash_command"] != "true" || in.Metadata["command_name"] != "btw" {
+		t.Fatalf("unexpected slash metadata: %#v", in.Metadata)
+	}
+	if in.Metadata["has_direct_mention"] != "true" || in.Metadata["is_mention"] != "true" {
+		t.Fatalf("expected slash command to route as direct invocation, got %#v", in.Metadata)
+	}
+}
+
+func TestDiscordHandleInteractionCreateBTWRejectsBlankPrompt(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	var response *discordgo.InteractionResponse
+	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
+		response = resp
+		return nil
+	}
+	interaction := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type:      discordgo.InteractionApplicationCommand,
+			ChannelID: "chan-1",
+			Member:    &discordgo.Member{User: &discordgo.User{ID: "user-1", Username: "alice"}},
+			Data: discordgo.ApplicationCommandInteractionData{
+				Name: "btw",
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{Name: "prompt", Type: discordgo.ApplicationCommandOptionString, Value: "   "},
+				},
+			},
+		},
+	}
+
+	ch.handleInteractionCreate(nil, interaction)
+
+	if response == nil || response.Type != discordgo.InteractionResponseChannelMessageWithSource {
+		t.Fatalf("expected immediate validation response, got %#v", response)
+	}
+	if response.Data == nil || !strings.Contains(response.Data.Content, "prompt is required") {
+		t.Fatalf("unexpected validation response: %#v", response.Data)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, ok := ch.BaseChannel.bus.ConsumeInbound(ctx); ok {
+		t.Fatal("blank /btw prompt should not reach inbound bus")
+	}
+}
+
 func TestDiscordSendOrEditProgressReturnsMessageIDForNewProgressMessage(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.sendProgressMessageFn = func(channelID string, msg bus.OutboundMessage) (string, error) {

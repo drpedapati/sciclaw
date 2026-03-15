@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -48,6 +49,10 @@ type DiscordChannel struct {
 	sendFileFn            func(channelID, content string, attachment bus.OutboundAttachment) error
 	sendTypingFn          func(channelID string) error
 	editMessageFn         func(channelID, messageID string, msg bus.OutboundMessage) error
+	interactionRespondFn  func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error
+	listCommandsFn        func(appID, guildID string) ([]*discordgo.ApplicationCommand, error)
+	createCommandFn       func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
+	editCommandFn         func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -91,6 +96,18 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 			_, err := session.ChannelMessageEditComplex(discordMessageEdit(channelID, messageID, msg))
 			return err
 		},
+		interactionRespondFn: func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
+			return session.InteractionRespond(interaction, resp)
+		},
+		listCommandsFn: func(appID, guildID string) ([]*discordgo.ApplicationCommand, error) {
+			return session.ApplicationCommands(appID, guildID)
+		},
+		createCommandFn: func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
+			return session.ApplicationCommandCreate(appID, guildID, cmd)
+		},
+		editCommandFn: func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
+			return session.ApplicationCommandEdit(appID, guildID, cmdID, cmd)
+		},
 	}, nil
 }
 
@@ -121,6 +138,7 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 	c.ctx = ctx
 	c.session.AddHandler(c.handleMessage)
 	c.session.AddHandler(c.handleMessageUpdate)
+	c.session.AddHandler(c.handleInteractionCreate)
 
 	if err := c.session.Open(); err != nil {
 		// Graceful fallback for deployments where Message Content intent is not granted.
@@ -155,6 +173,11 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 		"username": botUser.Username,
 		"user_id":  botUser.ID,
 	})
+	if err := c.ensureSlashCommands(); err != nil {
+		logger.WarnCF("discord", "Failed to sync Discord slash commands", map[string]any{
+			"error": err.Error(),
+		})
+	}
 
 	return nil
 }
@@ -287,11 +310,140 @@ func appendContent(content, suffix string) string {
 	return content + "\n" + suffix
 }
 
+func buildBTWSlashCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        "btw",
+		Description: "Ask a quick read-only side question in the current workspace",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Name:        "prompt",
+				Description: "The side question to ask sciClaw",
+				Type:        discordgo.ApplicationCommandOptionString,
+				Required:    true,
+			},
+		},
+	}
+}
+
+func interactionAuthor(i *discordgo.Interaction) *discordgo.User {
+	if i == nil {
+		return nil
+	}
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User
+	}
+	return i.User
+}
+
+func (c *DiscordChannel) ensureSlashCommands() error {
+	if strings.TrimSpace(c.botUserID) == "" {
+		return fmt.Errorf("bot user id is empty")
+	}
+	if c.listCommandsFn == nil || c.createCommandFn == nil || c.editCommandFn == nil {
+		return fmt.Errorf("discord slash command functions are not configured")
+	}
+	cmd := buildBTWSlashCommand()
+	commands, err := c.listCommandsFn(c.botUserID, "")
+	if err != nil {
+		return err
+	}
+	for _, existing := range commands {
+		if existing == nil || existing.Name != cmd.Name {
+			continue
+		}
+		if existing.Description == cmd.Description && reflect.DeepEqual(existing.Options, cmd.Options) {
+			return nil
+		}
+		_, err := c.editCommandFn(c.botUserID, "", existing.ID, cmd)
+		return err
+	}
+	_, err = c.createCommandFn(c.botUserID, "", cmd)
+	return err
+}
+
 func (c *DiscordChannel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m == nil || m.Author == nil {
 		return
 	}
 	c.processIncomingMessage(s, m.Message, false)
+}
+
+func (c *DiscordChannel) handleInteractionCreate(_ *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i == nil || i.Interaction == nil || i.Type != discordgo.InteractionApplicationCommand {
+		return
+	}
+	data := i.ApplicationCommandData()
+	if data.Name != "btw" {
+		return
+	}
+	if c.interactionRespondFn == nil {
+		logger.WarnC("discord", "Interaction responder not configured")
+		return
+	}
+	prompt := ""
+	for _, opt := range data.Options {
+		if opt == nil || opt.Name != "prompt" {
+			continue
+		}
+		prompt = strings.TrimSpace(opt.StringValue())
+		break
+	}
+	if prompt == "" {
+		_ = c.interactionRespondFn(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "The `/btw` prompt is required.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+	author := interactionAuthor(i.Interaction)
+	if author == nil {
+		return
+	}
+	if !c.IsAllowed(author.ID) {
+		_ = c.interactionRespondFn(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "You are not allowed to use this sciClaw bot.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+	if err := c.interactionRespondFn(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	}); err != nil {
+		logger.WarnCF("discord", "Failed to defer /btw interaction", map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	senderName := author.Username
+	if author.Discriminator != "" && author.Discriminator != "0" {
+		senderName += "#" + author.Discriminator
+	}
+	metadata := map[string]string{
+		"interaction_id":     i.ID,
+		"interaction_token":  i.Token,
+		"command_name":       data.Name,
+		"is_slash_command":   "true",
+		"user_id":            author.ID,
+		"username":           author.Username,
+		"display_name":       senderName,
+		"guild_id":           strings.TrimSpace(i.GuildID),
+		"channel_id":         strings.TrimSpace(i.ChannelID),
+		"is_dm":              fmt.Sprintf("%t", strings.TrimSpace(i.GuildID) == ""),
+		"is_mention":         "true",
+		"has_direct_mention": "true",
+		"reply_to_bot":       "false",
+	}
+	c.HandleMessage(author.ID, i.ChannelID, "/btw "+prompt, nil, metadata)
 }
 
 func (c *DiscordChannel) handleMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) {
