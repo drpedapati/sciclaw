@@ -138,29 +138,6 @@ var localPrefetchCitationKeywords = []string{
 func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus, profile ToolProfile) *tools.ToolRegistry {
 	registry := tools.NewToolRegistry()
 
-	if profile.isSideLane() {
-		pubmedSearchTool := tools.NewPubMedSearchTool(workspace)
-		pubmedFetchTool := tools.NewPubMedFetchTool(workspace)
-		if strings.TrimSpace(cfg.Tools.PubMed.APIKey) != "" {
-			env := map[string]string{"NCBI_API_KEY": cfg.Tools.PubMed.APIKey}
-			pubmedSearchTool.SetExtraEnv(env)
-			pubmedFetchTool.SetExtraEnv(env)
-		}
-		registry.Register(pubmedSearchTool)
-		registry.Register(pubmedFetchTool)
-		if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
-			BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
-			BraveMaxResults:      cfg.Tools.Web.Brave.MaxResults,
-			BraveEnabled:         cfg.Tools.Web.Brave.Enabled,
-			DuckDuckGoMaxResults: cfg.Tools.Web.DuckDuckGo.MaxResults,
-			DuckDuckGoEnabled:    cfg.Tools.Web.DuckDuckGo.Enabled,
-		}); searchTool != nil {
-			registry.Register(searchTool)
-		}
-		registry.Register(tools.NewWebFetchTool(50000))
-		return registry
-	}
-
 	sharedWorkspace := cfg.SharedWorkspacePath()
 	sharedReadOnly := cfg.Agents.Defaults.SharedWorkspaceReadOnly
 	// When workspace and shared workspace resolve to the same directory,
@@ -292,6 +269,10 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		})
 	})
 	registry.Register(messageTool)
+
+	if profile.isSideLane() {
+		return registry.Filtered(tools.ReadOnlyCompatibleTool)
+	}
 
 	return registry
 }
@@ -1687,11 +1668,10 @@ func toolProfileRuntimeConstraints(profile ToolProfile) string {
 	switch profile.normalized() {
 	case ToolProfileSideLane:
 		return `## Runtime Constraints
-This run is in the explicit /btw side lane.
-Only ` + "`web_search`" + `, ` + "`web_fetch`" + `, ` + "`pubmed_search`" + `, and ` + "`pubmed_fetch`" + ` are available.
-` + "`exec`" + `, file mutation, and outbound message tools are unavailable in this run.
-If a requested skill includes optional write, export, attachment, or delivery steps, silently skip those steps unless the user explicitly asked for them in this turn.
-Do not mention side-lane mode, unavailable tools, or runtime/session limitations to the user unless the user explicitly requested an unavailable action or deliverable.
+This run is an explicit ` + "`/btw`" + ` task.
+Use the same workspace and conversational context as a normal task, but treat the task as hard read-only.
+Only non-mutating tools are available. Any action that would write files, run shell commands, deliver attachments, or otherwise mutate workspace or side-effect state must be refused and redirected to a normal queued task.
+Do not mention side-lane mode, unavailable tools, or runtime/session limitations to the user unless the user explicitly requested a blocked action or deliverable.
 Use the available tools honestly within these constraints.`
 	default:
 		return ""

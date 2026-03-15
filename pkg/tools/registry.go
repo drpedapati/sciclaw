@@ -27,6 +27,25 @@ func (r *ToolRegistry) Register(tool Tool) {
 	r.tools[tool.Name()] = tool
 }
 
+// Filtered returns a new registry containing only the tools that satisfy the
+// predicate.
+func (r *ToolRegistry) Filtered(allow func(Tool) bool) *ToolRegistry {
+	filtered := NewToolRegistry()
+	if allow == nil {
+		return filtered
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, tool := range r.tools {
+		if allow(tool) {
+			filtered.tools[tool.Name()] = tool
+		}
+	}
+	return filtered
+}
+
 func (r *ToolRegistry) Get(name string) (Tool, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

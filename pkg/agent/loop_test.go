@@ -92,19 +92,34 @@ func TestNewAgentLoopWithSideLaneProfileRestrictsTools(t *testing.T) {
 		ToolProfile: ToolProfileSideLane,
 	})
 
-	if _, ok := al.tools.Get("web_search"); !ok {
-		t.Fatal("expected web_search tool")
+	for _, allowed := range []string{
+		"read_file",
+		"list_dir",
+		"word_count",
+		"web_search",
+		"web_fetch",
+		"pubmed_search",
+		"pubmed_fetch",
+		"channel_history",
+		"pdf_form_inspect",
+		"pdf_form_schema",
+	} {
+		if _, ok := al.tools.Get(allowed); !ok {
+			t.Fatalf("expected %s tool in read-only /btw profile", allowed)
+		}
 	}
-	if _, ok := al.tools.Get("web_fetch"); !ok {
-		t.Fatal("expected web_fetch tool")
-	}
-	if _, ok := al.tools.Get("pubmed_search"); !ok {
-		t.Fatal("expected pubmed_search tool")
-	}
-	if _, ok := al.tools.Get("pubmed_fetch"); !ok {
-		t.Fatal("expected pubmed_fetch tool")
-	}
-	for _, blocked := range []string{"exec", "message", "read_file", "write_file", "spawn", "subagent"} {
+	for _, blocked := range []string{
+		"exec",
+		"message",
+		"write_file",
+		"edit_file",
+		"append_file",
+		"pubmed_export_ris",
+		"pdf_form_fill",
+		"spawn",
+		"subagent",
+		"irl_project",
+	} {
 		if _, ok := al.tools.Get(blocked); ok {
 			t.Fatalf("did not expect %s tool in side-lane profile", blocked)
 		}
@@ -121,8 +136,8 @@ func TestLegacyExternalReadOnlyProfileAliasNormalizesToSideLane(t *testing.T) {
 	if al.toolProfile != ToolProfileSideLane {
 		t.Fatalf("expected legacy alias to normalize to %q, got %q", ToolProfileSideLane, al.toolProfile)
 	}
-	if _, ok := al.tools.Get("web_search"); !ok {
-		t.Fatal("expected web_search tool in normalized side lane")
+	if _, ok := al.tools.Get("read_file"); !ok {
+		t.Fatal("expected read_file tool in normalized /btw profile")
 	}
 }
 
@@ -174,14 +189,14 @@ func TestSideLaneRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
 	if !strings.Contains(systemPrompt, "## Runtime Constraints") {
 		t.Fatalf("expected runtime constraints in system prompt, got: %s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "`pubmed_search`") || !strings.Contains(systemPrompt, "`pubmed_fetch`") {
-		t.Fatalf("expected side-lane tool list in system prompt, got: %s", systemPrompt)
+	if !strings.Contains(systemPrompt, "same workspace and conversational context as a normal task") {
+		t.Fatalf("expected same-context guidance in system prompt, got: %s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "`exec`, file mutation, and outbound message tools are unavailable") {
-		t.Fatalf("expected exec/file/outbound unavailability note in system prompt, got: %s", systemPrompt)
+	if !strings.Contains(systemPrompt, "Only non-mutating tools are available") {
+		t.Fatalf("expected read-only tool gating guidance in system prompt, got: %s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "silently skip those steps unless the user explicitly asked for them") {
-		t.Fatalf("expected silent skill adaptation guidance in system prompt, got: %s", systemPrompt)
+	if !strings.Contains(systemPrompt, "redirected to a normal queued task") {
+		t.Fatalf("expected queued-task redirection guidance in system prompt, got: %s", systemPrompt)
 	}
 	if !strings.Contains(systemPrompt, "Do not mention side-lane mode") {
 		t.Fatalf("expected no-leak guidance in system prompt, got: %s", systemPrompt)
