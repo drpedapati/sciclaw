@@ -30,6 +30,9 @@ func TestCheckToolsPolicyReportsStaleAndFixesIt(t *testing.T) {
 		t.Fatalf("read TOOLS.md: %v", err)
 	}
 	txt := string(after)
+	if !strings.Contains(txt, "pubmed_search") || !strings.Contains(txt, "pubmed_fetch") {
+		t.Fatalf("refreshed TOOLS.md missing typed PubMed guidance:\n%s", txt)
+	}
 	if !strings.Contains(txt, "xlsx_review_read") || !strings.Contains(txt, "pptx_review_read") {
 		t.Fatalf("refreshed TOOLS.md missing xlsx/pptx guidance:\n%s", txt)
 	}

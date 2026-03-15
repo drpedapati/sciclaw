@@ -116,7 +116,7 @@ func (c *Client) ResolveBinaryPath() (string, error) {
 	if len(checked) == 0 {
 		return "", errors.New("xlsx-review binary not found in PATH (no fallback candidates configured)")
 	}
-	return "", fmt.Errorf("xlsx-review binary not found in PATH or fallback paths: %s (install: brew tap drpedapati/tools && brew install xlsx-review)", strings.Join(checked, ", "))
+	return "", fmt.Errorf("xlsx-review binary not found in PATH or fallback paths: %s (install: brew tap drpedapati/tap && brew install sciclaw-xlsx-review)", strings.Join(checked, ", "))
 }
 
 func (c *Client) Read(ctx context.Context, inputPath string) (*ReadResult, error) {

@@ -11,6 +11,8 @@ const toolsCLIFirstPolicyHeading = "## Critical CLI-First Rules"
 const toolsCLIFirstPolicyAntiPatternHeading = "### Anti-Pattern (Avoid)"
 
 var toolsCLIFirstPolicyRequiredMarkers = []string{
+	"pubmed_search",
+	"pubmed_fetch",
 	"docx_review_read",
 	"xlsx_review_read",
 	"pptx_review_read",

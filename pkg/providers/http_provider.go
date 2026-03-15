@@ -213,8 +213,16 @@ func anthropicWorkspaceFromConfig(cfg *config.Config) string {
 	return workspace
 }
 
+func anthropicUsesStoredAuth(cfg *config.Config) bool {
+	method := strings.ToLower(strings.TrimSpace(cfg.Providers.Anthropic.AuthMethod))
+	return method == "oauth" || method == "token"
+}
+
 func createConfiguredAnthropicProvider(cfg *config.Config) (LLMProvider, error) {
 	workspace := anthropicWorkspaceFromConfig(cfg)
+	if anthropicUsesStoredAuth(cfg) {
+		return createClaudeAuthProvider(workspace)
+	}
 	if token := strings.TrimSpace(cfg.Providers.Anthropic.APIKey); token != "" {
 		if isAnthropicOAuthToken(token) {
 			return NewClaudeAgentProvider(workspace, token), nil

@@ -44,20 +44,16 @@ Important rules:
 
 func loadSubagentBootstrapFiles(workspace string) string {
 	files := []string{"AGENTS.md", "SOUL.md", "USER.md", "IDENTITY.md", "TOOLS.md"}
-	primaryWorkspace := filepath.Clean(workspace)
-	fallbackWorkspace := filepath.Clean(filepath.Join(os.Getenv("HOME"), "sciclaw"))
+	primaryWorkspace := filepath.Clean(strings.TrimSpace(workspace))
+	if primaryWorkspace == "" || primaryWorkspace == "." {
+		return ""
+	}
 
 	var result strings.Builder
 	for _, filename := range files {
-		candidates := []string{filepath.Join(primaryWorkspace, filename)}
-		if fallbackWorkspace != "" && fallbackWorkspace != "." && fallbackWorkspace != primaryWorkspace {
-			candidates = append(candidates, filepath.Join(fallbackWorkspace, filename))
-		}
-		for _, filePath := range candidates {
-			if data, err := os.ReadFile(filePath); err == nil {
-				result.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data)))
-				break
-			}
+		filePath := filepath.Join(primaryWorkspace, filename)
+		if data, err := os.ReadFile(filePath); err == nil {
+			result.WriteString(fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data)))
 		}
 	}
 	return strings.TrimSpace(result.String())

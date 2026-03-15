@@ -36,6 +36,9 @@ func TestEnsureToolsCLIFirstPolicy_AppendsWhenMissing(t *testing.T) {
 	if !strings.Contains(txt, "pptx_review_read") {
 		t.Fatalf("pptx typed-tool guidance missing after ensure")
 	}
+	if !strings.Contains(txt, "pubmed_search") || !strings.Contains(txt, "pubmed_fetch") {
+		t.Fatalf("typed pubmed guidance missing after ensure")
+	}
 }
 
 func TestEnsureToolsCLIFirstPolicy_Idempotent(t *testing.T) {
@@ -76,6 +79,9 @@ func TestEnsureToolsCLIFirstPolicy_RefreshesStaleSection(t *testing.T) {
 		t.Fatalf("read TOOLS.md: %v", err)
 	}
 	txt := string(after)
+	if !strings.Contains(txt, "pubmed_search") || !strings.Contains(txt, "pubmed_fetch") {
+		t.Fatalf("expected refreshed pubmed guidance, got:\n%s", txt)
+	}
 	if !strings.Contains(txt, "xlsx_review_read") {
 		t.Fatalf("expected refreshed xlsx guidance, got:\n%s", txt)
 	}

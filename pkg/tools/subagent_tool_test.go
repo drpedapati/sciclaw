@@ -263,7 +263,7 @@ func TestSubagentTool_Execute_UsesWorkspaceBootstrapPrompt(t *testing.T) {
 	}
 }
 
-func TestSubagentTool_Execute_FallsBackToGlobalBootstrapPrompt(t *testing.T) {
+func TestSubagentTool_Execute_DoesNotUseGlobalBootstrapFallback(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	globalWorkspace := filepath.Join(home, "sciclaw")
@@ -285,11 +285,11 @@ func TestSubagentTool_Execute_FallsBackToGlobalBootstrapPrompt(t *testing.T) {
 		t.Fatalf("expected successful result, got %#v", result)
 	}
 	systemPrompt := provider.lastMessages[0].Content
-	if !strings.Contains(systemPrompt, "## TOOLS.md") {
-		t.Fatalf("expected fallback TOOLS.md in prompt, got: %s", systemPrompt)
+	if strings.Contains(systemPrompt, "## TOOLS.md") {
+		t.Fatalf("did not expect unrelated global TOOLS.md in prompt, got: %s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "Use pubmed from exec.") {
-		t.Fatalf("expected fallback TOOLS.md content in prompt, got: %s", systemPrompt)
+	if strings.Contains(systemPrompt, "Use pubmed from exec.") {
+		t.Fatalf("did not expect unrelated global bootstrap content in prompt, got: %s", systemPrompt)
 	}
 }
 

@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+const (
+	defaultPubMedSearchLimit = 10
+	maxPubMedSearchLimit     = 20
+	maxPubMedFetchPMIDs      = 20
+)
+
 type pubmedLookupToolBase struct {
 	workspace string
 	extraEnv  map[string]string
@@ -109,7 +115,7 @@ func (t *PubMedSearchTool) Parameters() map[string]interface{} {
 			},
 			"limit": map[string]interface{}{
 				"type":        "integer",
-				"description": "Maximum number of results to return (default 10)",
+				"description": fmt.Sprintf("Maximum number of results to return (default %d, max %d)", defaultPubMedSearchLimit, maxPubMedSearchLimit),
 			},
 			"sort": map[string]interface{}{
 				"type":        "string",
@@ -131,9 +137,12 @@ func (t *PubMedSearchTool) Execute(ctx context.Context, args map[string]interfac
 		return ErrorResult("query is required")
 	}
 
-	limit, err := getOptionalPositiveInt(args, "limit", 10)
+	limit, err := getOptionalPositiveInt(args, "limit", defaultPubMedSearchLimit)
 	if err != nil {
 		return ErrorResult(err.Error())
+	}
+	if limit > maxPubMedSearchLimit {
+		return ErrorResult(fmt.Sprintf("limit must be between 1 and %d", maxPubMedSearchLimit))
 	}
 
 	cmdArgs := []string{"search", query, "--json", "--limit", fmt.Sprintf("%d", limit)}
@@ -189,7 +198,7 @@ func (t *PubMedFetchTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"pmids": map[string]interface{}{
 				"type":        "array",
-				"description": "List of PMID values to fetch",
+				"description": fmt.Sprintf("List of PMID values to fetch (max %d)", maxPubMedFetchPMIDs),
 				"items": map[string]interface{}{
 					"type": "string",
 				},
@@ -203,6 +212,9 @@ func (t *PubMedFetchTool) Execute(ctx context.Context, args map[string]interface
 	pmids, err := parsePMIDList(args["pmids"])
 	if err != nil || len(pmids) == 0 {
 		return ErrorResult("pmids is required and must include at least one PMID")
+	}
+	if len(pmids) > maxPubMedFetchPMIDs {
+		return ErrorResult(fmt.Sprintf("pmids may include at most %d PMID values", maxPubMedFetchPMIDs))
 	}
 	for _, pmid := range pmids {
 		if !isDigitsOnly(pmid) {

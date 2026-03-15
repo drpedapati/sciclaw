@@ -123,6 +123,35 @@ func TestResolve_UnmappedMentionOnlyFallbackOnMention(t *testing.T) {
 	}
 }
 
+func TestResolve_UnmappedMentionOnlyRejectsRolePingWithoutDirectMention(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
+
+	resolver, err := NewResolver(cfg)
+	if err != nil {
+		t.Fatalf("NewResolver error: %v", err)
+	}
+
+	d := resolver.Resolve(bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "missing",
+		SenderID: "u1",
+		Metadata: map[string]string{
+			"is_mention":         "true",
+			"has_direct_mention": "false",
+			"reply_to_bot":       "false",
+			"is_dm":              "false",
+		},
+	})
+	if d.Allowed {
+		t.Fatalf("expected role-only ping to stay blocked, got %+v", d)
+	}
+	if d.Event != EventRouteMentionSkip {
+		t.Fatalf("unexpected event: %s", d.Event)
+	}
+}
+
 func TestResolve_UnmappedDefaultFallback(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Routing.Enabled = true

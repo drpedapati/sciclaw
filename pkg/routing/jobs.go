@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,23 +48,25 @@ const (
 )
 
 type JobRecord struct {
-	ID              string   `json:"id"`
-	ShortID         string   `json:"short_id"`
-	Channel         string   `json:"channel"`
-	ChatID          string   `json:"chat_id"`
-	Workspace       string   `json:"workspace"`
-	RuntimeKey      string   `json:"runtime_key"`
-	TargetKey       string   `json:"target_key"`
-	Class           JobClass `json:"class"`
-	State           JobState `json:"state"`
-	Phase           string   `json:"phase,omitempty"`
-	Detail          string   `json:"detail,omitempty"`
-	StatusMessageID string   `json:"status_message_id,omitempty"`
-	Summary         string   `json:"summary,omitempty"`
-	AskSummary      string   `json:"ask_summary,omitempty"`
-	LastError       string   `json:"last_error,omitempty"`
-	StartedAt       int64    `json:"started_at"`
-	UpdatedAt       int64    `json:"updated_at"`
+	ID              string             `json:"id"`
+	ShortID         string             `json:"short_id"`
+	Channel         string             `json:"channel"`
+	ChatID          string             `json:"chat_id"`
+	Workspace       string             `json:"workspace"`
+	RuntimeKey      string             `json:"runtime_key"`
+	TargetKey       string             `json:"target_key"`
+	Class           JobClass           `json:"class"`
+	State           JobState           `json:"state"`
+	Phase           string             `json:"phase,omitempty"`
+	Detail          string             `json:"detail,omitempty"`
+	StatusMessageID string             `json:"status_message_id,omitempty"`
+	Summary         string             `json:"summary,omitempty"`
+	AskSummary      string             `json:"ask_summary,omitempty"`
+	LastError       string             `json:"last_error,omitempty"`
+	Runtime         RuntimeProfile     `json:"runtime,omitempty"`
+	Message         bus.InboundMessage `json:"message,omitempty"`
+	StartedAt       int64              `json:"started_at"`
+	UpdatedAt       int64              `json:"updated_at"`
 }
 
 type jobStore struct {
@@ -275,6 +278,9 @@ func NewJobManager(storePath string, cfg config.JobsConfig, msgBus *bus.MessageB
 	if err := jm.interruptStaleActiveJobs(); err != nil {
 		return nil, err
 	}
+	if err := jm.rehydrateQueuedJobs(); err != nil {
+		return nil, err
+	}
 	return jm, nil
 }
 
@@ -317,7 +323,7 @@ func (jm *JobManager) Submit(ctx context.Context, target LoopTarget, msg bus.Inb
 	jm.mu.Lock()
 	activeSet := jm.active[targetKey]
 	knownJobs := activeSet.snapshotAll()
-	if control.Kind != jobControlNone && control.Directed {
+	if control.Kind != jobControlNone && (control.Directed || replyTargetsTrackedJob(knownJobs, msg.Metadata["reply_message_id"])) {
 		jm.mu.Unlock()
 		return jm.handleControl(ctx, msg, targetKey, knownJobs, control)
 	}
@@ -341,6 +347,8 @@ func (jm *JobManager) Submit(ctx context.Context, target LoopTarget, msg bus.Inb
 		Phase:      "queued",
 		Detail:     "Queued",
 		AskSummary: summarizeJobAsk(request.Message.Content),
+		Runtime:    target.Runtime,
+		Message:    request.Message,
 		StartedAt:  time.Now().UnixMilli(),
 		UpdatedAt:  time.Now().UnixMilli(),
 	}
@@ -381,14 +389,69 @@ func (jm *JobManager) Submit(ctx context.Context, target LoopTarget, msg bus.Inb
 	}
 	jm.mu.Unlock()
 
+	if !startImmediately {
+		if err := jm.store.Save(record); err != nil {
+			return jm.rollbackQueuedSubmission(targetKey, active, fmt.Errorf("persist queued job: %w", err))
+		}
+		if err := jm.sendQueuedStatus(ctx, active, activeWrite, queuedPosition); err != nil {
+			return jm.rollbackQueuedSubmission(targetKey, active, fmt.Errorf("send queued status: %w", err))
+		}
+		return nil
+	}
 	if err := jm.store.Save(record); err != nil {
 		logger.WarnCF("jobs", "Failed to persist queued job", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
 	}
-	if !startImmediately {
-		return jm.sendQueuedStatus(ctx, active, activeWrite, queuedPosition)
-	}
 	go jm.runJob(jobCtx, target, request.Message, active)
 	return nil
+}
+
+func replyTargetsTrackedJob(jobs []*activeJob, replyMessageID string) bool {
+	replyMessageID = strings.TrimSpace(replyMessageID)
+	if replyMessageID == "" {
+		return false
+	}
+	for _, job := range jobs {
+		if job == nil {
+			continue
+		}
+		if strings.TrimSpace(job.snapshot().StatusMessageID) == replyMessageID {
+			return true
+		}
+	}
+	return false
+}
+
+func (jm *JobManager) rollbackQueuedSubmission(targetKey string, active *activeJob, cause error) error {
+	if active == nil {
+		return cause
+	}
+	record := active.snapshot()
+	if active.cancel != nil {
+		active.cancel()
+	}
+
+	jm.mu.Lock()
+	if activeSet := jm.active[targetKey]; activeSet != nil {
+		activeSet.removeQueuedWrite(record.ID)
+		if activeSet.empty() {
+			delete(jm.active, targetKey)
+		}
+	}
+	jm.mu.Unlock()
+
+	record = active.update(func(record *JobRecord) {
+		record.State = JobStateFailed
+		record.Phase = "failed"
+		record.Detail = "Failed to queue background job"
+		record.Summary = record.Detail
+		record.LastError = utils.Truncate(compactJobLine(cause.Error()), 180)
+		record.StatusMessageID = ""
+		record.UpdatedAt = time.Now().UnixMilli()
+	})
+	if err := jm.store.Save(record); err != nil {
+		logger.WarnCF("jobs", "Failed to persist queued rollback state", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
+	}
+	return cause
 }
 
 func (jm *JobManager) interruptStaleActiveJobs() error {
@@ -397,7 +460,7 @@ func (jm *JobManager) interruptStaleActiveJobs() error {
 		return err
 	}
 	for _, record := range records {
-		if record.State != JobStateQueued && record.State != JobStateRunning {
+		if record.State != JobStateRunning {
 			continue
 		}
 		record.State = JobStateInterrupted
@@ -410,6 +473,125 @@ func (jm *JobManager) interruptStaleActiveJobs() error {
 		}
 	}
 	return nil
+}
+
+func (jm *JobManager) rehydrateQueuedJobs() error {
+	records, err := jm.store.All()
+	if err != nil {
+		return err
+	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].StartedAt == records[j].StartedAt {
+			return records[i].ID < records[j].ID
+		}
+		return records[i].StartedAt < records[j].StartedAt
+	})
+
+	for _, record := range records {
+		if record.State != JobStateQueued {
+			continue
+		}
+		target, msg, err := rehydrateQueuedJob(record)
+		if err != nil {
+			record.State = JobStateInterrupted
+			record.Phase = "interrupted"
+			record.Detail = "Queued job could not be resumed after restart"
+			record.Summary = record.Detail
+			record.LastError = utils.Truncate(compactJobLine(err.Error()), 180)
+			record.UpdatedAt = time.Now().UnixMilli()
+			if saveErr := jm.store.Save(record); saveErr != nil {
+				return saveErr
+			}
+			continue
+		}
+
+		jobCtx, cancel := context.WithCancel(context.Background())
+		active := &activeJob{
+			record: record,
+			cancel: cancel,
+			ctx:    jobCtx,
+			target: target,
+			msg:    msg,
+		}
+
+		targetKey := target.key()
+		jm.mu.Lock()
+		activeSet := jm.active[targetKey]
+		if activeSet == nil {
+			activeSet = &targetActiveJobs{}
+			jm.active[targetKey] = activeSet
+		}
+		activeSet.enqueueWrite(active)
+		jm.mu.Unlock()
+	}
+
+	var toStart []*activeJob
+	jm.mu.Lock()
+	for _, activeSet := range jm.active {
+		if activeSet == nil || activeSet.write != nil {
+			continue
+		}
+		next := activeSet.popQueuedWrite()
+		if next == nil {
+			continue
+		}
+		activeSet.write = next
+		toStart = append(toStart, next)
+	}
+	jm.mu.Unlock()
+
+	for _, job := range toStart {
+		go jm.runJob(job.ctx, job.target, job.msg, job)
+	}
+	return nil
+}
+
+func rehydrateQueuedJob(record JobRecord) (LoopTarget, bus.InboundMessage, error) {
+	target, err := targetFromJobRecord(record)
+	if err != nil {
+		return LoopTarget{}, bus.InboundMessage{}, err
+	}
+	msg := record.Message
+	if strings.TrimSpace(msg.Channel) == "" || strings.TrimSpace(msg.ChatID) == "" || strings.TrimSpace(msg.SessionKey) == "" {
+		return LoopTarget{}, bus.InboundMessage{}, fmt.Errorf("queued job payload missing original inbound context")
+	}
+	return target, msg, nil
+}
+
+func targetFromJobRecord(record JobRecord) (LoopTarget, error) {
+	workspace := filepath.Clean(strings.TrimSpace(record.Workspace))
+	if workspace == "" {
+		return LoopTarget{}, fmt.Errorf("queued job missing workspace")
+	}
+
+	runtime := record.Runtime.normalized()
+	if runtime == (RuntimeProfile{}) {
+		runtime = parseRuntimeProfileKey(record.RuntimeKey)
+	}
+
+	return LoopTarget{Workspace: workspace, Runtime: runtime}.normalized(), nil
+}
+
+func parseRuntimeProfileKey(key string) RuntimeProfile {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return RuntimeProfile{Mode: config.ModeCloud}
+	}
+	parts := strings.Split(key, "|")
+	if strings.EqualFold(parts[0], config.ModePhi) {
+		rt := RuntimeProfile{Mode: config.ModePhi}
+		if len(parts) > 1 {
+			rt.LocalBackend = parts[1]
+		}
+		if len(parts) > 2 {
+			rt.LocalModel = parts[2]
+		}
+		if len(parts) > 3 {
+			rt.LocalPreset = parts[3]
+		}
+		return rt.normalized()
+	}
+	return RuntimeProfile{Mode: parts[0]}.normalized()
 }
 
 func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage, targetKey string, jobs []*activeJob, control parsedJobControl) error {
@@ -462,13 +644,14 @@ func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage,
 
 func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error) {
 	jm.mu.Lock()
-	defer jm.mu.Unlock()
 	activeSet := jm.active[targetKey]
 	if activeSet == nil {
+		jm.mu.Unlock()
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
 	job := activeSet.removeQueuedWrite(jobID)
 	if job == nil {
+		jm.mu.Unlock()
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
 	record := job.update(func(record *JobRecord) {
@@ -479,12 +662,22 @@ func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error
 		record.UpdatedAt = time.Now().UnixMilli()
 		record.LastError = ""
 	})
+	updatedQueued := jm.reindexQueuedWritesLocked(activeSet)
 	if activeSet.empty() {
 		delete(jm.active, targetKey)
 	}
+	jm.mu.Unlock()
+
 	if err := jm.store.Save(record); err != nil {
 		return JobRecord{}, err
 	}
+	for _, queued := range updatedQueued {
+		if err := jm.store.Save(queued); err != nil {
+			return JobRecord{}, err
+		}
+	}
+	jm.syncProgressRecord(context.Background(), record)
+	jm.syncProgressRecords(context.Background(), updatedQueued...)
 	if job.cancel != nil {
 		job.cancel()
 	}
@@ -493,24 +686,82 @@ func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error
 
 func (jm *JobManager) forceQueuedJob(targetKey, jobID string) (JobRecord, error) {
 	jm.mu.Lock()
-	defer jm.mu.Unlock()
 	activeSet := jm.active[targetKey]
 	if activeSet == nil {
+		jm.mu.Unlock()
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
 	job := activeSet.moveQueuedWriteToFront(jobID)
 	if job == nil {
+		jm.mu.Unlock()
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
-	record := job.update(func(record *JobRecord) {
-		record.Detail = "Queued in main lane · next up"
-		record.Summary = record.Detail
-		record.UpdatedAt = time.Now().UnixMilli()
-	})
+	updatedQueued := jm.reindexQueuedWritesLocked(activeSet)
+	record := job.snapshot()
+	jm.mu.Unlock()
+
 	if err := jm.store.Save(record); err != nil {
 		return JobRecord{}, err
 	}
+	for _, queued := range updatedQueued {
+		if err := jm.store.Save(queued); err != nil {
+			return JobRecord{}, err
+		}
+	}
+	jm.syncProgressRecords(context.Background(), updatedQueued...)
 	return record, nil
+}
+
+func (jm *JobManager) reindexQueuedWritesLocked(activeSet *targetActiveJobs) []JobRecord {
+	if activeSet == nil || len(activeSet.queuedWrites) == 0 {
+		return nil
+	}
+	leadShortID := ""
+	if activeSet.write != nil {
+		leadShortID = activeSet.write.snapshot().ShortID
+	}
+	updated := make([]JobRecord, 0, len(activeSet.queuedWrites))
+	for idx, job := range activeSet.queuedWrites {
+		if job == nil {
+			continue
+		}
+		position := idx + 1
+		detail := fmt.Sprintf("Queued in main lane · position %d", position)
+		switch {
+		case position == 1 && leadShortID != "":
+			detail = fmt.Sprintf("Queued in main lane · next up after %s", leadShortID)
+		case position == 1:
+			detail = "Queued in main lane · next up"
+		case leadShortID != "":
+			detail = fmt.Sprintf("Queued in main lane · behind %s · position %d", leadShortID, position)
+		}
+		updated = append(updated, job.update(func(record *JobRecord) {
+			record.State = JobStateQueued
+			record.Phase = "queued"
+			record.Detail = detail
+			record.Summary = detail
+			record.UpdatedAt = time.Now().UnixMilli()
+		}))
+	}
+	return updated
+}
+
+func (jm *JobManager) syncProgressRecord(ctx context.Context, record JobRecord) {
+	if jm.progress == nil || strings.TrimSpace(record.StatusMessageID) == "" {
+		return
+	}
+	message := formatProgressOutbound(record)
+	message.Channel = record.Channel
+	message.ChatID = record.ChatID
+	if _, err := jm.progress.SendOrEditProgress(ctx, record.Channel, record.ChatID, record.StatusMessageID, message); err != nil {
+		logger.WarnCF("jobs", "Failed to sync progress record", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
+	}
+}
+
+func (jm *JobManager) syncProgressRecords(ctx context.Context, records ...JobRecord) {
+	for _, record := range records {
+		jm.syncProgressRecord(ctx, record)
+	}
 }
 
 func (jm *JobManager) runJob(ctx context.Context, target LoopTarget, msg bus.InboundMessage, active *activeJob) {
@@ -879,12 +1130,12 @@ func formatJobCardAsk(record JobRecord) string {
 
 func formatJobControlHint(record JobRecord) string {
 	if record.State == JobStateQueued {
-		return fmt.Sprintf("Controls: `status %s` · `force %s` to move next · `cancel %s` to drop from queue", record.ShortID, record.ShortID, record.ShortID)
+		return "Reply `status` · `force` to move next · `cancel` to drop from queue"
 	}
 	if record.Class == JobClassBTW {
-		return fmt.Sprintf("Controls: `status %s` · `cancel %s` to clear /btw", record.ShortID, record.ShortID)
+		return "Reply `status` · `cancel` to clear /btw"
 	}
-	return fmt.Sprintf("Controls: `status %s` · `cancel %s` to stop it", record.ShortID, record.ShortID)
+	return "Reply `status` · `cancel` to stop it"
 }
 
 func summarizeJobAsk(content string) string {
@@ -1042,20 +1293,20 @@ func formatActiveJobList(records []JobRecord) string {
 			lines = append(lines, fmt.Sprintf("  %s", detail))
 		}
 	}
-	lines = append(lines, "", "Use `status <job-id>` for details · `cancel <job-id>` to stop one.")
+	lines = append(lines, "", "Reply on a job card with `status` or `cancel`, or direct `status <job-id>` at sciClaw.")
 	if hasQueuedMainLane(records) {
-		lines = append(lines, "Queued main-lane jobs can use `force <job-id>` to move next.")
+		lines = append(lines, "Queued main-lane jobs can also use `force <job-id>` when directed at sciClaw.")
 	}
 	return strings.Join(lines, "\n")
 }
 
 func formatCancelRequiresJobID(records []JobRecord) string {
-	lines := []string{"**sciClaw jobs in this workspace**", "Use `cancel <job-id>` to stop one.", ""}
+	lines := []string{"**sciClaw jobs in this workspace**", "Reply `cancel` on a job card, or direct `cancel <job-id>` at sciClaw.", ""}
 	for _, record := range records {
 		lines = append(lines, fmt.Sprintf("- **%s** · %s · %s", record.ShortID, jobLaneLabel(record.Class), fallbackAskSummary(record.AskSummary)))
 	}
 	if hasQueuedMainLane(records) {
-		lines = append(lines, "", "Queued main-lane jobs can also use `force <job-id>` to move next.")
+		lines = append(lines, "", "Queued main-lane jobs can also use directed `force <job-id>` to move next.")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1071,14 +1322,14 @@ func formatBusyMessage(records []JobRecord, requestedClass JobClass) string {
 	switch requestedClass {
 	case JobClassBTW:
 		lines = append(lines, "", "The /btw lane is already in use in this workspace.")
-		lines = append(lines, "Use `status <job-id>` to inspect it or `cancel <job-id>` to clear it.")
+		lines = append(lines, "Reply on that job card with `status` or `cancel`, or direct `status <job-id>` at sciClaw.")
 		lines = append(lines, "If this can wait, resend it without `/btw` to place it in the main queue.")
 	default:
 		lines = append(lines, "", "Main-lane work is queued in this workspace.")
 		if hasQueuedMainLane(records) {
-			lines = append(lines, "Queued main-lane jobs can use `force <job-id>` to move next.")
+			lines = append(lines, "Queued main-lane jobs can use directed `force <job-id>` to move next.")
 		}
-		lines = append(lines, "Use `status <job-id>` or `cancel <job-id>` if you need to manage one.")
+		lines = append(lines, "Reply on a job card with `status` or `cancel`, or direct `status <job-id>` at sciClaw.")
 	}
 	return strings.Join(lines, "\n")
 }

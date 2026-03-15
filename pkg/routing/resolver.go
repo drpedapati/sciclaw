@@ -311,6 +311,12 @@ func isMentionOrDM(metadata map[string]string) bool {
 	if metadata["is_dm"] == "true" {
 		return true
 	}
+	if _, hasDirect := metadata["has_direct_mention"]; hasDirect {
+		return metadata["has_direct_mention"] == "true" || metadata["reply_to_bot"] == "true"
+	}
+	if _, hasReply := metadata["reply_to_bot"]; hasReply {
+		return metadata["reply_to_bot"] == "true"
+	}
 	return metadata["is_mention"] == "true"
 }
 

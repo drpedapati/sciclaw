@@ -15,6 +15,12 @@ type ToolRegistry struct {
 	mu    sync.RWMutex
 }
 
+// registryCloneable lets tools provide a fresh per-registry instance when a
+// filtered registry is derived from another registry.
+type registryCloneable interface {
+	CloneForRegistry() Tool
+}
+
 func NewToolRegistry() *ToolRegistry {
 	return &ToolRegistry{
 		tools: make(map[string]Tool),
@@ -40,7 +46,13 @@ func (r *ToolRegistry) Filtered(allow func(Tool) bool) *ToolRegistry {
 
 	for _, tool := range r.tools {
 		if allow(tool) {
-			filtered.tools[tool.Name()] = tool
+			clone := tool
+			if cloneable, ok := tool.(registryCloneable); ok {
+				if fresh := cloneable.CloneForRegistry(); fresh != nil {
+					clone = fresh
+				}
+			}
+			filtered.tools[clone.Name()] = clone
 		}
 	}
 	return filtered

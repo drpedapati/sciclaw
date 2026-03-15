@@ -330,7 +330,8 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 		senderName += "#" + m.Author.Discriminator
 	}
 
-	// Detect @bot mention (direct user mention, role mention, or reply to bot)
+	// Detect any bot activation signal and keep direct mentions distinct from
+	// broader role-based pings so mention_only routing can stay strict.
 	isMention := m.GuildID == "" // DMs are always "mentions"
 	hasDirectMention := isMention
 	replyToBot := false
@@ -371,7 +372,6 @@ func (c *DiscordChannel) processIncomingMessage(s *discordgo.Session, m *discord
 					for _, botRole := range member.Roles {
 						if mentionedRole == botRole {
 							isMention = true
-							hasDirectMention = true
 							break
 						}
 					}

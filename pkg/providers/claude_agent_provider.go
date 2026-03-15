@@ -220,8 +220,13 @@ func (r *claudeAgentBridgeResponse) toLLMResponse() *LLMResponse {
 		}
 	}
 
+	content := strings.TrimSpace(r.Content)
+	if content == "" {
+		content = strings.TrimSpace(r.Result)
+	}
+
 	return &LLMResponse{
-		Content:      strings.TrimSpace(r.Content),
+		Content:      content,
 		ToolCalls:    r.ToolCalls,
 		FinishReason: r.FinishReason,
 		Usage:        usage,

@@ -16,6 +16,8 @@ type fakeProgressMessenger struct {
 	mu       sync.Mutex
 	calls    []string
 	nextID   string
+	idSeq    int
+	sendFail bool
 	editFail bool
 }
 
@@ -27,6 +29,9 @@ func (m *fakeProgressMessenger) SendOrEditProgress(_ context.Context, channelNam
 		title = msg.Embeds[0].Title
 	}
 	m.calls = append(m.calls, fmt.Sprintf("%s|%s|%s|%s", channelName, chatID, msg.Content, title))
+	if messageID == "" && m.sendFail {
+		return "", fmt.Errorf("send failed")
+	}
 	if messageID != "" && m.editFail {
 		return "", fmt.Errorf("edit failed")
 	}
@@ -34,9 +39,12 @@ func (m *fakeProgressMessenger) SendOrEditProgress(_ context.Context, channelNam
 		return messageID, nil
 	}
 	if m.nextID == "" {
-		m.nextID = "progress-1"
+		m.idSeq++
+		m.nextID = fmt.Sprintf("progress-%d", m.idSeq)
 	}
-	return m.nextID, nil
+	id := m.nextID
+	m.nextID = ""
+	return id, nil
 }
 
 type fakeJobRunner struct {
@@ -55,7 +63,11 @@ func (r *fakeJobRunner) RunJob(ctx context.Context, msg bus.InboundMessage, onPr
 	block := r.block
 	r.mu.Unlock()
 	if started != nil {
-		close(started)
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
 	}
 	if onProgress != nil {
 		onProgress("thinking", "Thinking")
@@ -112,7 +124,7 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 	if !progressHas(progress, queuedID) {
 		t.Fatalf("expected queued progress card for %s, calls=%v", queuedID, progress.calls)
 	}
-	if !progressHas(progress, "force "+queuedID) || !progressHas(progress, "drop from queue") {
+	if !progressHas(progress, "Reply `status` · `force` to move next · `cancel` to drop from queue") {
 		t.Fatalf("expected queued progress card to include force/cancel hint for %s, calls=%v", queuedID, progress.calls)
 	}
 
@@ -387,7 +399,7 @@ func TestJobManagerBTWBusyMessageExplainsQueueOptions(t *testing.T) {
 	if !strings.Contains(out.Content, "The /btw lane is already in use") {
 		t.Fatalf("expected /btw busy message, got %q", out.Content)
 	}
-	if !strings.Contains(out.Content, "cancel <job-id>") || !strings.Contains(out.Content, "place it in the main queue") {
+	if !strings.Contains(out.Content, "Reply on that job card with `status` or `cancel`") || !strings.Contains(out.Content, "place it in the main queue") {
 		t.Fatalf("expected /btw busy message to explain cancel or main-queue fallback, got %q", out.Content)
 	}
 
@@ -526,6 +538,185 @@ func TestJobManagerOrdinaryResearchTurnQueuesMainLane(t *testing.T) {
 
 	close(nextBlock)
 	waitForNoActiveJobs(t, jm, target.key())
+}
+
+func TestJobManagerQueuedSubmissionRollbackOnProgressFailure(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	runner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "first job"}); err != nil {
+		t.Fatalf("first submit: %v", err)
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first job start")
+	}
+
+	progress.sendFail = true
+	err = jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "second job"})
+	if err == nil || !strings.Contains(err.Error(), "send queued status") {
+		t.Fatalf("expected queued progress send failure, got %v", err)
+	}
+
+	jm.mu.Lock()
+	activeSet := jm.active[target.key()]
+	queued := 0
+	if activeSet != nil {
+		queued = len(activeSet.queuedWrites)
+	}
+	jm.mu.Unlock()
+	if queued != 0 {
+		t.Fatalf("expected queued job rollback, still have %d queued jobs", queued)
+	}
+
+	close(runner.block)
+	waitForNoActiveJobs(t, jm, target.key())
+
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if runner.runs != 1 {
+		t.Fatalf("expected only original running job to execute, runs=%d", runner.runs)
+	}
+}
+
+func TestJobManagerReplyToQueuedCardCancelsJob(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	runner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "first job"}); err != nil {
+		t.Fatalf("first submit: %v", err)
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first job start")
+	}
+
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "second job"}); err != nil {
+		t.Fatalf("second submit: %v", err)
+	}
+	waitForQueuedWrite(t, jm, target.key(), 1)
+	jm.mu.Lock()
+	queuedStatusID := jm.active[target.key()].queuedWrites[0].snapshot().StatusMessageID
+	jm.mu.Unlock()
+
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "room-1",
+		Content:  "cancel",
+		Metadata: map[string]string{"reply_message_id": queuedStatusID},
+	}); err != nil {
+		t.Fatalf("reply cancel submit: %v", err)
+	}
+	out := mustNextOutbound(t, mb)
+	if !strings.Contains(out.Content, "removed queued job") {
+		t.Fatalf("expected queued cancel ack, got %q", out.Content)
+	}
+	if !progressHas(progress, "This job was cancelled.") {
+		t.Fatalf("expected queued progress card to be updated to cancelled, calls=%v", progress.calls)
+	}
+
+	close(runner.block)
+	waitForNoActiveJobs(t, jm, target.key())
+}
+
+func TestJobManagerRehydratesQueuedJobsAfterRestart(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	storePath := filepathJoin(t.TempDir(), "jobs.json")
+	store, err := newJobStore(storePath)
+	if err != nil {
+		t.Fatalf("newJobStore: %v", err)
+	}
+	record := JobRecord{
+		ID:         "job-1",
+		ShortID:    "00001",
+		Channel:    "discord",
+		ChatID:     "room-1",
+		Workspace:  "/tmp/work",
+		RuntimeKey: RuntimeProfile{Mode: config.ModeCloud}.Key(),
+		Runtime:    RuntimeProfile{Mode: config.ModeCloud},
+		TargetKey:  LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}.key(),
+		Class:      JobClassWrite,
+		State:      JobStateQueued,
+		Phase:      "queued",
+		Detail:     "Queued",
+		AskSummary: "resume me",
+		Message: bus.InboundMessage{
+			Channel:    "discord",
+			ChatID:     "room-1",
+			Content:    "resume me",
+			SessionKey: "discord:room-1@abc123",
+		},
+		StartedAt: time.Now().Add(-time.Minute).UnixMilli(),
+		UpdatedAt: time.Now().Add(-time.Minute).UnixMilli(),
+	}
+	if err := store.Save(record); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	progress := &fakeProgressMessenger{}
+	runner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(storePath, config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("expected queued job to restart automatically")
+	}
+
+	close(runner.block)
+	waitForNoActiveJobs(t, jm, record.TargetKey)
+
+	records, err := jm.store.All()
+	if err != nil {
+		t.Fatalf("store.All: %v", err)
+	}
+	if len(records) != 1 || records[0].State != JobStateDone {
+		t.Fatalf("expected resumed queued job to finish, got %#v", records)
+	}
 }
 
 func mustNextOutbound(t *testing.T, mb *bus.MessageBus) bus.OutboundMessage {

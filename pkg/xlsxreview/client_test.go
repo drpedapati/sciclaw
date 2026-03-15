@@ -196,3 +196,21 @@ func TestClientPropagatesTimeoutInvocationFailure(t *testing.T) {
 		t.Fatalf("expected deadline exceeded error, got %v", err)
 	}
 }
+
+func TestClientResolveBinaryPathUsesSciClawTapInstallHint(t *testing.T) {
+	client := NewClientWithOptions(ClientOptions{
+		LookPathFn:       func(file string) (string, error) { return "", errors.New("not found") },
+		BinaryCandidates: []string{"/missing/xlsx-review"},
+	})
+
+	_, err := client.ResolveBinaryPath()
+	if err == nil {
+		t.Fatal("expected missing-binary error")
+	}
+	if !strings.Contains(err.Error(), "brew tap drpedapati/tap && brew install sciclaw-xlsx-review") {
+		t.Fatalf("expected sciclaw tap install hint, got %v", err)
+	}
+	if strings.Contains(err.Error(), "brew tap drpedapati/tools && brew install xlsx-review") {
+		t.Fatalf("expected old standalone tap hint to be removed, got %v", err)
+	}
+}

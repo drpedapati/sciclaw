@@ -1591,10 +1591,11 @@ func gatewayCmd() {
 		}
 	}
 
-	// Wire channel_history tool to Discord if available
+	var channelHistoryCB tools.FetchChannelHistoryCallback
 	if discordCh, ok := channelManager.GetChannel("discord"); ok {
 		if dc, ok := discordCh.(*channels.DiscordChannel); ok {
-			agentLoop.SetChannelHistoryCallback(discordHistoryCallback(dc))
+			channelHistoryCB = discordHistoryCallback(dc)
+			attachChannelHistoryCallback(agentLoop, channelHistoryCB)
 			logger.InfoC("tools", "Channel history tool attached to Discord")
 		}
 	}
@@ -1625,6 +1626,7 @@ func gatewayCmd() {
 		al := agent.NewAgentLoopWithOptions(cloned, msgBus, loopProvider, agent.LoopOptions{
 			ToolProfile: agent.ToolProfileSideLane,
 		})
+		attachChannelHistoryCallback(al, channelHistoryCB)
 		return al, nil
 	}
 	if cfg.Jobs.Enabled && cfg.Jobs.DiscordAsyncDefault {
@@ -1656,13 +1658,10 @@ func gatewayCmd() {
 		}
 		// Build a setup function that wires channel_history for each routed agent loop.
 		var poolSetup []routing.LoopSetupFunc
-		if dc, ok := channelManager.GetChannel("discord"); ok {
-			if discordChan, ok := dc.(*channels.DiscordChannel); ok {
-				cb := discordHistoryCallback(discordChan)
-				poolSetup = append(poolSetup, func(al *agent.AgentLoop) {
-					al.SetChannelHistoryCallback(cb)
-				})
-			}
+		if channelHistoryCB != nil {
+			poolSetup = append(poolSetup, func(al *agent.AgentLoop) {
+				attachChannelHistoryCallback(al, channelHistoryCB)
+			})
 		}
 		loopPool = routing.NewAgentLoopPool(cfg, msgBus, poolSetup...)
 		if jobManager != nil {
@@ -2033,6 +2032,13 @@ func modelsCmd() {
 
 // discordHistoryCallback builds a FetchChannelHistoryCallback that reads
 // messages from the Discord REST API via the given DiscordChannel.
+func attachChannelHistoryCallback(al *agent.AgentLoop, cb tools.FetchChannelHistoryCallback) {
+	if al == nil || cb == nil {
+		return
+	}
+	al.SetChannelHistoryCallback(cb)
+}
+
 func discordHistoryCallback(dc *channels.DiscordChannel) tools.FetchChannelHistoryCallback {
 	return func(channelID string, limit int, beforeID string) ([]tools.ChannelHistoryMessage, error) {
 		msgs, err := dc.GetChannelMessages(channelID, limit, beforeID)

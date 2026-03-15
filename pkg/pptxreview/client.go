@@ -114,7 +114,7 @@ func (c *Client) ResolveBinaryPath() (string, error) {
 	if len(checked) == 0 {
 		return "", errors.New("pptx-review binary not found in PATH (no fallback candidates configured)")
 	}
-	return "", fmt.Errorf("pptx-review binary not found in PATH or fallback paths: %s (install: brew tap drpedapati/tools && brew install pptx-review)", strings.Join(checked, ", "))
+	return "", fmt.Errorf("pptx-review binary not found in PATH or fallback paths: %s (install: brew tap drpedapati/tap && brew install sciclaw-pptx-review)", strings.Join(checked, ", "))
 }
 
 func (c *Client) Read(ctx context.Context, inputPath string) (*ReadResult, error) {

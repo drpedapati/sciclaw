@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // ChannelHistoryMessage is a single message returned by the fetch callback.
@@ -24,6 +25,7 @@ type ChannelHistoryTool struct {
 	fetchCallback  FetchChannelHistoryCallback
 	defaultChannel string
 	defaultChatID  string
+	mu             sync.RWMutex
 }
 
 func NewChannelHistoryTool() *ChannelHistoryTool {
@@ -55,20 +57,37 @@ func (t *ChannelHistoryTool) Parameters() map[string]interface{} {
 }
 
 func (t *ChannelHistoryTool) SetContext(channel, chatID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.defaultChannel = channel
 	t.defaultChatID = chatID
 }
 
 func (t *ChannelHistoryTool) SetFetchCallback(cb FetchChannelHistoryCallback) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.fetchCallback = cb
 }
 
+func (t *ChannelHistoryTool) CloneForRegistry() Tool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return &ChannelHistoryTool{
+		fetchCallback: t.fetchCallback,
+	}
+}
+
 func (t *ChannelHistoryTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
-	if t.fetchCallback == nil {
+	t.mu.RLock()
+	fetchCallback := t.fetchCallback
+	defaultChatID := t.defaultChatID
+	t.mu.RUnlock()
+
+	if fetchCallback == nil {
 		return ErrorResult("channel history not available for this channel type")
 	}
 
-	if t.defaultChatID == "" {
+	if defaultChatID == "" {
 		return ErrorResult("no channel context available")
 	}
 
@@ -82,7 +101,7 @@ func (t *ChannelHistoryTool) Execute(ctx context.Context, args map[string]interf
 
 	beforeID, _ := args["before"].(string)
 
-	messages, err := t.fetchCallback(t.defaultChatID, limit, beforeID)
+	messages, err := fetchCallback(defaultChatID, limit, beforeID)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to fetch channel history: %v", err))
 	}

@@ -59,6 +59,7 @@ func TestPubMedSearchTool_Validation(t *testing.T) {
 	cases := []map[string]interface{}{
 		{"query": "", "limit": 5},
 		{"query": "test", "limit": 0},
+		{"query": "test", "limit": 21},
 		{"query": "test", "sort": "bad"},
 		{"query": "test", "year": "2025-2024"},
 	}
@@ -110,5 +111,26 @@ func TestPubMedFetchTool_RejectsNonDigitPMIDs(t *testing.T) {
 	})
 	if !res.IsError {
 		t.Fatal("expected PMID validation error")
+	}
+}
+
+func TestPubMedFetchTool_RejectsTooManyPMIDs(t *testing.T) {
+	workspace := t.TempDir()
+	tool := newPubMedFetchToolWithRunner(workspace, func(ctx context.Context, binary string, args []string, cwd string, env map[string]string) (string, string, error) {
+		t.Fatalf("runner should not be called when too many PMIDs are requested")
+		return "", "", nil
+	})
+	tool.base.findBin = func() (string, error) { return "/usr/bin/pubmed", nil }
+
+	pmids := make([]interface{}, 0, 21)
+	for i := 0; i < 21; i++ {
+		pmids = append(pmids, "24001701")
+	}
+	res := tool.Execute(context.Background(), map[string]interface{}{"pmids": pmids})
+	if !res.IsError {
+		t.Fatal("expected PMID fan-out validation error")
+	}
+	if !strings.Contains(res.ForLLM, "at most 20") {
+		t.Fatalf("expected max-fanout hint, got: %s", res.ForLLM)
 	}
 }

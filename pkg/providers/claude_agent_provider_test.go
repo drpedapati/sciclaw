@@ -106,6 +106,22 @@ func TestClaudeAgentProvider_ChatToolCalls(t *testing.T) {
 	}
 }
 
+func TestClaudeAgentProvider_ChatPreservesResultOnlySuccessPayload(t *testing.T) {
+	mockJSON := `{"type":"result","subtype":"success","is_error":false,"result":"Compiled answer from bridge","content":"","tool_calls":[],"finish_reason":"stop","session_id":"sess_1"}`
+	script := createMockClaudeAgentBridge(t, mockJSON, "", 0, "")
+
+	p := NewClaudeAgentProvider(".", "sk-ant-oat-test")
+	p.command = script
+
+	resp, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, "anthropic/claude-sonnet-4.6", nil)
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+	if resp.Content != "Compiled answer from bridge" {
+		t.Fatalf("Content = %q, want result payload", resp.Content)
+	}
+}
+
 func TestClaudeAgentProvider_ChatBridgeError(t *testing.T) {
 	mockJSON := `{"type":"result","subtype":"success","is_error":true,"error":"Failed to authenticate.","content":"","tool_calls":[],"finish_reason":"error","session_id":"sess_1"}`
 	script := createMockClaudeAgentBridge(t, mockJSON, "", 0, "")
@@ -248,5 +264,77 @@ func TestCreateProvider_StoredAnthropicOATUsesClaudeAgentProvider(t *testing.T) 
 	}
 	if _, ok := provider.(*ClaudeAgentProvider); !ok {
 		t.Fatalf("provider type=%T want *ClaudeAgentProvider", provider)
+	}
+}
+
+func TestCreateProvider_AnthropicOAuthAuthMethodOverridesStaleAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Model = "anthropic/claude-sonnet-4.6"
+	cfg.Providers.Anthropic.AuthMethod = "oauth"
+	cfg.Providers.Anthropic.APIKey = "stale-anthropic-api-key"
+
+	if err := auth.SetCredential("anthropic", &auth.AuthCredential{
+		AccessToken: "sk-ant-oat-test",
+		Provider:    "anthropic",
+		AuthMethod:  "oauth",
+	}); err != nil {
+		t.Fatalf("SetCredential error = %v", err)
+	}
+
+	provider, err := CreateProvider(cfg)
+	if err != nil {
+		t.Fatalf("CreateProvider returned error: %v", err)
+	}
+	agentProvider, ok := provider.(*ClaudeAgentProvider)
+	if !ok {
+		t.Fatalf("provider type=%T want *ClaudeAgentProvider", provider)
+	}
+	if agentProvider.tokenSource == nil {
+		t.Fatal("expected oauth auth_method to use stored credential token source")
+	}
+}
+
+func TestCreateProvider_AnthropicTokenAuthMethodOverridesStaleAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Model = "anthropic/claude-sonnet-4.6"
+	cfg.Providers.Anthropic.AuthMethod = "token"
+	cfg.Providers.Anthropic.APIKey = "stale-anthropic-api-key"
+
+	if err := auth.SetCredential("anthropic", &auth.AuthCredential{
+		AccessToken: "sk-ant-api-fresh-token",
+		Provider:    "anthropic",
+		AuthMethod:  "token",
+	}); err != nil {
+		t.Fatalf("SetCredential error = %v", err)
+	}
+
+	provider, err := CreateProvider(cfg)
+	if err != nil {
+		t.Fatalf("CreateProvider returned error: %v", err)
+	}
+	claudeProvider, ok := provider.(*ClaudeProvider)
+	if !ok {
+		t.Fatalf("provider type=%T want *ClaudeProvider", provider)
+	}
+	if claudeProvider.tokenSource == nil {
+		t.Fatal("expected token auth_method to use stored credential token source")
+	}
+}
+
+func TestCreateProvider_AnthropicOAuthAuthMethodDoesNotFallbackToStaleAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Model = "anthropic/claude-sonnet-4.6"
+	cfg.Providers.Anthropic.AuthMethod = "oauth"
+	cfg.Providers.Anthropic.APIKey = "stale-anthropic-api-key"
+
+	_, err := CreateProvider(cfg)
+	if err == nil {
+		t.Fatal("expected missing stored oauth credential to fail")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "no credentials for anthropic") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
