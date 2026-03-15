@@ -1106,6 +1106,16 @@ type parsedJobControl struct {
 }
 
 var discordMentionPattern = regexp.MustCompile(`<@!?\d+>`)
+var jobControlShortIDPattern = regexp.MustCompile(`^[A-Z0-9]{5}$`)
+var jobControlLongIDPattern = regexp.MustCompile(`^JOB-\d+-\d+$`)
+
+func isJobControlTarget(value string) bool {
+	target := strings.ToUpper(strings.TrimSpace(value))
+	if target == "" {
+		return false
+	}
+	return jobControlShortIDPattern.MatchString(target) || jobControlLongIDPattern.MatchString(target)
+}
 
 func parseJobControl(msg bus.InboundMessage) parsedJobControl {
 	content := compactJobLine(discordMentionPattern.ReplaceAllString(strings.TrimSpace(msg.Content), ""))
@@ -1126,27 +1136,57 @@ func parseJobControl(msg bus.InboundMessage) parsedJobControl {
 	}
 	switch fields[0] {
 	case "status", "progress":
-		control.Kind = jobControlStatus
-		control.TargetID = parseTarget(1)
+		if len(fields) == 1 {
+			control.Kind = jobControlStatus
+			return control
+		}
+		if len(fields) == 2 && isJobControlTarget(fields[1]) {
+			control.Kind = jobControlStatus
+			control.TargetID = parseTarget(1)
+			return control
+		}
 	case "job":
-		if len(fields) >= 2 && fields[1] == "status" {
+		if len(fields) == 2 && fields[1] == "status" {
+			control.Kind = jobControlStatus
+			return control
+		}
+		if len(fields) == 3 && fields[1] == "status" && isJobControlTarget(fields[2]) {
 			control.Kind = jobControlStatus
 			control.TargetID = parseTarget(2)
+			return control
 		}
 	case "cancel", "stop":
-		control.Kind = jobControlCancel
-		control.TargetID = parseTarget(1)
-		if control.TargetID == "JOB" {
+		if len(fields) == 1 {
+			control.Kind = jobControlCancel
+			return control
+		}
+		if len(fields) == 2 && isJobControlTarget(fields[1]) {
+			control.Kind = jobControlCancel
+			control.TargetID = parseTarget(1)
+			return control
+		}
+		if len(fields) == 3 && fields[1] == "job" && isJobControlTarget(fields[2]) {
+			control.Kind = jobControlCancel
 			control.TargetID = parseTarget(2)
+			return control
 		}
 	case "force":
-		control.Kind = jobControlForce
-		control.TargetID = parseTarget(1)
-		if control.TargetID == "JOB" {
+		if len(fields) == 1 {
+			control.Kind = jobControlForce
+			return control
+		}
+		if len(fields) == 2 && isJobControlTarget(fields[1]) {
+			control.Kind = jobControlForce
+			control.TargetID = parseTarget(1)
+			return control
+		}
+		if len(fields) == 3 && fields[1] == "job" && isJobControlTarget(fields[2]) {
+			control.Kind = jobControlForce
 			control.TargetID = parseTarget(2)
+			return control
 		}
 	}
-	return control
+	return parsedJobControl{Directed: control.Directed}
 }
 
 func isControlDirected(msg bus.InboundMessage) bool {

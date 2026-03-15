@@ -277,6 +277,80 @@ func TestJobManagerPlainStatusWithoutDirectionStartsNormalJob(t *testing.T) {
 	waitForNoActiveJobs(t, jm, target.key())
 }
 
+func TestJobManagerDirectedStatusWithExtraWordsStartsNormalJob(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	runner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "room-1",
+		Content:  "status and hi",
+		Metadata: map[string]string{"has_direct_mention": "true"},
+	}); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("expected directed natural-language status message to start a normal job")
+	}
+
+	close(runner.block)
+	waitForNoActiveJobs(t, jm, target.key())
+}
+
+func TestJobManagerDirectedCancelWithExtraWordsStartsNormalJob(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	runner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "room-1",
+		Content:  "cancel that literature brief later",
+		Metadata: map[string]string{"has_direct_mention": "true"},
+	}); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("expected directed natural-language cancel message to start a normal job")
+	}
+
+	close(runner.block)
+	waitForNoActiveJobs(t, jm, target.key())
+}
+
 func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 	mb := bus.NewMessageBus()
 	defer mb.Close()
