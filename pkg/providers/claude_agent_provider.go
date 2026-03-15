@@ -108,8 +108,31 @@ func (p *ClaudeAgentProvider) Chat(ctx context.Context, messages []Message, tool
 		)
 	}
 
-	req := buildClaudeAgentBridgeRequest(messages, tools, model, options, p.workspace, tok)
+	resp, err := p.runBridgeRequest(ctx, cmdPath, buildClaudeAgentBridgeRequest(messages, tools, model, options, p.workspace, tok))
+	if err != nil {
+		return nil, err
+	}
 
+	if shouldRetryClaudeAgentWithoutThinking(resp, options) {
+		retryResp, retryErr := p.runBridgeRequest(ctx, cmdPath, buildClaudeAgentBridgeRequest(messages, tools, model, stripClaudeAgentThinkingOptions(options), p.workspace, tok))
+		if retryErr == nil && retryResp != nil && !isEmptyClaudeAgentDirectAnswer(retryResp) {
+			if retryResp.Diagnostics == nil {
+				retryResp.Diagnostics = &ResponseDiagnostics{}
+			}
+			if strings.TrimSpace(retryResp.Content) != "" {
+				retryResp.Diagnostics.ContentSource = "claude_agent_bridge_retry_no_thinking"
+			}
+			if len(retryResp.ToolCalls) > 0 {
+				retryResp.Diagnostics.ToolCallSource = "claude_agent_bridge_retry_no_thinking"
+			}
+			return retryResp, nil
+		}
+	}
+
+	return resp, nil
+}
+
+func (p *ClaudeAgentProvider) runBridgeRequest(ctx context.Context, cmdPath string, req claudeAgentBridgeRequest) (*LLMResponse, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal claude agent request: %w", err)
@@ -137,6 +160,67 @@ func (p *ClaudeAgentProvider) Chat(ctx context.Context, messages []Message, tool
 		return nil, fmt.Errorf("claude agent bridge error: %w", runErr)
 	}
 	return nil, fmt.Errorf("failed to parse claude agent bridge response: %w", parseErr)
+}
+
+func shouldRetryClaudeAgentWithoutThinking(resp *LLMResponse, options map[string]interface{}) bool {
+	return hasClaudeAgentThinking(options) && isEmptyClaudeAgentDirectAnswer(resp)
+}
+
+func isEmptyClaudeAgentDirectAnswer(resp *LLMResponse) bool {
+	if resp == nil {
+		return true
+	}
+	return strings.TrimSpace(resp.Content) == "" && len(resp.ToolCalls) == 0
+}
+
+func hasClaudeAgentThinking(options map[string]interface{}) bool {
+	if effort, ok := getStringOption(options, "reasoning_effort"); ok && effort != "" {
+		return true
+	}
+	if options == nil {
+		return false
+	}
+	raw, ok := options["thinking"]
+	if !ok {
+		return false
+	}
+	switch v := raw.(type) {
+	case string:
+		cfg := normalizeBridgeThinkingConfig(v, 0)
+		return cfg != nil && cfg.Type != "disabled"
+	case map[string]interface{}:
+		kind, _ := v["type"].(string)
+		budget := intOption(v["budgetTokens"])
+		if budget == 0 {
+			budget = intOption(v["budget_tokens"])
+		}
+		cfg := normalizeBridgeThinkingConfig(kind, budget)
+		return cfg != nil && cfg.Type != "disabled"
+	case map[string]string:
+		cfg := normalizeBridgeThinkingConfig(v["type"], 0)
+		return cfg != nil && cfg.Type != "disabled"
+	default:
+		return false
+	}
+}
+
+func stripClaudeAgentThinkingOptions(options map[string]interface{}) map[string]interface{} {
+	if len(options) == 0 {
+		return nil
+	}
+	cloned := make(map[string]interface{}, len(options))
+	for key, value := range options {
+		switch key {
+		case "reasoning_effort", "thinking":
+			continue
+		default:
+			cloned[key] = value
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
 }
 
 func expandedWorkspaceOrDefault(workspace string) string {

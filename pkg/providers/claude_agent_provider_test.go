@@ -54,6 +54,45 @@ func createMockClaudeAgentBridge(t *testing.T, stdout, stderr string, exitCode i
 	return script
 }
 
+func createSequentialMockClaudeAgentBridge(t *testing.T, outputs []string, requestCapturePrefix string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("mock bridge scripts not supported on Windows")
+	}
+	if len(outputs) == 0 {
+		t.Fatal("outputs must not be empty")
+	}
+
+	dir := t.TempDir()
+	for i, out := range outputs {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("stdout-%d.txt", i+1)), []byte(out), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("#!/bin/sh\n")
+	sb.WriteString(fmt.Sprintf("COUNT_FILE='%s/count'\n", dir))
+	sb.WriteString("COUNT=0\n")
+	sb.WriteString("if [ -f \"$COUNT_FILE\" ]; then COUNT=$(cat \"$COUNT_FILE\"); fi\n")
+	sb.WriteString("COUNT=$((COUNT+1))\n")
+	sb.WriteString("printf '%s' \"$COUNT\" > \"$COUNT_FILE\"\n")
+	if requestCapturePrefix != "" {
+		sb.WriteString(fmt.Sprintf("cat > '%s'.$COUNT.json\n", requestCapturePrefix))
+	} else {
+		sb.WriteString("cat >/dev/null\n")
+	}
+	sb.WriteString(fmt.Sprintf("if [ \"$COUNT\" -gt %d ]; then COUNT=%d; fi\n", len(outputs), len(outputs)))
+	sb.WriteString(fmt.Sprintf("cat '%s/stdout-'$COUNT'.txt'\n", dir))
+	sb.WriteString("exit 0\n")
+
+	script := filepath.Join(dir, "sciclaw-claude-agent")
+	if err := os.WriteFile(script, []byte(sb.String()), 0755); err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
 func TestClaudeAgentProvider_ChatSuccess(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	requestPath := filepath.Join(t.TempDir(), "request.json")
@@ -119,6 +158,82 @@ func TestClaudeAgentProvider_ChatPreservesResultOnlySuccessPayload(t *testing.T)
 	}
 	if resp.Content != "Compiled answer from bridge" {
 		t.Fatalf("Content = %q, want result payload", resp.Content)
+	}
+}
+
+func TestClaudeAgentProvider_ChatRetriesEmptyDirectAnswerWithoutThinking(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	requestPrefix := filepath.Join(t.TempDir(), "request")
+	first := `{"type":"result","subtype":"success","is_error":false,"result":"","content":"","tool_calls":[],"finish_reason":"stop","session_id":"sess_1","usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`
+	second := `{"type":"result","subtype":"success","is_error":false,"content":"Recovered answer","tool_calls":[],"finish_reason":"stop","session_id":"sess_1","usage":{"input_tokens":8,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`
+	script := createSequentialMockClaudeAgentBridge(t, []string{first, second}, requestPrefix)
+
+	p := NewClaudeAgentProvider(".", "sk-ant-oat-test")
+	p.command = script
+
+	resp, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, "anthropic/claude-sonnet-4.6", map[string]interface{}{
+		"reasoning_effort": "high",
+		"thinking":         map[string]interface{}{"type": "enabled", "budgetTokens": 2048},
+	})
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+	if resp.Content != "Recovered answer" {
+		t.Fatalf("Content = %q, want recovered retry answer", resp.Content)
+	}
+	if resp.Diagnostics == nil || resp.Diagnostics.ContentSource != "claude_agent_bridge_retry_no_thinking" {
+		t.Fatalf("Diagnostics = %#v, want retry content source", resp.Diagnostics)
+	}
+
+	firstPayload, err := os.ReadFile(requestPrefix + ".1.json")
+	if err != nil {
+		t.Fatalf("ReadFile(first request) error = %v", err)
+	}
+	secondPayload, err := os.ReadFile(requestPrefix + ".2.json")
+	if err != nil {
+		t.Fatalf("ReadFile(second request) error = %v", err)
+	}
+	var firstReq map[string]interface{}
+	if err := json.Unmarshal(firstPayload, &firstReq); err != nil {
+		t.Fatalf("Unmarshal(first request) error = %v", err)
+	}
+	if firstReq["effort"] != "high" {
+		t.Fatalf("first request effort = %#v, want high", firstReq["effort"])
+	}
+	if _, ok := firstReq["thinking"]; !ok {
+		t.Fatalf("first request missing thinking payload: %s", string(firstPayload))
+	}
+
+	var secondReq map[string]interface{}
+	if err := json.Unmarshal(secondPayload, &secondReq); err != nil {
+		t.Fatalf("Unmarshal(second request) error = %v", err)
+	}
+	if _, ok := secondReq["effort"]; ok {
+		t.Fatalf("second request should omit effort: %s", string(secondPayload))
+	}
+	if _, ok := secondReq["thinking"]; ok {
+		t.Fatalf("second request should omit thinking: %s", string(secondPayload))
+	}
+}
+
+func TestClaudeAgentProvider_ChatDoesNotRetryEmptyDirectAnswerWithoutThinking(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	requestPath := filepath.Join(t.TempDir(), "request.json")
+	mockJSON := `{"type":"result","subtype":"success","is_error":false,"result":"","content":"","tool_calls":[],"finish_reason":"stop","session_id":"sess_1","usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`
+	script := createMockClaudeAgentBridge(t, mockJSON, "", 0, requestPath)
+
+	p := NewClaudeAgentProvider(".", "sk-ant-oat-test")
+	p.command = script
+
+	resp, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, "anthropic/claude-sonnet-4.6", nil)
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+	if resp.Content != "" {
+		t.Fatalf("Content = %q, want empty direct answer without retry", resp.Content)
+	}
+	if _, err := os.ReadFile(requestPath + ".2"); err == nil {
+		t.Fatal("unexpected second request capture")
 	}
 }
 
