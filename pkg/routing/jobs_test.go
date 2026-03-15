@@ -159,8 +159,14 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 		t.Fatalf("status submit: %v", err)
 	}
 	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "sciClaw jobs in this workspace") || !strings.Contains(out.Content, queuedID) {
-		t.Fatalf("expected multi-job status reply, got %q", out.Content)
+	if !strings.Contains(out.Content, "Multiple sciClaw jobs are active") {
+		t.Fatalf("expected concise multi-job fallback, got %q", out.Content)
+	}
+	if len(out.Embeds) != 1 {
+		t.Fatalf("expected control embed, got %#v", out.Embeds)
+	}
+	if out.Embeds[0].Title != "sciClaw · jobs" || !strings.Contains(out.Embeds[0].Description, "`status`") || !embedHas(out.Embeds[0], queuedID) {
+		t.Fatalf("expected multi-job status embed with queued id %s, got %#v", queuedID, out.Embeds[0])
 	}
 
 	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
@@ -172,8 +178,11 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 		t.Fatalf("cancel submit: %v", err)
 	}
 	out = mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "removed queued job "+queuedID) {
-		t.Fatalf("expected queued cancel ack, got %q", out.Content)
+	if len(out.Embeds) != 1 {
+		t.Fatalf("expected queued cancel embed, got %#v", out.Embeds)
+	}
+	if out.Embeds[0].Title != "sciClaw · "+queuedID || !embedHas(out.Embeds[0], "Removed from main queue") {
+		t.Fatalf("expected queued cancel ack embed for %s, got %#v", queuedID, out.Embeds[0])
 	}
 
 	close(runner.block)
@@ -351,6 +360,49 @@ func TestJobManagerDirectedCancelWithExtraWordsStartsNormalJob(t *testing.T) {
 	waitForNoActiveJobs(t, jm, target.key())
 }
 
+func TestJobManagerDirectedStatusWithoutActiveJobsReturnsControlCard(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return &fakeJobRunner{}, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "room-1",
+		Content:  "status",
+		Metadata: map[string]string{"has_direct_mention": "true"},
+	}); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	out := mustNextOutbound(t, mb)
+	if !strings.Contains(out.Content, "No running or queued jobs in this workspace.") {
+		t.Fatalf("expected concise fallback, got %q", out.Content)
+	}
+	if len(out.Embeds) != 1 {
+		t.Fatalf("expected control embed, got %#v", out.Embeds)
+	}
+	embed := out.Embeds[0]
+	if embed.Title != "sciClaw · jobs" || !strings.Contains(embed.Description, "`status`") {
+		t.Fatalf("expected status intercept card, got %#v", embed)
+	}
+	if !embedHas(embed, "No running or queued jobs in this workspace.") || !embedHas(embed, "`@sciclaw-app <request>` · `/btw <question>`") {
+		t.Fatalf("expected actionable control hints, got %#v", embed)
+	}
+}
+
 func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 	mb := bus.NewMessageBus()
 	defer mb.Close()
@@ -389,11 +441,11 @@ func TestJobManagerStatusListsMultipleJobs(t *testing.T) {
 		t.Fatalf("status submit: %v", err)
 	}
 	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "sciClaw jobs in this workspace") {
-		t.Fatalf("expected multiple job list, got %q", out.Content)
+	if len(out.Embeds) != 1 {
+		t.Fatalf("expected multi-job status embed, got %#v", out.Embeds)
 	}
-	if !strings.Contains(out.Content, "/btw lane") {
-		t.Fatalf("expected job list to label /btw lane, got %q", out.Content)
+	if out.Embeds[0].Title != "sciClaw · jobs" || !embedHas(out.Embeds[0], "/btw lane") {
+		t.Fatalf("expected job list to label /btw lane, got %#v", out.Embeds[0])
 	}
 
 	close(writeRunner.block)
@@ -746,8 +798,8 @@ func TestJobManagerReplyToQueuedCardCancelsJob(t *testing.T) {
 		t.Fatalf("reply cancel submit: %v", err)
 	}
 	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "removed queued job") {
-		t.Fatalf("expected queued cancel ack, got %q", out.Content)
+	if len(out.Embeds) != 1 || !embedHas(out.Embeds[0], "Removed from main queue") {
+		t.Fatalf("expected queued cancel ack embed, got %#v", out.Embeds)
 	}
 	if !progressHas(progress, "This job was cancelled.") {
 		t.Fatalf("expected queued progress card to be updated to cancelled, calls=%v", progress.calls)
@@ -813,8 +865,8 @@ func TestJobManagerReplyToQueuedCardForcesJob(t *testing.T) {
 		t.Fatalf("reply force submit: %v", err)
 	}
 	out := mustNextOutbound(t, mb)
-	if !strings.Contains(out.Content, "moved job "+third.ShortID+" to the front of the main queue") {
-		t.Fatalf("expected force ack for %s, got %q", third.ShortID, out.Content)
+	if len(out.Embeds) != 1 || out.Embeds[0].Title != "sciClaw · "+third.ShortID || !embedHas(out.Embeds[0], "Moved to the front of the main queue") {
+		t.Fatalf("expected force ack for %s, got %#v", third.ShortID, out.Embeds)
 	}
 
 	jm.mu.Lock()
@@ -1028,6 +1080,18 @@ func mustNextOutbound(t *testing.T, mb *bus.MessageBus) bus.OutboundMessage {
 		t.Fatal("expected outbound message")
 	}
 	return msg
+}
+
+func embedHas(embed bus.OutboundEmbed, needle string) bool {
+	if strings.Contains(embed.Title, needle) || strings.Contains(embed.Description, needle) || strings.Contains(embed.Footer, needle) {
+		return true
+	}
+	for _, field := range embed.Fields {
+		if strings.Contains(field.Name, needle) || strings.Contains(field.Value, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func filepathJoin(elem ...string) string {

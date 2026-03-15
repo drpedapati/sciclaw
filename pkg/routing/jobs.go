@@ -611,47 +611,43 @@ func parseRuntimeProfileKey(key string) RuntimeProfile {
 
 func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage, targetKey string, jobs []*activeJob, control parsedJobControl) error {
 	if len(jobs) == 0 {
-		text := "sciClaw is not currently running a background job for this workspace."
-		if control.Kind == jobControlCancel {
-			text = "sciClaw is not currently running a background job that can be cancelled."
-		}
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, text)
+		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlNoJobsOutbound(control))
 	}
 
 	selected, err := selectTrackedJob(jobs, control.TargetID, msg.Metadata["reply_message_id"])
 	if err != nil {
 		if control.TargetID == "" && len(jobs) > 1 && control.Kind == jobControlStatus {
-			return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobList(snapshotActiveJobs(jobs)))
+			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlJobListOutbound(control, snapshotActiveJobs(jobs), false))
 		}
 		if control.TargetID == "" && len(jobs) > 1 && control.Kind == jobControlCancel {
-			return jm.sendText(ctx, msg.Channel, msg.ChatID, formatCancelRequiresJobID(snapshotActiveJobs(jobs)))
+			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlJobListOutbound(control, snapshotActiveJobs(jobs), true))
 		}
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, err.Error())
+		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlErrorOutbound(control, err.Error()))
 	}
 
 	record := selected.snapshot()
 	switch control.Kind {
 	case jobControlStatus:
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, formatActiveJobStatus(record, true))
+		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, record, humanizePhase(record.Phase)))
 	case jobControlCancel:
 		if record.State == JobStateQueued {
 			cancelled, cancelErr := jm.cancelQueuedJob(targetKey, record.ID)
 			if cancelErr != nil {
-				return jm.sendText(ctx, msg.Channel, msg.ChatID, cancelErr.Error())
+				return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlErrorOutbound(control, cancelErr.Error()))
 			}
-			return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw removed queued job %s from the main queue.\n\nAsk: %s", cancelled.ShortID, fallbackAskSummary(cancelled.AskSummary)))
+			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, cancelled, "Removed from main queue"))
 		}
 		selected.cancel()
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw is stopping job %s.\n\nAsk: %s", record.ShortID, fallbackAskSummary(record.AskSummary)))
+		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, record, "Stopping now"))
 	case jobControlForce:
 		if record.State != JobStateQueued {
-			return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("Job %s is already running.", record.ShortID))
+			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, record, "Already running"))
 		}
 		forced, forceErr := jm.forceQueuedJob(targetKey, record.ID)
 		if forceErr != nil {
-			return jm.sendText(ctx, msg.Channel, msg.ChatID, forceErr.Error())
+			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlErrorOutbound(control, forceErr.Error()))
 		}
-		return jm.sendText(ctx, msg.Channel, msg.ChatID, fmt.Sprintf("sciClaw moved job %s to the front of the main queue.\n\nAsk: %s", forced.ShortID, fallbackAskSummary(forced.AskSummary)))
+		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, forced, "Moved to the front of the main queue"))
 	default:
 		return nil
 	}
@@ -872,14 +868,16 @@ func (jm *JobManager) runJob(ctx context.Context, target LoopTarget, msg bus.Inb
 }
 
 func (jm *JobManager) sendText(ctx context.Context, channel, chatID, content string) error {
+	return jm.sendOutbound(ctx, channel, chatID, bus.OutboundMessage{Content: content})
+}
+
+func (jm *JobManager) sendOutbound(ctx context.Context, channel, chatID string, msg bus.OutboundMessage) error {
 	if jm.bus == nil {
 		return nil
 	}
-	return jm.bus.PublishOutbound(ctx, bus.OutboundMessage{
-		Channel: channel,
-		ChatID:  chatID,
-		Content: content,
-	})
+	msg.Channel = channel
+	msg.ChatID = chatID
+	return jm.bus.PublishOutbound(ctx, msg)
 }
 
 func (jm *JobManager) sendQueuedStatus(ctx context.Context, active *activeJob, running JobRecord, position int) error {
@@ -1333,6 +1331,82 @@ func formatProgressOutbound(record JobRecord) bus.OutboundMessage {
 	}
 }
 
+func formatControlNoJobsOutbound(control parsedJobControl) bus.OutboundMessage {
+	status := "No running or queued jobs in this workspace."
+	if control.Kind == jobControlCancel {
+		status = "No running or queued job can be cancelled here."
+	}
+	return formatControlOutbound(
+		control,
+		"sciClaw · jobs",
+		fmt.Sprintf("Treated this as `%s`.", controlCommandLabel(control.Kind)),
+		[]bus.OutboundEmbedField{
+			{Name: "Now", Value: status, Inline: false},
+			{Name: "Try", Value: "`@sciclaw-app <request>` · `/btw <question>`", Inline: false},
+		},
+		"When jobs exist: `status <job-id>` · `cancel <job-id>` · `force <job-id>`",
+		0x64748B,
+		compactJobLine(status+" Start a normal request or `/btw <question>`."),
+	)
+}
+
+func formatControlJobListOutbound(control parsedJobControl, records []JobRecord, requireTarget bool) bus.OutboundMessage {
+	description := fmt.Sprintf("Treated this as `%s`.", controlCommandLabel(control.Kind))
+	footer := "Reply on a job card: `status` · `cancel`"
+	if hasQueuedMainLane(records) {
+		footer += " · `force`"
+	}
+	content := "Multiple sciClaw jobs are active in this workspace."
+	if requireTarget {
+		description = "Treated this as `cancel`. Pick one job."
+		footer = "Reply `cancel` on a card, or direct `cancel <job-id>`."
+		content = "Multiple sciClaw jobs are active. Choose a job to cancel."
+	} else if hasQueuedMainLane(records) {
+		footer = "Reply on a job card: `status` · `cancel` · `force`"
+	}
+	fields := []bus.OutboundEmbedField{
+		{Name: "Jobs", Value: formatControlJobListValue(records), Inline: false},
+	}
+	if requireTarget {
+		fields = append(fields, bus.OutboundEmbedField{Name: "Next", Value: "`cancel <job-id>` · reply `cancel` on a card", Inline: false})
+	}
+	return formatControlOutbound(control, "sciClaw · jobs", description, fields, footer, 0x3B82F6, content)
+}
+
+func formatControlErrorOutbound(control parsedJobControl, message string) bus.OutboundMessage {
+	message = compactJobLine(message)
+	return formatControlOutbound(
+		control,
+		"sciClaw · jobs",
+		fmt.Sprintf("Treated this as `%s`.", controlCommandLabel(control.Kind)),
+		[]bus.OutboundEmbedField{{Name: "Problem", Value: utils.Truncate(message, 240), Inline: false}},
+		"`status <job-id>` · `cancel <job-id>` · `force <job-id>`",
+		0xEF4444,
+		message,
+	)
+}
+
+func formatControlRecordOutbound(control parsedJobControl, record JobRecord, note string) bus.OutboundMessage {
+	footer := "Reply on this card: `status` · `cancel`"
+	if record.Class == JobClassWrite && record.State == JobStateQueued {
+		footer += " · `force`"
+	}
+	fields := []bus.OutboundEmbedField{
+		{Name: "Lane", Value: jobLaneLabel(record.Class), Inline: true},
+		{Name: "Status", Value: humanizePhase(record.Phase), Inline: true},
+		{Name: "Started", Value: formatDiscordRelativeTimestamp(record.StartedAt), Inline: true},
+	}
+	if trimmed := strings.TrimSpace(note); trimmed != "" {
+		fields = append(fields, bus.OutboundEmbedField{Name: "Now", Value: utils.Truncate(trimmed, 240), Inline: false})
+	}
+	if detail := formatJobCardDetail(record); detail != "" && !strings.EqualFold(strings.TrimSpace(detail), strings.TrimSpace(note)) {
+		fields = append(fields, bus.OutboundEmbedField{Name: "Detail", Value: utils.Truncate(detail, 240), Inline: false})
+	}
+	description := fmt.Sprintf("Treated this as `%s`.\n\n%s", controlCommandLabel(control.Kind), formatJobCardAsk(record))
+	content := fmt.Sprintf("%s %s · %s.", record.ShortID, humanizePhase(record.Phase), fallbackAskSummary(record.AskSummary))
+	return formatControlOutbound(control, fmt.Sprintf("sciClaw · %s", record.ShortID), description, fields, footer, jobStateColor(record.State), content)
+}
+
 func formatProgressEmbed(record JobRecord) bus.OutboundEmbed {
 	embed := bus.OutboundEmbed{
 		Title:         fmt.Sprintf("sciClaw · %s", record.ShortID),
@@ -1402,6 +1476,39 @@ func formatActiveJobStatus(record JobRecord, includeControlHint bool) string {
 		lines = append(lines, "", formatJobControlHint(record))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func formatControlOutbound(control parsedJobControl, title, description string, fields []bus.OutboundEmbedField, footer string, color int, content string) bus.OutboundMessage {
+	embed := bus.OutboundEmbed{
+		Title:       title,
+		Description: description,
+		Color:       color,
+		Footer:      footer,
+		Fields:      fields,
+	}
+	return bus.OutboundMessage{
+		Content: compactJobLine(content),
+		Embeds:  []bus.OutboundEmbed{embed},
+	}
+}
+
+func controlCommandLabel(kind jobControl) string {
+	switch kind {
+	case jobControlCancel:
+		return "cancel"
+	case jobControlForce:
+		return "force"
+	default:
+		return "status"
+	}
+}
+
+func formatControlJobListValue(records []JobRecord) string {
+	lines := make([]string, 0, len(records))
+	for _, record := range records {
+		lines = append(lines, fmt.Sprintf("**%s** · %s · %s · %s\n%s", record.ShortID, jobLaneLabel(record.Class), humanizePhase(record.Phase), formatDiscordRelativeTimestamp(record.StartedAt), fallbackAskSummary(record.AskSummary)))
+	}
+	return utils.Truncate(strings.Join(lines, "\n\n"), 1000)
 }
 
 func formatActiveJobList(records []JobRecord) string {
