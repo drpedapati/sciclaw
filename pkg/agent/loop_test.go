@@ -204,6 +204,123 @@ func TestSideLaneRunJobAddsRuntimeConstraintPrompt(t *testing.T) {
 	}
 }
 
+func TestRunJobPersistsInboundArtifactsForFollowups(t *testing.T) {
+	workspace := t.TempDir()
+	inputPath := filepath.Join(workspace, ".sciclaw", "inbound", "discord", "123", "protocol.docx")
+	if err := os.MkdirAll(filepath.Dir(inputPath), 0o755); err != nil {
+		t.Fatalf("mkdir input: %v", err)
+	}
+	if err := os.WriteFile(inputPath, []byte("protocol"), 0o644); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+	provider := &captureMockProvider{response: "ok"}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+
+	first := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-1",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-1",
+		Content:    "Use the attached protocol",
+		Media:      []string{inputPath},
+	}
+	if _, err := al.processMessage(context.Background(), first); err != nil {
+		t.Fatalf("first processMessage: %v", err)
+	}
+
+	artifacts := al.sessions.GetArtifacts(first.SessionKey)
+	if len(artifacts) != 1 || artifacts[0].Path != inputPath {
+		t.Fatalf("unexpected artifacts after inbound media registration: %#v", artifacts)
+	}
+
+	followupProvider := &captureMockProvider{response: "follow-up"}
+	al.provider = followupProvider
+	second := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-1",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-1",
+		Content:    "Revise it again",
+	}
+	if _, err := al.processMessage(context.Background(), second); err != nil {
+		t.Fatalf("second processMessage: %v", err)
+	}
+
+	userPrompt := followupProvider.LastUserPrompt()
+	if !strings.Contains(userPrompt, "## Working Artifacts") {
+		t.Fatalf("expected working artifacts in follow-up prompt, got: %s", userPrompt)
+	}
+	if !strings.Contains(userPrompt, ".sciclaw/inbound/discord/123/protocol.docx") {
+		t.Fatalf("expected canonical local artifact path in follow-up prompt, got: %s", userPrompt)
+	}
+	if !strings.Contains(userPrompt, "canonical local paths") {
+		t.Fatalf("expected canonical-path guidance in follow-up prompt, got: %s", userPrompt)
+	}
+}
+
+func TestRunAgentLoopRegistersOutputArtifactsFromToolCalls(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+
+	provider := &scriptedProvider{
+		responses: []*providers.LLMResponse{
+			{
+				ToolCalls: []providers.ToolCall{
+					{
+						ID:   "call-write",
+						Name: "write_file",
+						Arguments: map[string]interface{}{
+							"path":    "outputs/report.md",
+							"content": "# Report\n",
+						},
+					},
+				},
+			},
+			{Content: "done"},
+		},
+	}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-2",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-2",
+		Content:    "Write the report",
+	}
+	if _, err := al.processMessage(context.Background(), msg); err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+
+	expectedOutput := filepath.Join(workspace, "outputs", "report.md")
+	artifacts := al.sessions.GetArtifacts(msg.SessionKey)
+	if len(artifacts) != 1 || artifacts[0].Path != expectedOutput || artifacts[0].Role != "output" {
+		t.Fatalf("unexpected output artifacts: %#v", artifacts)
+	}
+
+	followupProvider := &captureMockProvider{response: "follow-up"}
+	al.provider = followupProvider
+	followup := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-2",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-2",
+		Content:    "Update the report",
+	}
+	if _, err := al.processMessage(context.Background(), followup); err != nil {
+		t.Fatalf("follow-up processMessage: %v", err)
+	}
+
+	userPrompt := followupProvider.LastUserPrompt()
+	if !strings.Contains(userPrompt, "outputs/report.md") {
+		t.Fatalf("expected output artifact in follow-up prompt, got: %s", userPrompt)
+	}
+}
+
 func TestLocalTurnDiagnostics_RecordToolExecutionTracksErrors(t *testing.T) {
 	diag := newLocalTurnDiagnostics()
 	diag.recordToolExecution(275*time.Millisecond, &tools.ToolResult{IsError: true, Async: true})
@@ -1263,6 +1380,28 @@ func (m *captureMockProvider) LastUserPrompt() string {
 		}
 	}
 	return ""
+}
+
+type scriptedProvider struct {
+	responses []*providers.LLMResponse
+	mu        sync.Mutex
+	calls     [][]providers.Message
+}
+
+func (m *scriptedProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, cloneMessages(messages))
+	idx := len(m.calls) - 1
+	if idx >= len(m.responses) {
+		return &providers.LLMResponse{Content: "done"}, nil
+	}
+	resp := *m.responses[idx]
+	return &resp, nil
+}
+
+func (m *scriptedProvider) GetDefaultModel() string {
+	return "mock-model"
 }
 
 type toolThenDoneProvider struct {

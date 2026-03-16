@@ -619,6 +619,10 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 		return al.processSystemMessage(ctx, msg)
 	}
 
+	if !al.toolProfile.isSideLane() && strings.TrimSpace(msg.SessionKey) != "" && len(msg.Media) > 0 {
+		al.registerInboundArtifacts(msg.SessionKey, msg.Media)
+	}
+
 	// Process as user message
 	return al.runAgentLoop(ctx, processOptions{
 		SessionKey:      msg.SessionKey,
@@ -806,6 +810,23 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				"prefetch_chars":      len(prefetchContext),
 				"user_prompt_chars":   len(userMessageForPrompt),
 				"original_user_chars": len(opts.UserMessage),
+			})
+	}
+	if artifactContext := al.sessions.BuildArtifactContext(opts.SessionKey, al.workspace); artifactContext != "" {
+		trimmedUser := strings.TrimSpace(userMessageForPrompt)
+		if trimmedUser == "" {
+			userMessageForPrompt = artifactContext
+		} else {
+			userMessageForPrompt = trimmedUser + "\n\n" + artifactContext
+		}
+		logger.InfoCF("agent", "Injected session artifact context",
+			map[string]interface{}{
+				"turn_id":         opts.TurnID,
+				"session_key":     opts.SessionKey,
+				"channel":         opts.Channel,
+				"chat_id":         opts.ChatID,
+				"artifact_chars":  len(artifactContext),
+				"user_prompt_len": len(userMessageForPrompt),
 			})
 	}
 	messages := al.contextBuilder.BuildMessages(
@@ -1487,6 +1508,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				} else {
 					logger.InfoCF("agent", "Local tool execution complete", toolFields)
 				}
+			}
+			if !opts.Ephemeral && !toolResult.IsError {
+				al.registerArtifactsFromToolCall(opts.SessionKey, tc.Name, tc.Arguments)
 			}
 
 			toolResultMsg := providers.Message{
