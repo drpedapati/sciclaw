@@ -50,6 +50,17 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			Workspace: decision.Workspace,
 			Runtime:   decision.Runtime,
 		}
+		if err := prepareInboundMedia(target.Workspace, &routed); err != nil {
+			logger.ErrorCF("routing", "inbound_media_stage_failed", map[string]interface{}{
+				"channel":   msg.Channel,
+				"chat_id":   msg.ChatID,
+				"sender_id": msg.SenderID,
+				"workspace": decision.Workspace,
+				"reason":    err.Error(),
+			})
+			d.sendJobSubmitError(ctx, msg, fmt.Errorf("failed to stage inbound attachments: %w", err))
+			continue
+		}
 		if jobs := d.getJobManager(); jobs != nil && jobs.ShouldHandleChannel(routed.Channel) {
 			if err := jobs.Submit(ctx, target, routed); err != nil {
 				logger.ErrorCF("routing", "job_submit_failed", map[string]interface{}{

@@ -356,6 +356,52 @@ func TestDiscordProcessIncomingMessage_RoleMentionDoesNotCountAsBotMention(t *te
 	}
 }
 
+func TestDiscordProcessIncomingMessage_AttachmentsUseFilenamesInContent(t *testing.T) {
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, bus.NewMessageBus(), nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-1",
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	msg := &discordgo.Message{
+		ID:        "m-attach",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "please review",
+		Author:    &discordgo.User{ID: "user-1", Username: "alice"},
+		Attachments: []*discordgo.MessageAttachment{
+			{
+				ID:          "att-1",
+				Filename:    "draft.docx",
+				ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+				URL:         "https://cdn.discordapp.com/attachments/x/draft.docx",
+			},
+		},
+	}
+
+	ch.processIncomingMessage(newTestSession("bot-1"), msg, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	in, ok := ch.BaseChannel.bus.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("expected inbound message")
+	}
+	if !strings.Contains(in.Content, "[attachment: draft.docx]") {
+		t.Fatalf("expected attachment filename in content, got %q", in.Content)
+	}
+	if strings.Contains(in.Content, "cdn.discordapp.com") {
+		t.Fatalf("expected attachment content to avoid raw CDN URL, got %q", in.Content)
+	}
+	if len(in.Media) != 1 || in.Media[0] != "https://cdn.discordapp.com/attachments/x/draft.docx" {
+		t.Fatalf("unexpected media payload: %#v", in.Media)
+	}
+}
+
 func TestDiscordEnsureSlashCommandsCreatesSlashCommands(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.botUserID = "bot-1"

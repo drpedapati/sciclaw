@@ -823,11 +823,11 @@ func (c *DiscordChannel) processIncomingMessage(_ *discordgo.Session, m *discord
 					"filename": attachment.Filename,
 				})
 				mediaPaths = append(mediaPaths, attachment.URL)
-				content = appendContent(content, fmt.Sprintf("[attachment: %s]", attachment.URL))
+				content = appendContent(content, fmt.Sprintf("[attachment: %s]", attachment.Filename))
 			}
 		} else {
 			mediaPaths = append(mediaPaths, attachment.URL)
-			content = appendContent(content, fmt.Sprintf("[attachment: %s]", attachment.URL))
+			content = appendContent(content, fmt.Sprintf("[attachment: %s]", attachment.Filename))
 		}
 	}
 
