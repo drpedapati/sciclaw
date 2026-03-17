@@ -29,6 +29,7 @@ type fakeProgressCall struct {
 	messageID string
 	content   string
 	title     string
+	embed     bus.OutboundEmbed
 }
 
 func (m *fakeProgressMessenger) SendOrEditProgress(_ context.Context, channelName, chatID, messageID string, msg bus.OutboundMessage) (string, error) {
@@ -45,6 +46,12 @@ func (m *fakeProgressMessenger) SendOrEditProgress(_ context.Context, channelNam
 		messageID: messageID,
 		content:   msg.Content,
 		title:     title,
+		embed: func() bus.OutboundEmbed {
+			if len(msg.Embeds) > 0 {
+				return msg.Embeds[0]
+			}
+			return bus.OutboundEmbed{}
+		}(),
 	})
 	if messageID == "" && m.sendFail {
 		return "", fmt.Errorf("send failed")
@@ -177,12 +184,9 @@ func TestJobManagerBusyStatusAndCancel(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("cancel submit: %v", err)
 	}
-	out = mustNextOutbound(t, mb)
-	if len(out.Embeds) != 1 {
-		t.Fatalf("expected queued cancel embed, got %#v", out.Embeds)
-	}
-	if out.Embeds[0].Title != "sciClaw · "+queuedID || !embedHas(out.Embeds[0], "Removed from main queue") {
-		t.Fatalf("expected queued cancel ack embed for %s, got %#v", queuedID, out.Embeds[0])
+	assertNoOutbound(t, mb)
+	if !progressHas(progress, "This job was cancelled.") {
+		t.Fatalf("expected queued progress card to be updated to cancelled, calls=%v", progress.calls)
 	}
 
 	close(runner.block)
@@ -797,10 +801,7 @@ func TestJobManagerReplyToQueuedCardCancelsJob(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("reply cancel submit: %v", err)
 	}
-	out := mustNextOutbound(t, mb)
-	if len(out.Embeds) != 1 || !embedHas(out.Embeds[0], "Removed from main queue") {
-		t.Fatalf("expected queued cancel ack embed, got %#v", out.Embeds)
-	}
+	assertNoOutbound(t, mb)
 	if !progressHas(progress, "This job was cancelled.") {
 		t.Fatalf("expected queued progress card to be updated to cancelled, calls=%v", progress.calls)
 	}
@@ -864,10 +865,7 @@ func TestJobManagerReplyToQueuedCardForcesJob(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("reply force submit: %v", err)
 	}
-	out := mustNextOutbound(t, mb)
-	if len(out.Embeds) != 1 || out.Embeds[0].Title != "sciClaw · "+third.ShortID || !embedHas(out.Embeds[0], "Moved to the front of the main queue") {
-		t.Fatalf("expected force ack for %s, got %#v", third.ShortID, out.Embeds)
-	}
+	assertNoOutbound(t, mb)
 
 	jm.mu.Lock()
 	queued := jm.active[target.key()].queuedWrites
@@ -886,6 +884,78 @@ func TestJobManagerReplyToQueuedCardForcesJob(t *testing.T) {
 	jm.mu.Unlock()
 	close(runner.block)
 	waitForNoActiveJobs(t, jm, target.key())
+}
+
+func TestJobManagerReplyToCardStatusRefreshesCanonicalCard(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	progress := &fakeProgressMessenger{}
+	runner := &fakeJobRunner{started: make(chan struct{}), block: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:               true,
+		MaxConcurrent:         1,
+		ProgressUpdateSeconds: 1,
+		DiscordAsyncDefault:   true,
+	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{Channel: "discord", ChatID: "room-1", Content: "first job"}); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first job start")
+	}
+
+	jm.mu.Lock()
+	statusID := jm.active[target.key()].write.snapshot().StatusMessageID
+	before := len(progress.messages)
+	jm.mu.Unlock()
+
+	if err := jm.Submit(context.Background(), target, bus.InboundMessage{
+		Channel:  "discord",
+		ChatID:   "room-1",
+		Content:  "status",
+		Metadata: map[string]string{"reply_message_id": statusID},
+	}); err != nil {
+		t.Fatalf("reply status submit: %v", err)
+	}
+	assertNoOutbound(t, mb)
+	if len(progress.messages) <= before {
+		t.Fatalf("expected canonical card refresh, before=%d after=%d", before, len(progress.messages))
+	}
+
+	close(runner.block)
+	waitForNoActiveJobs(t, jm, target.key())
+}
+
+func TestFormatProgressEmbedIncludesElapsed(t *testing.T) {
+	originalNow := jobCardNow
+	jobCardNow = func() time.Time { return time.Unix(300, 0) }
+	defer func() { jobCardNow = originalNow }()
+
+	embed := formatProgressEmbed(JobRecord{
+		ShortID:    "0000A",
+		Class:      JobClassWrite,
+		State:      JobStateRunning,
+		Phase:      "thinking",
+		AskSummary: "test",
+		StartedAt:  time.Unix(235, 0).UnixMilli(),
+		UpdatedAt:  time.Unix(300, 0).UnixMilli(),
+	})
+	if !embedHas(embed, "Elapsed") {
+		t.Fatalf("expected elapsed field, got %#v", embed)
+	}
+	if !embedHas(embed, "1m 05s") {
+		t.Fatalf("expected formatted elapsed time, got %#v", embed)
+	}
 }
 
 func TestJobManagerRestartInterruptsOnlyRunningJobsAndPreservesQueuedBacklog(t *testing.T) {
@@ -1080,6 +1150,15 @@ func mustNextOutbound(t *testing.T, mb *bus.MessageBus) bus.OutboundMessage {
 		t.Fatal("expected outbound message")
 	}
 	return msg
+}
+
+func assertNoOutbound(t *testing.T, mb *bus.MessageBus) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if msg, ok := mb.SubscribeOutbound(ctx); ok {
+		t.Fatalf("expected no outbound message, got %#v", msg)
+	}
 }
 
 func embedHas(embed bus.OutboundEmbed, needle string) bool {

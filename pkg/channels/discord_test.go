@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -744,6 +745,29 @@ func TestDiscordSendOrEditProgressFallsBackToNewMessageOnEditFailure(t *testing.
 	}
 	if called != 1 {
 		t.Fatalf("expected fallback send call, got %d", called)
+	}
+}
+
+func TestDiscordSendOrEditProgressDoesNotReplaceOnTransientEditFailure(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.editMessageFn = func(channelID, messageID string, msg bus.OutboundMessage) error {
+		return fmt.Errorf("temporary discord edit failure")
+	}
+	called := 0
+	ch.sendMessageFn = func(channelID string, msg bus.OutboundMessage) error {
+		called++
+		return nil
+	}
+
+	id, err := ch.SendOrEditProgress(context.Background(), "chan-1", "progress-123", bus.OutboundMessage{Content: "Thinking", Embeds: []bus.OutboundEmbed{{Title: "sciClaw · J1"}}})
+	if err == nil {
+		t.Fatal("expected edit error")
+	}
+	if id != "" {
+		t.Fatalf("expected empty id on edit error, got %q", id)
+	}
+	if called != 0 {
+		t.Fatalf("expected no fallback send call, got %d", called)
 	}
 }
 

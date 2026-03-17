@@ -628,6 +628,10 @@ func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage,
 	record := selected.snapshot()
 	switch control.Kind {
 	case jobControlStatus:
+		if synced, ok := jm.refreshSelectedJobCard(ctx, selected); ok {
+			_ = synced
+			return nil
+		}
 		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, record, humanizePhase(record.Phase)))
 	case jobControlCancel:
 		if record.State == JobStateQueued {
@@ -635,22 +639,58 @@ func (jm *JobManager) handleControl(ctx context.Context, msg bus.InboundMessage,
 			if cancelErr != nil {
 				return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlErrorOutbound(control, cancelErr.Error()))
 			}
+			if strings.TrimSpace(cancelled.StatusMessageID) != "" {
+				return nil
+			}
 			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, cancelled, "Removed from main queue"))
 		}
+		record = selected.update(func(record *JobRecord) {
+			record.Phase = "cancelling"
+			record.Detail = "Stopping now"
+			record.Summary = record.Detail
+			record.UpdatedAt = time.Now().UnixMilli()
+		})
 		selected.cancel()
+		if synced, ok := jm.refreshSelectedJobCard(ctx, selected); ok {
+			_ = synced
+			return nil
+		}
 		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, record, "Stopping now"))
 	case jobControlForce:
 		if record.State != JobStateQueued {
+			if synced, ok := jm.refreshSelectedJobCard(ctx, selected); ok {
+				_ = synced
+				return nil
+			}
 			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, record, "Already running"))
 		}
 		forced, forceErr := jm.forceQueuedJob(targetKey, record.ID)
 		if forceErr != nil {
 			return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlErrorOutbound(control, forceErr.Error()))
 		}
+		if strings.TrimSpace(forced.StatusMessageID) != "" {
+			return nil
+		}
 		return jm.sendOutbound(ctx, msg.Channel, msg.ChatID, formatControlRecordOutbound(control, forced, "Moved to the front of the main queue"))
 	default:
 		return nil
 	}
+}
+
+func (jm *JobManager) refreshSelectedJobCard(ctx context.Context, job *activeJob) (JobRecord, bool) {
+	if job == nil {
+		return JobRecord{}, false
+	}
+	record := job.snapshot()
+	if jm.progress == nil || strings.TrimSpace(record.StatusMessageID) == "" {
+		return record, false
+	}
+	synced, err := jm.syncTrackedJobProgress(ctx, job)
+	if err != nil {
+		logger.WarnCF("jobs", "Failed to refresh selected job card", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
+		return record, false
+	}
+	return synced, true
 }
 
 func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error) {
@@ -681,6 +721,7 @@ func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error
 		record.LastError = ""
 	})
 	updatedQueued := jm.reindexQueuedWritesLocked(activeSet)
+	queuedJobs := append([]*activeJob(nil), activeSet.queuedWrites...)
 	if activeSet.empty() {
 		delete(jm.active, targetKey)
 	}
@@ -694,8 +735,13 @@ func (jm *JobManager) cancelQueuedJob(targetKey, jobID string) (JobRecord, error
 			return JobRecord{}, err
 		}
 	}
-	record = jm.syncProgressRecord(context.Background(), record)
-	updatedQueued = jm.syncProgressRecords(context.Background(), updatedQueued...)
+	if synced, err := jm.syncTrackedJobProgress(context.Background(), job); err == nil {
+		record = synced
+	}
+	syncedQueued := jm.syncTrackedJobsProgress(context.Background(), queuedJobs...)
+	if len(syncedQueued) > 0 {
+		updatedQueued = syncedQueued
+	}
 	if job.cancel != nil {
 		job.cancel()
 	}
@@ -731,6 +777,7 @@ func (jm *JobManager) forceQueuedJob(targetKey, jobID string) (JobRecord, error)
 		return JobRecord{}, fmt.Errorf("No queued sciClaw job matches %s.", jobID)
 	}
 	updatedQueued = jm.reindexQueuedWritesLocked(activeSet)
+	queuedJobs := append([]*activeJob(nil), activeSet.queuedWrites...)
 	record := job.snapshot()
 	jm.mu.Unlock()
 
@@ -742,8 +789,60 @@ func (jm *JobManager) forceQueuedJob(targetKey, jobID string) (JobRecord, error)
 			return JobRecord{}, err
 		}
 	}
-	_ = jm.syncProgressRecords(context.Background(), updatedQueued...)
+	syncedQueued := jm.syncTrackedJobsProgress(context.Background(), queuedJobs...)
+	if len(syncedQueued) > 0 {
+		for _, synced := range syncedQueued {
+			if synced.ID == record.ID {
+				record = synced
+				break
+			}
+		}
+	}
 	return record, nil
+}
+
+func (jm *JobManager) syncTrackedJobProgress(ctx context.Context, job *activeJob) (JobRecord, error) {
+	if job == nil {
+		return JobRecord{}, nil
+	}
+	record := job.snapshot()
+	if jm.progress == nil || strings.TrimSpace(record.StatusMessageID) == "" {
+		return record, nil
+	}
+	message := formatProgressOutbound(record)
+	message.Channel = record.Channel
+	message.ChatID = record.ChatID
+	messageID, err := jm.progress.SendOrEditProgress(ctx, record.Channel, record.ChatID, record.StatusMessageID, message)
+	if err != nil {
+		return record, err
+	}
+	if trimmed := strings.TrimSpace(messageID); trimmed != "" && trimmed != strings.TrimSpace(record.StatusMessageID) {
+		record = job.update(func(existing *JobRecord) {
+			existing.StatusMessageID = trimmed
+		})
+		if err := jm.store.Save(record); err != nil {
+			logger.WarnCF("jobs", "Failed to persist synced tracked progress record", map[string]interface{}{"job_id": record.ID, "error": err.Error()})
+		}
+	}
+	return record, nil
+}
+
+func (jm *JobManager) syncTrackedJobsProgress(ctx context.Context, jobs ...*activeJob) []JobRecord {
+	updated := make([]JobRecord, 0, len(jobs))
+	for _, job := range jobs {
+		if job == nil {
+			continue
+		}
+		record, err := jm.syncTrackedJobProgress(ctx, job)
+		if err != nil {
+			snapshot := job.snapshot()
+			logger.WarnCF("jobs", "Failed to sync tracked job progress", map[string]interface{}{"job_id": snapshot.ID, "error": err.Error()})
+			updated = append(updated, snapshot)
+			continue
+		}
+		updated = append(updated, record)
+	}
+	return updated
 }
 
 func (jm *JobManager) reindexQueuedWritesLocked(activeSet *targetActiveJobs) []JobRecord {
@@ -1230,6 +1329,34 @@ func formatDiscordRelativeTimestamp(startedAtMillis int64) string {
 	return fmt.Sprintf("<t:%d:R>", startedAtMillis/1000)
 }
 
+var jobCardNow = time.Now
+
+func formatJobElapsed(startedAtMillis int64) string {
+	if startedAtMillis <= 0 {
+		return "just now"
+	}
+	elapsed := jobCardNow().Sub(time.UnixMilli(startedAtMillis))
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	switch {
+	case elapsed < time.Minute:
+		return fmt.Sprintf("%ds", int(elapsed/time.Second))
+	case elapsed < time.Hour:
+		minutes := int(elapsed / time.Minute)
+		seconds := int((elapsed % time.Minute) / time.Second)
+		return fmt.Sprintf("%dm %02ds", minutes, seconds)
+	case elapsed < 24*time.Hour:
+		hours := int(elapsed / time.Hour)
+		minutes := int((elapsed % time.Hour) / time.Minute)
+		return fmt.Sprintf("%dh %02dm", hours, minutes)
+	default:
+		days := int(elapsed / (24 * time.Hour))
+		hours := int((elapsed % (24 * time.Hour)) / time.Hour)
+		return fmt.Sprintf("%dd %02dh", days, hours)
+	}
+}
+
 func formatJobCardHeader(record JobRecord) string {
 	return fmt.Sprintf("**%s** · **%s** · %s · %s", record.ShortID, humanizePhase(record.Phase), jobLaneLabel(record.Class), formatDiscordRelativeTimestamp(record.StartedAt))
 }
@@ -1419,6 +1546,7 @@ func formatProgressEmbed(record JobRecord) bus.OutboundEmbed {
 		bus.OutboundEmbedField{Name: "Lane", Value: jobLaneLabel(record.Class), Inline: true},
 		bus.OutboundEmbedField{Name: "Status", Value: humanizePhase(record.Phase), Inline: true},
 		bus.OutboundEmbedField{Name: "Started", Value: formatDiscordRelativeTimestamp(record.StartedAt), Inline: true},
+		bus.OutboundEmbedField{Name: "Elapsed", Value: formatJobElapsed(record.StartedAt), Inline: true},
 	)
 
 	if detail := strings.TrimSpace(record.Detail); detail != "" && !strings.EqualFold(detail, humanizePhase(record.Phase)) {

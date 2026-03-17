@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -280,6 +281,9 @@ func (c *DiscordChannel) SendOrEditProgress(ctx context.Context, chatID, message
 	}
 
 	if err := c.editProgressMessage(channelID, messageID, msg); err != nil {
+		if !shouldReplaceProgressMessage(err) {
+			return "", fmt.Errorf("edit progress message: %w", err)
+		}
 		id, sendErr := c.sendProgressMessage(channelID, msg)
 		if sendErr != nil {
 			return "", fmt.Errorf("edit progress message: %w (fallback send failed: %v)", err, sendErr)
@@ -287,6 +291,25 @@ func (c *DiscordChannel) SendOrEditProgress(ctx context.Context, chatID, message
 		return id, nil
 	}
 	return messageID, nil
+}
+
+func shouldReplaceProgressMessage(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	var restErr *discordgo.RESTError
+	if errors.As(err, &restErr) {
+		if restErr.Message != nil && restErr.Message.Code == discordgo.ErrCodeUnknownMessage {
+			return true
+		}
+		if restErr.Response != nil && restErr.Response.StatusCode == 404 {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *DiscordChannel) sendMessageWithAttachments(channelID string, chunks []string, attachments []bus.OutboundAttachment) error {
