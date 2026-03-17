@@ -56,12 +56,8 @@ echo "  linux-arm64:  ${sha_linux_arm64}"
 echo "  linux-amd64:  ${sha_linux_amd64}"
 echo "  source:       ${sha_source}"
 
-claude_agent_dep=""
-claude_agent_test=""
-if [ "${formula_name}" = "sciclaw-dev" ]; then
-  claude_agent_dep='  depends_on "sciclaw-claude-agent"'
-  claude_agent_test='    assert_match "stdin/stdout bridge", shell_output("#{Formula["sciclaw-claude-agent"].opt_bin}/sciclaw-claude-agent --help")'
-fi
+claude_agent_dep='  depends_on "sciclaw-claude-agent"'
+claude_agent_test='    assert_match "stdin/stdout bridge", shell_output("#{Formula["sciclaw-claude-agent"].opt_bin}/sciclaw-claude-agent --help")'
 
 # Clone tap, render formula, push
 echo "  Updating tap formula: ${formula_path}"
