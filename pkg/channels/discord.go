@@ -623,8 +623,9 @@ func (c *DiscordChannel) editDeferredInteractionMessage(i *discordgo.Interaction
 	}
 }
 
-func (c *DiscordChannel) publishSlashTask(i *discordgo.InteractionCreate, author *discordgo.User, content string, metadata map[string]string) {
+func (c *DiscordChannel) publishSlashTask(i *discordgo.InteractionCreate, author *discordgo.User, content string, metadata map[string]string, startedMessage string) {
 	c.HandleMessage(author.ID, i.ChannelID, content, nil, metadata)
+	c.editDeferredInteractionMessage(i.Interaction, startedMessage)
 }
 
 func (c *DiscordChannel) handleBTWInteraction(i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
@@ -647,7 +648,7 @@ func (c *DiscordChannel) handleBTWInteraction(i *discordgo.InteractionCreate, da
 		})
 		return
 	}
-	c.publishSlashTask(i, author, "/btw "+prompt, buildSlashMetadata(i.Interaction, data.Name, author))
+	c.publishSlashTask(i, author, "/btw "+prompt, buildSlashMetadata(i.Interaction, data.Name, author), "Started. I’ll reply in the channel below.")
 }
 
 func (c *DiscordChannel) handleSkillAutocomplete(i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
@@ -725,7 +726,7 @@ func (c *DiscordChannel) handleSkillInteraction(i *discordgo.InteractionCreate, 
 	}
 	metadata := buildSlashMetadata(i.Interaction, data.Name, author)
 	metadata["requested_skill_name"] = selected.Name
-	c.publishSlashTask(i, author, skillSlashContent(selected.Name, prompt), metadata)
+	c.publishSlashTask(i, author, skillSlashContent(selected.Name, prompt), metadata, fmt.Sprintf("Started. I’m using the skill %q and will reply in the channel below.", selected.Name))
 }
 
 func (c *DiscordChannel) handleMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) {

@@ -452,8 +452,15 @@ func TestDiscordHandleInteractionCreateBTWPublishesInboundAndDefers(t *testing.T
 	ch := newTestDiscordChannel()
 	ch.botUserID = "bot-1"
 	var response *discordgo.InteractionResponse
+	var editedContent string
 	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
 		response = resp
+		return nil
+	}
+	ch.interactionEditFn = func(interaction *discordgo.Interaction, edit *discordgo.WebhookEdit) error {
+		if edit != nil && edit.Content != nil {
+			editedContent = *edit.Content
+		}
 		return nil
 	}
 	interaction := &discordgo.InteractionCreate{
@@ -501,6 +508,9 @@ func TestDiscordHandleInteractionCreateBTWPublishesInboundAndDefers(t *testing.T
 	if in.Metadata["has_direct_mention"] != "true" || in.Metadata["is_mention"] != "true" {
 		t.Fatalf("expected slash command to route as direct invocation, got %#v", in.Metadata)
 	}
+	if !strings.Contains(editedContent, "Started.") {
+		t.Fatalf("expected deferred interaction to be replaced with started note, got %q", editedContent)
+	}
 }
 
 func TestDiscordHandleInteractionCreateBTWRejectsBlankPrompt(t *testing.T) {
@@ -544,6 +554,7 @@ func TestDiscordHandleInteractionCreateSkillPublishesInboundAndDefers(t *testing
 	ch := newTestDiscordChannel()
 	ch.botUserID = "bot-1"
 	deferred := false
+	var editedContent string
 	ch.skillCatalogFn = func(channelID, guildID, userID string) ([]SlashSkillChoice, error) {
 		if !deferred {
 			t.Fatal("expected /skill interaction to defer before loading catalog")
@@ -561,6 +572,12 @@ func TestDiscordHandleInteractionCreateSkillPublishesInboundAndDefers(t *testing
 		response = resp
 		if resp != nil && resp.Type == discordgo.InteractionResponseDeferredChannelMessageWithSource {
 			deferred = true
+		}
+		return nil
+	}
+	ch.interactionEditFn = func(interaction *discordgo.Interaction, edit *discordgo.WebhookEdit) error {
+		if edit != nil && edit.Content != nil {
+			editedContent = *edit.Content
 		}
 		return nil
 	}
@@ -612,6 +629,9 @@ func TestDiscordHandleInteractionCreateSkillPublishesInboundAndDefers(t *testing
 	}
 	if in.Metadata["requested_skill_name"] != "pubmed-cli" {
 		t.Fatalf("requested skill metadata = %q, want pubmed-cli", in.Metadata["requested_skill_name"])
+	}
+	if !strings.Contains(editedContent, `using the skill "pubmed-cli"`) {
+		t.Fatalf("expected deferred interaction to be replaced with started note, got %q", editedContent)
 	}
 }
 
