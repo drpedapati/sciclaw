@@ -147,3 +147,39 @@ func TestPrepareInboundMedia_RejectsOversizedDownloads(t *testing.T) {
 		t.Fatalf("expected oversized error, got %v", err)
 	}
 }
+
+func TestPrepareInboundMedia_RejectsOversizedLocalFiles(t *testing.T) {
+	workspace := t.TempDir()
+	sourceDir := t.TempDir()
+	sourcePath := filepath.Join(sourceDir, "large-input.docx")
+	f, err := os.Create(sourcePath)
+	if err != nil {
+		t.Fatalf("create oversized source: %v", err)
+	}
+	if err := f.Truncate(inboundMediaMaxDownloadBytes + 1); err != nil {
+		_ = f.Close()
+		t.Fatalf("truncate oversized source: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close oversized source: %v", err)
+	}
+
+	msg := &bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "chan-1",
+		Content:    "review attached",
+		SessionKey: "discord:chan-1",
+		Media:      []string{sourcePath},
+		Metadata: map[string]string{
+			"message_id": "msg-5",
+		},
+	}
+
+	err = prepareInboundMedia(context.Background(), workspace, msg)
+	if err == nil {
+		t.Fatal("expected oversized local attachment to fail")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected oversized error, got %v", err)
+	}
+}

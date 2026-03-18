@@ -202,12 +202,19 @@ func downloadInboundURL(ctx context.Context, sourceURL, destPath string) error {
 }
 
 func copyInboundFile(sourcePath, destPath string) error {
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+	if info.Size() > inboundMediaMaxDownloadBytes {
+		return fmt.Errorf("attachment exceeds %d bytes", inboundMediaMaxDownloadBytes)
+	}
 	in, err := os.Open(sourcePath)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	return writeInboundFile(in, destPath, 0)
+	return writeInboundFile(io.LimitReader(in, inboundMediaMaxDownloadBytes+1), destPath, inboundMediaMaxDownloadBytes)
 }
 
 func writeInboundFile(r io.Reader, destPath string, maxBytes int64) error {
