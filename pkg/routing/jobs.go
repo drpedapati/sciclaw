@@ -946,11 +946,6 @@ func (jm *JobManager) runJob(ctx context.Context, target LoopTarget, msg bus.Inb
 
 	progress.update(JobStateRunning, "preparing_context", "Preparing context")
 
-	if err := prepareInboundMedia(ctx, target.Workspace, &msg); err != nil {
-		progress.complete(JobStateFailed, "failed", "Failed to stage attachments", err)
-		return
-	}
-
 	handler, err := jm.resolveForClass(jobClass, target)
 	if err != nil {
 		progress.complete(JobStateFailed, "failed", "Failed to start", err)

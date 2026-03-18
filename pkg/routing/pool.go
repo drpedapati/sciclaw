@@ -11,7 +11,6 @@ import (
 	"github.com/sipeed/picoclaw/pkg/agent"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/phi"
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
@@ -46,12 +45,10 @@ type loopFactory func(target LoopTarget) (inboundHandler, error)
 type jobRunnerFactory func(target LoopTarget) (JobRunner, error)
 
 type loopEntry struct {
-	handler   inboundHandler
-	inbound   chan bus.InboundMessage
-	cancel    context.CancelFunc
-	runMu     sync.Mutex
-	workspace string
-	msgBus    *bus.MessageBus
+	handler inboundHandler
+	inbound chan bus.InboundMessage
+	cancel  context.CancelFunc
+	runMu   sync.Mutex
 }
 
 type inflightCreation struct {
@@ -69,14 +66,13 @@ type AgentLoopPool struct {
 	wg                 sync.WaitGroup
 	factory            loopFactory
 	sideLaneJobFactory jobRunnerFactory
-	msgBus             *bus.MessageBus
 }
 
 // LoopSetupFunc is an optional callback invoked on each new AgentLoop created by the pool.
 type LoopSetupFunc func(al *agent.AgentLoop)
 
 func NewAgentLoopPool(cfg *config.Config, msgBus *bus.MessageBus, setup ...LoopSetupFunc) *AgentLoopPool {
-	pool := NewAgentLoopPoolWithFactories(
+	return NewAgentLoopPoolWithFactories(
 		func(target LoopTarget) (inboundHandler, error) {
 			cloned, err := cloneConfigForTarget(cfg, target)
 			if err != nil {
@@ -110,8 +106,6 @@ func NewAgentLoopPool(cfg *config.Config, msgBus *bus.MessageBus, setup ...LoopS
 			return al, nil
 		},
 	)
-	pool.msgBus = msgBus
-	return pool
 }
 
 func NewAgentLoopPoolWithFactory(factory loopFactory) *AgentLoopPool {
@@ -200,23 +194,6 @@ func (p *AgentLoopPool) ResolveExternalReadOnlyJobHandler(target LoopTarget) (Jo
 func (e *loopEntry) HandleInbound(ctx context.Context, msg bus.InboundMessage) {
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
-	if err := prepareInboundMedia(ctx, e.workspace, &msg); err != nil {
-		logger.ErrorCF("routing", "inbound_media_stage_failed", map[string]interface{}{
-			"channel":   msg.Channel,
-			"chat_id":   msg.ChatID,
-			"sender_id": msg.SenderID,
-			"workspace": e.workspace,
-			"reason":    err.Error(),
-		})
-		if e.msgBus != nil {
-			_ = e.msgBus.PublishOutbound(ctx, bus.OutboundMessage{
-				Channel: msg.Channel,
-				ChatID:  msg.ChatID,
-				Content: fmt.Sprintf("Error processing message: failed to stage inbound attachments: %v", err),
-			})
-		}
-		return
-	}
 	e.handler.HandleInbound(ctx, msg)
 }
 
@@ -281,11 +258,9 @@ func (p *AgentLoopPool) getOrCreate(target LoopTarget) (*loopEntry, error) {
 			var cancel context.CancelFunc
 			workerCtx, cancel = context.WithCancel(context.Background())
 			entry = &loopEntry{
-				handler:   handler,
-				inbound:   make(chan bus.InboundMessage, 64),
-				cancel:    cancel,
-				workspace: target.Workspace,
-				msgBus:    p.msgBus,
+				handler: handler,
+				inbound: make(chan bus.InboundMessage, 64),
+				cancel:  cancel,
 			}
 		}
 

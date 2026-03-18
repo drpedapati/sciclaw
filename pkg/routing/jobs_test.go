@@ -3,10 +3,6 @@ package routing
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -264,59 +260,6 @@ func TestJobManagerAllowsBTWOverlap(t *testing.T) {
 	close(writeRunner.block)
 	close(readRunner.block)
 	waitForNoActiveJobs(t, jm, target.key())
-}
-
-func TestJobManagerStagesInboundMediaBeforeRunningJob(t *testing.T) {
-	mb := bus.NewMessageBus()
-	defer mb.Close()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("stub doc"))
-	}))
-	defer server.Close()
-
-	progress := &fakeProgressMessenger{}
-	runner := &fakeJobRunner{}
-	workspace := t.TempDir()
-	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
-		Enabled:               true,
-		MaxConcurrent:         1,
-		ProgressUpdateSeconds: 1,
-		DiscordAsyncDefault:   true,
-	}, mb, progress, func(target LoopTarget) (JobRunner, error) {
-		return runner, nil
-	})
-	if err != nil {
-		t.Fatalf("NewJobManager: %v", err)
-	}
-
-	target := LoopTarget{Workspace: workspace, Runtime: RuntimeProfile{Mode: config.ModeCloud}}
-	msg := bus.InboundMessage{
-		Channel:    "discord",
-		ChatID:     "room-1",
-		Content:    "please review this",
-		SessionKey: "discord:room-1",
-		Media:      []string{server.URL + "/attachments/report.docx"},
-		Metadata:   map[string]string{"message_id": "msg-stage"},
-	}
-	if err := jm.Submit(context.Background(), target, msg); err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	waitForNoActiveJobs(t, jm, target.key())
-
-	got := runner.snapshotLastMsg()
-	if len(got.Media) != 1 {
-		t.Fatalf("expected staged media path, got %#v", got.Media)
-	}
-	if !strings.HasPrefix(got.Media[0], filepath.Join(workspace, ".sciclaw", "inbound")) {
-		t.Fatalf("expected staged media path under workspace, got %q", got.Media[0])
-	}
-	if _, err := os.Stat(got.Media[0]); err != nil {
-		t.Fatalf("expected staged file to exist: %v", err)
-	}
-	if !strings.Contains(got.Content, "Attachments staged locally and available to tools:") {
-		t.Fatalf("expected staged attachment summary in content, got %q", got.Content)
-	}
 }
 
 func TestJobManagerPlainStatusWithoutDirectionStartsNormalJob(t *testing.T) {

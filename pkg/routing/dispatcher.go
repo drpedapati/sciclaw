@@ -17,7 +17,18 @@ type Dispatcher struct {
 	resolver *Resolver
 	pool     *AgentLoopPool
 	jobs     *JobManager
+	lanes    map[string]*dispatchLane
 	mu       sync.RWMutex
+}
+
+type dispatchTask struct {
+	target   LoopTarget
+	decision Decision
+	msg      bus.InboundMessage
+}
+
+type dispatchLane struct {
+	tasks chan dispatchTask
 }
 
 func NewDispatcher(messageBus *bus.MessageBus, resolver *Resolver, pool *AgentLoopPool) *Dispatcher {
@@ -25,6 +36,7 @@ func NewDispatcher(messageBus *bus.MessageBus, resolver *Resolver, pool *AgentLo
 		bus:      messageBus,
 		resolver: resolver,
 		pool:     pool,
+		lanes:    map[string]*dispatchLane{},
 	}
 }
 
@@ -50,24 +62,8 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			Workspace: decision.Workspace,
 			Runtime:   decision.Runtime,
 		}
-		if jobs := d.getJobManager(); jobs != nil && jobs.ShouldHandleChannel(routed.Channel) {
-			if err := jobs.Submit(ctx, target, routed); err != nil {
-				logger.ErrorCF("routing", "job_submit_failed", map[string]interface{}{
-					"channel":   msg.Channel,
-					"chat_id":   msg.ChatID,
-					"sender_id": msg.SenderID,
-					"workspace": decision.Workspace,
-					"mode":      decision.Runtime.Mode,
-					"backend":   decision.Runtime.LocalBackend,
-					"model":     decision.Runtime.LocalModel,
-					"reason":    err.Error(),
-				})
-				d.sendJobSubmitError(ctx, msg, err)
-			}
-			continue
-		}
-		if err := d.pool.Dispatch(ctx, target, routed); err != nil {
-			logger.ErrorCF("routing", "route_invalid", map[string]interface{}{
+		if err := d.enqueueDispatch(ctx, dispatchTask{target: target, decision: decision, msg: routed}); err != nil {
+			logger.ErrorCF("routing", "dispatch_enqueue_failed", map[string]interface{}{
 				"channel":   msg.Channel,
 				"chat_id":   msg.ChatID,
 				"sender_id": msg.SenderID,
@@ -77,7 +73,6 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 				"model":     decision.Runtime.LocalModel,
 				"reason":    err.Error(),
 			})
-			d.sendDispatchError(ctx, msg, decision, err)
 		}
 	}
 }
@@ -107,6 +102,90 @@ func (d *Dispatcher) getJobManager() *JobManager {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.jobs
+}
+
+func (d *Dispatcher) enqueueDispatch(ctx context.Context, task dispatchTask) error {
+	lane := d.getOrCreateLane(ctx, task.target.key())
+	select {
+	case lane.tasks <- task:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (d *Dispatcher) getOrCreateLane(ctx context.Context, key string) *dispatchLane {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if lane, ok := d.lanes[key]; ok {
+		return lane
+	}
+	lane := &dispatchLane{tasks: make(chan dispatchTask, 64)}
+	d.lanes[key] = lane
+	go d.runDispatchLane(ctx, key, lane)
+	return lane
+}
+
+func (d *Dispatcher) runDispatchLane(ctx context.Context, key string, lane *dispatchLane) {
+	defer func() {
+		d.mu.Lock()
+		if existing, ok := d.lanes[key]; ok && existing == lane {
+			delete(d.lanes, key)
+		}
+		d.mu.Unlock()
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-lane.tasks:
+			d.dispatchResolved(ctx, task)
+		}
+	}
+}
+
+func (d *Dispatcher) dispatchResolved(ctx context.Context, task dispatchTask) {
+	msg := task.msg
+	if err := prepareInboundMedia(ctx, task.target.Workspace, &msg); err != nil {
+		logger.ErrorCF("routing", "inbound_media_stage_failed", map[string]interface{}{
+			"channel":   msg.Channel,
+			"chat_id":   msg.ChatID,
+			"sender_id": msg.SenderID,
+			"workspace": task.target.Workspace,
+			"reason":    err.Error(),
+		})
+		d.sendInboundMediaStageError(ctx, msg, err)
+		return
+	}
+	if jobs := d.getJobManager(); jobs != nil && jobs.ShouldHandleChannel(msg.Channel) {
+		if err := jobs.Submit(ctx, task.target, msg); err != nil {
+			logger.ErrorCF("routing", "job_submit_failed", map[string]interface{}{
+				"channel":   msg.Channel,
+				"chat_id":   msg.ChatID,
+				"sender_id": msg.SenderID,
+				"workspace": task.decision.Workspace,
+				"mode":      task.decision.Runtime.Mode,
+				"backend":   task.decision.Runtime.LocalBackend,
+				"model":     task.decision.Runtime.LocalModel,
+				"reason":    err.Error(),
+			})
+			d.sendJobSubmitError(ctx, msg, err)
+		}
+		return
+	}
+	if err := d.pool.Dispatch(ctx, task.target, msg); err != nil {
+		logger.ErrorCF("routing", "route_invalid", map[string]interface{}{
+			"channel":   msg.Channel,
+			"chat_id":   msg.ChatID,
+			"sender_id": msg.SenderID,
+			"workspace": task.decision.Workspace,
+			"mode":      task.decision.Runtime.Mode,
+			"backend":   task.decision.Runtime.LocalBackend,
+			"model":     task.decision.Runtime.LocalModel,
+			"reason":    err.Error(),
+		})
+		d.sendDispatchError(ctx, msg, task.decision, err)
+	}
 }
 
 func (d *Dispatcher) logDecision(decision Decision) {
@@ -196,6 +275,21 @@ func (d *Dispatcher) sendJobSubmitError(ctx context.Context, msg bus.InboundMess
 		return
 	}
 	content := "Failed to start background job"
+	if detail := strings.TrimSpace(err.Error()); detail != "" {
+		content += ": " + detail
+	}
+	d.bus.PublishOutbound(ctx, bus.OutboundMessage{
+		Channel: msg.Channel,
+		ChatID:  msg.ChatID,
+		Content: content,
+	})
+}
+
+func (d *Dispatcher) sendInboundMediaStageError(ctx context.Context, msg bus.InboundMessage, err error) {
+	if constants.IsInternalChannel(msg.Channel) {
+		return
+	}
+	content := "Failed to stage inbound attachments"
 	if detail := strings.TrimSpace(err.Error()); detail != "" {
 		content += ": " + detail
 	}
