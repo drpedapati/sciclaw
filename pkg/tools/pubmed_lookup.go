@@ -102,7 +102,7 @@ func (t *PubMedSearchTool) Name() string {
 }
 
 func (t *PubMedSearchTool) Description() string {
-	return "Search PubMed directly and return structured results. Prefer this over web_search for citation verification, PMID lookup, and biomedical literature retrieval."
+	return "Search PubMed via the installed `pubmed`/`pubmed-cli` binary and return structured JSON results. Prefer this over web_search for citation verification, PMID lookup, and biomedical literature retrieval."
 }
 
 func (t *PubMedSearchTool) Parameters() map[string]interface{} {
@@ -189,7 +189,7 @@ func (t *PubMedFetchTool) Name() string {
 }
 
 func (t *PubMedFetchTool) Description() string {
-	return "Fetch PubMed records by PMID and return structured JSON metadata and abstracts. Prefer this over web_fetch for PubMed article pages."
+	return "Fetch PubMed records by PMID via the installed `pubmed`/`pubmed-cli` binary and return structured JSON metadata and abstracts. Prefer this over web_fetch for PubMed article pages."
 }
 
 func (t *PubMedFetchTool) Parameters() map[string]interface{} {

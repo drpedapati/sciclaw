@@ -65,7 +65,7 @@ func (t *PubMedExportTool) Name() string {
 }
 
 func (t *PubMedExportTool) Description() string {
-	return "Export PubMed citations to a RIS file without shell pipes. Use this for citation manager export workflows."
+	return "Export PubMed citations to a RIS file via the installed `pubmed`/`pubmed-cli` binary, without needing shell pipes. Use this for citation manager export workflows."
 }
 
 func (t *PubMedExportTool) Parameters() map[string]interface{} {
