@@ -119,11 +119,25 @@ func TestNewAgentLoopWithSideLaneProfileRestrictsTools(t *testing.T) {
 		"pdf_form_fill",
 		"spawn",
 		"subagent",
+		"code_review_subagent",
 		"irl_project",
 	} {
 		if _, ok := al.tools.Get(blocked); ok {
 			t.Fatalf("did not expect %s tool in side-lane profile", blocked)
 		}
+	}
+}
+
+func TestNewAgentLoop_DefaultProfileRegistersCodeReviewSubagent(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), &mockProvider{})
+
+	if _, ok := al.tools.Get("subagent"); !ok {
+		t.Fatal("expected subagent tool in default profile")
+	}
+	if _, ok := al.tools.Get("code_review_subagent"); !ok {
+		t.Fatal("expected code_review_subagent tool in default profile")
 	}
 }
 

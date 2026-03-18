@@ -62,6 +62,33 @@ func (p *capturingLLMProvider) GetContextWindow() int {
 	return 4096
 }
 
+type reviewCapturingLLMProvider struct {
+	lastOptions  map[string]interface{}
+	lastModel    string
+	lastMessages []providers.Message
+}
+
+func (p *reviewCapturingLLMProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, options map[string]interface{}) (*providers.LLMResponse, error) {
+	p.lastOptions = options
+	p.lastModel = model
+	p.lastMessages = append([]providers.Message(nil), messages...)
+	return &providers.LLMResponse{
+		Content: "review-ok",
+	}, nil
+}
+
+func (p *reviewCapturingLLMProvider) GetDefaultModel() string {
+	return "test-model"
+}
+
+func (p *reviewCapturingLLMProvider) SupportsTools() bool {
+	return true
+}
+
+func (p *reviewCapturingLLMProvider) GetContextWindow() int {
+	return 4096
+}
+
 type promptCapturingLLMProvider struct {
 	lastMessages []providers.Message
 }
@@ -339,6 +366,22 @@ func TestSubagentTool_Execute_IncludesReasoningOptions(t *testing.T) {
 	}
 }
 
+func TestSubagentTool_Execute_UsesDefaultModel(t *testing.T) {
+	provider := &reviewCapturingLLMProvider{}
+	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
+	tool := NewSubagentTool(manager)
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"task": "Review these changes quickly.",
+	})
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.ForLLM)
+	}
+	if provider.lastModel != "test-model" {
+		t.Fatalf("subagent model = %q, want test-model", provider.lastModel)
+	}
+}
+
 func TestSubagentManagerSpawn_IncludesReasoningOptions(t *testing.T) {
 	provider := &capturingLLMProvider{}
 	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
@@ -369,6 +412,45 @@ func TestSubagentManagerSpawn_IncludesReasoningOptions(t *testing.T) {
 	}
 	if got := provider.lastOptions["thinking"]; got != "adaptive" {
 		t.Fatalf("thinking = %#v, want adaptive", got)
+	}
+}
+
+func TestCodeReviewSubagentTool_Execute_UsesOpusModelAndReviewPrompt(t *testing.T) {
+	provider := &reviewCapturingLLMProvider{}
+	manager := NewSubagentManager(provider, "test-model", "/tmp/test", nil)
+	tool := NewCodeReviewSubagentTool(manager)
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"task":  "Review the diff for regressions and missing tests.",
+		"label": "review-pass",
+	})
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.ForLLM)
+	}
+	if provider.lastModel != codeReviewSubagentModel {
+		t.Fatalf("review model = %q, want %q", provider.lastModel, codeReviewSubagentModel)
+	}
+	if provider.lastOptions == nil {
+		t.Fatal("expected provider to receive options")
+	}
+	if got := provider.lastOptions["temperature"]; got != 0.2 {
+		t.Fatalf("temperature = %#v, want 0.2", got)
+	}
+	if got := provider.lastOptions["reasoning_effort"]; got != "high" {
+		t.Fatalf("reasoning_effort = %#v, want high", got)
+	}
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("expected provider to receive messages")
+	}
+	systemPrompt := provider.lastMessages[0].Content
+	if !strings.Contains(systemPrompt, "## Code Review Mode") {
+		t.Fatalf("expected code review instructions in system prompt, got: %s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Present findings first") {
+		t.Fatalf("expected findings-first guidance in system prompt, got: %s", systemPrompt)
+	}
+	if !strings.Contains(result.ForLLM, codeReviewSubagentModel) {
+		t.Fatalf("expected ForLLM to mention model %q, got %q", codeReviewSubagentModel, result.ForLLM)
 	}
 }
 
