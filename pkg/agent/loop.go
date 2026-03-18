@@ -1203,6 +1203,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	var finalContent string
 	var lastMessageToolContent string
 	var usage turnUsage
+	asyncToolUsed := false
+	backgroundClaimRetried := false
+	toolNamesExecuted := make([]string, 0, 8)
 
 	for {
 		if al.maxIterations > 0 && iteration >= al.maxIterations {
@@ -1349,6 +1352,26 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		// Check if no tool calls - we're done
 		if len(response.ToolCalls) == 0 {
 			finalContent = response.Content
+			if trimmed := strings.TrimSpace(finalContent); trimmed != "" && looksLikeAsyncDelegationClaim(trimmed) && !asyncToolUsed {
+				if !backgroundClaimRetried {
+					backgroundClaimRetried = true
+					logger.WarnCF("agent", "Rejecting ungrounded async delegation claim",
+						map[string]interface{}{
+							"channel":       opts.Channel,
+							"chat_id":       opts.ChatID,
+							"iteration":     iteration,
+							"content_chars": len(finalContent),
+						})
+					messages = append(messages,
+						providers.Message{Role: "assistant", Content: finalContent},
+						providers.Message{Role: "system", Content: `Your last reply claimed background or delegated work, but no async delegation tool was actually used in this turn.
+Do not say you launched a background subagent, spawned work, or that you will post results later unless you really called the async spawn tool.
+Either call the appropriate tool now, or give an honest present-tense status of what has actually been completed so far.`},
+					)
+					continue
+				}
+				finalContent = buildUngroundedAsyncClaimFallback(toolNamesExecuted)
+			}
 			trimmedFinal := strings.TrimSpace(finalContent)
 			trimmedDefault := strings.TrimSpace(opts.DefaultResponse)
 			if lastMessageToolContent != "" && (trimmedFinal == "" || (trimmedDefault != "" && trimmedFinal == trimmedDefault)) {
@@ -1448,6 +1471,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 			toolStartedAt := time.Now()
 			toolResult := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
+			toolNamesExecuted = append(toolNamesExecuted, tc.Name)
+			if toolResult.Async {
+				asyncToolUsed = true
+			}
 			if localDiag != nil {
 				localDiag.recordToolExecution(time.Since(toolStartedAt), toolResult)
 			}
@@ -2114,6 +2141,48 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 		al.sessions.TruncateHistory(sessionKey, 4)
 		al.sessions.Save(sessionKey)
 	}
+}
+
+func looksLikeAsyncDelegationClaim(content string) bool {
+	lower := strings.ToLower(strings.TrimSpace(content))
+	if lower == "" {
+		return false
+	}
+	asyncMarkers := []string{
+		"background subagent",
+		"launched a background subagent",
+		"spawned a subagent",
+		"spawned background work",
+		"running in the background",
+		"will post the results",
+		"i'll post the results",
+		"reply below when it's complete",
+		"reply below when complete",
+		"when it's complete",
+		"when complete",
+	}
+	for _, marker := range asyncMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildUngroundedAsyncClaimFallback(toolNames []string) string {
+	if len(toolNames) == 0 {
+		return "I have not actually launched any background work in this turn. No async task is currently running."
+	}
+	seen := make(map[string]struct{}, len(toolNames))
+	ordered := make([]string, 0, len(toolNames))
+	for _, name := range toolNames {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		ordered = append(ordered, name)
+	}
+	return fmt.Sprintf("I have not actually launched any background work in this turn. So far I only completed these tool steps: %s. No async task is currently running.", strings.Join(ordered, ", "))
 }
 
 // summarizeBatch summarizes a batch of messages.

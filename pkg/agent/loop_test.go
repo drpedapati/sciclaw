@@ -321,6 +321,97 @@ func TestRunAgentLoopRegistersOutputArtifactsFromToolCalls(t *testing.T) {
 	}
 }
 
+func TestRunLLMIteration_RetriesUngroundedAsyncClaim(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+
+	provider := &scriptedProvider{
+		responses: []*providers.LLMResponse{
+			{
+				ToolCalls: []providers.ToolCall{
+					{ID: "call-1", Name: "mock_custom", Arguments: map[string]interface{}{}},
+				},
+			},
+			{Content: "I've launched a background subagent to finish the rest and will post the results below when it's complete."},
+			{Content: "I have not launched background work yet. So far I only completed the mock_custom step."},
+		},
+	}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	al.RegisterTool(&mockCustomTool{})
+
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-async-1",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-async-1",
+		Content:    "Do the task",
+	}
+	got, err := al.processMessage(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	if strings.Contains(strings.ToLower(got), "background subagent") {
+		t.Fatalf("expected corrected response, got %q", got)
+	}
+	if !strings.Contains(got, "mock_custom") {
+		t.Fatalf("expected corrected response to mention completed step, got %q", got)
+	}
+	provider.mu.Lock()
+	callCount := len(provider.calls)
+	retryCall := cloneMessages(provider.calls[2])
+	provider.mu.Unlock()
+	if callCount != 3 {
+		t.Fatalf("expected 3 provider calls after retry, got %d", callCount)
+	}
+	foundCorrection := false
+	for _, m := range retryCall {
+		if m.Role == "system" && strings.Contains(m.Content, "Do not say you launched a background subagent") {
+			foundCorrection = true
+			break
+		}
+	}
+	if !foundCorrection {
+		t.Fatalf("expected correction prompt on retry, got %#v", retryCall)
+	}
+}
+
+func TestRunLLMIteration_FallsBackAfterRepeatedUngroundedAsyncClaim(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+
+	provider := &scriptedProvider{
+		responses: []*providers.LLMResponse{
+			{
+				ToolCalls: []providers.ToolCall{
+					{ID: "call-1", Name: "mock_custom", Arguments: map[string]interface{}{}},
+				},
+			},
+			{Content: "I've launched a background subagent and will post the results when it's complete."},
+			{Content: "I've launched a background subagent and will post the results when it's complete."},
+		},
+	}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	al.RegisterTool(&mockCustomTool{})
+
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-async-2",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-async-2",
+		Content:    "Do the task",
+	}
+	got, err := al.processMessage(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	want := "I have not actually launched any background work in this turn. So far I only completed these tool steps: mock_custom. No async task is currently running."
+	if got != want {
+		t.Fatalf("fallback = %q, want %q", got, want)
+	}
+}
+
 func TestLocalTurnDiagnostics_RecordToolExecutionTracksErrors(t *testing.T) {
 	diag := newLocalTurnDiagnostics()
 	diag.recordToolExecution(275*time.Millisecond, &tools.ToolResult{IsError: true, Async: true})
