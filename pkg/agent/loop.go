@@ -111,6 +111,34 @@ type processOptions struct {
 	OnProgress      func(phase, detail string)
 }
 
+type userVisibleError interface {
+	error
+	UserMessage() string
+}
+
+type incompleteTurnError struct {
+	userMessage string
+	reason      string
+}
+
+func (e *incompleteTurnError) Error() string {
+	if strings.TrimSpace(e.reason) != "" {
+		return e.reason
+	}
+	return "task ended without verified completion"
+}
+
+func (e *incompleteTurnError) UserMessage() string {
+	return strings.TrimSpace(e.userMessage)
+}
+
+type llmIterationResult struct {
+	FinalContent string
+	Iterations   int
+	Usage        turnUsage
+	TurnErr      error
+}
+
 const defaultEmptyAssistantResponse = "I completed the turn but did not produce a user-facing reply. Ask me for a summary of what was done."
 
 var errDiscordAutoArchiveTimedOut = errors.New("discord auto-archive timed out")
@@ -481,8 +509,22 @@ func (al *AgentLoop) Stop() {
 // It is used both by the default bus consumer loop and routed dispatchers.
 func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) {
 	response, err := al.processMessage(ctx, msg)
-	if err != nil {
-		response = fmt.Sprintf("Error processing message: %v", err)
+	if err != nil && strings.TrimSpace(response) == "" {
+		if uerr, ok := err.(userVisibleError); ok && strings.TrimSpace(uerr.UserMessage()) != "" {
+			response = uerr.UserMessage()
+		} else {
+			response = fmt.Sprintf("Error processing message: %v", err)
+		}
+	}
+	if err != nil && strings.TrimSpace(response) != "" {
+		logger.WarnCF("agent", "Publishing user-visible response for incomplete/failed turn",
+			map[string]interface{}{
+				"channel":     msg.Channel,
+				"chat_id":     msg.ChatID,
+				"sender_id":   msg.SenderID,
+				"session_key": msg.SessionKey,
+				"error":       err.Error(),
+			})
 	}
 
 	al.publishFinalResponse(ctx, msg, response)
@@ -490,8 +532,12 @@ func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) 
 
 func (al *AgentLoop) RunJob(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, error) {
 	response, err := al.processMessageWithProgress(ctx, msg, onProgress)
-	if err != nil {
-		response = fmt.Sprintf("Error processing message: %v", err)
+	if err != nil && strings.TrimSpace(response) == "" {
+		if uerr, ok := err.(userVisibleError); ok && strings.TrimSpace(uerr.UserMessage()) != "" {
+			response = uerr.UserMessage()
+		} else {
+			response = fmt.Sprintf("Error processing message: %v", err)
+		}
 	}
 	al.publishFinalResponse(ctx, msg, response)
 	return response, err
@@ -582,7 +628,7 @@ func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sess
 // ProcessHeartbeat processes a heartbeat request without session history.
 // Each heartbeat is independent and doesn't accumulate context.
 func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, chatID string) (string, error) {
-	return al.runAgentLoop(ctx, processOptions{
+	result, err := al.runAgentLoop(ctx, processOptions{
 		SessionKey:      "heartbeat",
 		Channel:         channel,
 		ChatID:          chatID,
@@ -592,6 +638,7 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 		SendResponse:    false,
 		NoHistory:       true, // Don't load session history for heartbeat
 	})
+	return result.FinalContent, err
 }
 
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
@@ -624,7 +671,7 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 	}
 
 	// Process as user message
-	return al.runAgentLoop(ctx, processOptions{
+	result, err := al.runAgentLoop(ctx, processOptions{
 		SessionKey:      msg.SessionKey,
 		Channel:         msg.Channel,
 		ChatID:          msg.ChatID,
@@ -635,6 +682,7 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 		Ephemeral:       al.toolProfile.isSideLane(),
 		OnProgress:      onProgress,
 	})
+	return result.FinalContent, err
 }
 
 func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
@@ -691,7 +739,7 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 
 // runAgentLoop is the core message processing logic.
 // It handles context building, LLM calls, tool execution, and response handling.
-func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (string, error) {
+func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llmIterationResult, error) {
 	if opts.TurnID == "" {
 		opts.TurnID = al.nextTurnID()
 	}
@@ -862,7 +910,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	// 4. Run LLM iteration loop
 	emitProgress(opts.OnProgress, "thinking", "Thinking")
-	finalContent, iteration, usage, err := al.runLLMIteration(ctx, messages, opts, localDiag)
+	iterResult, err := al.runLLMIteration(ctx, messages, opts, localDiag)
 	if err != nil {
 		if localDiag != nil {
 			messageToolSent := al.messageToolSentInRound()
@@ -874,7 +922,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			logFields["chat_id"] = opts.ChatID
 			logFields["model"] = al.model
 			logFields["local_backend"] = al.localBackend
-			logFields["iterations"] = iteration
+			logFields["iterations"] = iterResult.Iterations
 			logFields["message_tool_sent"] = messageToolSent
 			logFields["turn_ms"] = time.Since(turnStartedAt).Milliseconds()
 			logger.WarnCF("agent", "Local runtime summary", logFields)
@@ -892,8 +940,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				"phase": "llm_iteration",
 			},
 		})
-		return "", err
+		return llmIterationResult{}, err
 	}
+	finalContent := iterResult.FinalContent
+	iteration := iterResult.Iterations
+	usage := iterResult.Usage
 	messageToolSent := al.messageToolSentInRound()
 
 	// If last tool had ForUser content and we already sent it, we might not need to send final response
@@ -1022,7 +1073,12 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		Metadata:           turnMeta,
 	})
 
-	return finalContent, nil
+	return llmIterationResult{
+		FinalContent: finalContent,
+		Iterations:   iteration,
+		Usage:        usage,
+		TurnErr:      iterResult.TurnErr,
+	}, iterResult.TurnErr
 }
 
 type localTurnDiagnostics struct {
@@ -1198,14 +1254,18 @@ func addUsageFields(m map[string]interface{}, u *providers.UsageInfo) {
 
 // runLLMIteration executes the LLM call loop with tool handling.
 // Returns the final content, iteration count, accumulated token usage, and any error.
-func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, localDiag *localTurnDiagnostics) (string, int, turnUsage, error) {
+func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, localDiag *localTurnDiagnostics) (llmIterationResult, error) {
 	iteration := 0
 	var finalContent string
 	var lastMessageToolContent string
 	var usage turnUsage
 	asyncToolUsed := false
 	backgroundClaimRetried := false
+	completionClaimRetried := false
 	toolNamesExecuted := make([]string, 0, 8)
+	requirement := inferCompletionRequirement(opts.UserMessage)
+	effects := newCompletionEffects()
+	var turnErr error
 
 	for {
 		if al.maxIterations > 0 && iteration >= al.maxIterations {
@@ -1310,7 +1370,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"duration":    time.Since(llmCallStartedAt).String(),
 					"duration_ms": time.Since(llmCallStartedAt).Milliseconds(),
 				})
-			return "", iteration, usage, fmt.Errorf("LLM call failed: %w", err)
+			return llmIterationResult{
+				Iterations: iteration,
+				Usage:      usage,
+			}, fmt.Errorf("LLM call failed: %w", err)
 		}
 		if localDiag != nil {
 			localDiag.recordLLMResponse(time.Since(llmCallStartedAt), response)
@@ -1371,6 +1434,33 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 					continue
 				}
 				finalContent = buildUngroundedAsyncClaimFallback(toolNamesExecuted)
+			}
+			if requirement.Active() && !requirement.SatisfiedBy(effects) {
+				trimmed := strings.TrimSpace(finalContent)
+				if !responseAcknowledgesIncompleteWork(trimmed) {
+					if !completionClaimRetried {
+						completionClaimRetried = true
+						logger.WarnCF("agent", "Rejecting unverified completion claim for effectful turn",
+							map[string]interface{}{
+								"channel":       opts.Channel,
+								"chat_id":       opts.ChatID,
+								"iteration":     iteration,
+								"content_chars": len(finalContent),
+								"requirements":  requirement.Labels(),
+								"effects":       effects.Labels(),
+							})
+						messages = append(messages,
+							providers.Message{Role: "assistant", Content: finalContent},
+							providers.Message{Role: "system", Content: buildCompletionGuardPrompt(requirement, effects)},
+						)
+						continue
+					}
+					finalContent = buildIncompleteWorkFallback(requirement, effects, toolNamesExecuted)
+				}
+				turnErr = &incompleteTurnError{
+					userMessage: finalContent,
+					reason:      fmt.Sprintf("task ended without verified completion (%s)", strings.Join(requirement.MissingLabels(effects), ", ")),
+				}
 			}
 			trimmedFinal := strings.TrimSpace(finalContent)
 			trimmedDefault := strings.TrimSpace(opts.DefaultResponse)
@@ -1498,6 +1588,9 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 					}
 				}
 			}
+			if !toolResult.IsError {
+				effects.NoteToolCall(al.workspace, tc.Name, tc.Arguments, toolResult)
+			}
 
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {
@@ -1596,7 +1689,12 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 		finalContent = lastMessageToolContent
 	}
 
-	return finalContent, iteration, usage, nil
+	return llmIterationResult{
+		FinalContent: finalContent,
+		Iterations:   iteration,
+		Usage:        usage,
+		TurnErr:      turnErr,
+	}, nil
 }
 
 func (al *AgentLoop) toolResultLLMCharLimit() int {
@@ -2183,6 +2281,280 @@ func buildUngroundedAsyncClaimFallback(toolNames []string) string {
 		ordered = append(ordered, name)
 	}
 	return fmt.Sprintf("I have not actually launched any background work in this turn. So far I only completed these tool steps: %s. No async task is currently running.", strings.Join(ordered, ", "))
+}
+
+type completionRequirement struct {
+	FileOutputs bool
+	RepoEffects bool
+	Delivery    bool
+}
+
+func (r completionRequirement) Active() bool {
+	return r.FileOutputs || r.RepoEffects || r.Delivery
+}
+
+func (r completionRequirement) Labels() []string {
+	labels := make([]string, 0, 3)
+	if r.FileOutputs {
+		labels = append(labels, "file_outputs")
+	}
+	if r.RepoEffects {
+		labels = append(labels, "repo_effects")
+	}
+	if r.Delivery {
+		labels = append(labels, "delivery")
+	}
+	return labels
+}
+
+func (r completionRequirement) SatisfiedBy(e *completionEffects) bool {
+	if e == nil {
+		return !r.Active()
+	}
+	if r.FileOutputs && !e.HasFileOutputs() {
+		return false
+	}
+	if r.RepoEffects && !e.HasRepoEffects() {
+		return false
+	}
+	if r.Delivery && !e.HasDelivery() {
+		return false
+	}
+	return true
+}
+
+func (r completionRequirement) MissingLabels(e *completionEffects) []string {
+	missing := make([]string, 0, 3)
+	if r.FileOutputs && !e.HasFileOutputs() {
+		missing = append(missing, "saved output files")
+	}
+	if r.RepoEffects && !e.HasRepoEffects() {
+		missing = append(missing, "repository changes")
+	}
+	if r.Delivery && !e.HasDelivery() {
+		missing = append(missing, "user-visible delivery")
+	}
+	return missing
+}
+
+type completionEffects struct {
+	OutputArtifacts []string
+	AsyncLaunched   bool
+	Delivered       bool
+	RepoCommit      bool
+	RepoPush        bool
+	RepoPR          bool
+}
+
+func newCompletionEffects() *completionEffects {
+	return &completionEffects{
+		OutputArtifacts: make([]string, 0, 8),
+	}
+}
+
+func (e *completionEffects) Labels() []string {
+	labels := make([]string, 0, 5)
+	if e.HasFileOutputs() {
+		labels = append(labels, "file_outputs")
+	}
+	if e.HasRepoEffects() {
+		labels = append(labels, "repo_effects")
+	}
+	if e.HasDelivery() {
+		labels = append(labels, "delivery")
+	}
+	if e.AsyncLaunched {
+		labels = append(labels, "async")
+	}
+	return labels
+}
+
+func (e *completionEffects) HasFileOutputs() bool {
+	return e != nil && len(e.OutputArtifacts) > 0
+}
+
+func (e *completionEffects) HasRepoEffects() bool {
+	return e != nil && (e.RepoCommit || e.RepoPush || e.RepoPR)
+}
+
+func (e *completionEffects) HasDelivery() bool {
+	return e != nil && e.Delivered
+}
+
+func (e *completionEffects) NoteToolCall(workspace, toolName string, args map[string]interface{}, toolResult *tools.ToolResult) {
+	if e == nil || toolResult == nil {
+		return
+	}
+	if toolResult.Async {
+		e.AsyncLaunched = true
+	}
+	if !toolResult.Silent && strings.TrimSpace(toolResult.ForUser) != "" {
+		e.Delivered = true
+	}
+	for _, artifact := range artifactsFromToolCall(workspace, toolName, args) {
+		if artifact.Role != "output" || strings.TrimSpace(artifact.Path) == "" {
+			continue
+		}
+		e.addOutputArtifact(artifact.Path)
+	}
+	if toolName == "exec" {
+		e.noteExecCommand(stringArg(args, "command"))
+	}
+}
+
+func (e *completionEffects) addOutputArtifact(path string) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return
+	}
+	for _, existing := range e.OutputArtifacts {
+		if existing == path {
+			return
+		}
+	}
+	e.OutputArtifacts = append(e.OutputArtifacts, path)
+}
+
+func (e *completionEffects) noteExecCommand(command string) {
+	lower := strings.ToLower(strings.TrimSpace(command))
+	if lower == "" {
+		return
+	}
+	if strings.Contains(lower, "git commit") {
+		e.RepoCommit = true
+	}
+	if strings.Contains(lower, "git push") {
+		e.RepoPush = true
+	}
+	if strings.Contains(lower, "gh pr create") {
+		e.RepoPR = true
+	}
+	if outputPath := detectExecOutputPath(command); outputPath != "" {
+		e.addOutputArtifact(outputPath)
+	}
+}
+
+func inferCompletionRequirement(userMessage string) completionRequirement {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return completionRequirement{}
+	}
+	strongFileVerb := containsAnyCompletionCue(lower, "save", "export", "download", "attach", "upload", "put ", "place ")
+	createArtifactVerb := containsAnyCompletionCue(lower, "write", "create", "generate", "produce")
+	explicitArtifact := containsAnyCompletionCue(lower,
+		".pdf", ".ris", ".docx", ".pptx", ".xlsx", ".csv", ".json", ".md",
+		" pdf", " pdfs", " ris", " ris file", " ris files", " docx", " xlsx", " pptx",
+		" csv", " json", " markdown", " bibtex",
+	)
+	explicitDestination := containsAnyCompletionCue(lower,
+		"dropbox", "folder", "directory", "reference manager", "along with",
+		"save to", "save in", "save into", "save as",
+		"export to", "export in", "export into", "export as",
+		"download to", "download into",
+		"put in", "put into", "place in", "place into",
+		"upload to", "upload into",
+		"write to",
+	)
+	hasOutputNoun := containsAnyCompletionCue(lower, "file", "files", "copy", "version", "attachment", "attachments")
+	hasRepoCue := containsAnyCompletionCue(lower,
+		"commit", "push", "pull request", "draft pr", "open a pr", "open pr", "create a pr", "github pr",
+	)
+	hasDeliveryCue := containsAnyCompletionCue(lower,
+		"attach it", "attach them", "send it here", "send them here", "reply with", "email", "post it", "post them",
+	)
+	fileOutputs := (strongFileVerb && (explicitArtifact || explicitDestination)) ||
+		(createArtifactVerb && explicitArtifact && (explicitDestination || hasOutputNoun))
+	return completionRequirement{
+		FileOutputs: fileOutputs,
+		RepoEffects: hasRepoCue,
+		Delivery:    hasDeliveryCue,
+	}
+}
+
+func containsAnyCompletionCue(text string, cues ...string) bool {
+	for _, cue := range cues {
+		if strings.Contains(text, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func responseAcknowledgesIncompleteWork(content string) bool {
+	lower := strings.ToLower(strings.TrimSpace(content))
+	if lower == "" {
+		return false
+	}
+	markers := []string{
+		"i have not", "i haven't", "i did not", "i didn't", "not yet", "unable to", "cannot", "can't",
+		"could not", "couldn't", "failed to", "missing", "not completed", "i only completed", "so far i only",
+	}
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildCompletionGuardPrompt(requirement completionRequirement, effects *completionEffects) string {
+	missing := requirement.MissingLabels(effects)
+	if len(missing) == 0 {
+		missing = []string{"the requested side effects"}
+	}
+	return fmt.Sprintf(`Your last reply stopped the turn, but the requested work is not yet verified as complete.
+Missing verified outcomes: %s.
+Do not describe planned work as completed.
+Either use tools now to finish the missing work, or reply honestly that the task is still incomplete and state exactly what is still missing.`, strings.Join(missing, ", "))
+}
+
+func buildIncompleteWorkFallback(requirement completionRequirement, effects *completionEffects, toolNames []string) string {
+	missing := requirement.MissingLabels(effects)
+	if len(missing) == 0 {
+		missing = []string{"requested side effects"}
+	}
+	completed := "no verified tool work"
+	if len(toolNames) > 0 {
+		seen := make(map[string]struct{}, len(toolNames))
+		ordered := make([]string, 0, len(toolNames))
+		for _, name := range toolNames {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			ordered = append(ordered, name)
+		}
+		completed = strings.Join(ordered, ", ")
+	}
+	return fmt.Sprintf("I have not completed the requested work yet. Missing verified outcomes: %s. So far I only completed these tool steps: %s.", strings.Join(missing, ", "), completed)
+}
+
+func detectExecOutputPath(command string) string {
+	lower := strings.ToLower(command)
+	if idx := strings.Index(lower, "pandoc "); idx >= 0 {
+		if out := extractArgumentAfterFlag(command, "-o"); out != "" {
+			return out
+		}
+	}
+	if strings.Contains(lower, "curl ") || strings.Contains(lower, "wget ") {
+		if out := extractArgumentAfterFlag(command, "-o"); out != "" {
+			return out
+		}
+		if out := extractArgumentAfterFlag(command, "-O"); out != "" {
+			return out
+		}
+	}
+	return ""
+}
+
+func extractArgumentAfterFlag(command, flag string) string {
+	fields := strings.Fields(command)
+	for i := 0; i < len(fields)-1; i++ {
+		if fields[i] == flag {
+			return strings.Trim(fields[i+1], "\"'")
+		}
+	}
+	return ""
 }
 
 // summarizeBatch summarizes a batch of messages.

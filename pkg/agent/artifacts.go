@@ -68,6 +68,8 @@ func artifactsFromToolCall(workspace, toolName string, args map[string]interface
 		artifacts = add(artifacts, "input", toolName, stringArg(args, "pdf_path"))
 		artifacts = add(artifacts, "input", toolName, stringArg(args, "values_path"))
 		artifacts = add(artifacts, "output", toolName, stringArg(args, "output_path"))
+	case "pubmed_export_ris":
+		artifacts = add(artifacts, "output", toolName, stringArg(args, "output_file"))
 	case "message":
 		for _, path := range attachmentPaths(args["attachments"]) {
 			artifacts = add(artifacts, "output", toolName, path)

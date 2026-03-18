@@ -321,6 +321,49 @@ func TestRunAgentLoopRegistersOutputArtifactsFromToolCalls(t *testing.T) {
 	}
 }
 
+func TestInferCompletionRequirement_NarrowsToExplicitDeliverableRequests(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  completionRequirement
+	}{
+		{
+			name:  "input-only attachment use is not effectful",
+			input: "Use the attached protocol",
+			want:  completionRequirement{},
+		},
+		{
+			name:  "message wording alone does not imply saved file",
+			input: "save abstract",
+			want:  completionRequirement{},
+		},
+		{
+			name:  "explicit literature export request requires file outputs",
+			input: "Please do a pubmed search. Find 5 randomized controlled trials of a drug versus placebo. Put the reference PDFs in my Dropbox folder along with a RIS file for importing into my reference manager.",
+			want:  completionRequirement{FileOutputs: true},
+		},
+		{
+			name:  "repo task requires repo effects",
+			input: "Grab the repo, make the fix, commit it, push a branch, and open a PR.",
+			want:  completionRequirement{RepoEffects: true},
+		},
+		{
+			name:  "explicit delivery request requires delivery",
+			input: "Write the summary and reply with the file attached here.",
+			want:  completionRequirement{Delivery: true},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := inferCompletionRequirement(tc.input)
+			if got != tc.want {
+				t.Fatalf("inferCompletionRequirement(%q) = %#v, want %#v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunLLMIteration_RetriesUngroundedAsyncClaim(t *testing.T) {
 	workspace := t.TempDir()
 	cfg := config.DefaultConfig()
@@ -409,6 +452,51 @@ func TestRunLLMIteration_FallsBackAfterRepeatedUngroundedAsyncClaim(t *testing.T
 	want := "I have not actually launched any background work in this turn. So far I only completed these tool steps: mock_custom. No async task is currently running."
 	if got != want {
 		t.Fatalf("fallback = %q, want %q", got, want)
+	}
+}
+
+func TestRunLLMIteration_RejectsNarrativeCompletionForExplicitOutputTask(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+
+	provider := &scriptedProvider{
+		responses: []*providers.LLMResponse{
+			{
+				ToolCalls: []providers.ToolCall{
+					{ID: "call-1", Name: "mock_custom", Arguments: map[string]interface{}{}},
+				},
+			},
+			{Content: "On it. I searched PubMed and saved the RIS file and PDFs to your Dropbox folder."},
+			{Content: "On it. I searched PubMed and saved the RIS file and PDFs to your Dropbox folder."},
+		},
+	}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	al.RegisterTool(&mockCustomTool{})
+
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "room-pubmed-1",
+		SenderID:   "user-1",
+		SessionKey: "discord:room-pubmed-1",
+		Content:    "Please do a pubmed search. Find 5 randomized controlled trials of a drug versus placebo which use the CONSORT reporting guideline. Put the reference PDFs in my Dropbox folder along with a RIS file for importing into my reference manager.",
+	}
+	got, err := al.processMessage(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected incomplete completion error")
+	}
+	var incomplete *incompleteTurnError
+	if !errors.As(err, &incomplete) {
+		t.Fatalf("expected incompleteTurnError, got %T", err)
+	}
+	if !strings.Contains(got, "I have not completed the requested work yet") {
+		t.Fatalf("expected honest incomplete fallback, got %q", got)
+	}
+	if !strings.Contains(got, "saved output files") {
+		t.Fatalf("expected missing output note, got %q", got)
+	}
+	if !strings.Contains(got, "mock_custom") {
+		t.Fatalf("expected completed tool list in fallback, got %q", got)
 	}
 }
 
