@@ -309,10 +309,6 @@ func NewAgentLoopWithOptions(cfg *config.Config, msgBus *bus.MessageBus, provide
 		// Register subagent tool (synchronous execution)
 		subagentTool := tools.NewSubagentTool(subagentManager)
 		toolsRegistry.Register(subagentTool)
-
-		// Register dedicated Opus-backed code review tool.
-		codeReviewSubagentTool := tools.NewCodeReviewSubagentTool(subagentManager)
-		toolsRegistry.Register(codeReviewSubagentTool)
 	}
 
 	sessionsManager := session.NewSessionManager(filepath.Join(workspace, "sessions"))

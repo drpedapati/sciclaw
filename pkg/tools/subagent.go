@@ -13,27 +13,10 @@ import (
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
-const codeReviewSubagentModel = "claude-opus-4-6"
-
-type subagentRunConfig struct {
-	model        string
-	llmOptions   map[string]any
-	systemPrompt string
-}
-
 func defaultSubagentLLMOptions() map[string]any {
 	return map[string]any{
 		"max_tokens":       4096,
 		"temperature":      0.7,
-		"reasoning_effort": "high",
-		"thinking":         "adaptive",
-	}
-}
-
-func codeReviewSubagentLLMOptions() map[string]any {
-	return map[string]any{
-		"max_tokens":       8192,
-		"temperature":      0.2,
 		"reasoning_effort": "high",
 		"thinking":         "adaptive",
 	}
@@ -57,26 +40,6 @@ Important rules:
 	}
 
 	return strings.Join(parts, "\n\n---\n\n")
-}
-
-func buildCodeReviewSubagentSystemPrompt(workspace string) string {
-	base := buildSubagentSystemPrompt(workspace)
-	reviewInstructions := `## Code Review Mode
-
-You are performing a focused senior-engineer code review.
-
-Review goals:
-- Find bugs, behavioral regressions, unsafe assumptions, and missing tests.
-- Prefer concrete findings over broad praise or restating the code.
-- Keep findings grounded in the actual files, diff, commands, and tool outputs you inspect.
-
-Response rules:
-- Present findings first, ordered by severity.
-- Include file paths and line references when you have them.
-- If no findings are present, say so explicitly and mention any residual risks or test gaps.
-- Do not claim code was changed, committed, pushed, or merged unless a successful tool result proves it.`
-
-	return strings.Join([]string{base, reviewInstructions}, "\n\n---\n\n")
 }
 
 func loadSubagentBootstrapFiles(workspace string) string {
@@ -164,50 +127,6 @@ func (sm *SubagentManager) SetToolResultMaxChars(limit int) {
 	sm.toolResultMaxChars = limit
 }
 
-func (sm *SubagentManager) defaultRunConfig() subagentRunConfig {
-	return subagentRunConfig{
-		model:        sm.defaultModel,
-		llmOptions:   defaultSubagentLLMOptions(),
-		systemPrompt: buildSubagentSystemPrompt(sm.workspace),
-	}
-}
-
-func (sm *SubagentManager) codeReviewRunConfig() subagentRunConfig {
-	return subagentRunConfig{
-		model:        codeReviewSubagentModel,
-		llmOptions:   codeReviewSubagentLLMOptions(),
-		systemPrompt: buildCodeReviewSubagentSystemPrompt(sm.workspace),
-	}
-}
-
-func (sm *SubagentManager) executeTask(ctx context.Context, task, originChannel, originChatID string, runCfg subagentRunConfig) (*ToolLoopResult, error) {
-	messages := []providers.Message{
-		{
-			Role:    "system",
-			Content: runCfg.systemPrompt,
-		},
-		{
-			Role:    "user",
-			Content: task,
-		},
-	}
-
-	sm.mu.RLock()
-	tools := sm.tools
-	maxIter := sm.maxIterations
-	toolResultMaxChars := sm.toolResultMaxChars
-	sm.mu.RUnlock()
-
-	return RunToolLoop(ctx, ToolLoopConfig{
-		Provider:           sm.provider,
-		Model:              runCfg.model,
-		Tools:              tools,
-		MaxIterations:      maxIter,
-		ToolResultMaxChars: toolResultMaxChars,
-		LLMOptions:         runCfg.llmOptions,
-	}, messages, originChannel, originChatID)
-}
-
 func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string, callback AsyncCallback) (string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -239,6 +158,20 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
 
+	// Build system prompt for subagent
+	systemPrompt := buildSubagentSystemPrompt(sm.workspace)
+
+	messages := []providers.Message{
+		{
+			Role:    "system",
+			Content: systemPrompt,
+		},
+		{
+			Role:    "user",
+			Content: task.Task,
+		},
+	}
+
 	// Check if context is already cancelled before starting
 	select {
 	case <-ctx.Done():
@@ -250,7 +183,21 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 	default:
 	}
 
-	loopResult, err := sm.executeTask(ctx, task.Task, task.OriginChannel, task.OriginChatID, sm.defaultRunConfig())
+	// Run tool loop with access to tools
+	sm.mu.RLock()
+	tools := sm.tools
+	maxIter := sm.maxIterations
+	toolResultMaxChars := sm.toolResultMaxChars
+	sm.mu.RUnlock()
+
+	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
+		Provider:           sm.provider,
+		Model:              sm.defaultModel,
+		Tools:              tools,
+		MaxIterations:      maxIter,
+		ToolResultMaxChars: toolResultMaxChars,
+		LLMOptions:         defaultSubagentLLMOptions(),
+	}, messages, task.OriginChannel, task.OriginChatID)
 
 	sm.mu.Lock()
 	var result *ToolResult
@@ -381,7 +328,33 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	sm := t.manager
 
-	loopResult, err := sm.executeTask(ctx, task, t.originChannel, t.originChatID, sm.defaultRunConfig())
+	// Build messages for subagent
+	messages := []providers.Message{
+		{
+			Role:    "system",
+			Content: buildSubagentSystemPrompt(sm.workspace),
+		},
+		{
+			Role:    "user",
+			Content: task,
+		},
+	}
+
+	// Use RunToolLoop to execute with tools (same as async SpawnTool)
+	sm.mu.RLock()
+	tools := sm.tools
+	maxIter := sm.maxIterations
+	toolResultMaxChars := sm.toolResultMaxChars
+	sm.mu.RUnlock()
+
+	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
+		Provider:           sm.provider,
+		Model:              sm.defaultModel,
+		Tools:              tools,
+		MaxIterations:      maxIter,
+		ToolResultMaxChars: toolResultMaxChars,
+		LLMOptions:         defaultSubagentLLMOptions(),
+	}, messages, t.originChannel, t.originChatID)
 
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Subagent execution failed: %v", err)).WithError(err)
@@ -401,89 +374,6 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	llmContent := fmt.Sprintf("Subagent task completed:\nLabel: %s\nIterations: %d\nResult: %s",
 		labelStr, loopResult.Iterations, loopResult.Content)
-
-	return &ToolResult{
-		ForLLM:  llmContent,
-		ForUser: userContent,
-		Silent:  false,
-		IsError: false,
-		Async:   false,
-	}
-}
-
-type CodeReviewSubagentTool struct {
-	manager       *SubagentManager
-	originChannel string
-	originChatID  string
-}
-
-func NewCodeReviewSubagentTool(manager *SubagentManager) *CodeReviewSubagentTool {
-	return &CodeReviewSubagentTool{
-		manager:       manager,
-		originChannel: "cli",
-		originChatID:  "direct",
-	}
-}
-
-func (t *CodeReviewSubagentTool) Name() string {
-	return "code_review_subagent"
-}
-
-func (t *CodeReviewSubagentTool) Description() string {
-	return "Run a dedicated Claude Opus 4.6 code review subagent. Use this when you want a second-pass review of code, diffs, or repo changes focused on bugs, regressions, unsafe assumptions, and missing tests."
-}
-
-func (t *CodeReviewSubagentTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"task": map[string]interface{}{
-				"type":        "string",
-				"description": "The code review task, including files, diffs, commands, or the review question",
-			},
-			"label": map[string]interface{}{
-				"type":        "string",
-				"description": "Optional short label for the review task",
-			},
-		},
-		"required": []string{"task"},
-	}
-}
-
-func (t *CodeReviewSubagentTool) SetContext(channel, chatID string) {
-	t.originChannel = channel
-	t.originChatID = chatID
-}
-
-func (t *CodeReviewSubagentTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
-	task, ok := args["task"].(string)
-	if !ok {
-		return ErrorResult("task is required").WithError(fmt.Errorf("task parameter is required"))
-	}
-
-	label, _ := args["label"].(string)
-
-	if t.manager == nil {
-		return ErrorResult("Subagent manager not configured").WithError(fmt.Errorf("manager is nil"))
-	}
-
-	loopResult, err := t.manager.executeTask(ctx, task, t.originChannel, t.originChatID, t.manager.codeReviewRunConfig())
-	if err != nil {
-		return ErrorResult(fmt.Sprintf("Code review subagent failed: %v", err)).WithError(err)
-	}
-
-	userContent := loopResult.Content
-	maxUserLen := 500
-	if len(userContent) > maxUserLen {
-		userContent = userContent[:maxUserLen] + "..."
-	}
-
-	labelStr := label
-	if labelStr == "" {
-		labelStr = "(unnamed)"
-	}
-	llmContent := fmt.Sprintf("Code review subagent completed:\nLabel: %s\nModel: %s\nIterations: %d\nResult: %s",
-		labelStr, codeReviewSubagentModel, loopResult.Iterations, loopResult.Content)
 
 	return &ToolResult{
 		ForLLM:  llmContent,
