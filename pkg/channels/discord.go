@@ -57,6 +57,7 @@ type DiscordChannel struct {
 	sendTypingFn          func(channelID string) error
 	editMessageFn         func(channelID, messageID string, msg bus.OutboundMessage) error
 	interactionRespondFn  func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error
+	interactionEditFn     func(interaction *discordgo.Interaction, edit *discordgo.WebhookEdit) error
 	listCommandsFn        func(appID, guildID string) ([]*discordgo.ApplicationCommand, error)
 	createCommandFn       func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 	editCommandFn         func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
@@ -106,6 +107,10 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		},
 		interactionRespondFn: func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
 			return session.InteractionRespond(interaction, resp)
+		},
+		interactionEditFn: func(interaction *discordgo.Interaction, edit *discordgo.WebhookEdit) error {
+			_, err := session.InteractionResponseEdit(interaction, edit)
+			return err
 		},
 		listCommandsFn: func(appID, guildID string) ([]*discordgo.ApplicationCommand, error) {
 			return session.ApplicationCommands(appID, guildID)
@@ -600,6 +605,24 @@ func (c *DiscordChannel) deferInteraction(i *discordgo.Interaction) error {
 	})
 }
 
+func (c *DiscordChannel) editDeferredInteractionMessage(i *discordgo.Interaction, content string) {
+	if c.interactionEditFn == nil {
+		logger.WarnC("discord", "Interaction edit responder not configured")
+		return
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		content = "Request could not be completed."
+	}
+	if err := c.interactionEditFn(i, &discordgo.WebhookEdit{
+		Content: &content,
+	}); err != nil {
+		logger.WarnCF("discord", "Failed to edit deferred interaction response", map[string]any{
+			"error": err.Error(),
+		})
+	}
+}
+
 func (c *DiscordChannel) publishSlashTask(i *discordgo.InteractionCreate, author *discordgo.User, content string, metadata map[string]string) {
 	c.HandleMessage(author.ID, i.ChannelID, content, nil, metadata)
 }
@@ -678,6 +701,12 @@ func (c *DiscordChannel) handleSkillInteraction(i *discordgo.InteractionCreate, 
 		c.respondInteractionMessage(i.Interaction, "The `/skill` catalog is not configured on this sciClaw instance.")
 		return
 	}
+	if err := c.deferInteraction(i.Interaction); err != nil {
+		logger.WarnCF("discord", "Failed to defer /skill interaction", map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
 	available, err := c.skillCatalogFn(i.ChannelID, i.GuildID, author.ID)
 	if err != nil {
 		logger.WarnCF("discord", "Failed to load /skill catalog", map[string]any{
@@ -686,18 +715,12 @@ func (c *DiscordChannel) handleSkillInteraction(i *discordgo.InteractionCreate, 
 			"guild_id":   i.GuildID,
 			"user_id":    author.ID,
 		})
-		c.respondInteractionMessage(i.Interaction, "Unable to load skills for this channel right now.")
+		c.editDeferredInteractionMessage(i.Interaction, "Unable to load skills for this channel right now.")
 		return
 	}
 	selected, ok := validateSlashSkill(available, name)
 	if !ok {
-		c.respondInteractionMessage(i.Interaction, fmt.Sprintf("The skill %q is not available in this channel.", name))
-		return
-	}
-	if err := c.deferInteraction(i.Interaction); err != nil {
-		logger.WarnCF("discord", "Failed to defer /skill interaction", map[string]any{
-			"error": err.Error(),
-		})
+		c.editDeferredInteractionMessage(i.Interaction, fmt.Sprintf("The skill %q is not available in this channel.", name))
 		return
 	}
 	metadata := buildSlashMetadata(i.Interaction, data.Name, author)

@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,9 +19,14 @@ import (
 
 var inboundMediaHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
-func prepareInboundMedia(workspace string, msg *bus.InboundMessage) error {
+const inboundMediaMaxDownloadBytes int64 = 64 * 1024 * 1024
+
+func prepareInboundMedia(ctx context.Context, workspace string, msg *bus.InboundMessage) error {
 	if msg == nil || strings.TrimSpace(workspace) == "" || len(msg.Media) == 0 {
 		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	stageDir := filepath.Join(
@@ -38,6 +44,7 @@ func prepareInboundMedia(workspace string, msg *bus.InboundMessage) error {
 	stagedPaths := make([]string, 0, len(msg.Media))
 	stagedLines := make([]string, 0, len(msg.Media))
 	failedLines := make([]string, 0)
+	var firstErr error
 
 	for i, source := range msg.Media {
 		source = strings.TrimSpace(source)
@@ -50,11 +57,14 @@ func prepareInboundMedia(workspace string, msg *bus.InboundMessage) error {
 		var err error
 		switch {
 		case isHTTPURL(source):
-			err = downloadInboundURL(source, destPath)
+			err = downloadInboundURL(ctx, source, destPath)
 		default:
 			err = copyInboundFile(source, destPath)
 		}
 		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
 			logger.WarnCF("routing", "Failed to stage inbound attachment", map[string]any{
 				"channel":   msg.Channel,
 				"chat_id":   msg.ChatID,
@@ -74,6 +84,12 @@ func prepareInboundMedia(workspace string, msg *bus.InboundMessage) error {
 
 		stagedPaths = append(stagedPaths, destPath)
 		stagedLines = append(stagedLines, fmt.Sprintf("- %s -> %s", filename, relPath))
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(stagedLines) == 0 && len(failedLines) > 0 && firstErr != nil {
+		return fmt.Errorf("failed to stage inbound attachments: %w", firstErr)
 	}
 
 	if len(stagedLines) > 0 {
@@ -166,8 +182,8 @@ func isHTTPURL(value string) bool {
 	}
 }
 
-func downloadInboundURL(sourceURL, destPath string) error {
-	req, err := http.NewRequest("GET", sourceURL, nil)
+func downloadInboundURL(ctx context.Context, sourceURL, destPath string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return err
 	}
@@ -179,7 +195,10 @@ func downloadInboundURL(sourceURL, destPath string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
-	return writeInboundFile(resp.Body, destPath)
+	if resp.ContentLength > inboundMediaMaxDownloadBytes {
+		return fmt.Errorf("attachment exceeds %d bytes", inboundMediaMaxDownloadBytes)
+	}
+	return writeInboundFile(io.LimitReader(resp.Body, inboundMediaMaxDownloadBytes+1), destPath, inboundMediaMaxDownloadBytes)
 }
 
 func copyInboundFile(sourcePath, destPath string) error {
@@ -188,10 +207,10 @@ func copyInboundFile(sourcePath, destPath string) error {
 		return err
 	}
 	defer in.Close()
-	return writeInboundFile(in, destPath)
+	return writeInboundFile(in, destPath, 0)
 }
 
-func writeInboundFile(r io.Reader, destPath string) error {
+func writeInboundFile(r io.Reader, destPath string, maxBytes int64) error {
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return err
 	}
@@ -199,12 +218,22 @@ func writeInboundFile(r io.Reader, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, r); err != nil {
+	written, err := io.Copy(out, r)
+	if err != nil {
+		_ = out.Close()
 		_ = os.Remove(destPath)
 		return err
 	}
-	return out.Close()
+	if maxBytes > 0 && written > maxBytes {
+		_ = out.Close()
+		_ = os.Remove(destPath)
+		return fmt.Errorf("attachment exceeds %d bytes", maxBytes)
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(destPath)
+		return err
+	}
+	return nil
 }
 
 func appendInboundContent(content, suffix string) string {

@@ -1,6 +1,8 @@
 package routing
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,7 +31,7 @@ func TestPrepareInboundMedia_DownloadsURLIntoWorkspaceAndAnnotatesContent(t *tes
 		},
 	}
 
-	if err := prepareInboundMedia(workspace, msg); err != nil {
+	if err := prepareInboundMedia(context.Background(), workspace, msg); err != nil {
 		t.Fatalf("prepareInboundMedia: %v", err)
 	}
 	if len(msg.Media) != 1 {
@@ -69,7 +71,7 @@ func TestPrepareInboundMedia_CopiesLocalFileIntoWorkspace(t *testing.T) {
 		},
 	}
 
-	if err := prepareInboundMedia(workspace, msg); err != nil {
+	if err := prepareInboundMedia(context.Background(), workspace, msg); err != nil {
 		t.Fatalf("prepareInboundMedia: %v", err)
 	}
 	if len(msg.Media) != 1 {
@@ -88,5 +90,60 @@ func TestPrepareInboundMedia_CopiesLocalFileIntoWorkspace(t *testing.T) {
 	}
 	if !strings.Contains(msg.Content, ".sciclaw/inbound/discord/msg-2/input.docx") {
 		t.Fatalf("expected staged path in content, got %q", msg.Content)
+	}
+}
+
+func TestPrepareInboundMedia_UsesContextCancellationForDownloads(t *testing.T) {
+	workspace := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	msg := &bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "chan-1",
+		Content:    "please review this",
+		SessionKey: "discord:chan-1",
+		Media:      []string{server.URL + "/attachments/report.docx"},
+		Metadata: map[string]string{
+			"message_id": "msg-3",
+		},
+	}
+
+	err := prepareInboundMedia(ctx, workspace, msg)
+	if err == nil {
+		t.Fatal("expected cancelled context to abort download")
+	}
+}
+
+func TestPrepareInboundMedia_RejectsOversizedDownloads(t *testing.T) {
+	workspace := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", inboundMediaMaxDownloadBytes+1))
+		_, _ = w.Write([]byte("tiny"))
+	}))
+	defer server.Close()
+
+	msg := &bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "chan-1",
+		Content:    "please review this",
+		SessionKey: "discord:chan-1",
+		Media:      []string{server.URL + "/attachments/report.docx"},
+		Metadata: map[string]string{
+			"message_id": "msg-4",
+		},
+	}
+
+	err := prepareInboundMedia(context.Background(), workspace, msg)
+	if err == nil {
+		t.Fatal("expected oversized attachment to fail")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected oversized error, got %v", err)
 	}
 }

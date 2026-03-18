@@ -543,7 +543,11 @@ func TestDiscordHandleInteractionCreateBTWRejectsBlankPrompt(t *testing.T) {
 func TestDiscordHandleInteractionCreateSkillPublishesInboundAndDefers(t *testing.T) {
 	ch := newTestDiscordChannel()
 	ch.botUserID = "bot-1"
+	deferred := false
 	ch.skillCatalogFn = func(channelID, guildID, userID string) ([]SlashSkillChoice, error) {
+		if !deferred {
+			t.Fatal("expected /skill interaction to defer before loading catalog")
+		}
 		if channelID != "chan-1" || guildID != "guild-1" || userID != "user-1" {
 			t.Fatalf("unexpected skill catalog args: %q %q %q", channelID, guildID, userID)
 		}
@@ -555,6 +559,9 @@ func TestDiscordHandleInteractionCreateSkillPublishesInboundAndDefers(t *testing
 	var response *discordgo.InteractionResponse
 	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
 		response = resp
+		if resp != nil && resp.Type == discordgo.InteractionResponseDeferredChannelMessageWithSource {
+			deferred = true
+		}
 		return nil
 	}
 	interaction := &discordgo.InteractionCreate{
@@ -615,8 +622,15 @@ func TestDiscordHandleInteractionCreateSkillRejectsUnavailableSkill(t *testing.T
 		return []SlashSkillChoice{{Name: "pubmed-cli"}}, nil
 	}
 	var response *discordgo.InteractionResponse
+	var editedContent string
 	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
 		response = resp
+		return nil
+	}
+	ch.interactionEditFn = func(interaction *discordgo.Interaction, edit *discordgo.WebhookEdit) error {
+		if edit != nil && edit.Content != nil {
+			editedContent = *edit.Content
+		}
 		return nil
 	}
 	interaction := &discordgo.InteractionCreate{
@@ -636,11 +650,14 @@ func TestDiscordHandleInteractionCreateSkillRejectsUnavailableSkill(t *testing.T
 
 	ch.handleInteractionCreate(nil, interaction)
 
-	if response == nil || response.Type != discordgo.InteractionResponseChannelMessageWithSource {
-		t.Fatalf("expected immediate validation response, got %#v", response)
+	if response == nil || response.Type != discordgo.InteractionResponseDeferredChannelMessageWithSource {
+		t.Fatalf("expected deferred validation response, got %#v", response)
 	}
-	if response.Data == nil || !strings.Contains(response.Data.Content, "not available") {
-		t.Fatalf("unexpected validation response: %#v", response.Data)
+	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Fatalf("expected ephemeral deferred response, got %#v", response.Data)
+	}
+	if !strings.Contains(editedContent, "not available") {
+		t.Fatalf("unexpected deferred validation edit: %q", editedContent)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()

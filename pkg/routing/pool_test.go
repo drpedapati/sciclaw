@@ -2,6 +2,11 @@ package routing
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -79,6 +84,106 @@ func TestAgentLoopPool_ReusesWorkspaceHandler(t *testing.T) {
 	}
 	if pool.Size() != 1 {
 		t.Fatalf("expected pool size 1, got %d", pool.Size())
+	}
+}
+
+func TestAgentLoopPool_DispatchStagesInboundMediaBeforeHandling(t *testing.T) {
+	created := 0
+	handlers := map[string]*fakeHandler{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("stub doc"))
+	}))
+	defer server.Close()
+
+	pool := NewAgentLoopPoolWithFactory(func(target LoopTarget) (inboundHandler, error) {
+		created++
+		h := &fakeHandler{received: make(chan bus.InboundMessage, 1)}
+		handlers[target.key()] = h
+		return h, nil
+	})
+	defer pool.Close()
+
+	target := LoopTarget{Workspace: t.TempDir()}
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "chan-1",
+		Content:    "review this",
+		SessionKey: "discord:chan-1",
+		Media:      []string{server.URL + "/attachments/report.docx"},
+		Metadata:   map[string]string{"message_id": "msg-1"},
+	}
+
+	if err := pool.Dispatch(context.Background(), target, msg); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+
+	h := handlers[target.key()]
+	if h == nil {
+		t.Fatal("expected handler")
+	}
+	select {
+	case got := <-h.received:
+		if len(got.Media) != 1 {
+			t.Fatalf("expected staged media path, got %#v", got.Media)
+		}
+		if !strings.HasPrefix(got.Media[0], filepath.Join(target.Workspace, ".sciclaw", "inbound")) {
+			t.Fatalf("expected staged path under workspace, got %q", got.Media[0])
+		}
+		if _, err := os.Stat(got.Media[0]); err != nil {
+			t.Fatalf("expected staged file to exist: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for dispatched message")
+	}
+	if created != 1 {
+		t.Fatalf("expected one handler creation, got %d", created)
+	}
+}
+
+func TestAgentLoopPool_DispatchPublishesStageErrorWithoutCallingHandler(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	handler := &fakeHandler{received: make(chan bus.InboundMessage, 1)}
+	pool := NewAgentLoopPoolWithFactory(func(target LoopTarget) (inboundHandler, error) {
+		return handler, nil
+	})
+	pool.msgBus = mb
+	defer pool.Close()
+
+	workspaceRoot := t.TempDir()
+	workspaceFile := filepath.Join(workspaceRoot, "not-a-dir")
+	if err := os.WriteFile(workspaceFile, []byte("x"), 0644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	msg := bus.InboundMessage{
+		Channel:    "discord",
+		ChatID:     "chan-1",
+		Content:    "review this",
+		SessionKey: "discord:chan-1",
+		Media:      []string{workspaceFile},
+		Metadata:   map[string]string{"message_id": "msg-2"},
+	}
+
+	if err := pool.Dispatch(context.Background(), LoopTarget{Workspace: workspaceFile}, msg); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+
+	select {
+	case <-handler.received:
+		t.Fatal("handler should not receive message when staging fails")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	out, ok := mb.SubscribeOutbound(ctx)
+	if !ok {
+		t.Fatal("expected outbound staging error")
+	}
+	if !strings.Contains(out.Content, "failed to stage inbound attachments") {
+		t.Fatalf("unexpected outbound error: %q", out.Content)
 	}
 }
 
