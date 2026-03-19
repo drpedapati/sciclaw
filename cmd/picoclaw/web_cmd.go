@@ -2,16 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	iofs "io/fs"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/providers"
 	webui "github.com/sipeed/picoclaw/web"
 )
 
@@ -55,16 +59,23 @@ func webCmd() {
 }
 
 type webServer struct {
-	exec     tui.Executor
-	mux      *http.ServeMux
-	distDir  string
-	staticFS iofs.FS
-	static   http.Handler
+	exec           tui.Executor
+	mux            *http.ServeMux
+	distDir        string
+	staticFS       iofs.FS
+	static         http.Handler
+	liteChatRunner func(context.Context, string) (*liteChatResult, error)
 
 	// Cached snapshot
 	snapMu   sync.RWMutex
 	snapshot *tui.VMSnapshot
 	snapTime time.Time
+}
+
+type liteChatResult struct {
+	Response string
+	Model    string
+	Usage    *providers.UsageInfo
 }
 
 func newWebServer(exec tui.Executor, distDir string) *webServer {
@@ -78,6 +89,7 @@ func newWebServer(exec tui.Executor, distDir string) *webServer {
 		distDir:  distDir,
 		staticFS: staticFS,
 	}
+	s.liteChatRunner = s.runLiteChat
 	if staticFS != nil {
 		s.static = http.FileServer(http.FS(staticFS))
 	}
@@ -241,12 +253,96 @@ func (s *webServer) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if shouldUseLightweightWebChat(body.Message) {
+		result, err := s.liteChatRunner(r.Context(), body.Message)
+		if err == nil && result != nil && strings.TrimSpace(result.Response) != "" {
+			jsonResp(w, map[string]interface{}{"response": result.Response, "mode": "lite"})
+			return
+		}
+		logger.WarnCF("web", "Lightweight web chat failed; falling back to full agent", map[string]interface{}{
+			"error":   fmt.Sprint(err),
+			"message": strings.TrimSpace(body.Message),
+		})
+	}
+
 	out, err := s.runCLIQuiet(120*time.Second, "agent", "-m", shellQuote(body.Message), "-s", "web:chat")
 	if err != nil {
 		jsonResp(w, map[string]interface{}{"response": "Error: " + err.Error() + "\n" + out})
 		return
 	}
-	jsonResp(w, map[string]interface{}{"response": out})
+	jsonResp(w, map[string]interface{}{"response": out, "mode": "full"})
+}
+
+var lightweightGreetingPattern = regexp.MustCompile(`(?i)^\s*(hi|hello|hey|yo|sup|ping|test|thanks|thank you|how are you|are you there|who are you|what can you do|help|good (morning|afternoon|evening))([!.?\s]*)$`)
+
+func shouldUseLightweightWebChat(message string) bool {
+	normalized := strings.TrimSpace(message)
+	if normalized == "" || len(normalized) > 120 {
+		return false
+	}
+	if strings.Contains(normalized, "\n") || strings.Contains(normalized, "http://") || strings.Contains(normalized, "https://") {
+		return false
+	}
+	if lightweightGreetingPattern.MatchString(normalized) {
+		return true
+	}
+	lower := strings.ToLower(normalized)
+	blocked := []string{
+		"search", "find", "read", "write", "save", "create", "draft", "edit", "revise", "summarize", "analyze",
+		"compare", "export", "download", "upload", "attach", "pubmed", "pmid", "doi", "ris", "pdf", "docx",
+		"xlsx", "pptx", "folder", "dropbox", "file", "abstract", "manuscript", "protocol", "skill", "poster",
+		"conference", "review", "citation", "references", "web search", "weather",
+	}
+	for _, token := range blocked {
+		if strings.Contains(lower, token) {
+			return false
+		}
+	}
+	return lower == "hello" || lower == "hi" || lower == "hey" || lower == "help"
+}
+
+func (s *webServer) runLiteChat(ctx context.Context, message string) (*liteChatResult, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	provider, err := providers.CreateProvider(cfg)
+	if err != nil {
+		return nil, err
+	}
+	model := strings.TrimSpace(cfg.Agents.Defaults.Model)
+	if model == "" {
+		model = provider.GetDefaultModel()
+	}
+	messages := []providers.Message{
+		{
+			Role:    "system",
+			Content: "You are sciClaw, a paired-scientist assistant in a web chat. This is a lightweight conversational turn. Reply naturally and briefly. Do not claim to have run tools, changed files, searched the web, or completed background work unless the user explicitly asked a simple conversational question about capabilities. Keep it to 1-3 short paragraphs.",
+		},
+		{Role: "user", Content: strings.TrimSpace(message)},
+	}
+	resp, err := provider.Chat(ctx, messages, nil, model, map[string]interface{}{
+		"max_tokens":  384,
+		"temperature": 0.7,
+	})
+	if err != nil {
+		return nil, err
+	}
+	content := strings.TrimSpace(resp.Content)
+	if content == "" {
+		return nil, fmt.Errorf("empty lightweight response")
+	}
+	logFields := map[string]interface{}{
+		"model":   model,
+		"message": strings.TrimSpace(message),
+	}
+	if resp.Usage != nil {
+		logFields["input_tokens"] = resp.Usage.PromptTokens
+		logFields["output_tokens"] = resp.Usage.CompletionTokens
+		logFields["total_tokens"] = resp.Usage.TotalTokens
+	}
+	logger.InfoCF("web", "Lightweight web chat completed", logFields)
+	return &liteChatResult{Response: content, Model: model, Usage: resp.Usage}, nil
 }
 
 func shellQuote(s string) string {

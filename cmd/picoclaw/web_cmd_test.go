@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -88,5 +89,97 @@ func TestHandleChatSuppressesAgentStderr(t *testing.T) {
 	}
 	if body["response"] != "hello" {
 		t.Fatalf("unexpected response body: %q", body["response"])
+	}
+	if body["mode"] != "full" {
+		t.Fatalf("expected full mode, got %q", body["mode"])
+	}
+}
+
+func TestHandleChatUsesLitePathForGreeting(t *testing.T) {
+	execStub := &webTestExec{}
+	srv := newWebServer(execStub, "")
+	liteCalls := 0
+	srv.liteChatRunner = func(_ context.Context, message string) (*liteChatResult, error) {
+		liteCalls++
+		if message != "hello" {
+			t.Fatalf("unexpected lite message: %q", message)
+		}
+		return &liteChatResult{Response: "hi there"}, nil
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"message":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.handleChat(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if liteCalls != 1 {
+		t.Fatalf("expected lite chat to run once, got %d", liteCalls)
+	}
+	if execStub.command != "" {
+		t.Fatalf("expected full agent path to be skipped, got command %q", execStub.command)
+	}
+
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["response"] != "hi there" {
+		t.Fatalf("unexpected lite response body: %q", body["response"])
+	}
+	if body["mode"] != "lite" {
+		t.Fatalf("expected lite mode, got %q", body["mode"])
+	}
+}
+
+func TestHandleChatFallsBackWhenLiteChatFails(t *testing.T) {
+	execStub := &webTestExec{output: "fallback"}
+	srv := newWebServer(execStub, "")
+	srv.liteChatRunner = func(_ context.Context, _ string) (*liteChatResult, error) {
+		return nil, os.ErrPermission
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"message":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.handleChat(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(execStub.command, " agent ") {
+		t.Fatalf("expected fallback full agent command, got %q", execStub.command)
+	}
+
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["response"] != "fallback" {
+		t.Fatalf("unexpected fallback response body: %q", body["response"])
+	}
+	if body["mode"] != "full" {
+		t.Fatalf("expected full mode after lite fallback, got %q", body["mode"])
+	}
+}
+
+func TestShouldUseLightweightWebChat(t *testing.T) {
+	tests := []struct {
+		message string
+		want    bool
+	}{
+		{message: "hello", want: true},
+		{message: "What can you do?", want: true},
+		{message: "please search PubMed", want: false},
+		{message: "read this file", want: false},
+		{message: "https://example.com", want: false},
+	}
+
+	for _, tc := range tests {
+		if got := shouldUseLightweightWebChat(tc.message); got != tc.want {
+			t.Fatalf("shouldUseLightweightWebChat(%q) = %v, want %v", tc.message, got, tc.want)
+		}
 	}
 }
