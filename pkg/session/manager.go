@@ -47,6 +47,25 @@ var (
 	readFile            = os.ReadFile
 )
 
+const (
+	durableToolContentSoftLimit = 1200
+	durableToolContentHardLimit = 8000
+)
+
+var bulkyDurableToolNames = map[string]struct{}{
+	"channel_history":  {},
+	"docx_review_read": {},
+	"list_dir":         {},
+	"pdf_form_inspect": {},
+	"pdf_form_schema":  {},
+	"pptx_review_read": {},
+	"read_file":        {},
+	"read_images":      {},
+	"web_fetch":        {},
+	"web_search":       {},
+	"xlsx_review_read": {},
+}
+
 func NewSessionManager(storage string) *SessionManager {
 	sm := &SessionManager{
 		sessions: make(map[string]*Session),
@@ -109,8 +128,44 @@ func (sm *SessionManager) AddFullMessage(sessionKey string, msg providers.Messag
 		sm.sessions[sessionKey] = session
 	}
 
-	session.Messages = append(session.Messages, msg)
+	session.Messages = append(session.Messages, compactMessageForStorage(msg))
 	session.Updated = time.Now()
+}
+
+func compactMessageForStorage(msg providers.Message) providers.Message {
+	if msg.Role != "tool" {
+		return msg
+	}
+	content := strings.TrimSpace(msg.Content)
+	if content == "" {
+		return msg
+	}
+	if !shouldCompactToolMessage(msg.ToolName, len(content)) {
+		return msg
+	}
+	toolLabel := strings.TrimSpace(msg.ToolName)
+	if toolLabel == "" {
+		toolLabel = "tool"
+	}
+	lineCount := 1 + strings.Count(content, "\n")
+	msg.Content = fmt.Sprintf(
+		"Tool output from `%s` omitted from durable session history for efficiency (%d chars, %d lines). Re-run the tool if full content is needed.",
+		toolLabel,
+		len(content),
+		lineCount,
+	)
+	return msg
+}
+
+func shouldCompactToolMessage(toolName string, contentLen int) bool {
+	if contentLen >= durableToolContentHardLimit {
+		return true
+	}
+	if contentLen < durableToolContentSoftLimit {
+		return false
+	}
+	_, ok := bulkyDurableToolNames[strings.TrimSpace(toolName)]
+	return ok
 }
 
 func (sm *SessionManager) RegisterArtifacts(sessionKey string, artifacts ...Artifact) {

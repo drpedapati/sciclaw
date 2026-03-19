@@ -198,3 +198,69 @@ func TestSessionManagerRegisterArtifactsDedupsAndBuildsContext(t *testing.T) {
 		t.Fatalf("expected canonical-path guidance, got %q", context)
 	}
 }
+
+func TestSessionManagerCompactsLargeBulkyToolMessage(t *testing.T) {
+	sm := NewSessionManager("")
+	content := strings.Repeat("x", durableToolContentSoftLimit+100)
+	sm.AddFullMessage("discord:test", providers.Message{
+		Role:       "tool",
+		ToolName:   "read_file",
+		ToolCallID: "call_1",
+		Content:    content,
+	})
+
+	history := sm.GetHistory("discord:test")
+	if len(history) != 1 {
+		t.Fatalf("expected 1 history message, got %d", len(history))
+	}
+	if history[0].Content == content {
+		t.Fatalf("expected large tool output to be compacted")
+	}
+	if !strings.Contains(history[0].Content, "omitted from durable session history") {
+		t.Fatalf("expected durable-history compaction marker, got %q", history[0].Content)
+	}
+	if history[0].ToolName != "read_file" || history[0].ToolCallID != "call_1" {
+		t.Fatalf("expected tool metadata preserved, got %#v", history[0])
+	}
+}
+
+func TestSessionManagerKeepsSmallToolMessageVerbatim(t *testing.T) {
+	sm := NewSessionManager("")
+	content := "short listing"
+	sm.AddFullMessage("discord:test", providers.Message{
+		Role:       "tool",
+		ToolName:   "list_dir",
+		ToolCallID: "call_1",
+		Content:    content,
+	})
+
+	history := sm.GetHistory("discord:test")
+	if len(history) != 1 {
+		t.Fatalf("expected 1 history message, got %d", len(history))
+	}
+	if history[0].Content != content {
+		t.Fatalf("expected small tool output to remain verbatim, got %q", history[0].Content)
+	}
+}
+
+func TestSessionManagerCompactsHugeUnknownToolMessage(t *testing.T) {
+	sm := NewSessionManager("")
+	content := strings.Repeat("z", durableToolContentHardLimit+10)
+	sm.AddFullMessage("discord:test", providers.Message{
+		Role:       "tool",
+		ToolName:   "custom_tool",
+		ToolCallID: "call_1",
+		Content:    content,
+	})
+
+	history := sm.GetHistory("discord:test")
+	if len(history) != 1 {
+		t.Fatalf("expected 1 history message, got %d", len(history))
+	}
+	if history[0].Content == content {
+		t.Fatalf("expected huge unknown tool output to be compacted")
+	}
+	if !strings.Contains(history[0].Content, "custom_tool") {
+		t.Fatalf("expected tool name preserved in compact summary, got %q", history[0].Content)
+	}
+}
