@@ -144,7 +144,12 @@ func readBody(r *http.Request, v interface{}) error {
 }
 
 func (s *webServer) runCLI(timeout time.Duration, args ...string) (string, error) {
-	cmd := "HOME=" + s.exec.HomePath() + " " + s.exec.BinaryPath() + " " + strings.Join(args, " ") + " 2>&1"
+	cmd := "HOME=" + shellQuote(s.exec.HomePath()) + " " + shellQuote(s.exec.BinaryPath()) + " " + strings.Join(args, " ") + " 2>&1"
+	return s.exec.ExecShell(timeout, cmd)
+}
+
+func (s *webServer) runCLIQuiet(timeout time.Duration, args ...string) (string, error) {
+	cmd := "HOME=" + shellQuote(s.exec.HomePath()) + " " + shellQuote(s.exec.BinaryPath()) + " " + strings.Join(args, " ") + " 2>/dev/null"
 	return s.exec.ExecShell(timeout, cmd)
 }
 
@@ -236,7 +241,7 @@ func (s *webServer) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.runCLI(120*time.Second, "agent", "-m", shellQuote(body.Message), "-s", "web:chat")
+	out, err := s.runCLIQuiet(120*time.Second, "agent", "-m", shellQuote(body.Message), "-s", "web:chat")
 	if err != nil {
 		jsonResp(w, map[string]interface{}{"response": "Error: " + err.Error() + "\n" + out})
 		return
