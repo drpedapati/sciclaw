@@ -28,6 +28,7 @@ const (
 	maxTypingDuration    = 3 * time.Minute // safety net: auto-cancel typing if stopTyping is never called
 	discordMaxRunes      = 2000
 	discordMaxFileBytes  = 25 * 1024 * 1024
+	discordInboundDedupTTL = 2 * time.Minute
 )
 
 type typingState struct {
@@ -38,6 +39,11 @@ type typingState struct {
 type SlashSkillChoice struct {
 	Name        string
 	Description string
+}
+
+type inboundMessageFingerprint struct {
+	fingerprint string
+	seenAt      time.Time
 }
 
 type DiscordChannel struct {
@@ -62,6 +68,8 @@ type DiscordChannel struct {
 	createCommandFn       func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 	editCommandFn         func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 	skillCatalogFn        func(channelID, guildID, userID string) ([]SlashSkillChoice, error)
+	inboundMu             sync.Mutex
+	recentInbound         map[string]inboundMessageFingerprint
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -121,7 +129,48 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		editCommandFn: func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
 			return session.ApplicationCommandEdit(appID, guildID, cmdID, cmd)
 		},
+		recentInbound: make(map[string]inboundMessageFingerprint),
 	}, nil
+}
+
+func (c *DiscordChannel) shouldDropDuplicateInbound(messageID, content string, media []string, hasDirectMention, replyToBot bool) bool {
+	if strings.TrimSpace(messageID) == "" {
+		return false
+	}
+
+	parts := []string{
+		content,
+		strings.Join(media, "\n"),
+		fmt.Sprintf("direct=%t", hasDirectMention),
+		fmt.Sprintf("reply=%t", replyToBot),
+	}
+	fingerprint := strings.Join(parts, "\x1f")
+	now := time.Now()
+
+	c.inboundMu.Lock()
+	defer c.inboundMu.Unlock()
+
+	if c.recentInbound == nil {
+		c.recentInbound = make(map[string]inboundMessageFingerprint)
+	}
+
+	for id, seen := range c.recentInbound {
+		if now.Sub(seen.seenAt) > discordInboundDedupTTL {
+			delete(c.recentInbound, id)
+		}
+	}
+
+	if seen, ok := c.recentInbound[messageID]; ok {
+		if seen.fingerprint == fingerprint && now.Sub(seen.seenAt) <= discordInboundDedupTTL {
+			return true
+		}
+	}
+
+	c.recentInbound[messageID] = inboundMessageFingerprint{
+		fingerprint: fingerprint,
+		seenAt:      now,
+	}
+	return false
 }
 
 func (c *DiscordChannel) SetTranscriber(transcriber *voice.GroqTranscriber) {
@@ -891,6 +940,16 @@ func (c *DiscordChannel) processIncomingMessage(_ *discordgo.Session, m *discord
 
 	if content == "" {
 		content = "[media only]"
+	}
+
+	if c.shouldDropDuplicateInbound(m.ID, content, mediaPaths, hasDirectMention, replyToBot) {
+		logger.InfoCF("discord", "Dropping duplicate inbound message event", map[string]any{
+			"message_id": m.ID,
+			"sender_id":  senderID,
+			"channel_id": m.ChannelID,
+			"is_edit":    editOnly,
+		})
+		return
 	}
 
 	logger.DebugCF("discord", "Received message", map[string]any{
