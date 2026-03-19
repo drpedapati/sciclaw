@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
 func TestBuildSystemPromptUsesSciClawIdentity(t *testing.T) {
@@ -96,5 +98,27 @@ func TestContextBuilderLoadsGlobalWorkspaceSkillsForRoutedWorkspace(t *testing.T
 	total, _ := info["total"].(int)
 	if total < 1 {
 		t.Fatalf("expected at least one skill from global workspace, got %v", info)
+	}
+}
+
+func TestContextBuilderCanSuppressPromptToolSummaries(t *testing.T) {
+	workspace := t.TempDir()
+	cb := NewContextBuilder(workspace)
+	registry := tools.NewToolRegistry()
+	registry.Register(tools.NewWordCountTool(workspace, true))
+	cb.SetToolsRegistry(registry)
+
+	withSummaries := cb.BuildSystemPrompt()
+	if !strings.Contains(withSummaries, "## Available Tools") {
+		t.Fatalf("expected tool summaries in default system prompt")
+	}
+
+	cb.SetIncludePromptToolSummaries(false)
+	withoutSummaries := cb.BuildSystemPrompt()
+	if strings.Contains(withoutSummaries, "## Available Tools") {
+		t.Fatalf("expected prompt tool summaries to be omitted when disabled")
+	}
+	if !strings.Contains(withoutSummaries, "ALWAYS use tools") {
+		t.Fatalf("expected core tool-use rule to remain in system prompt")
 	}
 }

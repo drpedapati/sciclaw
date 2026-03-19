@@ -348,6 +348,7 @@ func NewAgentLoopWithOptions(cfg *config.Config, msgBus *bus.MessageBus, provide
 	// Create context builder and set tools registry
 	contextBuilder := NewContextBuilder(workspace, cfg.SharedWorkspacePath())
 	contextBuilder.SetToolsRegistry(toolsRegistry)
+	contextBuilder.SetIncludePromptToolSummaries(false)
 	contextBuilder.SetVersion(Version)
 
 	var hookDispatcher *hooks.Dispatcher

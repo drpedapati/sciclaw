@@ -15,12 +15,13 @@ import (
 )
 
 type ContextBuilder struct {
-	workspace       string
-	sharedWorkspace string
-	version         string
-	skillsLoader    *skills.SkillsLoader
-	memory          *MemoryStore
-	tools           *tools.ToolRegistry // Direct reference to tool registry
+	workspace                  string
+	sharedWorkspace            string
+	version                    string
+	skillsLoader               *skills.SkillsLoader
+	memory                     *MemoryStore
+	tools                      *tools.ToolRegistry // Direct reference to tool registry
+	includePromptToolSummaries bool
 }
 
 func getGlobalConfigDir() string {
@@ -101,16 +102,24 @@ func NewContextBuilder(workspace string, sharedWorkspace ...string) *ContextBuil
 	globalSkillsDir := resolveGlobalSkillsDir(sharedRoot)
 
 	return &ContextBuilder{
-		workspace:       workspace,
-		sharedWorkspace: strings.TrimSpace(sharedRoot),
-		skillsLoader:    skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
-		memory:          NewMemoryStore(workspace),
+		workspace:                  workspace,
+		sharedWorkspace:            strings.TrimSpace(sharedRoot),
+		skillsLoader:               skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
+		memory:                     NewMemoryStore(workspace),
+		includePromptToolSummaries: true,
 	}
 }
 
 // SetToolsRegistry sets the tools registry for dynamic tool summary generation.
 func (cb *ContextBuilder) SetToolsRegistry(registry *tools.ToolRegistry) {
 	cb.tools = registry
+}
+
+// SetIncludePromptToolSummaries controls whether human-readable tool summaries
+// are embedded into the system prompt. When the provider already receives native
+// tool schemas, duplicating the tool list in prose wastes prompt tokens.
+func (cb *ContextBuilder) SetIncludePromptToolSummaries(include bool) {
+	cb.includePromptToolSummaries = include
 }
 
 // SetVersion sets the runtime version for inclusion in the system prompt.
@@ -163,6 +172,9 @@ Your workspace is at: %s
 }
 
 func (cb *ContextBuilder) buildToolsSection() string {
+	if !cb.includePromptToolSummaries {
+		return ""
+	}
 	if cb.tools == nil {
 		return ""
 	}
