@@ -177,6 +177,8 @@ func main() {
 		serviceCmd()
 	case "app", "tui":
 		tuiCmd()
+	case "web":
+		webCmd()
 	case "vm":
 		vmCmd()
 	case "docker":
