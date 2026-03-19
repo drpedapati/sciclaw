@@ -32,7 +32,14 @@ const settingRows: SettingRow[] = [
 ];
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  return path.split('.').reduce((o, k) => (o as Record<string, unknown>)?.[k], obj);
+  let current: unknown = obj;
+  for (const key of path.split('.')) {
+    if (!current || typeof current !== 'object') {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
 }
 
 export default function SettingsPage() {

@@ -25,6 +25,14 @@
   --color-border-subtle:   #232323;
   --color-border-emphasis:  #3e3e3e;
 
+  --color-text-strong: #f5f5f5;
+  --color-text-base:   #d4d4d8;
+  --color-text-muted:  #a1a1aa;
+  --color-text-subtle: #71717a;
+
+  --theme-scrollbar:       #3f3f46;
+  --theme-scrollbar-hover: #52525b;
+
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 }
@@ -34,10 +42,20 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root[data-scheme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-scheme="light"] {
+  color-scheme: light;
+}
+
 body {
   margin: 0;
-  background: var(--color-surface-300);
-  color: #e4e4e7;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--theme-brand-faint) 70%, transparent) 0%, transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-200) 82%, transparent) 0%, var(--color-surface-300) 100%);
+  color: var(--color-text-base);
   font-family: var(--font-sans);
 }
 
@@ -54,8 +72,60 @@ body {
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #52525b; }
+::-webkit-scrollbar-thumb { background: var(--theme-scrollbar); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--theme-scrollbar-hover); }
+
+:root[data-scheme="light"] .text-zinc-100,
+:root[data-scheme="light"] .text-zinc-200 {
+  color: var(--color-text-strong);
+}
+
+:root[data-scheme="light"] .text-zinc-300,
+:root[data-scheme="light"] .text-zinc-400 {
+  color: var(--color-text-base);
+}
+
+:root[data-scheme="light"] .text-zinc-500 {
+  color: var(--color-text-muted);
+}
+
+:root[data-scheme="light"] .text-zinc-600,
+:root[data-scheme="light"] .text-zinc-700 {
+  color: var(--color-text-subtle);
+}
+
+:root[data-scheme="light"] .hover\:text-zinc-100:hover,
+:root[data-scheme="light"] .hover\:text-zinc-200:hover {
+  color: var(--color-text-strong);
+}
+
+:root[data-scheme="light"] .hover\:text-zinc-300:hover {
+  color: var(--color-text-base);
+}
+
+:root[data-scheme="light"] .placeholder-zinc-600::placeholder {
+  color: var(--color-text-subtle);
+}
+
+:root[data-scheme="light"] .border-white\/10 {
+  border-color: color-mix(in srgb, var(--color-border-emphasis) 65%, transparent);
+}
+
+:root[data-scheme="light"] .ring-white\/10 {
+  --tw-ring-color: color-mix(in srgb, var(--color-border-emphasis) 65%, transparent);
+}
+
+:root[data-scheme="light"] .bg-white\/5 {
+  background: color-mix(in srgb, var(--color-surface-50) 60%, transparent);
+}
+
+:root[data-scheme="light"] .bg-zinc-700 {
+  background: var(--color-border-emphasis);
+}
+
+:root[data-scheme="light"] .bg-zinc-700\/50 {
+  background: color-mix(in srgb, var(--color-border-emphasis) 55%, transparent);
+}
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }

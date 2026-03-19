@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Send, RefreshCw, Loader2 } from 'lucide-react';
+import { Send, RefreshCw, Loader2 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import Card from '../components/Card';
 import { getEmailConfig, updateEmailConfig, sendTestEmail, type EmailConfig } from '../lib/api';
@@ -74,7 +74,11 @@ export default function EmailPage() {
     if (!config) return '—';
     if (field.key === 'enabled') return config.enabled ? 'On' : 'Off';
     if (field.key === 'apiKey') return config.hasApiKey ? '••••••••' : 'Not set';
-    return (config as Record<string, unknown>)[field.key] as string || '—';
+    if (field.configKey in config) {
+      const value = config[field.configKey as keyof EmailConfig];
+      return typeof value === 'string' && value.length > 0 ? value : '—';
+    }
+    return '—';
   };
 
   return (

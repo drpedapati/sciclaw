@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Server, Play, Square, RotateCcw, Download, Trash2,
+  Play, Square, RotateCcw, Download, Trash2,
   FileText, Loader2, CheckCircle2, XCircle, RefreshCw, Trophy,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';

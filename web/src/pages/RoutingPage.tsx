@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  GitBranch, Plus, Trash2, RefreshCw, Loader2, CheckCircle2,
-  AlertTriangle, Radio,
+  GitBranch, Plus, Trash2, RefreshCw, Loader2, Radio,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import Card from '../components/Card';

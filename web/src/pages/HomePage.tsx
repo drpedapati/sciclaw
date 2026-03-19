@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, AlertTriangle, Server, Radio,
-  Shield, Settings as SettingsIcon, Cpu, Zap, ArrowRight,
+  Shield, Cpu, Zap, ArrowRight,
   Loader2,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';

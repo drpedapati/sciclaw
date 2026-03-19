@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Brain, RefreshCw, Play, Square, Download, FlaskConical,
+  RefreshCw, Play, Square, Download, FlaskConical,
   Loader2, CheckCircle2, XCircle, Pencil, Check,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
