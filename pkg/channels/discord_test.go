@@ -996,6 +996,156 @@ func TestProcessIncomingMessage_EditWithoutMention(t *testing.T) {
 	}
 }
 
+func TestShouldDropDuplicateInbound_SamePayload(t *testing.T) {
+	ch := &DiscordChannel{}
+	if got := ch.shouldDropDuplicateInbound("msg-1", "hello  please help", nil, true, false); got {
+		t.Fatal("first sighting should not be dropped")
+	}
+	if got := ch.shouldDropDuplicateInbound("msg-1", "hello  please help", nil, true, false); !got {
+		t.Fatal("second identical sighting should be dropped")
+	}
+}
+
+func TestProcessIncomingMessage_DedupesCreateThenIdenticalEdit(t *testing.T) {
+	mb := bus.NewMessageBus()
+	ch := &DiscordChannel{
+		BaseChannel:   NewBaseChannel("discord", config.DiscordConfig{}, mb, nil),
+		ctx:           context.Background(),
+		typing:        make(map[string]*typingState),
+		typingEvery:   10 * time.Millisecond,
+		botUserID:     "bot-123",
+		recentInbound: make(map[string]inboundMessageFingerprint),
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	s := newTestSession("bot-123")
+	msg := &discordgo.Message{
+		ID:        "msg-dup",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "hello <@bot-123> please help",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+		Mentions:  []*discordgo.User{{ID: "bot-123"}},
+	}
+
+	ch.processIncomingMessage(s, msg, false)
+	ch.processIncomingMessage(s, msg, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, ok := mb.ConsumeInbound(ctx); !ok {
+		t.Fatal("expected initial message on bus")
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel2()
+	if _, ok := mb.ConsumeInbound(ctx2); ok {
+		t.Fatal("identical edit should have been deduped")
+	}
+}
+
+func TestProcessIncomingMessage_EditAddingMentionStillProcesses(t *testing.T) {
+	mb := bus.NewMessageBus()
+	ch := &DiscordChannel{
+		BaseChannel:   NewBaseChannel("discord", config.DiscordConfig{}, mb, nil),
+		ctx:           context.Background(),
+		typing:        make(map[string]*typingState),
+		typingEvery:   10 * time.Millisecond,
+		botUserID:     "bot-123",
+		recentInbound: make(map[string]inboundMessageFingerprint),
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	s := newTestSession("bot-123")
+	original := &discordgo.Message{
+		ID:        "msg-edit-mention",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "please help",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+	}
+	edited := &discordgo.Message{
+		ID:        "msg-edit-mention",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "please help <@bot-123>",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+		Mentions:  []*discordgo.User{{ID: "bot-123"}},
+	}
+
+	ch.processIncomingMessage(s, original, false)
+	ch.processIncomingMessage(s, edited, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, ok := mb.ConsumeInbound(ctx); !ok {
+		t.Fatal("expected original message on bus")
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel2()
+	got, ok := mb.ConsumeInbound(ctx2)
+	if !ok {
+		t.Fatal("expected mention-adding edit on bus")
+	}
+	if got.Metadata["is_edit"] != "true" {
+		t.Fatalf("expected is_edit=true, got %q", got.Metadata["is_edit"])
+	}
+}
+
+func TestProcessIncomingMessage_EditWithChangedContentStillProcesses(t *testing.T) {
+	mb := bus.NewMessageBus()
+	ch := &DiscordChannel{
+		BaseChannel:   NewBaseChannel("discord", config.DiscordConfig{}, mb, nil),
+		ctx:           context.Background(),
+		typing:        make(map[string]*typingState),
+		typingEvery:   10 * time.Millisecond,
+		botUserID:     "bot-123",
+		recentInbound: make(map[string]inboundMessageFingerprint),
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	s := newTestSession("bot-123")
+	original := &discordgo.Message{
+		ID:        "msg-edit-change",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "hello <@bot-123> please help",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+		Mentions:  []*discordgo.User{{ID: "bot-123"}},
+	}
+	edited := &discordgo.Message{
+		ID:        "msg-edit-change",
+		ChannelID: "chan-1",
+		GuildID:   "guild-1",
+		Content:   "hello <@bot-123> please help now",
+		Author:    &discordgo.User{ID: "user-1", Username: "tester"},
+		Mentions:  []*discordgo.User{{ID: "bot-123"}},
+	}
+
+	ch.processIncomingMessage(s, original, false)
+	ch.processIncomingMessage(s, edited, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, ok := mb.ConsumeInbound(ctx); !ok {
+		t.Fatal("expected original message on bus")
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel2()
+	got, ok := mb.ConsumeInbound(ctx2)
+	if !ok {
+		t.Fatal("expected changed edit on bus")
+	}
+	if !strings.Contains(got.Content, "please help now") {
+		t.Fatalf("expected updated content in edited message, got %q", got.Content)
+	}
+}
+
 func TestProcessIncomingMessage_EditNilAuthor(t *testing.T) {
 	mb := bus.NewMessageBus()
 	ch := &DiscordChannel{
