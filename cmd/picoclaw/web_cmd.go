@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	iofs "io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	webui "github.com/sipeed/picoclaw/web"
 )
 
 // webCmd starts the web UI server.
@@ -56,18 +58,28 @@ type webServer struct {
 	exec     tui.Executor
 	mux      *http.ServeMux
 	distDir  string
+	staticFS iofs.FS
+	static   http.Handler
 
 	// Cached snapshot
 	snapMu   sync.RWMutex
-	snapshot  *tui.VMSnapshot
+	snapshot *tui.VMSnapshot
 	snapTime time.Time
 }
 
 func newWebServer(exec tui.Executor, distDir string) *webServer {
+	staticFS, err := resolveStaticFS(distDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: web assets unavailable: %v\n", err)
+	}
 	s := &webServer{
-		exec:    exec,
-		mux:     http.NewServeMux(),
-		distDir: distDir,
+		exec:     exec,
+		mux:      http.NewServeMux(),
+		distDir:  distDir,
+		staticFS: staticFS,
+	}
+	if staticFS != nil {
+		s.static = http.FileServer(http.FS(staticFS))
 	}
 	s.registerRoutes()
 	return s
@@ -101,9 +113,16 @@ func (s *webServer) registerRoutes() {
 	s.mux.HandleFunc("/api/home/onboard", s.handleOnboard)
 
 	// Static files
-	if s.distDir != "" {
+	if s.static != nil {
 		s.mux.HandleFunc("/", s.handleStatic)
 	}
+}
+
+func resolveStaticFS(distDir string) (iofs.FS, error) {
+	if distDir != "" {
+		return os.DirFS(distDir), nil
+	}
+	return webui.DistFS()
 }
 
 // ── Helpers ──
@@ -188,7 +207,9 @@ func (s *webServer) handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "method not allowed", 405)
 		return
 	}
-	var body struct{ Model string `json:"model"` }
+	var body struct {
+		Model string `json:"model"`
+	}
 	readBody(r, &body)
 
 	args := []string{"agent", "-m", "'Hello, are you there?'", "-s", "web:smoke"}
@@ -207,7 +228,9 @@ func (s *webServer) handleChat(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "method not allowed", 405)
 		return
 	}
-	var body struct{ Message string `json:"message"` }
+	var body struct {
+		Message string `json:"message"`
+	}
 	if err := readBody(r, &body); err != nil || body.Message == "" {
 		jsonErr(w, "message required", 400)
 		return
@@ -364,7 +387,9 @@ func (s *webServer) handleEmailTest(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "method not allowed", 405)
 		return
 	}
-	var body struct{ To string `json:"to"` }
+	var body struct {
+		To string `json:"to"`
+	}
 	readBody(r, &body)
 	out, err := s.runCLI(30*time.Second, "email", "test", shellQuote(body.To))
 	jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
@@ -403,7 +428,9 @@ func (s *webServer) handleAuth(w http.ResponseWriter, r *http.Request) {
 		s.invalidateSnapshot()
 		jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
 	case "key":
-		var body struct{ Key string `json:"key"` }
+		var body struct {
+			Key string `json:"key"`
+		}
 		readBody(r, &body)
 		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
 			p := tui.EnsureMapNested(cfg, "providers", strings.ToLower(provider))
@@ -451,15 +478,15 @@ func (s *webServer) handleDoctor(w http.ResponseWriter, r *http.Request) {
 	}
 	// Fallback: return raw text
 	jsonResp(w, map[string]interface{}{
-		"version": s.exec.AgentVersion(),
-		"os":      "",
-		"arch":    "",
-		"checks":  []interface{}{},
-		"raw":     out,
-		"passed":  0,
+		"version":  s.exec.AgentVersion(),
+		"os":       "",
+		"arch":     "",
+		"checks":   []interface{}{},
+		"raw":      out,
+		"passed":   0,
 		"warnings": 0,
-		"errors":  0,
-		"skipped": 0,
+		"errors":   0,
+		"skipped":  0,
 	})
 }
 
@@ -497,7 +524,9 @@ func (s *webServer) handleModels(w http.ResponseWriter, r *http.Request) {
 			"authMethod": "",
 		})
 	case http.MethodPut:
-		var body struct{ Model string `json:"model"` }
+		var body struct {
+			Model string `json:"model"`
+		}
 		readBody(r, &body)
 		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
 			defaults := tui.EnsureMapNested(cfg, "agents", "defaults")
@@ -535,7 +564,9 @@ func (s *webServer) handleModelsAction(w http.ResponseWriter, r *http.Request) {
 			jsonErr(w, "method not allowed", 405)
 			return
 		}
-		var body struct{ Effort string `json:"effort"` }
+		var body struct {
+			Effort string `json:"effort"`
+		}
 		readBody(r, &body)
 		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
 			defaults := tui.EnsureMapNested(cfg, "agents", "defaults")
@@ -601,7 +632,9 @@ func (s *webServer) handlePhiAction(w http.ResponseWriter, r *http.Request) {
 		out, err := s.runCLI(120*time.Second, "phi", "eval")
 		jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
 	case "set-model":
-		var body struct{ Model string `json:"model"` }
+		var body struct {
+			Model string `json:"model"`
+		}
 		readBody(r, &body)
 		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
 			p := tui.EnsureMapNested(cfg, "phi")
@@ -635,7 +668,9 @@ func (s *webServer) handleSkills(w http.ResponseWriter, r *http.Request) {
 			jsonResp(w, []interface{}{})
 		}
 	case http.MethodPost:
-		var body struct{ Path string `json:"path"` }
+		var body struct {
+			Path string `json:"path"`
+		}
 		readBody(r, &body)
 		out, err := s.runCLI(30*time.Second, "skills", "install", shellQuote(body.Path))
 		jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
@@ -661,7 +696,9 @@ func (s *webServer) handleCron(w http.ResponseWriter, r *http.Request) {
 			jsonResp(w, []interface{}{})
 		}
 	case http.MethodPost:
-		var body struct{ Description string `json:"description"` }
+		var body struct {
+			Description string `json:"description"`
+		}
 		readBody(r, &body)
 		out, err := s.runCLI(30*time.Second, "cron", "add", shellQuote(body.Description))
 		jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
@@ -707,10 +744,10 @@ func (s *webServer) handleRouting(w http.ResponseWriter, r *http.Request) {
 			jsonResp(w, status)
 		} else {
 			jsonResp(w, map[string]interface{}{
-				"enabled":         false,
+				"enabled":          false,
 				"unmappedBehavior": "block",
-				"totalMappings":   0,
-				"invalidMappings": 0,
+				"totalMappings":    0,
+				"invalidMappings":  0,
 			})
 		}
 	case "mappings":
@@ -861,20 +898,27 @@ func (s *webServer) handleSettings(w http.ResponseWriter, r *http.Request) {
 // ── Static Files ──
 
 func (s *webServer) handleStatic(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
-	if path == "/" {
-		path = "/index.html"
-	}
-	filePath := filepath.Join(s.distDir, path)
-
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		// SPA fallback - serve index.html for client-side routing
-		http.ServeFile(w, r, filepath.Join(s.distDir, "index.html"))
+	if s.static == nil || s.staticFS == nil {
+		http.NotFound(w, r)
 		return
 	}
 
-	http.ServeFile(w, r, filePath)
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	if path == "" {
+		path = "index.html"
+	}
+
+	if _, err := iofs.Stat(s.staticFS, path); err != nil {
+		data, readErr := iofs.ReadFile(s.staticFS, "index.html")
+		if readErr != nil {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(data))
+		return
+	}
+
+	s.static.ServeHTTP(w, r)
 }
 
 func (s *webServer) invalidateSnapshot() {
