@@ -15,11 +15,25 @@ type serviceLogsOptions struct {
 	Lines int
 }
 
+type serviceWebOptions struct {
+	Listen string
+}
+
 func serviceCmd() {
 	args := os.Args[2:]
 	if len(args) == 0 {
 		serviceHelp()
 		return
+	}
+
+	target := "gateway"
+	if maybeTarget := strings.ToLower(args[0]); maybeTarget == "gateway" || maybeTarget == "web" {
+		target = maybeTarget
+		args = args[1:]
+		if len(args) == 0 {
+			serviceHelp()
+			return
+		}
 	}
 
 	sub := strings.ToLower(args[0])
@@ -34,7 +48,40 @@ func serviceCmd() {
 		os.Exit(1)
 	}
 
-	mgr, err := svcmgr.NewManager(exePath)
+	var spec svcmgr.Spec
+	switch target {
+	case "gateway", "":
+		spec = svcmgr.GatewaySpec()
+	case "web":
+		listen := svcmgr.DefaultWebListen
+		if sub == "install" || sub == "refresh" {
+			webOpts, showHelp, err := parseServiceWebOptions(args[1:])
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				serviceHelp()
+				os.Exit(2)
+			}
+			if showHelp {
+				serviceHelp()
+				return
+			}
+			listen = webOpts.Listen
+		} else if len(args) > 1 {
+			for _, arg := range args[1:] {
+				if arg == "--help" || arg == "-h" || arg == "help" {
+					serviceHelp()
+					return
+				}
+			}
+		}
+		spec = svcmgr.WebSpec(listen)
+	default:
+		fmt.Printf("Unknown service target: %s\n", target)
+		serviceHelp()
+		os.Exit(2)
+	}
+
+	mgr, err := svcmgr.NewManagerFor(exePath, spec)
 	if err != nil {
 		fmt.Printf("Error initializing service manager: %v\n", err)
 		os.Exit(1)
@@ -48,14 +95,14 @@ func serviceCmd() {
 			os.Exit(1)
 		}
 		fmt.Println("✓ Service installed")
-		fmt.Printf("  Start with: %s service start\n", invokedCLIName())
+		fmt.Printf("  Start with: %s service %s start\n", invokedCLIName(), spec.Kind)
 	case "refresh":
 		if err := runServiceRefresh(mgr); err != nil {
 			fmt.Printf("Service refresh failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("✓ Service refreshed")
-		fmt.Printf("  Reinstalled and restarted (run: %s service status)\n", invokedCLIName())
+		fmt.Printf("  Reinstalled and restarted (run: %s service %s status)\n", invokedCLIName(), spec.Kind)
 	case "uninstall", "remove":
 		if err := mgr.Uninstall(); err != nil {
 			fmt.Printf("Service uninstall failed: %v\n", err)
@@ -86,7 +133,7 @@ func serviceCmd() {
 			fmt.Printf("Service status check failed: %v\n", err)
 			os.Exit(1)
 		}
-		printServiceStatus(st)
+		printServiceStatus(spec.DisplayName, st)
 	case "logs":
 		opts, showHelp, err := parseServiceLogsOptions(args[1:])
 		if err != nil {
@@ -185,23 +232,36 @@ func resolveServiceExecutablePath(
 func serviceHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nService commands:")
-	fmt.Println("  install             Install background gateway service")
-	fmt.Println("  refresh             Reinstall + restart service after upgrades")
-	fmt.Println("  uninstall           Remove background gateway service")
-	fmt.Println("  start               Start background gateway service")
-	fmt.Println("  stop                Stop background gateway service")
-	fmt.Println("  restart             Restart background gateway service")
-	fmt.Println("  status              Show service install/runtime status")
-	fmt.Println("  logs                Show recent service logs")
+	fmt.Println("  [gateway] install   Install background gateway service")
+	fmt.Println("  [gateway] refresh   Reinstall + restart gateway service after upgrades")
+	fmt.Println("  [gateway] uninstall Remove background gateway service")
+	fmt.Println("  [gateway] start     Start background gateway service")
+	fmt.Println("  [gateway] stop      Stop background gateway service")
+	fmt.Println("  [gateway] restart   Restart background gateway service")
+	fmt.Println("  [gateway] status    Show gateway service install/runtime status")
+	fmt.Println("  [gateway] logs      Show recent gateway service logs")
+	fmt.Println("  web install         Install persistent web UI service")
+	fmt.Println("  web refresh         Reinstall + restart web UI service after upgrades")
+	fmt.Println("  web uninstall       Remove web UI service")
+	fmt.Println("  web start           Start web UI service")
+	fmt.Println("  web stop            Stop web UI service")
+	fmt.Println("  web restart         Restart web UI service")
+	fmt.Println("  web status          Show web UI service install/runtime status")
+	fmt.Println("  web logs            Show recent web UI service logs")
 	fmt.Println()
 	fmt.Println("Logs options:")
 	fmt.Println("  -n, --lines <N>     Number of log lines to show (default: 100)")
+	fmt.Println()
+	fmt.Println("Web options:")
+	fmt.Printf("  --listen <ADDR>     Listen address for web service install/refresh (default: %s)\n", svcmgr.DefaultWebListen)
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Printf("  %s service install\n", commandName)
 	fmt.Printf("  %s service refresh\n", commandName)
 	fmt.Printf("  %s service start\n", commandName)
 	fmt.Printf("  %s service status\n", commandName)
+	fmt.Printf("  %s service web install --listen 127.0.0.1:4142\n", commandName)
+	fmt.Printf("  %s service web status\n", commandName)
 	fmt.Printf("  %s service logs --lines 200\n", commandName)
 	fmt.Printf("  (Compatibility alias also works: %s)\n", cliName)
 }
@@ -229,7 +289,29 @@ func parseServiceLogsOptions(args []string) (serviceLogsOptions, bool, error) {
 	return opts, false, nil
 }
 
-func printServiceStatus(st svcmgr.Status) {
+func parseServiceWebOptions(args []string) (serviceWebOptions, bool, error) {
+	opts := serviceWebOptions{Listen: svcmgr.DefaultWebListen}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--listen":
+			if i+1 >= len(args) {
+				return opts, false, fmt.Errorf("%s requires a value", args[i])
+			}
+			opts.Listen = strings.TrimSpace(args[i+1])
+			if opts.Listen == "" {
+				return opts, false, fmt.Errorf("invalid value for %s", args[i])
+			}
+			i++
+		case "help", "--help", "-h":
+			return opts, true, nil
+		default:
+			return opts, false, fmt.Errorf("unknown option: %s", args[i])
+		}
+	}
+	return opts, false, nil
+}
+
+func printServiceStatus(name string, st svcmgr.Status) {
 	yn := func(v bool) string {
 		if v {
 			return "yes"
@@ -237,7 +319,7 @@ func printServiceStatus(st svcmgr.Status) {
 		return "no"
 	}
 
-	fmt.Println("\nGateway service status:")
+	fmt.Printf("\n%s service status:\n", name)
 	fmt.Printf("  Backend:   %s\n", st.Backend)
 	fmt.Printf("  Installed: %s\n", yn(st.Installed))
 	fmt.Printf("  Running:   %s\n", yn(st.Running))

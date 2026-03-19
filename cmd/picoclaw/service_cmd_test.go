@@ -51,6 +51,39 @@ func TestParseServiceLogsOptionsInvalid(t *testing.T) {
 	}
 }
 
+func TestParseServiceWebOptionsDefault(t *testing.T) {
+	opts, showHelp, err := parseServiceWebOptions(nil)
+	if err != nil {
+		t.Fatalf("parseServiceWebOptions returned error: %v", err)
+	}
+	if showHelp {
+		t.Fatalf("expected showHelp=false")
+	}
+	if opts.Listen != svcmgr.DefaultWebListen {
+		t.Fatalf("expected default listen=%q, got %q", svcmgr.DefaultWebListen, opts.Listen)
+	}
+}
+
+func TestParseServiceWebOptionsExplicitListen(t *testing.T) {
+	opts, showHelp, err := parseServiceWebOptions([]string{"--listen", "10.1.2.3:4142"})
+	if err != nil {
+		t.Fatalf("parseServiceWebOptions returned error: %v", err)
+	}
+	if showHelp {
+		t.Fatalf("expected showHelp=false")
+	}
+	if opts.Listen != "10.1.2.3:4142" {
+		t.Fatalf("expected explicit listen, got %q", opts.Listen)
+	}
+}
+
+func TestParseServiceWebOptionsInvalid(t *testing.T) {
+	_, _, err := parseServiceWebOptions([]string{"--listen"})
+	if err == nil {
+		t.Fatalf("expected error for missing listen value")
+	}
+}
+
 func TestResolveServiceExecutablePath_PrefersExplicitArgv0Path(t *testing.T) {
 	got, err := resolveServiceExecutablePath(
 		"/home/linuxbrew/.linuxbrew/Cellar/sciclaw/0.1.39/bin/sciclaw",

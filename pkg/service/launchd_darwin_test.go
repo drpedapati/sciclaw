@@ -172,3 +172,32 @@ func TestLaunchdInstallRetriesBootstrapOnTransientFailure(t *testing.T) {
 	}
 }
 
+func TestLaunchdInstallWritesWebProgramArguments(t *testing.T) {
+	tmp := t.TempDir()
+	plistPath := filepath.Join(tmp, "LaunchAgents", "io.sciclaw.web.plist")
+	logDir := filepath.Join(tmp, "logs")
+
+	runner := &launchdInstallTestRunner{}
+	mgr := newLaunchdManagerForSpec("/tmp/test-binary", runner, WebSpec("10.0.0.5:4142")).(*launchdManager)
+	mgr.domainTarget = "gui/501"
+	mgr.serviceTarget = "gui/501/io.sciclaw.web"
+	mgr.plistPath = plistPath
+	mgr.stdoutPath = filepath.Join(logDir, "web.log")
+	mgr.stderrPath = filepath.Join(logDir, "web.err.log")
+
+	if err := mgr.Install(); err != nil {
+		t.Fatalf("Install() = %v", err)
+	}
+
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("plist not written: %v", err)
+	}
+	plist := string(data)
+	if !strings.Contains(plist, "<string>io.sciclaw.web</string>") {
+		t.Fatalf("expected web label in plist:\n%s", plist)
+	}
+	if !strings.Contains(plist, "<string>web</string>") || !strings.Contains(plist, "<string>--listen</string>") || !strings.Contains(plist, "<string>10.0.0.5:4142</string>") {
+		t.Fatalf("expected web program args in plist:\n%s", plist)
+	}
+}

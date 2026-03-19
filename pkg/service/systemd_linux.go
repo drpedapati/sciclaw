@@ -14,17 +14,23 @@ import (
 type systemdUserManager struct {
 	runner    commandRunner
 	exePath   string
+	spec      Spec
 	unitName  string
 	unitPath  string
 	journalID string
 }
 
 func newSystemdUserManager(exePath string, runner commandRunner) Manager {
+	return newSystemdUserManagerForSpec(exePath, runner, GatewaySpec())
+}
+
+func newSystemdUserManagerForSpec(exePath string, runner commandRunner, spec Spec) Manager {
 	home, _ := os.UserHomeDir()
-	unitName := "sciclaw-gateway.service"
+	unitName := spec.UnitName
 	return &systemdUserManager{
 		runner:    runner,
 		exePath:   exePath,
+		spec:      spec,
 		unitName:  unitName,
 		unitPath:  filepath.Join(home, ".config", "systemd", "user", unitName),
 		journalID: unitName,
@@ -38,7 +44,7 @@ func (m *systemdUserManager) Install() error {
 		return err
 	}
 	pathEnv := buildSystemdPath(os.Getenv("PATH"), m.detectBrewPrefix())
-	unit := renderSystemdUnit(m.exePath, pathEnv)
+	unit := renderSystemdUnit(m.spec.Description, m.exePath, m.spec.Args, pathEnv)
 	if err := writeFileIfChanged(m.unitPath, []byte(unit), 0644); err != nil {
 		return err
 	}

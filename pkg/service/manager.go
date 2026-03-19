@@ -26,6 +26,49 @@ type Status struct {
 	Detail    string
 }
 
+const DefaultWebListen = "127.0.0.1:4142"
+
+type Spec struct {
+	Kind        string
+	DisplayName string
+	Description string
+	Args        []string
+	UnitName    string
+	Label       string
+	StdoutFile  string
+	StderrFile  string
+}
+
+func GatewaySpec() Spec {
+	return Spec{
+		Kind:        "gateway",
+		DisplayName: "Gateway",
+		Description: "sciClaw Gateway",
+		Args:        []string{"gateway"},
+		UnitName:    "sciclaw-gateway.service",
+		Label:       "io.sciclaw.gateway",
+		StdoutFile:  "gateway.log",
+		StderrFile:  "gateway.err.log",
+	}
+}
+
+func WebSpec(listen string) Spec {
+	listen = strings.TrimSpace(listen)
+	if listen == "" {
+		listen = DefaultWebListen
+	}
+	return Spec{
+		Kind:        "web",
+		DisplayName: "Web",
+		Description: "sciClaw Web UI",
+		Args:        []string{"web", "--listen", listen},
+		UnitName:    "sciclaw-web.service",
+		Label:       "io.sciclaw.web",
+		StdoutFile:  "web.log",
+		StderrFile:  "web.err.log",
+	}
+}
+
 // Manager controls the background gateway service for the current platform.
 type Manager interface {
 	Backend() string
@@ -49,6 +92,10 @@ func (osCommandRunner) Run(ctx context.Context, name string, args ...string) ([]
 }
 
 func NewManager(exePath string) (Manager, error) {
+	return NewManagerFor(exePath, GatewaySpec())
+}
+
+func NewManagerFor(exePath string, spec Spec) (Manager, error) {
 	exePath = strings.TrimSpace(exePath)
 	if exePath == "" {
 		return nil, errors.New("executable path is empty")
@@ -57,7 +104,7 @@ func NewManager(exePath string) (Manager, error) {
 	runner := osCommandRunner{}
 	switch runtime.GOOS {
 	case "darwin":
-		return newLaunchdManager(exePath, runner), nil
+		return newLaunchdManagerForSpec(exePath, runner, spec), nil
 	case "linux":
 		if detectWSL() && !isSystemdUserAvailable(runner) {
 			return newUnsupportedManager("WSL detected but systemd user manager is not active. Enable systemd in /etc/wsl.conf or run `sciclaw gateway` in a terminal."), nil
@@ -65,7 +112,7 @@ func NewManager(exePath string) (Manager, error) {
 		if !isSystemdUserAvailable(runner) {
 			return newUnsupportedManager("systemd user manager is not available. Run `sciclaw gateway` in a terminal."), nil
 		}
-		return newSystemdUserManager(exePath, runner), nil
+		return newSystemdUserManagerForSpec(exePath, runner, spec), nil
 	default:
 		return newUnsupportedManager(fmt.Sprintf("%s is not currently supported for service management", runtime.GOOS)), nil
 	}

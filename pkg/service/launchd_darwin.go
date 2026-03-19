@@ -14,6 +14,7 @@ import (
 type launchdManager struct {
 	runner        commandRunner
 	exePath       string
+	spec          Spec
 	label         string
 	domainTarget  string
 	serviceTarget string
@@ -23,19 +24,24 @@ type launchdManager struct {
 }
 
 func newLaunchdManager(exePath string, runner commandRunner) Manager {
+	return newLaunchdManagerForSpec(exePath, runner, GatewaySpec())
+}
+
+func newLaunchdManagerForSpec(exePath string, runner commandRunner, spec Spec) Manager {
 	home, _ := os.UserHomeDir()
-	label := "io.sciclaw.gateway"
+	label := spec.Label
 	domain := fmt.Sprintf("gui/%d", os.Getuid())
 	serviceTarget := fmt.Sprintf("%s/%s", domain, label)
 	return &launchdManager{
 		runner:        runner,
 		exePath:       exePath,
+		spec:          spec,
 		label:         label,
 		domainTarget:  domain,
 		serviceTarget: serviceTarget,
 		plistPath:     filepath.Join(home, "Library", "LaunchAgents", label+".plist"),
-		stdoutPath:    filepath.Join(home, ".picoclaw", "gateway.log"),
-		stderrPath:    filepath.Join(home, ".picoclaw", "gateway.err.log"),
+		stdoutPath:    filepath.Join(home, ".picoclaw", spec.StdoutFile),
+		stderrPath:    filepath.Join(home, ".picoclaw", spec.StderrFile),
 	}
 }
 
@@ -55,7 +61,7 @@ func (m *launchdManager) Install() error {
 	}
 
 	pathEnv := buildSystemdPath(os.Getenv("PATH"), m.detectBrewPrefix())
-	plist := renderLaunchdPlist(m.label, m.exePath, m.stdoutPath, m.stderrPath, pathEnv)
+	plist := renderLaunchdPlist(m.label, m.exePath, m.spec.Args, m.stdoutPath, m.stderrPath, pathEnv)
 	if err := os.WriteFile(m.plistPath, []byte(plist), 0644); err != nil {
 		return err
 	}

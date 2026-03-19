@@ -32,7 +32,7 @@ func TestDetectWSLWith(t *testing.T) {
 }
 
 func TestRenderSystemdUnit(t *testing.T) {
-	unit := renderSystemdUnit("/usr/local/bin/sciclaw", "/usr/local/bin:/usr/bin:/bin")
+	unit := renderSystemdUnit("sciClaw Gateway", "/usr/local/bin/sciclaw", []string{"gateway"}, "/usr/local/bin:/usr/bin:/bin")
 	mustContain(t, unit, "ExecStart=/usr/local/bin/sciclaw gateway")
 	mustContain(t, unit, "Restart=always")
 	mustContain(t, unit, "Environment=PATH=/usr/local/bin:/usr/bin:/bin")
@@ -92,7 +92,7 @@ func TestBuildSystemdPath_NoBrewPrefix(t *testing.T) {
 }
 
 func TestRenderLaunchdPlist(t *testing.T) {
-	plist := renderLaunchdPlist("io.sciclaw.gateway", "/opt/homebrew/bin/sciclaw", "/tmp/out.log", "/tmp/err.log", "/opt/homebrew/bin:/usr/bin:/bin")
+	plist := renderLaunchdPlist("io.sciclaw.gateway", "/opt/homebrew/bin/sciclaw", []string{"gateway"}, "/tmp/out.log", "/tmp/err.log", "/opt/homebrew/bin:/usr/bin:/bin")
 	mustContain(t, plist, "<string>io.sciclaw.gateway</string>")
 	mustContain(t, plist, "<string>/opt/homebrew/bin/sciclaw</string>")
 	mustContain(t, plist, "<string>gateway</string>")
@@ -100,6 +100,22 @@ func TestRenderLaunchdPlist(t *testing.T) {
 	mustContain(t, plist, "<key>EnvironmentVariables</key>")
 	mustContain(t, plist, "<key>PATH</key>")
 	mustContain(t, plist, "<string>/opt/homebrew/bin:/usr/bin:/bin</string>")
+}
+
+func TestWebSpecDefaults(t *testing.T) {
+	spec := WebSpec("")
+	if spec.Kind != "web" {
+		t.Fatalf("expected web kind, got %q", spec.Kind)
+	}
+	if len(spec.Args) != 3 || spec.Args[0] != "web" || spec.Args[1] != "--listen" || spec.Args[2] != DefaultWebListen {
+		t.Fatalf("unexpected web args: %v", spec.Args)
+	}
+	if spec.UnitName != "sciclaw-web.service" {
+		t.Fatalf("unexpected unit name: %q", spec.UnitName)
+	}
+	if spec.Label != "io.sciclaw.web" {
+		t.Fatalf("unexpected label: %q", spec.Label)
+	}
 }
 
 func mustContain(t *testing.T, s, needle string) {
