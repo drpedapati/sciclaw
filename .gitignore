@@ -76,6 +76,14 @@ auth.json
 # Local agent scratch
 .agent/
 .agents/
+.cache/
+.claude/
+.factory/
+.windsurf/
+tmp/
+skills-lock.json
+docs/v*-release-tweet.html
+docs/v*-thread.html
 
 # Manuscript files (private)
 manuscript/
