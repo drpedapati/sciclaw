@@ -95,6 +95,9 @@ export interface EmailConfig {
   hasApiKey: boolean;
   baseUrl: string;
   allowFrom: string[];
+  receiveEnabled: boolean;
+  receiveMode: string;
+  pollIntervalSeconds: number;
 }
 export const getEmailConfig = () => request<EmailConfig>('/email');
 export const updateEmailConfig = (data: Partial<EmailConfig & { apiKey: string }>) =>

@@ -52,6 +52,8 @@ type webTestExec struct {
 	command string
 	output  string
 	err     error
+	configRaw   string
+	writtenRaw  string
 	installed bool
 	running   bool
 }
@@ -62,8 +64,18 @@ func (e *webTestExec) ExecShell(_ time.Duration, shellCmd string) (string, error
 	return e.output, e.err
 }
 func (e *webTestExec) ExecCommand(_ time.Duration, _ ...string) (string, error) { return "", nil }
-func (e *webTestExec) ReadFile(_ string) (string, error)                        { return "", os.ErrNotExist }
-func (e *webTestExec) WriteFile(_ string, _ []byte, _ os.FileMode) error        { return nil }
+func (e *webTestExec) ReadFile(path string) (string, error) {
+	if path == e.ConfigPath() && e.configRaw != "" {
+		return e.configRaw, nil
+	}
+	return "", os.ErrNotExist
+}
+func (e *webTestExec) WriteFile(path string, data []byte, _ os.FileMode) error {
+	if path == e.ConfigPath() {
+		e.writtenRaw = string(data)
+	}
+	return nil
+}
 func (e *webTestExec) ConfigPath() string                                       { return "/tmp/config.json" }
 func (e *webTestExec) AuthPath() string                                         { return "/tmp/auth.json" }
 func (e *webTestExec) HomePath() string                                         { return "/Users/tester" }
@@ -210,6 +222,101 @@ func TestHandleModelsCatalogUsesDiscoverJSON(t *testing.T) {
 	}
 	if body.Models[0].ID != "claude-sonnet-4.6" || body.Models[0].Provider != "anthropic" {
 		t.Fatalf("unexpected first model: %#v", body.Models[0])
+	}
+}
+
+func TestHandleEmailPersistsManagedSettings(t *testing.T) {
+	execStub := &webTestExec{
+		configRaw: `{"channels":{"email":{"enabled":false,"provider":"","api_key":"","address":"","display_name":"","base_url":"","allow_from":[],"receive_enabled":true,"receive_mode":"","poll_interval_seconds":0}}}`,
+	}
+	srv := newWebServer(execStub, "")
+	req := httptest.NewRequest(http.MethodPut, "/api/email", strings.NewReader(`{
+	  "enabled": true,
+	  "address": "support@example.com",
+	  "displayName": "",
+	  "apiKey": "secret",
+	  "baseUrl": "",
+	  "allowFrom": ["alice@example.com", "@example.org"]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.handleEmail(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var reloaded struct {
+		Channels struct {
+			Email struct {
+				Enabled             bool     `json:"enabled"`
+				Provider            string   `json:"provider"`
+				APIKey              string   `json:"api_key"`
+				Address             string   `json:"address"`
+				DisplayName         string   `json:"display_name"`
+				BaseURL             string   `json:"base_url"`
+				AllowFrom           []string `json:"allow_from"`
+				ReceiveEnabled      bool     `json:"receive_enabled"`
+				ReceiveMode         string   `json:"receive_mode"`
+				PollIntervalSeconds int      `json:"poll_interval_seconds"`
+			} `json:"email"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal([]byte(execStub.writtenRaw), &reloaded); err != nil {
+		t.Fatalf("decode written config: %v", err)
+	}
+	if !reloaded.Channels.Email.Enabled {
+		t.Fatalf("expected enabled email config")
+	}
+	if reloaded.Channels.Email.Provider != "resend" {
+		t.Fatalf("provider=%q", reloaded.Channels.Email.Provider)
+	}
+	if reloaded.Channels.Email.DisplayName != "sciClaw" {
+		t.Fatalf("displayName=%q", reloaded.Channels.Email.DisplayName)
+	}
+	if reloaded.Channels.Email.BaseURL != "https://api.resend.com" {
+		t.Fatalf("baseURL=%q", reloaded.Channels.Email.BaseURL)
+	}
+	if reloaded.Channels.Email.APIKey != "secret" {
+		t.Fatalf("apiKey=%q", reloaded.Channels.Email.APIKey)
+	}
+	if got := reloaded.Channels.Email.AllowFrom; len(got) != 2 || got[0] != "alice@example.com" || got[1] != "@example.org" {
+		t.Fatalf("allowFrom=%v", got)
+	}
+	if reloaded.Channels.Email.ReceiveEnabled {
+		t.Fatalf("expected receive to remain disabled")
+	}
+	if reloaded.Channels.Email.ReceiveMode != "poll" {
+		t.Fatalf("receiveMode=%q", reloaded.Channels.Email.ReceiveMode)
+	}
+	if reloaded.Channels.Email.PollIntervalSeconds != 30 {
+		t.Fatalf("pollIntervalSeconds=%d", reloaded.Channels.Email.PollIntervalSeconds)
+	}
+
+	execStub.configRaw = execStub.writtenRaw
+	req = httptest.NewRequest(http.MethodGet, "/api/email", nil)
+	rec = httptest.NewRecorder()
+	srv.handleEmail(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on get, got %d", rec.Code)
+	}
+	var body struct {
+		Enabled             bool     `json:"enabled"`
+		Provider            string   `json:"provider"`
+		Address             string   `json:"address"`
+		DisplayName         string   `json:"displayName"`
+		HasAPIKey           bool     `json:"hasApiKey"`
+		BaseURL             string   `json:"baseUrl"`
+		AllowFrom           []string `json:"allowFrom"`
+		ReceiveEnabled      bool     `json:"receiveEnabled"`
+		ReceiveMode         string   `json:"receiveMode"`
+		PollIntervalSeconds int      `json:"pollIntervalSeconds"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Enabled || body.Provider != "resend" || !body.HasAPIKey || body.ReceiveEnabled || body.ReceiveMode != "poll" || body.PollIntervalSeconds != 30 {
+		t.Fatalf("unexpected get response: %#v", body)
 	}
 }
 

@@ -162,6 +162,66 @@ func readBody(r *http.Request, v interface{}) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
+func toString(v interface{}) string {
+	switch value := v.(type) {
+	case string:
+		return value
+	default:
+		return fmt.Sprintf("%v", value)
+	}
+}
+
+func getIntValue(m map[string]interface{}, key string) int {
+	switch value := m[key].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
+func coerceStringSlice(v interface{}) []string {
+	switch value := v.(type) {
+	case nil:
+		return []string{}
+	case []string:
+		out := make([]string, 0, len(value))
+		for _, item := range value {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				out = append(out, item)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(value))
+		for _, item := range value {
+			trimmed := strings.TrimSpace(toString(item))
+			if trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	case string:
+		raw := strings.NewReplacer("\r\n", "\n", ",", "\n").Replace(value)
+		lines := strings.Split(raw, "\n")
+		out := make([]string, 0, len(lines))
+		for _, item := range lines {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				out = append(out, item)
+			}
+		}
+		return out
+	default:
+		return []string{}
+	}
+}
+
 func (s *webServer) runCLI(timeout time.Duration, args ...string) (string, error) {
 	cmd := "HOME=" + shellQuote(s.exec.HomePath()) + " " + shellQuote(s.exec.BinaryPath()) + " " + strings.Join(args, " ") + " 2>&1"
 	return s.exec.ExecShell(timeout, cmd)
@@ -527,6 +587,9 @@ func (s *webServer) handleEmail(w http.ResponseWriter, r *http.Request) {
 			"hasApiKey":   tui.GetString(email, "api_key") != "",
 			"baseUrl":     tui.GetString(email, "base_url"),
 			"allowFrom":   tui.GetStringSliceValue(email, "allow_from"),
+			"receiveEnabled": tui.GetBool(email, "receive_enabled"),
+			"receiveMode": tui.GetString(email, "receive_mode"),
+			"pollIntervalSeconds": getIntValue(email, "poll_interval_seconds"),
 		}
 		jsonResp(w, resp)
 
@@ -535,21 +598,37 @@ func (s *webServer) handleEmail(w http.ResponseWriter, r *http.Request) {
 		readBody(r, &body)
 		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
 			email := tui.EnsureMapNested(cfg, "channels", "email")
-			for k, v := range body {
+			for k, raw := range body {
 				switch k {
 				case "enabled":
-					email["enabled"] = v
+					if enabled, ok := raw.(bool); ok {
+						email["enabled"] = enabled
+					}
 				case "address":
-					email["address"] = v
+					email["address"] = strings.TrimSpace(toString(raw))
 				case "displayName":
-					email["display_name"] = v
+					email["display_name"] = strings.TrimSpace(toString(raw))
 				case "apiKey":
-					email["api_key"] = v
-				case "provider":
-					email["provider"] = v
+					if key := strings.TrimSpace(toString(raw)); key != "" {
+						email["api_key"] = key
+					}
 				case "baseUrl":
-					email["base_url"] = v
+					email["base_url"] = strings.TrimSpace(toString(raw))
+				case "allowFrom":
+					email["allow_from"] = coerceStringSlice(raw)
 				}
+			}
+			email["provider"] = "resend"
+			if strings.TrimSpace(tui.GetString(email, "display_name")) == "" {
+				email["display_name"] = "sciClaw"
+			}
+			if strings.TrimSpace(tui.GetString(email, "base_url")) == "" {
+				email["base_url"] = "https://api.resend.com"
+			}
+			email["receive_enabled"] = false
+			email["receive_mode"] = "poll"
+			if getIntValue(email, "poll_interval_seconds") <= 0 {
+				email["poll_interval_seconds"] = 30
 			}
 			return nil
 		})
