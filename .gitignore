@@ -73,6 +73,10 @@ auth.json
 # Git worktrees
 .worktrees/
 
+# Local agent scratch
+.agent/
+.agents/
+
 # Manuscript files (private)
 manuscript/
 
