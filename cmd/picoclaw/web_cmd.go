@@ -17,6 +17,7 @@ import (
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	webui "github.com/sipeed/picoclaw/web"
 )
@@ -620,38 +621,64 @@ func (s *webServer) handleModels(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		snap := s.getSnapshot()
-		cfg, err := tui.ReadConfigMap(s.exec)
-		if err != nil {
-			cfg = map[string]interface{}{}
+		current := snap.ActiveModel
+		provider := snap.ActiveProvider
+		effort := ""
+		authMethod := ""
+
+		cfg, err := loadConfig()
+		if err == nil && cfg != nil {
+			current = cfg.Agents.Defaults.Model
+			provider = models.ResolveProvider(current, cfg)
+			effort = cfg.Agents.Defaults.ReasoningEffort
+			if method, ok := detectProviderAuth(strings.ToLower(strings.TrimSpace(provider)), cfg); ok {
+				authMethod = method
+			}
 		}
-		defaults := tui.GetMapNested(cfg, "agents", "defaults")
-		providerCfg := tui.GetMapNested(cfg, "providers", strings.ToLower(strings.TrimSpace(snap.ActiveProvider)))
-		authMethod := tui.GetString(providerCfg, "auth_method")
-		if authMethod == "" && tui.GetString(providerCfg, "api_key") != "" {
-			authMethod = "api_key"
-		}
+
 		jsonResp(w, map[string]string{
-			"current":    snap.ActiveModel,
-			"provider":   snap.ActiveProvider,
-			"effort":     tui.GetString(defaults, "reasoning_effort"),
+			"current":    current,
+			"provider":   provider,
+			"effort":     effort,
 			"authMethod": authMethod,
 		})
 	case http.MethodPut:
 		var body struct {
 			Model string `json:"model"`
 		}
-		readBody(r, &body)
-		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
-			defaults := tui.EnsureMapNested(cfg, "agents", "defaults")
-			defaults["model"] = body.Model
-			return nil
-		})
+		if err := readBody(r, &body); err != nil {
+			jsonErr(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		body.Model = strings.TrimSpace(body.Model)
+		if body.Model == "" {
+			jsonErr(w, "model is required", http.StatusBadRequest)
+			return
+		}
+
+		cfg, err := loadConfig()
+		if err != nil {
+			jsonErr(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		provider := models.ResolveProvider(body.Model, cfg)
+		cfg.Agents.Defaults.Model = body.Model
+		if provider != "" && provider != "unknown" {
+			cfg.Agents.Defaults.Provider = provider
+		}
+		err = config.SaveConfig(getConfigPath(), cfg)
 		if err != nil {
 			jsonErr(w, err.Error(), 500)
 			return
 		}
 		s.invalidateSnapshot()
-		jsonResp(w, map[string]bool{"ok": true})
+		_, running, _ := s.exec.ServiceInstalled(), s.exec.ServiceActive(), s.exec.ServiceActive()
+		jsonResp(w, map[string]interface{}{
+			"ok":              true,
+			"model":           body.Model,
+			"provider":        provider,
+			"restartRequired": running,
+		})
 	default:
 		jsonErr(w, "method not allowed", 405)
 	}

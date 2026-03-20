@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Cpu, Check, RefreshCw, Loader2, Gauge } from 'lucide-react';
+import {
+  Cpu, Check, RefreshCw, Loader2, Gauge, CheckCircle2, Circle, XCircle,
+} from 'lucide-react';
 import TopBar from '../components/TopBar';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
@@ -8,10 +10,15 @@ import {
   getModelInfo, getModelCatalog, setModel, setEffort,
   type ModelInfo, type ModelCatalogEntry,
 } from '../lib/api';
+import { serviceAction } from '../lib/api';
+import { useSnapshot } from '../hooks/useSnapshot';
 
 const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+type ApplyStepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
+type ApplyStep = { key: string; label: string; status: ApplyStepStatus; detail?: string };
 
 export default function ModelsPage() {
+  const { snapshot, refresh } = useSnapshot();
   const [info, setInfo] = useState<ModelInfo | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const [mode, setMode] = useState<'view' | 'select' | 'manual' | 'effort'>('view');
@@ -25,6 +32,13 @@ export default function ModelsPage() {
   const [catalogProvider, setCatalogProvider] = useState('');
   const [catalogWarning, setCatalogWarning] = useState('');
   const [catalogError, setCatalogError] = useState('');
+  const [applyTitle, setApplyTitle] = useState('');
+  const [applySteps, setApplySteps] = useState<ApplyStep[] | null>(null);
+  const [applyOutput, setApplyOutput] = useState('');
+
+  const updateStep = (key: string, patch: Partial<ApplyStep>) => {
+    setApplySteps((steps) => steps?.map((step) => (step.key === key ? { ...step, ...patch } : step)) ?? null);
+  };
 
   const fetchData = async () => {
     try {
@@ -55,14 +69,43 @@ export default function ModelsPage() {
   };
 
   const handleSetModel = async (model: string) => {
+    const trimmed = model.trim();
+    if (!trimmed) return;
     setLoading(true);
+    setApplyTitle(`Applying ${trimmed}`);
+    setApplyOutput('');
+    setApplySteps([
+      { key: 'save', label: 'Save model and provider config', status: 'running' },
+      { key: 'restart', label: snapshot.ServiceRunning ? 'Restart gateway service' : 'Gateway restart not needed', status: snapshot.ServiceRunning ? 'pending' : 'skipped' },
+      { key: 'verify', label: 'Refresh live model status', status: 'pending' },
+    ]);
     try {
-      await setModel(model);
-      showFlash(`Model set to ${model}`);
+      const result = await setModel(trimmed);
+      updateStep('save', { status: 'done', detail: `${result.model} via ${result.provider}` });
+
+      if (result.restartRequired) {
+        updateStep('restart', { status: 'running' });
+        const restart = await serviceAction('restart');
+        setApplyOutput(restart.output || '');
+        if (!restart.ok) {
+          updateStep('restart', { status: 'error', detail: restart.output || 'Gateway restart failed' });
+          throw new Error(restart.output || 'Gateway restart failed');
+        }
+        updateStep('restart', { status: 'done', detail: 'Gateway restarted' });
+      }
+
+      updateStep('verify', { status: 'running' });
+      await Promise.all([fetchData(), refresh()]);
+      updateStep('verify', { status: 'done', detail: 'Live status refreshed' });
+
+      showFlash(result.restartRequired ? `Model set to ${trimmed} and gateway restarted` : `Model set to ${trimmed}`);
       await fetchData();
       setMode('view');
     } catch (e) {
-      showFlash(`Error: ${e}`);
+      const message = e instanceof Error ? e.message : String(e);
+      setApplyOutput((current) => current || message);
+      updateStep('verify', { status: 'error', detail: message });
+      showFlash(`Error: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -70,13 +113,39 @@ export default function ModelsPage() {
 
   const handleSetEffort = async (effort: string) => {
     setLoading(true);
+    setApplyTitle(`Applying reasoning effort ${effort}`);
+    setApplyOutput('');
+    setApplySteps([
+      { key: 'save', label: 'Save reasoning effort config', status: 'running' },
+      { key: 'restart', label: snapshot.ServiceRunning ? 'Restart gateway service' : 'Gateway restart not needed', status: snapshot.ServiceRunning ? 'pending' : 'skipped' },
+      { key: 'verify', label: 'Refresh live model status', status: 'pending' },
+    ]);
     try {
       await setEffort(effort);
-      showFlash(`Effort set to ${effort}`);
-      await fetchData();
+      updateStep('save', { status: 'done', detail: effort });
+
+      if (snapshot.ServiceRunning) {
+        updateStep('restart', { status: 'running' });
+        const restart = await serviceAction('restart');
+        setApplyOutput(restart.output || '');
+        if (!restart.ok) {
+          updateStep('restart', { status: 'error', detail: restart.output || 'Gateway restart failed' });
+          throw new Error(restart.output || 'Gateway restart failed');
+        }
+        updateStep('restart', { status: 'done', detail: 'Gateway restarted' });
+      }
+
+      updateStep('verify', { status: 'running' });
+      await Promise.all([fetchData(), refresh()]);
+      updateStep('verify', { status: 'done', detail: 'Live status refreshed' });
+
+      showFlash(snapshot.ServiceRunning ? `Effort set to ${effort} and gateway restarted` : `Effort set to ${effort}`);
       setMode('view');
     } catch (e) {
-      showFlash(`Error: ${e}`);
+      const message = e instanceof Error ? e.message : String(e);
+      setApplyOutput((current) => current || message);
+      updateStep('verify', { status: 'error', detail: message });
+      showFlash(`Error: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -90,6 +159,40 @@ export default function ModelsPage() {
           <div className="rounded-md bg-brand/10 border border-brand/20 px-4 py-2 text-sm text-brand animate-fade-in">
             {flash}
           </div>
+        )}
+        {applySteps && (
+          <Card title={applyTitle}>
+            <div className="space-y-3">
+              <p className="text-xs text-zinc-500">
+                Model changes only matter after the gateway is actually restarted. This flow shows each real step.
+              </p>
+              <div className="space-y-2">
+                {applySteps.map((step) => {
+                  const icon = step.status === 'running'
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin text-brand" />
+                    : step.status === 'done'
+                      ? <CheckCircle2 className="w-3.5 h-3.5 text-brand" />
+                      : step.status === 'error'
+                        ? <XCircle className="w-3.5 h-3.5 text-red-400" />
+                        : <Circle className={`w-3.5 h-3.5 ${step.status === 'skipped' ? 'text-zinc-700' : 'text-zinc-600'}`} />;
+                  return (
+                    <div key={step.key} className="flex items-start gap-3 rounded-md border border-border bg-surface-50/20 px-3 py-2">
+                      <div className="mt-0.5">{icon}</div>
+                      <div className="min-w-0">
+                        <p className="text-sm text-zinc-200">{step.label}</p>
+                        {step.detail && <p className="text-xs text-zinc-500">{step.detail}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {applyOutput && (
+                <div className="rounded-md border border-border-subtle bg-surface-300 p-3">
+                  <pre className="whitespace-pre-wrap text-xs leading-relaxed text-zinc-400 font-mono">{applyOutput}</pre>
+                </div>
+              )}
+            </div>
+          </Card>
         )}
 
         {/* Current model */}

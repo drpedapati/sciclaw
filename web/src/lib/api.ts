@@ -162,8 +162,14 @@ export interface ModelCatalogResponse {
 }
 export const getModelInfo = () => request<ModelInfo>('/models');
 export const getModelCatalog = () => request<ModelCatalogResponse>('/models/catalog');
+export interface SetModelResponse {
+  ok: boolean;
+  model: string;
+  provider: string;
+  restartRequired: boolean;
+}
 export const setModel = (model: string) =>
-  request<{ ok: boolean }>('/models', { method: 'PUT', body: JSON.stringify({ model }) });
+  request<SetModelResponse>('/models', { method: 'PUT', body: JSON.stringify({ model }) });
 export const setEffort = (effort: string) =>
   request<{ ok: boolean }>('/models/effort', { method: 'PUT', body: JSON.stringify({ effort }) });
 

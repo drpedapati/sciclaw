@@ -50,6 +50,8 @@ type webTestExec struct {
 	command string
 	output  string
 	err     error
+	installed bool
+	running   bool
 }
 
 func (e *webTestExec) Mode() tui.Mode { return tui.ModeLocal }
@@ -65,8 +67,8 @@ func (e *webTestExec) AuthPath() string                                         
 func (e *webTestExec) HomePath() string                                         { return "/Users/tester" }
 func (e *webTestExec) BinaryPath() string                                       { return "sciclaw" }
 func (e *webTestExec) AgentVersion() string                                     { return "vtest" }
-func (e *webTestExec) ServiceInstalled() bool                                   { return false }
-func (e *webTestExec) ServiceActive() bool                                      { return false }
+func (e *webTestExec) ServiceInstalled() bool                                   { return e.installed }
+func (e *webTestExec) ServiceActive() bool                                      { return e.running }
 func (e *webTestExec) InteractiveProcess(_ ...string) *exec.Cmd                 { return exec.Command("true") }
 
 func TestHandleChatSuppressesAgentStderr(t *testing.T) {
@@ -280,6 +282,52 @@ func TestHandleRoutingReadsRealConfigMappings(t *testing.T) {
 	}
 	if mappings[0].ID != "discord:12345" || mappings[0].Workspace != workspace || mappings[0].Label != "Alpha" || mappings[0].Mode != "default" {
 		t.Fatalf("unexpected mapping: %#v", mappings[0])
+	}
+}
+
+func TestHandleModelsPutPersistsResolvedProvider(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgDir := filepath.Join(home, ".picoclaw")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Model = "claude-sonnet-4.6"
+	cfg.Agents.Defaults.Provider = "anthropic"
+	cfg.Providers.OpenAI.AuthMethod = "oauth"
+	if err := config.SaveConfig(filepath.Join(cfgDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	srv := newWebServer(&webTestExec{running: true}, "")
+	req := httptest.NewRequest(http.MethodPut, "/api/models", strings.NewReader(`{"model":"gpt-5.4"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.handleModels(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		OK              bool   `json:"ok"`
+		Model           string `json:"model"`
+		Provider        string `json:"provider"`
+		RestartRequired bool   `json:"restartRequired"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.OK || body.Model != "gpt-5.4" || body.Provider != "openai" || !body.RestartRequired {
+		t.Fatalf("unexpected response: %#v", body)
+	}
+
+	reloaded, err := config.LoadConfig(filepath.Join(cfgDir, "config.json"))
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if reloaded.Agents.Defaults.Model != "gpt-5.4" || reloaded.Agents.Defaults.Provider != "openai" {
+		t.Fatalf("unexpected persisted config: model=%q provider=%q", reloaded.Agents.Defaults.Model, reloaded.Agents.Defaults.Provider)
 	}
 }
 
