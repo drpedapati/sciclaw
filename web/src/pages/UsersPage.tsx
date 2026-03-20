@@ -81,6 +81,7 @@ export default function UsersPage() {
 
         <Card
           title={`All Users (${users.length})`}
+          className="overflow-hidden"
           actions={
             <button
               onClick={() => { setAddMode(true); setAddStep(0); }}
@@ -162,63 +163,76 @@ export default function UsersPage() {
               description="Add approved users from Discord or Telegram channels."
             />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="overflow-x-auto rounded-md border border-border-subtle bg-surface-50/20">
+              <table className="w-full table-fixed">
                 <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left px-4 py-2 text-xs uppercase text-zinc-500 font-medium tracking-wider">Channel</th>
-                    <th className="text-left px-4 py-2 text-xs uppercase text-zinc-500 font-medium tracking-wider">User ID</th>
-                    <th className="text-left px-4 py-2 text-xs uppercase text-zinc-500 font-medium tracking-wider">Name</th>
-                    <th className="w-16"></th>
+                  <tr className="border-b border-border bg-surface-50/40">
+                    <th className="w-28 text-left px-3 py-2 text-[11px] uppercase text-zinc-500 font-semibold tracking-[0.18em]">Channel</th>
+                    <th className="w-52 text-left px-3 py-2 text-[11px] uppercase text-zinc-500 font-semibold tracking-[0.18em]">User ID</th>
+                    <th className="text-left px-3 py-2 text-[11px] uppercase text-zinc-500 font-semibold tracking-[0.18em]">Name</th>
+                    <th className="w-24 px-3 py-2 text-right text-[11px] uppercase text-zinc-500 font-semibold tracking-[0.18em]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
-                  {users.map((u) => (
-                    <tr key={`${u.channel}-${u.id}`} className="group hover:bg-surface-50/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <StatusBadge variant={u.channel === 'discord' ? 'info' : 'ready'}>
-                          {u.channel === 'discord' ? 'Discord' : 'Telegram'}
-                        </StatusBadge>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-zinc-400 font-mono">{u.id}</td>
-                      <td className="px-4 py-3 text-sm text-zinc-300">
-                        {editUser?.id === u.id && editUser?.channel === u.channel ? (
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={editName}
-                              onChange={(e) => setEditName(e.target.value)}
-                              className="w-40 rounded border border-border bg-surface-100 px-2 py-1 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-brand/50"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') { /* save */ setEditUser(null); }
-                                if (e.key === 'Escape') setEditUser(null);
-                              }}
-                            />
-                            <button onClick={() => setEditUser(null)} className="text-zinc-500"><Check className="w-3.5 h-3.5" /></button>
+                  {users.map((u) => {
+                    const isEditing = editUser?.id === u.id && editUser?.channel === u.channel;
+                    return (
+                      <tr key={`${u.channel}-${u.id}`} className="bg-transparent transition-colors hover:bg-surface-50/45">
+                        <td className="px-3 py-2 align-middle">
+                          <StatusBadge variant={u.channel === 'discord' ? 'info' : 'ready'}>
+                            {u.channel === 'discord' ? 'Discord' : 'Telegram'}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-3 py-2 align-middle text-[12px] text-zinc-400 font-mono tabular-nums truncate">{u.id}</td>
+                        <td className="px-3 py-2 align-middle text-sm text-zinc-300">
+                          {isEditing ? (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                className="w-40 rounded border border-border bg-surface-100 px-2 py-1 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-brand/50"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') setEditUser(null);
+                                  if (e.key === 'Escape') setEditUser(null);
+                                }}
+                              />
+                              <button
+                                onClick={() => setEditUser(null)}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border-subtle text-zinc-500 transition-colors hover:border-border hover:bg-surface-50 hover:text-zinc-200"
+                                aria-label={`Stop editing ${u.name || u.id}`}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className={`block truncate text-sm ${u.name ? 'text-zinc-200' : 'text-zinc-600'}`}>
+                              {u.name || '—'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => { setEditUser(u); setEditName(u.name); }}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-zinc-600 transition-colors hover:border-border hover:bg-surface-50 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                              aria-label={`Edit ${u.name || u.id}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteUser(u)}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-zinc-600 transition-colors hover:border-red-500/25 hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25"
+                              aria-label={`Remove ${u.name || u.id}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        ) : (
-                          u.name || <span className="text-zinc-600">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => { setEditUser(u); setEditName(u.name); }}
-                            className="p-1 rounded hover:bg-surface-50 text-zinc-600 hover:text-zinc-300 transition-colors"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteUser(u)}
-                            className="p-1 rounded hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
