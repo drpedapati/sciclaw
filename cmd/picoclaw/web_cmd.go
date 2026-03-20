@@ -8,6 +8,7 @@ import (
 	iofs "io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/routing"
 	webui "github.com/sipeed/picoclaw/web"
 )
 
@@ -116,6 +118,8 @@ func (s *webServer) registerRoutes() {
 	s.mux.HandleFunc("/api/auth", s.handleAuth)
 	s.mux.HandleFunc("/api/doctor", s.handleDoctor)
 	s.mux.HandleFunc("/api/service/", s.handleService)
+	s.mux.HandleFunc("/api/jobs", s.handleJobs)
+	s.mux.HandleFunc("/api/jobs/", s.handleJobs)
 	s.mux.HandleFunc("/api/models", s.handleModels)
 	s.mux.HandleFunc("/api/models/", s.handleModelsAction)
 	s.mux.HandleFunc("/api/phi", s.handlePhi)
@@ -187,6 +191,108 @@ func (s *webServer) getSnapshot() *tui.VMSnapshot {
 	s.snapshot = &snap
 	s.snapTime = time.Now()
 	return &snap
+}
+
+func jobsStorePath() string {
+	return filepath.Join(filepath.Dir(getConfigPath()), "jobs.json")
+}
+
+func loadJobRecords() ([]routing.JobRecord, error) {
+	path := jobsStorePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []routing.JobRecord{}, nil
+		}
+		return nil, err
+	}
+	var payload struct {
+		Jobs []routing.JobRecord `json:"jobs"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	return payload.Jobs, nil
+}
+
+func saveJobRecords(records []routing.JobRecord) error {
+	path := jobsStorePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	payload := struct {
+		Jobs []routing.JobRecord `json:"jobs"`
+	}{Jobs: records}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func jobLane(class routing.JobClass) string {
+	switch strings.TrimSpace(string(class)) {
+	case string(routing.JobClassBTW), "external_readonly":
+		return "btw"
+	default:
+		return "main"
+	}
+}
+
+func jobStateRank(state routing.JobState) int {
+	switch state {
+	case routing.JobStateRunning:
+		return 0
+	case routing.JobStateQueued:
+		return 1
+	case routing.JobStateFailed:
+		return 2
+	case routing.JobStateInterrupted:
+		return 3
+	case routing.JobStateCancelled:
+		return 4
+	case routing.JobStateDone:
+		return 5
+	default:
+		return 6
+	}
+}
+
+func isTerminalJobState(state routing.JobState) bool {
+	switch state {
+	case routing.JobStateDone, routing.JobStateFailed, routing.JobStateCancelled, routing.JobStateInterrupted:
+		return true
+	default:
+		return false
+	}
+}
+
+func jobSenderInfo(record routing.JobRecord) (string, string) {
+	userID := strings.TrimSpace(record.Message.SenderID)
+	if md := record.Message.Metadata; md != nil {
+		if trimmed := strings.TrimSpace(md["user_id"]); trimmed != "" {
+			userID = trimmed
+		}
+	}
+
+	nameCandidates := []string{}
+	if md := record.Message.Metadata; md != nil {
+		nameCandidates = append(nameCandidates,
+			md["display_name"],
+			md["username"],
+		)
+	}
+	nameCandidates = append(nameCandidates, record.Message.Metadata["sender_name"])
+	for _, candidate := range nameCandidates {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return userID, trimmed
+		}
+	}
+	return userID, ""
 }
 
 // ── Snapshot ──
@@ -612,6 +718,218 @@ func (s *webServer) handleService(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
 	default:
 		jsonErr(w, "unknown service action", 400)
+	}
+}
+
+// ── Jobs ──
+
+func (s *webServer) handleJobs(w http.ResponseWriter, r *http.Request) {
+	type jobsSummary struct {
+		Total              int `json:"total"`
+		Active             int `json:"active"`
+		Running            int `json:"running"`
+		Queued             int `json:"queued"`
+		Done               int `json:"done"`
+		Failed             int `json:"failed"`
+		Interrupted        int `json:"interrupted"`
+		Cancelled          int `json:"cancelled"`
+		DistinctChannels   int `json:"distinctChannels"`
+		DistinctChats      int `json:"distinctChats"`
+		DistinctUsers      int `json:"distinctUsers"`
+		DistinctWorkspaces int `json:"distinctWorkspaces"`
+	}
+	type jobView struct {
+		ID              string `json:"id"`
+		ShortID         string `json:"shortId"`
+		Channel         string `json:"channel"`
+		ChatID          string `json:"chatId"`
+		Workspace       string `json:"workspace"`
+		RouteLabel      string `json:"routeLabel"`
+		RuntimeKey      string `json:"runtimeKey"`
+		TargetKey       string `json:"targetKey"`
+		Class           string `json:"class"`
+		Lane            string `json:"lane"`
+		State           string `json:"state"`
+		Phase           string `json:"phase"`
+		Detail          string `json:"detail"`
+		Summary         string `json:"summary"`
+		AskSummary      string `json:"askSummary"`
+		LastError       string `json:"lastError"`
+		StatusMessageID string `json:"statusMessageId"`
+		UserID          string `json:"userId"`
+		UserName        string `json:"userName"`
+		MessageID       string `json:"messageId"`
+		SessionKey      string `json:"sessionKey"`
+		StartedAt       int64  `json:"startedAt"`
+		UpdatedAt       int64  `json:"updatedAt"`
+		DurationSec     int64  `json:"durationSec"`
+		Stale           bool   `json:"stale"`
+	}
+	type jobsResponse struct {
+		GeneratedAt int64       `json:"generatedAt"`
+		Summary     jobsSummary `json:"summary"`
+		Jobs        []jobView   `json:"jobs"`
+	}
+
+	buildJobsResponse := func() (jobsResponse, error) {
+		records, err := loadJobRecords()
+		if err != nil {
+			return jobsResponse{}, err
+		}
+
+		cfg, _ := config.LoadConfig(getConfigPath())
+		routeLabels := map[string]string{}
+		if cfg != nil {
+			for _, mapping := range cfg.Routing.Mappings {
+				key := strings.TrimSpace(mapping.Channel) + "\x00" + strings.TrimSpace(mapping.ChatID)
+				routeLabels[key] = strings.TrimSpace(mapping.Label)
+			}
+		}
+
+		sort.Slice(records, func(i, j int) bool {
+			ri := jobStateRank(records[i].State)
+			rj := jobStateRank(records[j].State)
+			if ri != rj {
+				return ri < rj
+			}
+			if records[i].UpdatedAt != records[j].UpdatedAt {
+				return records[i].UpdatedAt > records[j].UpdatedAt
+			}
+			return records[i].StartedAt > records[j].StartedAt
+		})
+
+		resp := jobsResponse{GeneratedAt: time.Now().UnixMilli(), Jobs: []jobView{}}
+		channelSet := map[string]struct{}{}
+		chatSet := map[string]struct{}{}
+		userSet := map[string]struct{}{}
+		workspaceSet := map[string]struct{}{}
+
+		for _, record := range records {
+			resp.Summary.Total++
+			switch record.State {
+			case routing.JobStateRunning:
+				resp.Summary.Running++
+				resp.Summary.Active++
+			case routing.JobStateQueued:
+				resp.Summary.Queued++
+				resp.Summary.Active++
+			case routing.JobStateDone:
+				resp.Summary.Done++
+			case routing.JobStateFailed:
+				resp.Summary.Failed++
+			case routing.JobStateInterrupted:
+				resp.Summary.Interrupted++
+			case routing.JobStateCancelled:
+				resp.Summary.Cancelled++
+			}
+
+			if channel := strings.TrimSpace(record.Channel); channel != "" {
+				channelSet[channel] = struct{}{}
+			}
+			if chat := strings.TrimSpace(record.ChatID); chat != "" {
+				chatSet[chat] = struct{}{}
+			}
+			if workspace := strings.TrimSpace(record.Workspace); workspace != "" {
+				workspaceSet[workspace] = struct{}{}
+			}
+
+			userID, userName := jobSenderInfo(record)
+			if userID != "" {
+				userSet[userID] = struct{}{}
+			}
+
+			labelKey := strings.TrimSpace(record.Channel) + "\x00" + strings.TrimSpace(record.ChatID)
+			durationSec := int64(0)
+			if record.UpdatedAt > record.StartedAt && record.StartedAt > 0 {
+				durationSec = (record.UpdatedAt - record.StartedAt) / 1000
+			}
+
+			stale := false
+			if (record.State == routing.JobStateRunning || record.State == routing.JobStateQueued) && record.UpdatedAt > 0 {
+				stale = time.Since(time.UnixMilli(record.UpdatedAt)) > 15*time.Minute
+			}
+
+			resp.Jobs = append(resp.Jobs, jobView{
+				ID:              record.ID,
+				ShortID:         strings.TrimSpace(record.ShortID),
+				Channel:         record.Channel,
+				ChatID:          record.ChatID,
+				Workspace:       record.Workspace,
+				RouteLabel:      routeLabels[labelKey],
+				RuntimeKey:      record.RuntimeKey,
+				TargetKey:       record.TargetKey,
+				Class:           string(record.Class),
+				Lane:            jobLane(record.Class),
+				State:           string(record.State),
+				Phase:           record.Phase,
+				Detail:          record.Detail,
+				Summary:         record.Summary,
+				AskSummary:      record.AskSummary,
+				LastError:       record.LastError,
+				StatusMessageID: record.StatusMessageID,
+				UserID:          userID,
+				UserName:        userName,
+				MessageID:       strings.TrimSpace(record.Message.Metadata["message_id"]),
+				SessionKey:      record.Message.SessionKey,
+				StartedAt:       record.StartedAt,
+				UpdatedAt:       record.UpdatedAt,
+				DurationSec:     durationSec,
+				Stale:           stale,
+			})
+		}
+
+		resp.Summary.DistinctChannels = len(channelSet)
+		resp.Summary.DistinctChats = len(chatSet)
+		resp.Summary.DistinctUsers = len(userSet)
+		resp.Summary.DistinctWorkspaces = len(workspaceSet)
+		return resp, nil
+	}
+
+	switch {
+	case r.URL.Path == "/api/jobs" && r.Method == http.MethodGet:
+		resp, err := buildJobsResponse()
+		if err != nil {
+			jsonErr(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, resp)
+		return
+
+	case r.URL.Path == "/api/jobs/prune" && r.Method == http.MethodPost:
+		var body struct {
+			OlderThanHours int `json:"olderThanHours"`
+		}
+		_ = readBody(r, &body)
+		if body.OlderThanHours <= 0 {
+			body.OlderThanHours = 24
+		}
+		cutoff := time.Now().Add(-time.Duration(body.OlderThanHours) * time.Hour).UnixMilli()
+		records, err := loadJobRecords()
+		if err != nil {
+			jsonErr(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		kept := make([]routing.JobRecord, 0, len(records))
+		removed := 0
+		for _, record := range records {
+			if isTerminalJobState(record.State) && record.UpdatedAt > 0 && record.UpdatedAt < cutoff {
+				removed++
+				continue
+			}
+			kept = append(kept, record)
+		}
+		if err := saveJobRecords(kept); err != nil {
+			jsonErr(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonResp(w, map[string]interface{}{
+			"ok":        true,
+			"removed":   removed,
+			"remaining": len(kept),
+		})
+		return
+	default:
+		jsonErr(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 

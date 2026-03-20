@@ -9,6 +9,7 @@ import UsersPage from './pages/UsersPage';
 import LoginPage from './pages/LoginPage';
 import HealthPage from './pages/HealthPage';
 import GatewayPage from './pages/GatewayPage';
+import JobsPage from './pages/JobsPage';
 import ModelsPage from './pages/ModelsPage';
 import PhiPage from './pages/PhiPage';
 import SkillsPage from './pages/SkillsPage';
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/health" element={<HealthPage />} />
               <Route path="/gateway" element={<GatewayPage />} />
+              <Route path="/jobs" element={<JobsPage />} />
               <Route path="/models" element={<ModelsPage />} />
               <Route path="/phi" element={<PhiPage />} />
               <Route path="/skills" element={<SkillsPage />} />

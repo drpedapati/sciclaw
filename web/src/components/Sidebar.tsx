@@ -10,6 +10,7 @@ import ThemePicker from './ThemePicker';
 const navItems = [
   { to: '/',         icon: Home,          label: 'Home' },
   { to: '/chat',     icon: MessageSquare, label: 'Chat' },
+  { to: '/jobs',     icon: Activity,      label: 'Jobs' },
   { to: '/channels', icon: Radio,         label: 'Channels' },
   { to: '/email',    icon: Mail,          label: 'Email' },
   { to: '/users',    icon: Users,         label: 'Users' },

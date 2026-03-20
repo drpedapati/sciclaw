@@ -141,6 +141,63 @@ export const serviceAction = (action: string) =>
   request<{ ok: boolean; output: string }>(`/service/${action}`, { method: 'POST' });
 export const getServiceLogs = () => request<{ logs: string }>('/service/logs');
 
+// ── Jobs ──
+export interface JobsSummary {
+  total: number;
+  active: number;
+  running: number;
+  queued: number;
+  done: number;
+  failed: number;
+  interrupted: number;
+  cancelled: number;
+  distinctChannels: number;
+  distinctChats: number;
+  distinctUsers: number;
+  distinctWorkspaces: number;
+}
+
+export interface JobRecord {
+  id: string;
+  shortId: string;
+  channel: string;
+  chatId: string;
+  workspace: string;
+  routeLabel: string;
+  runtimeKey: string;
+  targetKey: string;
+  class: string;
+  lane: string;
+  state: string;
+  phase: string;
+  detail: string;
+  summary: string;
+  askSummary: string;
+  lastError: string;
+  statusMessageId: string;
+  userId: string;
+  userName: string;
+  messageId: string;
+  sessionKey: string;
+  startedAt: number;
+  updatedAt: number;
+  durationSec: number;
+  stale: boolean;
+}
+
+export interface JobsResponse {
+  generatedAt: number;
+  summary: JobsSummary;
+  jobs: JobRecord[];
+}
+
+export const getJobs = () => request<JobsResponse>('/jobs');
+export const pruneJobs = (olderThanHours = 24) =>
+  request<{ ok: boolean; removed: number; remaining: number }>('/jobs/prune', {
+    method: 'POST',
+    body: JSON.stringify({ olderThanHours }),
+  });
+
 // ── Models ──
 export interface ModelInfo {
   current: string;

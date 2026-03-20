@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/routing"
 )
 
 func TestNewWebServerServesEmbeddedApp(t *testing.T) {
@@ -328,6 +330,207 @@ func TestHandleModelsPutPersistsResolvedProvider(t *testing.T) {
 	}
 	if reloaded.Agents.Defaults.Model != "gpt-5.4" || reloaded.Agents.Defaults.Provider != "openai" {
 		t.Fatalf("unexpected persisted config: model=%q provider=%q", reloaded.Agents.Defaults.Model, reloaded.Agents.Defaults.Provider)
+	}
+}
+
+func TestHandleJobsReadsPersistedLedger(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgDir := filepath.Join(home, ".picoclaw")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	workspaceA := filepath.Join(home, "workspace-a")
+	workspaceB := filepath.Join(home, "workspace-b")
+	if err := os.MkdirAll(workspaceA, 0o755); err != nil {
+		t.Fatalf("mkdir workspace a: %v", err)
+	}
+	if err := os.MkdirAll(workspaceB, 0o755); err != nil {
+		t.Fatalf("mkdir workspace b: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.Mappings = []config.RoutingMapping{{
+		Channel:        "discord",
+		ChatID:         "room-1",
+		Workspace:      workspaceA,
+		AllowedSenders: config.FlexibleStringSlice{"u-1"},
+		Label:          "Alpha room",
+	}}
+	if err := config.SaveConfig(filepath.Join(cfgDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	payload := struct {
+		Jobs []routing.JobRecord `json:"jobs"`
+	}{
+		Jobs: []routing.JobRecord{
+			{
+				ID:         "job-1",
+				ShortID:    "0001A",
+				Channel:    "discord",
+				ChatID:     "room-1",
+				Workspace:  workspaceA,
+				RuntimeKey: "cloud",
+				TargetKey:  workspaceA + "\x00cloud",
+				Class:      routing.JobClassWrite,
+				State:      routing.JobStateRunning,
+				Phase:      "using_tools",
+				Detail:     "Using tool: exec",
+				AskSummary: "draft the poster abstract",
+				Message: bus.InboundMessage{
+					Channel:    "discord",
+					SenderID:   "u-1",
+					ChatID:     "room-1",
+					Content:    "draft the poster abstract",
+					SessionKey: "discord:room-1@abc",
+					Metadata: map[string]string{
+						"display_name": "Ernie",
+						"message_id":   "m-1",
+					},
+				},
+				StartedAt: time.Now().Add(-2 * time.Minute).UnixMilli(),
+				UpdatedAt: time.Now().Add(-1 * time.Minute).UnixMilli(),
+			},
+			{
+				ID:         "job-2",
+				ShortID:    "0001B",
+				Channel:    "discord",
+				ChatID:     "room-2",
+				Workspace:  workspaceB,
+				RuntimeKey: "cloud",
+				TargetKey:  workspaceB + "\x00cloud",
+				Class:      routing.JobClassBTW,
+				State:      routing.JobStateFailed,
+				Phase:      "failed",
+				Detail:     "Job failed",
+				LastError:  "anthropic 429",
+				AskSummary: "find five RCTs",
+				StartedAt:  time.Now().Add(-3 * time.Hour).UnixMilli(),
+				UpdatedAt:  time.Now().Add(-2 * time.Hour).UnixMilli(),
+			},
+		},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal jobs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "jobs.json"), data, 0o644); err != nil {
+		t.Fatalf("write jobs: %v", err)
+	}
+
+	srv := newWebServer(&webTestExec{}, "")
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	rec := httptest.NewRecorder()
+	srv.handleJobs(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Summary struct {
+			Total    int `json:"total"`
+			Active   int `json:"active"`
+			Running  int `json:"running"`
+			Failed   int `json:"failed"`
+			Channels int `json:"distinctChannels"`
+			Users    int `json:"distinctUsers"`
+		} `json:"summary"`
+		Jobs []struct {
+			ID         string `json:"id"`
+			RouteLabel string `json:"routeLabel"`
+			UserName   string `json:"userName"`
+			Lane       string `json:"lane"`
+			State      string `json:"state"`
+		} `json:"jobs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Summary.Total != 2 || body.Summary.Active != 1 || body.Summary.Running != 1 || body.Summary.Failed != 1 {
+		t.Fatalf("unexpected summary: %#v", body.Summary)
+	}
+	if len(body.Jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %#v", body.Jobs)
+	}
+	if body.Jobs[0].ID != "job-1" || body.Jobs[0].RouteLabel != "Alpha room" || body.Jobs[0].UserName != "Ernie" || body.Jobs[0].Lane != "main" {
+		t.Fatalf("unexpected first job: %#v", body.Jobs[0])
+	}
+	if body.Jobs[1].Lane != "btw" || body.Jobs[1].State != "failed" {
+		t.Fatalf("unexpected second job: %#v", body.Jobs[1])
+	}
+}
+
+func TestHandleJobsPruneRemovesOldTerminalRecords(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgDir := filepath.Join(home, ".picoclaw")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+
+	payload := struct {
+		Jobs []routing.JobRecord `json:"jobs"`
+	}{
+		Jobs: []routing.JobRecord{
+			{
+				ID:        "done-old",
+				State:     routing.JobStateDone,
+				UpdatedAt: time.Now().Add(-48 * time.Hour).UnixMilli(),
+			},
+			{
+				ID:        "failed-new",
+				State:     routing.JobStateFailed,
+				UpdatedAt: time.Now().Add(-2 * time.Hour).UnixMilli(),
+			},
+			{
+				ID:        "running-now",
+				State:     routing.JobStateRunning,
+				UpdatedAt: time.Now().Add(-5 * time.Minute).UnixMilli(),
+			},
+		},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal jobs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "jobs.json"), data, 0o644); err != nil {
+		t.Fatalf("write jobs: %v", err)
+	}
+
+	srv := newWebServer(&webTestExec{}, "")
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs/prune", strings.NewReader(`{"olderThanHours":24}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.handleJobs(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		OK        bool `json:"ok"`
+		Removed   int  `json:"removed"`
+		Remaining int  `json:"remaining"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.OK || body.Removed != 1 || body.Remaining != 2 {
+		t.Fatalf("unexpected prune response: %#v", body)
+	}
+
+	remaining, err := loadJobRecords()
+	if err != nil {
+		t.Fatalf("reload jobs: %v", err)
+	}
+	if len(remaining) != 2 {
+		t.Fatalf("expected 2 remaining jobs, got %#v", remaining)
+	}
+	for _, job := range remaining {
+		if job.ID == "done-old" {
+			t.Fatalf("expected old terminal job to be pruned, got %#v", remaining)
+		}
 	}
 }
 
