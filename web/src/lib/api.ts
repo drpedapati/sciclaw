@@ -154,8 +154,14 @@ export interface ModelCatalogEntry {
   provider: string;
   source: string;
 }
+export interface ModelCatalogResponse {
+  provider: string;
+  source: string;
+  warning?: string;
+  models: ModelCatalogEntry[];
+}
 export const getModelInfo = () => request<ModelInfo>('/models');
-export const getModelCatalog = () => request<ModelCatalogEntry[]>('/models/catalog');
+export const getModelCatalog = () => request<ModelCatalogResponse>('/models/catalog');
 export const setModel = (model: string) =>
   request<{ ok: boolean }>('/models', { method: 'PUT', body: JSON.stringify({ model }) });
 export const setEffort = (effort: string) =>

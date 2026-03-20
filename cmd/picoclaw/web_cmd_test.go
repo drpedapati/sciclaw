@@ -165,6 +165,48 @@ func TestHandleChatFallsBackWhenLiteChatFails(t *testing.T) {
 	}
 }
 
+func TestHandleModelsCatalogUsesDiscoverJSON(t *testing.T) {
+	execStub := &webTestExec{
+		output: `{"provider":"anthropic","source":"endpoint+builtin","models":["claude-sonnet-4.6","gpt-5.4","claude-sonnet-4.6"],"warning":"partial"}`,
+	}
+	srv := newWebServer(execStub, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models/catalog", nil)
+	rec := httptest.NewRecorder()
+	srv.handleModelsAction(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(execStub.command, "models discover --json") {
+		t.Fatalf("expected discover command, got %q", execStub.command)
+	}
+
+	var body struct {
+		Provider string `json:"provider"`
+		Source   string `json:"source"`
+		Warning  string `json:"warning"`
+		Models   []struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Provider string `json:"provider"`
+			Source   string `json:"source"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Provider != "anthropic" || body.Source != "endpoint+builtin" || body.Warning != "partial" {
+		t.Fatalf("unexpected metadata: %#v", body)
+	}
+	if len(body.Models) != 2 {
+		t.Fatalf("expected deduped models, got %#v", body.Models)
+	}
+	if body.Models[0].ID != "claude-sonnet-4.6" || body.Models[0].Provider != "anthropic" {
+		t.Fatalf("unexpected first model: %#v", body.Models[0])
+	}
+}
+
 func TestShouldUseLightweightWebChat(t *testing.T) {
 	tests := []struct {
 		message string

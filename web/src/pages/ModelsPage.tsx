@@ -3,7 +3,11 @@ import { Cpu, Check, RefreshCw, Loader2, Gauge } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { getModelInfo, getModelCatalog, setModel, setEffort, type ModelInfo, type ModelCatalogEntry } from '../lib/api';
+import EmptyState from '../components/EmptyState';
+import {
+  getModelInfo, getModelCatalog, setModel, setEffort,
+  type ModelInfo, type ModelCatalogEntry,
+} from '../lib/api';
 
 const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
@@ -16,14 +20,31 @@ export default function ModelsPage() {
   const [selectedEffort, setSelectedEffort] = useState('');
   const [loading, setLoading] = useState(false);
   const [flash, setFlash] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [catalogSource, setCatalogSource] = useState('');
+  const [catalogProvider, setCatalogProvider] = useState('');
+  const [catalogWarning, setCatalogWarning] = useState('');
+  const [catalogError, setCatalogError] = useState('');
 
   const fetchData = async () => {
     try {
       const [i, c] = await Promise.all([getModelInfo(), getModelCatalog()]);
       setInfo(i);
-      setCatalog(c);
+      setCatalog(c.models);
+      setCatalogSource(c.source || '');
+      setCatalogProvider(c.provider || '');
+      setCatalogWarning(c.warning || '');
+      setCatalogError('');
       setSelectedEffort(i.effort);
-    } catch { /* */ }
+    } catch (e) {
+      setCatalog([]);
+      setCatalogProvider('');
+      setCatalogSource('');
+      setCatalogWarning('');
+      setCatalogError(e instanceof Error ? e.message : 'Failed to load model catalog');
+    } finally {
+      setLoaded(true);
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -75,14 +96,14 @@ export default function ModelsPage() {
         <Card
           title="Current Model"
           actions={
-            <button onClick={fetchData} className="p-1 rounded hover:bg-surface-50 text-zinc-500 hover:text-zinc-300 transition-colors">
+            <button onClick={() => { setLoaded(false); fetchData(); }} className="p-1 rounded hover:bg-surface-50 text-zinc-500 hover:text-zinc-300 transition-colors">
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           }
         >
-          {!info ? (
+          {!loaded && !info ? (
             <div className="h-20 bg-surface-50/30 rounded-md animate-pulse" />
-          ) : (
+          ) : info ? (
             <div className="space-y-3">
               {[
                 ['Model', info.current || 'Not set'],
@@ -95,6 +116,10 @@ export default function ModelsPage() {
                   <span className="text-sm text-zinc-300 font-mono">{value}</span>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-border bg-surface-50/20 px-3 py-4 text-sm text-zinc-500">
+              Could not load current model info.
             </div>
           )}
         </Card>
@@ -132,11 +157,36 @@ export default function ModelsPage() {
         {/* Model catalog */}
         {mode === 'select' && (
           <Card title="Model Catalog">
-            {catalog.length === 0 ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+              {catalogProvider && (
+                <StatusBadge variant="info">{catalogProvider}</StatusBadge>
+              )}
+              {catalogSource && (
+                <span className="rounded-md border border-border px-2 py-1 text-zinc-500">
+                  Source: <span className="font-mono text-zinc-300">{catalogSource}</span>
+                </span>
+              )}
+              {catalogWarning && (
+                <span className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">
+                  {catalogWarning}
+                </span>
+              )}
+            </div>
+            {!loaded ? (
               <div className="flex items-center justify-center py-8 gap-2 text-sm text-zinc-500">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Loading catalog...
               </div>
+            ) : catalogError ? (
+              <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-4 text-sm text-red-300">
+                {catalogError}
+              </div>
+            ) : catalog.length === 0 ? (
+              <EmptyState
+                icon={Cpu}
+                title="No catalog entries"
+                description="No models were discovered for the current provider configuration."
+              />
             ) : (
               <div className="divide-y divide-border-subtle max-h-96 overflow-y-auto">
                 {catalog.map((m, idx) => (

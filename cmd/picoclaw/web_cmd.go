@@ -618,11 +618,21 @@ func (s *webServer) handleModels(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		snap := s.getSnapshot()
+		cfg, err := tui.ReadConfigMap(s.exec)
+		if err != nil {
+			cfg = map[string]interface{}{}
+		}
+		defaults := tui.GetMapNested(cfg, "agents", "defaults")
+		providerCfg := tui.GetMapNested(cfg, "providers", strings.ToLower(strings.TrimSpace(snap.ActiveProvider)))
+		authMethod := tui.GetString(providerCfg, "auth_method")
+		if authMethod == "" && tui.GetString(providerCfg, "api_key") != "" {
+			authMethod = "api_key"
+		}
 		jsonResp(w, map[string]string{
 			"current":    snap.ActiveModel,
 			"provider":   snap.ActiveProvider,
-			"effort":     "",
-			"authMethod": "",
+			"effort":     tui.GetString(defaults, "reasoning_effort"),
+			"authMethod": authMethod,
 		})
 	case http.MethodPut:
 		var body struct {
@@ -649,17 +659,64 @@ func (s *webServer) handleModelsAction(w http.ResponseWriter, r *http.Request) {
 	action := strings.TrimPrefix(r.URL.Path, "/api/models/")
 	switch action {
 	case "catalog":
-		out, err := s.runCLI(15*time.Second, "models", "list", "--json")
-		if err != nil {
-			jsonResp(w, []interface{}{})
+		type discoverPayload struct {
+			Provider string   `json:"provider"`
+			Source   string   `json:"source"`
+			Models   []string `json:"models"`
+			Warning  string   `json:"warning,omitempty"`
+		}
+		type catalogEntry struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Provider string `json:"provider"`
+			Source   string `json:"source"`
+		}
+		type catalogResponse struct {
+			Provider string         `json:"provider"`
+			Source   string         `json:"source"`
+			Warning  string         `json:"warning,omitempty"`
+			Models   []catalogEntry `json:"models"`
+		}
+
+		out, err := s.runCLI(20*time.Second, "models", "discover", "--json")
+		payload := discoverPayload{}
+		if json.Unmarshal([]byte(strings.TrimSpace(out)), &payload) != nil {
+			msg := firstNonEmptyLine(strings.TrimSpace(out))
+			if msg == "" && err != nil {
+				msg = err.Error()
+			}
+			if msg == "" {
+				msg = "No model catalog returned"
+			}
+			jsonResp(w, catalogResponse{Warning: msg, Models: []catalogEntry{}})
 			return
 		}
-		var catalog interface{}
-		if json.Unmarshal([]byte(out), &catalog) == nil {
-			jsonResp(w, catalog)
-		} else {
-			jsonResp(w, []interface{}{})
+
+		seen := map[string]struct{}{}
+		entries := make([]catalogEntry, 0, len(payload.Models))
+		for _, model := range payload.Models {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+			entries = append(entries, catalogEntry{
+				ID:       model,
+				Name:     model,
+				Provider: payload.Provider,
+				Source:   payload.Source,
+			})
 		}
+
+		jsonResp(w, catalogResponse{
+			Provider: payload.Provider,
+			Source:   payload.Source,
+			Warning:  payload.Warning,
+			Models:   entries,
+		})
 	case "effort":
 		if r.Method != http.MethodPut {
 			jsonErr(w, "method not allowed", 405)
