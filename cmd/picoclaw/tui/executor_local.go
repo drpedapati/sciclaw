@@ -18,11 +18,52 @@ type LocalExecutor struct {
 // NewLocalExecutor creates an executor for local (non-VM) mode.
 func NewLocalExecutor() *LocalExecutor {
 	home, _ := os.UserHomeDir()
-	self := "sciclaw" // fallback
-	if exe, err := os.Executable(); err == nil {
-		self = exe
-	}
+	self := resolveLocalBinaryPath()
 	return &LocalExecutor{home: home, self: self}
+}
+
+func resolveLocalBinaryPath() string {
+	if exe, err := os.Executable(); err == nil {
+		if stable := stableBinaryPathCandidate(exe); stable != "" {
+			if _, err := os.Stat(stable); err == nil {
+				return stable
+			}
+		}
+		if _, err := os.Stat(exe); err == nil {
+			return exe
+		}
+	}
+	if lp, err := exec.LookPath("sciclaw"); err == nil {
+		return lp
+	}
+	if lp, err := exec.LookPath("picoclaw"); err == nil {
+		return lp
+	}
+	if exe, err := os.Executable(); err == nil && strings.TrimSpace(exe) != "" {
+		return exe
+	}
+	return "sciclaw"
+}
+
+func stableBinaryPathCandidate(exePath string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(exePath))
+	if cleaned == "" {
+		return ""
+	}
+	marker := string(filepath.Separator) + "Cellar" + string(filepath.Separator)
+	idx := strings.Index(cleaned, marker)
+	if idx == -1 {
+		return ""
+	}
+	prefix := cleaned[:idx]
+	if prefix == "" {
+		prefix = string(filepath.Separator)
+	}
+	base := filepath.Base(cleaned)
+	if strings.TrimSpace(base) == "" || base == "." || base == string(filepath.Separator) {
+		return ""
+	}
+	return filepath.Join(prefix, "bin", base)
 }
 
 func (e *LocalExecutor) Mode() Mode { return ModeLocal }

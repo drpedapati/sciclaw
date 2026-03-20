@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -58,5 +59,28 @@ func TestMergePathList_PrefersFrontAndDedupes(t *testing.T) {
 	}
 	if strings.Count(got, "/usr/local/bin") != 1 {
 		t.Fatalf("expected deduped /usr/local/bin in %q", got)
+	}
+}
+
+func TestStableBinaryPathCandidateForLinuxbrewCellar(t *testing.T) {
+	got := stableBinaryPathCandidate("/home/linuxbrew/.linuxbrew/Cellar/sciclaw-dev/0.2.5-dev.4/bin/sciclaw")
+	want := "/home/linuxbrew/.linuxbrew/bin/sciclaw"
+	if got != want {
+		t.Fatalf("stableBinaryPathCandidate() = %q, want %q", got, want)
+	}
+}
+
+func TestStableBinaryPathCandidateForHomebrewCellar(t *testing.T) {
+	got := stableBinaryPathCandidate("/opt/homebrew/Cellar/sciclaw/0.2.5/bin/sciclaw")
+	want := "/opt/homebrew/bin/sciclaw"
+	if got != want {
+		t.Fatalf("stableBinaryPathCandidate() = %q, want %q", got, want)
+	}
+}
+
+func TestStableBinaryPathCandidateForNonCellarPath(t *testing.T) {
+	temp := filepath.Join(t.TempDir(), "bin", "sciclaw")
+	if got := stableBinaryPathCandidate(temp); got != "" {
+		t.Fatalf("stableBinaryPathCandidate() = %q, want empty", got)
 	}
 }
