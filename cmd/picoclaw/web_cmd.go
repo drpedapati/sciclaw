@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	webui "github.com/sipeed/picoclaw/web"
@@ -893,30 +895,94 @@ func (s *webServer) handleCronAction(w http.ResponseWriter, r *http.Request) {
 // ── Routing ──
 
 func (s *webServer) handleRouting(w http.ResponseWriter, r *http.Request) {
+	type routingStatus struct {
+		Enabled          bool   `json:"enabled"`
+		UnmappedBehavior string `json:"unmappedBehavior"`
+		TotalMappings    int    `json:"totalMappings"`
+		InvalidMappings  int    `json:"invalidMappings"`
+	}
+	type routingMapping struct {
+		ID             string   `json:"id"`
+		Channel        string   `json:"channel"`
+		ChatID         string   `json:"chatId"`
+		Workspace      string   `json:"workspace"`
+		AllowedSenders []string `json:"allowedSenders"`
+		Label          string   `json:"label"`
+		Mode           string   `json:"mode"`
+		LocalBackend   string   `json:"localBackend"`
+		LocalModel     string   `json:"localModel"`
+		LocalPreset    string   `json:"localPreset"`
+	}
+	loadRouting := func() (*config.Config, error) {
+		return loadConfig()
+	}
+	buildRoutingStatus := func(cfg *config.Config) routingStatus {
+		if cfg == nil {
+			return routingStatus{Enabled: false, UnmappedBehavior: config.RoutingUnmappedBehaviorBlock}
+		}
+		invalid := 0
+		for _, m := range cfg.Routing.Mappings {
+			tmp := config.RoutingConfig{
+				Enabled:          cfg.Routing.Enabled,
+				UnmappedBehavior: cfg.Routing.UnmappedBehavior,
+				Mappings:         []config.RoutingMapping{m},
+			}
+			if err := config.ValidateRoutingConfig(tmp); err != nil {
+				invalid++
+			}
+		}
+		return routingStatus{
+			Enabled:          cfg.Routing.Enabled,
+			UnmappedBehavior: cfg.Routing.UnmappedBehavior,
+			TotalMappings:    len(cfg.Routing.Mappings),
+			InvalidMappings:  invalid,
+		}
+	}
+	buildRoutingMappings := func(cfg *config.Config) []routingMapping {
+		if cfg == nil || len(cfg.Routing.Mappings) == 0 {
+			return []routingMapping{}
+		}
+		mappings := append([]config.RoutingMapping(nil), cfg.Routing.Mappings...)
+		sort.Slice(mappings, func(i, j int) bool {
+			ki := strings.ToLower(mappings[i].Channel) + ":" + mappings[i].ChatID
+			kj := strings.ToLower(mappings[j].Channel) + ":" + mappings[j].ChatID
+			return ki < kj
+		})
+		out := make([]routingMapping, 0, len(mappings))
+		for _, m := range mappings {
+			out = append(out, routingMapping{
+				ID:             strings.ToLower(strings.TrimSpace(m.Channel)) + ":" + strings.TrimSpace(m.ChatID),
+				Channel:        m.Channel,
+				ChatID:         m.ChatID,
+				Workspace:      m.Workspace,
+				AllowedSenders: append([]string(nil), []string(m.AllowedSenders)...),
+				Label:          m.Label,
+				Mode:           mappingModeDisplay(m),
+				LocalBackend:   m.LocalBackend,
+				LocalModel:     m.LocalModel,
+				LocalPreset:    m.LocalPreset,
+			})
+		}
+		return out
+	}
+
 	action := strings.TrimPrefix(r.URL.Path, "/api/routing/")
 	switch action {
 	case "status":
-		out, _ := s.runCLI(10*time.Second, "routing", "status", "--json")
-		var status interface{}
-		if json.Unmarshal([]byte(out), &status) == nil {
-			jsonResp(w, status)
-		} else {
-			jsonResp(w, map[string]interface{}{
-				"enabled":          false,
-				"unmappedBehavior": "block",
-				"totalMappings":    0,
-				"invalidMappings":  0,
-			})
+		cfg, err := loadRouting()
+		if err != nil {
+			jsonErr(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+		jsonResp(w, buildRoutingStatus(cfg))
 	case "mappings":
 		if r.Method == http.MethodGet {
-			out, _ := s.runCLI(10*time.Second, "routing", "list", "--json")
-			var mappings interface{}
-			if json.Unmarshal([]byte(out), &mappings) == nil {
-				jsonResp(w, mappings)
-			} else {
-				jsonResp(w, []interface{}{})
+			cfg, err := loadRouting()
+			if err != nil {
+				jsonErr(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
+			jsonResp(w, buildRoutingMappings(cfg))
 		} else if r.Method == http.MethodPost {
 			var body map[string]interface{}
 			readBody(r, &body)
@@ -951,7 +1017,12 @@ func (s *webServer) handleRouting(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(action, "mappings/") {
 			id := strings.TrimPrefix(action, "mappings/")
 			if r.Method == http.MethodDelete {
-				out, err := s.runCLI(10*time.Second, "routing", "remove", id)
+				parts := strings.SplitN(id, ":", 2)
+				if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+					jsonErr(w, "invalid routing id", http.StatusBadRequest)
+					return
+				}
+				out, err := s.runCLI(10*time.Second, "routing", "remove", "--channel", parts[0], "--chat-id", parts[1])
 				jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
 				return
 			}

@@ -24,14 +24,22 @@ export default function RoutingPage() {
   const [flash, setFlash] = useState('');
   const [reloading, setReloading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const fetchData = async () => {
     try {
       const [s, m] = await Promise.all([getRoutingStatus(), getRoutingMappings()]);
       setStatus(s);
       setMappings(m);
+      setLoadError('');
+      setSelected((idx) => (m.length === 0 ? 0 : Math.min(idx, m.length - 1)));
+    } catch (e) {
+      setStatus(null);
+      setMappings([]);
+      setLoadError(e instanceof Error ? e.message : 'Failed to load routing state');
+    } finally {
       setLoaded(true);
-    } catch { /* */ }
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -89,6 +97,11 @@ export default function RoutingPage() {
         {flash && (
           <div className="rounded-md bg-brand/10 border border-brand/20 px-4 py-2 text-sm text-brand animate-fade-in">
             {flash}
+          </div>
+        )}
+        {loadError && (
+          <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-300 animate-fade-in">
+            {loadError}
           </div>
         )}
 

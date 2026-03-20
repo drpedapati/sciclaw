@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	"github.com/sipeed/picoclaw/pkg/config"
 )
 
 func TestNewWebServerServesEmbeddedApp(t *testing.T) {
@@ -204,6 +206,80 @@ func TestHandleModelsCatalogUsesDiscoverJSON(t *testing.T) {
 	}
 	if body.Models[0].ID != "claude-sonnet-4.6" || body.Models[0].Provider != "anthropic" {
 		t.Fatalf("unexpected first model: %#v", body.Models[0])
+	}
+}
+
+func TestHandleRoutingReadsRealConfigMappings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgDir := filepath.Join(home, ".picoclaw")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	cfg := config.DefaultConfig()
+	workspace := filepath.Join(home, "workspace-a")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	cfg.Routing.Enabled = true
+	cfg.Routing.UnmappedBehavior = config.RoutingUnmappedBehaviorMentionOnly
+	cfg.Routing.Mappings = []config.RoutingMapping{
+		{
+			Channel:        "discord",
+			ChatID:         "12345",
+			Workspace:      workspace,
+			AllowedSenders: config.FlexibleStringSlice{"u1", "u2"},
+			Label:          "Alpha",
+		},
+	}
+	if err := config.SaveConfig(filepath.Join(cfgDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	srv := newWebServer(&webTestExec{}, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/routing/status", nil)
+	rec := httptest.NewRecorder()
+	srv.handleRouting(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code=%d", rec.Code)
+	}
+	var status struct {
+		Enabled          bool   `json:"enabled"`
+		UnmappedBehavior string `json:"unmappedBehavior"`
+		TotalMappings    int    `json:"totalMappings"`
+		InvalidMappings  int    `json:"invalidMappings"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if !status.Enabled || status.UnmappedBehavior != config.RoutingUnmappedBehaviorMentionOnly || status.TotalMappings != 1 || status.InvalidMappings != 0 {
+		t.Fatalf("unexpected status: %#v", status)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/routing/mappings", nil)
+	rec = httptest.NewRecorder()
+	srv.handleRouting(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("mappings code=%d", rec.Code)
+	}
+	var mappings []struct {
+		ID             string   `json:"id"`
+		Channel        string   `json:"channel"`
+		ChatID         string   `json:"chatId"`
+		Workspace      string   `json:"workspace"`
+		AllowedSenders []string `json:"allowedSenders"`
+		Label          string   `json:"label"`
+		Mode           string   `json:"mode"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &mappings); err != nil {
+		t.Fatalf("decode mappings: %v", err)
+	}
+	if len(mappings) != 1 {
+		t.Fatalf("expected 1 mapping, got %#v", mappings)
+	}
+	if mappings[0].ID != "discord:12345" || mappings[0].Workspace != workspace || mappings[0].Label != "Alpha" || mappings[0].Mode != "default" {
+		t.Fatalf("unexpected mapping: %#v", mappings[0])
 	}
 }
 
