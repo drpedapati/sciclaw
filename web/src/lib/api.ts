@@ -192,11 +192,6 @@ export interface JobsResponse {
 }
 
 export const getJobs = () => request<JobsResponse>('/jobs');
-export const pruneJobs = (olderThanHours = 24) =>
-  request<{ ok: boolean; removed: number; remaining: number }>('/jobs/prune', {
-    method: 'POST',
-    body: JSON.stringify({ olderThanHours }),
-  });
 
 // ── Models ──
 export interface ModelInfo {

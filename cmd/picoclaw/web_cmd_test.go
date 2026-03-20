@@ -462,7 +462,7 @@ func TestHandleJobsReadsPersistedLedger(t *testing.T) {
 	}
 }
 
-func TestHandleJobsPruneRemovesOldTerminalRecords(t *testing.T) {
+func TestHandleJobsRejectsMutationEndpoints(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfgDir := filepath.Join(home, ".picoclaw")
@@ -505,31 +505,20 @@ func TestHandleJobsPruneRemovesOldTerminalRecords(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.handleJobs(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	var body struct {
-		OK        bool `json:"ok"`
-		Removed   int  `json:"removed"`
-		Remaining int  `json:"remaining"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if !body.OK || body.Removed != 1 || body.Remaining != 2 {
-		t.Fatalf("unexpected prune response: %#v", body)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
 	}
 
 	remaining, err := loadJobRecords()
 	if err != nil {
 		t.Fatalf("reload jobs: %v", err)
 	}
-	if len(remaining) != 2 {
-		t.Fatalf("expected 2 remaining jobs, got %#v", remaining)
+	if len(remaining) != 3 {
+		t.Fatalf("expected ledger to remain at 3 jobs, got %#v", remaining)
 	}
-	for _, job := range remaining {
-		if job.ID == "done-old" {
-			t.Fatalf("expected old terminal job to be pruned, got %#v", remaining)
+	for i, job := range remaining {
+		if job.ID != payload.Jobs[i].ID {
+			t.Fatalf("expected ledger to remain unchanged, got %#v", remaining)
 		}
 	}
 }

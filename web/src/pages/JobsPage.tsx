@@ -6,16 +6,13 @@ import {
   Loader2,
   RefreshCw,
   Search,
-  Server,
-  Trash2,
   Users,
 } from 'lucide-react';
 import TopBar from '../components/TopBar';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
-import { getJobs, pruneJobs, serviceAction, type JobRecord, type JobsResponse } from '../lib/api';
-import { useSnapshot } from '../hooks/useSnapshot';
+import { getJobs, type JobRecord, type JobsResponse } from '../lib/api';
 
 function formatRelative(ms: number) {
   if (!ms) return '—';
@@ -100,13 +97,9 @@ type PersonSummary = {
 };
 
 export default function JobsPage() {
-  const { snapshot, refresh } = useSnapshot();
   const [data, setData] = useState<JobsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [pruning, setPruning] = useState(false);
-  const [restarting, setRestarting] = useState(false);
-  const [flash, setFlash] = useState('');
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState<'all' | 'active' | 'running' | 'queued' | 'failed' | 'done'>('all');
@@ -114,11 +107,6 @@ export default function JobsPage() {
   const [laneFilter, setLaneFilter] = useState<'all' | 'main' | 'btw'>('all');
   const [selectedTarget, setSelectedTarget] = useState('');
   const [selectedJobId, setSelectedJobId] = useState('');
-
-  const showFlash = (msg: string) => {
-    setFlash(msg);
-    setTimeout(() => setFlash(''), 4500);
-  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -140,10 +128,11 @@ export default function JobsPage() {
   useEffect(() => { fetchData(); }, []);
 
   const jobs = data?.jobs ?? [];
+  const activeJobs = useMemo(() => jobs.filter((job) => job.state === 'running' || job.state === 'queued'), [jobs]);
 
   const targetGroups = useMemo<TargetSummary[]>(() => {
     const grouped = new Map<string, TargetSummary>();
-    for (const job of jobs) {
+    for (const job of activeJobs) {
       const key = job.targetKey || `${job.channel}:${job.chatId}:${job.workspace}`;
       const existing = grouped.get(key) ?? {
         key,
@@ -172,7 +161,7 @@ export default function JobsPage() {
       if (a.failed !== b.failed) return b.failed - a.failed;
       return b.updatedAt - a.updatedAt;
     });
-  }, [jobs]);
+  }, [activeJobs]);
 
   const people = useMemo<PersonSummary[]>(() => {
     const grouped = new Map<string, PersonSummary>();
@@ -225,42 +214,10 @@ export default function JobsPage() {
 
   const selectedJob = filteredJobs.find((job) => job.id === selectedJobId) ?? filteredJobs[0] ?? jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null;
 
-  const restartGateway = async () => {
-    setRestarting(true);
-    try {
-      const result = await serviceAction('restart');
-      if (!result.ok) throw new Error(result.output || 'Gateway restart failed');
-      showFlash('Gateway restarted');
-      await Promise.all([fetchData(), refresh()]);
-    } catch (e) {
-      showFlash(`Error: ${e instanceof Error ? e.message : e}`);
-    } finally {
-      setRestarting(false);
-    }
-  };
-
-  const handlePrune = async () => {
-    setPruning(true);
-    try {
-      const result = await pruneJobs(24);
-      showFlash(`Removed ${result.removed} finished jobs older than 24h`);
-      await fetchData();
-    } catch (e) {
-      showFlash(`Error: ${e instanceof Error ? e.message : e}`);
-    } finally {
-      setPruning(false);
-    }
-  };
-
   return (
     <>
       <TopBar title="Jobs" />
       <main className="flex-1 overflow-auto p-6 space-y-5 animate-fade-in">
-        {flash && (
-          <div className="rounded-md bg-brand/10 border border-brand/20 px-4 py-2 text-sm text-brand animate-fade-in">
-            {flash}
-          </div>
-        )}
         {error && (
           <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-300 animate-fade-in">
             {error}
@@ -270,11 +227,11 @@ export default function JobsPage() {
         <section className="rounded-2xl border border-border bg-surface-100 px-5 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl space-y-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand/80">Operator Queue</p>
-              <h2 className="text-xl font-semibold text-zinc-100">Queue pressure across Discord rooms, workspaces, and requesters</h2>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand/80">Read-Only Queue Ledger</p>
+              <h2 className="text-xl font-semibold text-zinc-100">Current backlog, job IDs, and recent failures across Discord rooms</h2>
               <p className="text-sm text-zinc-500">
-                This page reads the persisted job ledger the gateway writes while it runs. It gives you the real queue map, recent failures,
-                and requester churn without pretending the web process can directly mutate the in-memory scheduler.
+                This page is operator visibility only. It reads the persisted job ledger the gateway writes and surfaces live queue pressure,
+                IDs, and failure context. If a job needs to move, cancel it from Discord where the gateway owns the real scheduler state.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -285,22 +242,6 @@ export default function JobsPage() {
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Refresh ledger
-              </button>
-              <button
-                onClick={handlePrune}
-                disabled={pruning}
-                className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-surface-50 disabled:opacity-60"
-              >
-                {pruning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                Prune finished {'>'} 24h
-              </button>
-              <button
-                onClick={restartGateway}
-                disabled={restarting || !snapshot.ServiceRunning}
-                className="inline-flex items-center gap-2 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-surface-500 transition-colors hover:bg-brand-500 disabled:opacity-60"
-              >
-                {restarting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Server className="h-3.5 w-3.5" />}
-                Restart gateway
               </button>
             </div>
           </div>
@@ -313,7 +254,7 @@ export default function JobsPage() {
             { label: 'Completed', value: data?.summary.done ?? 0, note: `${data?.summary.cancelled ?? 0} cancelled`, variant: 'info' as const },
             { label: 'Channels', value: data?.summary.distinctChats ?? 0, note: `${data?.summary.distinctChannels ?? 0} channel types`, variant: 'muted' as const },
             { label: 'Requesters', value: data?.summary.distinctUsers ?? 0, note: 'Distinct users in ledger', variant: 'warning' as const },
-            { label: 'Workspaces', value: data?.summary.distinctWorkspaces ?? 0, note: snapshot.ServiceRunning ? 'Gateway live' : 'Gateway stopped', variant: snapshot.ServiceRunning ? 'ready' as const : 'warning' as const },
+            { label: 'Workspaces', value: data?.summary.distinctWorkspaces ?? 0, note: 'Ledger-backed view', variant: 'muted' as const },
           ].map((item) => (
             <div key={item.label} className="rounded-xl border border-border bg-surface-100 px-4 py-3">
               <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">{item.label}</p>
@@ -328,9 +269,9 @@ export default function JobsPage() {
 
         <section className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
           <div className="space-y-5">
-            <Card title="Queue Pressure">
+            <Card title="Active Queue Pressure">
               {targetGroups.length === 0 ? (
-                <EmptyState icon={GitBranch} title="No jobs recorded" description="Once the gateway has handled work, lanes will appear here." />
+                <EmptyState icon={GitBranch} title="No active backlog" description="Running and queued jobs will appear here when a room is actually under load." />
               ) : (
                 <div className="space-y-2">
                   {targetGroups.slice(0, 10).map((target) => {
@@ -447,6 +388,7 @@ export default function JobsPage() {
                       <table className="w-full table-fixed">
                         <thead className="sticky top-0 z-10 bg-surface-200/98 backdrop-blur">
                           <tr className="border-b border-border">
+                            <th className="w-40 px-3 py-2 text-left text-[10px] uppercase tracking-[0.18em] text-zinc-500">Job ID</th>
                             <th className="w-28 px-3 py-2 text-left text-[10px] uppercase tracking-[0.18em] text-zinc-500">State</th>
                             <th className="w-20 px-3 py-2 text-left text-[10px] uppercase tracking-[0.18em] text-zinc-500">Lane</th>
                             <th className="px-3 py-2 text-left text-[10px] uppercase tracking-[0.18em] text-zinc-500">Request</th>
@@ -462,9 +404,15 @@ export default function JobsPage() {
                             return (
                               <tr key={job.id} onClick={() => setSelectedJobId(job.id)} className={`cursor-pointer transition-colors ${isSelected ? 'bg-brand/7' : 'hover:bg-surface-50/40'}`}>
                                 <td className="px-3 py-2 align-top">
+                                  <div className="space-y-1.5">
+                                    <p className="text-sm font-semibold text-zinc-100">{job.shortId || '—'}</p>
+                                    <p className="truncate font-mono text-[11px] text-zinc-500">{job.id}</p>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 align-top">
                                   <div className="space-y-1">
                                     <StatusBadge variant={stateVariant(job.state)} dot>{job.state}</StatusBadge>
-                                    <p className="text-[11px] text-zinc-600">{job.shortId || job.id.slice(-5)}</p>
+                                    {job.stale ? <p className="text-[11px] text-amber-300">stale</p> : <p className="text-[11px] text-zinc-600">{job.phase || '—'}</p>}
                                   </div>
                                 </td>
                                 <td className="px-3 py-2 align-top text-[12px] text-zinc-300">{laneLabel(job)}</td>
@@ -567,9 +515,11 @@ export default function JobsPage() {
                     </div>
 
                     <div className="rounded-lg border border-border-subtle bg-surface-50/15 px-4 py-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Operator note</p>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Discord control</p>
                       <p className="mt-2 text-sm leading-6 text-zinc-400">
-                        Live queue control still happens inside the gateway process and via Discord job cards. This page is the authoritative ledger and triage surface: use it to spot backlog, stale jobs, repeated failures, and heavy requesters before you restart or intervene.
+                        Use the Discord job card for this request if you need to intervene. The short ID
+                        <span className="mx-1 rounded bg-surface-200 px-1.5 py-0.5 font-mono text-zinc-200">{selectedJob.shortId || '—'}</span>
+                        is the one users see in Discord for actions like status, cancel, or force. This page stays read-only so it cannot drift from the gateway's real queue state.
                       </p>
                     </div>
                   </div>

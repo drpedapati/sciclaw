@@ -215,25 +215,6 @@ func loadJobRecords() ([]routing.JobRecord, error) {
 	return payload.Jobs, nil
 }
 
-func saveJobRecords(records []routing.JobRecord) error {
-	path := jobsStorePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	payload := struct {
-		Jobs []routing.JobRecord `json:"jobs"`
-	}{Jobs: records}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
 func jobLane(class routing.JobClass) string {
 	switch strings.TrimSpace(string(class)) {
 	case string(routing.JobClassBTW), "external_readonly":
@@ -259,15 +240,6 @@ func jobStateRank(state routing.JobState) int {
 		return 5
 	default:
 		return 6
-	}
-}
-
-func isTerminalJobState(state routing.JobState) bool {
-	switch state {
-	case routing.JobStateDone, routing.JobStateFailed, routing.JobStateCancelled, routing.JobStateInterrupted:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -893,40 +865,6 @@ func (s *webServer) handleJobs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jsonResp(w, resp)
-		return
-
-	case r.URL.Path == "/api/jobs/prune" && r.Method == http.MethodPost:
-		var body struct {
-			OlderThanHours int `json:"olderThanHours"`
-		}
-		_ = readBody(r, &body)
-		if body.OlderThanHours <= 0 {
-			body.OlderThanHours = 24
-		}
-		cutoff := time.Now().Add(-time.Duration(body.OlderThanHours) * time.Hour).UnixMilli()
-		records, err := loadJobRecords()
-		if err != nil {
-			jsonErr(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		kept := make([]routing.JobRecord, 0, len(records))
-		removed := 0
-		for _, record := range records {
-			if isTerminalJobState(record.State) && record.UpdatedAt > 0 && record.UpdatedAt < cutoff {
-				removed++
-				continue
-			}
-			kept = append(kept, record)
-		}
-		if err := saveJobRecords(kept); err != nil {
-			jsonErr(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		jsonResp(w, map[string]interface{}{
-			"ok":        true,
-			"removed":   removed,
-			"remaining": len(kept),
-		})
 		return
 	default:
 		jsonErr(w, "method not allowed", http.StatusMethodNotAllowed)
