@@ -254,15 +254,30 @@ export const phiAction = (action: string, data?: Record<string, string>) =>
 // ── Skills ──
 export interface Skill {
   name: string;
-  source: string;  // workspace | builtin | global
+  source: string;
+  path: string;
   description: string;
-  status: string;
+  canRemove: boolean;
 }
-export const getSkills = () => request<Skill[]>('/skills');
+export interface SkillsData {
+  workspace: string;
+  workspaceSkillsDir: string;
+  globalSkillsDir: string;
+  builtinSkillsDir: string;
+  sourcePriority: string[];
+  counts: {
+    total: number;
+    workspace: number;
+    global: number;
+    builtin: number;
+  };
+  installed: Skill[];
+}
+export const getSkills = () => request<SkillsData>('/skills');
 export const installSkill = (path: string) =>
   request<{ ok: boolean }>('/skills', { method: 'POST', body: JSON.stringify({ path }) });
 export const removeSkill = (name: string) =>
-  request<{ ok: boolean }>(`/skills/${name}`, { method: 'DELETE' });
+  request<{ ok: boolean }>(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
 
 // ── Schedule ──
 export interface CronJob {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	iofs "io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,6 +22,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/models"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/routing"
+	"github.com/sipeed/picoclaw/pkg/skills"
 	webui "github.com/sipeed/picoclaw/web"
 )
 
@@ -125,6 +127,7 @@ func (s *webServer) registerRoutes() {
 	s.mux.HandleFunc("/api/phi", s.handlePhi)
 	s.mux.HandleFunc("/api/phi/", s.handlePhiAction)
 	s.mux.HandleFunc("/api/skills", s.handleSkills)
+	s.mux.HandleFunc("/api/skills/", s.handleSkillsAction)
 	s.mux.HandleFunc("/api/cron", s.handleCron)
 	s.mux.HandleFunc("/api/cron/", s.handleCronAction)
 	s.mux.HandleFunc("/api/routing/", s.handleRouting)
@@ -580,15 +583,15 @@ func (s *webServer) handleEmail(w http.ResponseWriter, r *http.Request) {
 		}
 		email := tui.GetMapNested(cfg, "channels", "email")
 		resp := map[string]interface{}{
-			"enabled":     tui.GetBool(email, "enabled"),
-			"provider":    tui.GetString(email, "provider"),
-			"address":     tui.GetString(email, "address"),
-			"displayName": tui.GetString(email, "display_name"),
-			"hasApiKey":   tui.GetString(email, "api_key") != "",
-			"baseUrl":     tui.GetString(email, "base_url"),
-			"allowFrom":   tui.GetStringSliceValue(email, "allow_from"),
-			"receiveEnabled": tui.GetBool(email, "receive_enabled"),
-			"receiveMode": tui.GetString(email, "receive_mode"),
+			"enabled":             tui.GetBool(email, "enabled"),
+			"provider":            tui.GetString(email, "provider"),
+			"address":             tui.GetString(email, "address"),
+			"displayName":         tui.GetString(email, "display_name"),
+			"hasApiKey":           tui.GetString(email, "api_key") != "",
+			"baseUrl":             tui.GetString(email, "base_url"),
+			"allowFrom":           tui.GetStringSliceValue(email, "allow_from"),
+			"receiveEnabled":      tui.GetBool(email, "receive_enabled"),
+			"receiveMode":         tui.GetString(email, "receive_mode"),
 			"pollIntervalSeconds": getIntValue(email, "poll_interval_seconds"),
 		}
 		jsonResp(w, resp)
@@ -1175,27 +1178,179 @@ func (s *webServer) handlePhiAction(w http.ResponseWriter, r *http.Request) {
 
 // ── Skills ──
 
+type webSkill struct {
+	Name        string `json:"name"`
+	Source      string `json:"source"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+	CanRemove   bool   `json:"canRemove"`
+}
+
+type webSkillsCounts struct {
+	Total     int `json:"total"`
+	Workspace int `json:"workspace"`
+	Global    int `json:"global"`
+	Builtin   int `json:"builtin"`
+}
+
+type webSkillsState struct {
+	Workspace          string          `json:"workspace"`
+	WorkspaceSkillsDir string          `json:"workspaceSkillsDir"`
+	GlobalSkillsDir    string          `json:"globalSkillsDir"`
+	BuiltinSkillsDir   string          `json:"builtinSkillsDir"`
+	SourcePriority     []string        `json:"sourcePriority"`
+	Counts             webSkillsCounts `json:"counts"`
+	Installed          []webSkill      `json:"installed"`
+}
+
+func skillSourceRank(source string) int {
+	switch source {
+	case "workspace":
+		return 0
+	case "global":
+		return 1
+	case "builtin":
+		return 2
+	default:
+		return 3
+	}
+}
+
+func loadWebSkillsState() (*webSkillsState, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	workspace := cfg.WorkspacePath()
+	globalDir := filepath.Dir(getConfigPath())
+	globalSkillsDir := filepath.Join(globalDir, "skills")
+	builtinSkillsDir := resolveBuiltinSkillsDir(workspace)
+	loader := skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir)
+	installed := loader.ListSkills()
+
+	sort.Slice(installed, func(i, j int) bool {
+		left := installed[i]
+		right := installed[j]
+		if skillSourceRank(left.Source) != skillSourceRank(right.Source) {
+			return skillSourceRank(left.Source) < skillSourceRank(right.Source)
+		}
+		return strings.ToLower(left.Name) < strings.ToLower(right.Name)
+	})
+
+	state := &webSkillsState{
+		Workspace:          workspace,
+		WorkspaceSkillsDir: filepath.Join(workspace, "skills"),
+		GlobalSkillsDir:    globalSkillsDir,
+		BuiltinSkillsDir:   builtinSkillsDir,
+		SourcePriority:     []string{"workspace", "global", "builtin"},
+		Installed:          make([]webSkill, 0, len(installed)),
+	}
+
+	for _, skill := range installed {
+		switch skill.Source {
+		case "workspace":
+			state.Counts.Workspace++
+		case "global":
+			state.Counts.Global++
+		case "builtin":
+			state.Counts.Builtin++
+		}
+		state.Installed = append(state.Installed, webSkill{
+			Name:        skill.Name,
+			Source:      skill.Source,
+			Path:        skill.Path,
+			Description: skill.Description,
+			CanRemove:   skill.Source == "workspace",
+		})
+	}
+	state.Counts.Total = len(state.Installed)
+
+	return state, nil
+}
+
 func (s *webServer) handleSkills(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		out, err := s.runCLI(10*time.Second, "skills", "list", "--json")
+		state, err := loadWebSkillsState()
 		if err != nil {
-			jsonResp(w, []interface{}{})
+			jsonErr(w, err.Error(), 500)
 			return
 		}
-		var skills interface{}
-		if json.Unmarshal([]byte(out), &skills) == nil {
-			jsonResp(w, skills)
-		} else {
-			jsonResp(w, []interface{}{})
-		}
+		jsonResp(w, state)
 	case http.MethodPost:
 		var body struct {
 			Path string `json:"path"`
 		}
 		readBody(r, &body)
-		out, err := s.runCLI(30*time.Second, "skills", "install", shellQuote(body.Path))
-		jsonResp(w, map[string]interface{}{"ok": err == nil, "output": out})
+		path := strings.TrimSpace(body.Path)
+		if path == "" {
+			jsonErr(w, "skill repo path required", 400)
+			return
+		}
+		cfg, err := loadConfig()
+		if err != nil {
+			jsonErr(w, err.Error(), 500)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		installer := skills.NewSkillInstaller(cfg.WorkspacePath())
+		if err := installer.InstallFromGitHub(ctx, path); err != nil {
+			jsonErr(w, err.Error(), 500)
+			return
+		}
+		jsonResp(w, map[string]interface{}{"ok": true, "installed": filepath.Base(path)})
+	default:
+		jsonErr(w, "method not allowed", 405)
+	}
+}
+
+func (s *webServer) handleSkillsAction(w http.ResponseWriter, r *http.Request) {
+	name := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/skills/"), "/")
+	if name == "" {
+		jsonErr(w, "skill name required", 400)
+		return
+	}
+	decodedName, err := url.PathUnescape(name)
+	if err != nil {
+		jsonErr(w, "invalid skill name", 400)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodDelete:
+		state, err := loadWebSkillsState()
+		if err != nil {
+			jsonErr(w, err.Error(), 500)
+			return
+		}
+		var target *webSkill
+		for i := range state.Installed {
+			if state.Installed[i].Name == decodedName {
+				target = &state.Installed[i]
+				break
+			}
+		}
+		if target == nil {
+			jsonErr(w, "skill not found", 404)
+			return
+		}
+		if !target.CanRemove {
+			jsonErr(w, "only workspace-installed skills can be removed from the web UI", 400)
+			return
+		}
+		cfg, err := loadConfig()
+		if err != nil {
+			jsonErr(w, err.Error(), 500)
+			return
+		}
+		installer := skills.NewSkillInstaller(cfg.WorkspacePath())
+		if err := installer.Uninstall(decodedName); err != nil {
+			jsonErr(w, err.Error(), 500)
+			return
+		}
+		jsonResp(w, map[string]bool{"ok": true})
 	default:
 		jsonErr(w, "method not allowed", 405)
 	}

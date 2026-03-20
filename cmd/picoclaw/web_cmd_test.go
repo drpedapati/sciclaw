@@ -49,13 +49,13 @@ func TestNewWebServerSpaFallbackUsesEmbeddedIndex(t *testing.T) {
 }
 
 type webTestExec struct {
-	command string
-	output  string
-	err     error
-	configRaw   string
-	writtenRaw  string
-	installed bool
-	running   bool
+	command    string
+	output     string
+	err        error
+	configRaw  string
+	writtenRaw string
+	installed  bool
+	running    bool
 }
 
 func (e *webTestExec) Mode() tui.Mode { return tui.ModeLocal }
@@ -76,14 +76,14 @@ func (e *webTestExec) WriteFile(path string, data []byte, _ os.FileMode) error {
 	}
 	return nil
 }
-func (e *webTestExec) ConfigPath() string                                       { return "/tmp/config.json" }
-func (e *webTestExec) AuthPath() string                                         { return "/tmp/auth.json" }
-func (e *webTestExec) HomePath() string                                         { return "/Users/tester" }
-func (e *webTestExec) BinaryPath() string                                       { return "sciclaw" }
-func (e *webTestExec) AgentVersion() string                                     { return "vtest" }
-func (e *webTestExec) ServiceInstalled() bool                                   { return e.installed }
-func (e *webTestExec) ServiceActive() bool                                      { return e.running }
-func (e *webTestExec) InteractiveProcess(_ ...string) *exec.Cmd                 { return exec.Command("true") }
+func (e *webTestExec) ConfigPath() string                       { return "/tmp/config.json" }
+func (e *webTestExec) AuthPath() string                         { return "/tmp/auth.json" }
+func (e *webTestExec) HomePath() string                         { return "/Users/tester" }
+func (e *webTestExec) BinaryPath() string                       { return "sciclaw" }
+func (e *webTestExec) AgentVersion() string                     { return "vtest" }
+func (e *webTestExec) ServiceInstalled() bool                   { return e.installed }
+func (e *webTestExec) ServiceActive() bool                      { return e.running }
+func (e *webTestExec) InteractiveProcess(_ ...string) *exec.Cmd { return exec.Command("true") }
 
 func TestHandleChatSuppressesAgentStderr(t *testing.T) {
 	execStub := &webTestExec{output: "hello"}
@@ -317,6 +317,182 @@ func TestHandleEmailPersistsManagedSettings(t *testing.T) {
 	}
 	if !body.Enabled || body.Provider != "resend" || !body.HasAPIKey || body.ReceiveEnabled || body.ReceiveMode != "poll" || body.PollIntervalSeconds != 30 {
 		t.Fatalf("unexpected get response: %#v", body)
+	}
+}
+
+func TestHandleSkillsReadsResolvedSkillSources(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir temp home: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWD) }()
+
+	cfgDir := filepath.Join(home, ".picoclaw")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	workspace := filepath.Join(home, "workspace-a")
+	if err := os.MkdirAll(filepath.Join(workspace, "skills"), 0o755); err != nil {
+		t.Fatalf("mkdir workspace skills: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(cfgDir, "skills"), 0o755); err != nil {
+		t.Fatalf("mkdir global skills: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "skills"), 0o755); err != nil {
+		t.Fatalf("mkdir builtin skills: %v", err)
+	}
+
+	writeSkill := func(dir string, name string, description string) {
+		skillDir := filepath.Join(dir, name)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		content := "---\nname: " + name + "\ndescription: " + description + "\n---\n\nBody"
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	writeSkill(filepath.Join(workspace, "skills"), "alpha", "workspace alpha")
+	writeSkill(filepath.Join(cfgDir, "skills"), "alpha", "global alpha shadowed")
+	writeSkill(filepath.Join(cfgDir, "skills"), "beta", "global beta")
+	writeSkill(filepath.Join(home, "skills"), "gamma", "builtin gamma")
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+	if err := config.SaveConfig(filepath.Join(cfgDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	srv := newWebServer(&webTestExec{}, "")
+	req := httptest.NewRequest(http.MethodGet, "/api/skills", nil)
+	rec := httptest.NewRecorder()
+	srv.handleSkills(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body struct {
+		Workspace          string `json:"workspace"`
+		WorkspaceSkillsDir string `json:"workspaceSkillsDir"`
+		GlobalSkillsDir    string `json:"globalSkillsDir"`
+		BuiltinSkillsDir   string `json:"builtinSkillsDir"`
+		Counts             struct {
+			Total     int `json:"total"`
+			Workspace int `json:"workspace"`
+			Global    int `json:"global"`
+			Builtin   int `json:"builtin"`
+		} `json:"counts"`
+		Installed []struct {
+			Name        string `json:"name"`
+			Source      string `json:"source"`
+			Description string `json:"description"`
+			CanRemove   bool   `json:"canRemove"`
+		} `json:"installed"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if body.Workspace != workspace || body.WorkspaceSkillsDir != filepath.Join(workspace, "skills") {
+		t.Fatalf("unexpected workspace paths: %#v", body)
+	}
+	expectedGlobal, err := filepath.EvalSymlinks(filepath.Join(cfgDir, "skills"))
+	if err != nil {
+		t.Fatalf("eval global skills dir: %v", err)
+	}
+	actualGlobal, err := filepath.EvalSymlinks(body.GlobalSkillsDir)
+	if err != nil {
+		t.Fatalf("eval actual global dir: %v", err)
+	}
+	expectedBuiltin, err := filepath.EvalSymlinks(filepath.Join(home, "skills"))
+	if err != nil {
+		t.Fatalf("eval builtin skills dir: %v", err)
+	}
+	actualBuiltin, err := filepath.EvalSymlinks(body.BuiltinSkillsDir)
+	if err != nil {
+		t.Fatalf("eval actual builtin dir: %v", err)
+	}
+	if actualGlobal != expectedGlobal || actualBuiltin != expectedBuiltin {
+		t.Fatalf("unexpected source paths: %#v", body)
+	}
+	if body.Counts.Total != 3 || body.Counts.Workspace != 1 || body.Counts.Global != 1 || body.Counts.Builtin != 1 {
+		t.Fatalf("unexpected counts: %#v", body.Counts)
+	}
+	if len(body.Installed) != 3 {
+		t.Fatalf("expected 3 resolved skills, got %#v", body.Installed)
+	}
+	if body.Installed[0].Name != "alpha" || body.Installed[0].Source != "workspace" || !body.Installed[0].CanRemove {
+		t.Fatalf("unexpected first skill: %#v", body.Installed[0])
+	}
+	if body.Installed[1].Name != "beta" || body.Installed[1].Source != "global" || body.Installed[1].CanRemove {
+		t.Fatalf("unexpected second skill: %#v", body.Installed[1])
+	}
+	if body.Installed[2].Name != "gamma" || body.Installed[2].Source != "builtin" || body.Installed[2].CanRemove {
+		t.Fatalf("unexpected third skill: %#v", body.Installed[2])
+	}
+}
+
+func TestHandleSkillsDeleteOnlyRemovesWorkspaceSkill(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir temp home: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWD) }()
+
+	cfgDir := filepath.Join(home, ".picoclaw")
+	workspace := filepath.Join(home, "workspace-a")
+	if err := os.MkdirAll(filepath.Join(workspace, "skills", "alpha"), 0o755); err != nil {
+		t.Fatalf("mkdir workspace alpha: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "skills", "gamma"), 0o755); err != nil {
+		t.Fatalf("mkdir builtin gamma: %v", err)
+	}
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "skills", "alpha", "SKILL.md"), []byte("---\nname: alpha\ndescription: workspace\n---\n"), 0o644); err != nil {
+		t.Fatalf("write alpha: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "skills", "gamma", "SKILL.md"), []byte("---\nname: gamma\ndescription: builtin\n---\n"), 0o644); err != nil {
+		t.Fatalf("write gamma: %v", err)
+	}
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+	if err := config.SaveConfig(filepath.Join(cfgDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	srv := newWebServer(&webTestExec{}, "")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/skills/gamma", nil)
+	rec := httptest.NewRecorder()
+	srv.handleSkillsAction(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for builtin delete, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/skills/alpha", nil)
+	rec = httptest.NewRecorder()
+	srv.handleSkillsAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for workspace delete, got %d", rec.Code)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "skills", "alpha")); !os.IsNotExist(err) {
+		t.Fatalf("expected workspace skill to be removed, stat err=%v", err)
 	}
 }
 
