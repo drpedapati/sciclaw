@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const minimumCtxclawVersion = "v0.1.1"
+const minimumCtxclawVersion = "v0.1.2"
 
 var ctxclawVersionPattern = regexp.MustCompile(`\bv(\d+)\.(\d+)\.(\d+)\b`)
 

@@ -8,29 +8,29 @@ import (
 )
 
 func TestExtractSemver(t *testing.T) {
-	got, ok := extractSemver("ctxclaw v0.1.1 (built 2026-03-21T12:04:52-0400, go1.26.0)")
+	got, ok := extractSemver("ctxclaw v0.1.2 (built 2026-03-21T12:04:52-0400, go1.26.0)")
 	if !ok {
 		t.Fatal("expected semver match")
 	}
-	if got != "v0.1.1" {
-		t.Fatalf("extractSemver = %q, want v0.1.1", got)
+	if got != "v0.1.2" {
+		t.Fatalf("extractSemver = %q, want v0.1.2", got)
 	}
 }
 
 func TestCompareSemver(t *testing.T) {
-	if compareSemver("v0.1.1", "v0.1.1") != 0 {
+	if compareSemver("v0.1.2", "v0.1.2") != 0 {
 		t.Fatal("expected equal versions")
 	}
-	if compareSemver("v0.1.2", "v0.1.1") <= 0 {
+	if compareSemver("v0.1.3", "v0.1.2") <= 0 {
 		t.Fatal("expected newer version to compare greater")
 	}
-	if compareSemver("v0.1.0", "v0.1.1") >= 0 {
+	if compareSemver("v0.1.1", "v0.1.2") >= 0 {
 		t.Fatal("expected older version to compare smaller")
 	}
 }
 
 func TestInspectCtxclawBinaryRecognizesCompatibleVersion(t *testing.T) {
-	path := writeFakeCtxclawBinary(t, "ctxclaw v0.1.1 (built now, go1.26.0)")
+	path := writeFakeCtxclawBinary(t, "ctxclaw v0.1.2 (built now, go1.26.0)")
 	info, err := inspectCtxclawBinary(path)
 	if err != nil {
 		t.Fatalf("inspectCtxclawBinary: %v", err)
@@ -38,8 +38,8 @@ func TestInspectCtxclawBinaryRecognizesCompatibleVersion(t *testing.T) {
 	if !info.Compatible {
 		t.Fatalf("expected compatible info, got %#v", info)
 	}
-	if info.Parsed != "v0.1.1" {
-		t.Fatalf("parsed version = %q, want v0.1.1", info.Parsed)
+	if info.Parsed != "v0.1.2" {
+		t.Fatalf("parsed version = %q, want v0.1.2", info.Parsed)
 	}
 }
 

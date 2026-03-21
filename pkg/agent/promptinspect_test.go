@@ -173,8 +173,14 @@ func TestBuildPromptEnvelopeIncludesLatestUserAndSchemas(t *testing.T) {
 	sm := session.NewSessionManager(filepath.Join(workspace, "sessions"))
 	sess := sm.GetOrCreate(sessionKey)
 	sess.Messages = []providers.Message{
+		{Role: "tool", ToolName: "orphaned_tool", ToolCallID: "orphaned", Content: "should be pruned"},
 		{Role: "user", Content: "earlier user prompt"},
-		{Role: "assistant", Content: "using tool", ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "read_file", Function: &providers.FunctionCall{Name: "read_file"}}}},
+		{Role: "assistant", Content: "using tool", ToolCalls: []providers.ToolCall{{
+			ID:        "call_1",
+			Name:      "read_file",
+			Arguments: map[string]interface{}{"path": "SKILL.md"},
+			Function:  &providers.FunctionCall{Name: "read_file", Arguments: `{"path":"SKILL.md"}`},
+		}}},
 		{Role: "tool", ToolName: "read_file", ToolCallID: "call_1", Content: "file content"},
 		{Role: "user", Content: "latest user prompt"},
 		{Role: "assistant", Content: "already answered"},
@@ -207,13 +213,25 @@ func TestBuildPromptEnvelopeIncludesLatestUserAndSchemas(t *testing.T) {
 	if len(env.Messages) != 4 {
 		t.Fatalf("expected history plus latest user, got %d", len(env.Messages))
 	}
+	if env.Messages[0].Role != "user" {
+		t.Fatalf("expected orphaned leading tool message to be pruned, first role=%q", env.Messages[0].Role)
+	}
 	if got := env.Messages[len(env.Messages)-1].Content; got != "latest user prompt" {
 		t.Fatalf("expected latest user in envelope, got %q", got)
+	}
+	if len(env.Messages[1].ToolCalls) != 1 {
+		t.Fatalf("expected assistant tool call to be preserved, got %#v", env.Messages[1].ToolCalls)
+	}
+	if env.Messages[1].ToolCalls[0].Arguments != `{"path":"SKILL.md"}` {
+		t.Fatalf("expected serialized tool call arguments, got %q", env.Messages[1].ToolCalls[0].Arguments)
 	}
 	if len(env.ToolSchemas) == 0 {
 		t.Fatal("expected tool schemas")
 	}
 	if env.Options.KeepRecentMessages == 0 {
 		t.Fatal("expected non-zero optimize options")
+	}
+	if env.Budget.ToolSchemaOverhead != 0 || env.Budget.BootstrapOverhead != 0 {
+		t.Fatalf("expected additive ctxclaw overhead fields to be zeroed, got %#v", env.Budget)
 	}
 }

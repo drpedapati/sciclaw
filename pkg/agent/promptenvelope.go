@@ -52,8 +52,9 @@ type PromptEnvelopeMessage struct {
 }
 
 type PromptEnvelopeToolCall struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 type PromptEnvelopeToolSchema struct {
@@ -106,6 +107,7 @@ func BuildPromptEnvelope(cfg *config.Config, opts PromptInspectOptions) (*Prompt
 	}
 
 	history := append([]providers.Message(nil), sess.Messages[:lastUser]...)
+	history, _ = trimLeadingOrphanedToolMessages(history)
 	currentUser := sess.Messages[lastUser]
 	channel, chatID := parseSessionKey(sessionKey)
 
@@ -120,13 +122,10 @@ func BuildPromptEnvelope(cfg *config.Config, opts PromptInspectOptions) (*Prompt
 		systemPrompt += buildCurrentSessionBlock(channel, chatID)
 	}
 
-	bootstrapFiles, _, bootstrapTotalChars := inspectBootstrapFiles(workspace, cfg.SharedWorkspacePath())
+	bootstrapFiles, _, _ := inspectBootstrapFiles(workspace, cfg.SharedWorkspacePath())
 	toolDefs := registry.ToProviderDefs()
-	toolSchemaOverhead := 0
 	outSchemas := make([]PromptEnvelopeToolSchema, 0, len(toolDefs))
 	for _, def := range toolDefs {
-		data, _ := json.Marshal(def)
-		toolSchemaOverhead += len(data)
 		paramsJSON, _ := json.Marshal(def.Function.Parameters)
 		outSchemas = append(outSchemas, PromptEnvelopeToolSchema{
 			Name:        def.Function.Name,
@@ -154,8 +153,8 @@ func BuildPromptEnvelope(cfg *config.Config, opts PromptInspectOptions) (*Prompt
 			ReserveTokens:       3000,
 			RecentBudgetTokens:  1800,
 			TokenDivisor:        4.0,
-			ToolSchemaOverhead:  toolSchemaOverhead,
-			BootstrapOverhead:   bootstrapTotalChars,
+			ToolSchemaOverhead:  0,
+			BootstrapOverhead:   0,
 			SummaryReserveFloor: 400,
 		},
 		Options: PromptEnvelopeOptions{
@@ -170,9 +169,7 @@ func BuildPromptEnvelope(cfg *config.Config, opts PromptInspectOptions) (*Prompt
 	if len(messages) <= 4 {
 		env.Budget.RecentBudgetTokens = 4000
 	}
-	if len(bootstrapFiles) == 0 {
-		env.Budget.BootstrapOverhead = len(systemPrompt)
-	}
+	_ = bootstrapFiles
 	return env, nil
 }
 
@@ -190,9 +187,18 @@ func convertPromptEnvelopeMessage(msg providers.Message) PromptEnvelopeMessage {
 			if name == "" && tc.Function != nil {
 				name = tc.Function.Name
 			}
+			args := ""
+			if tc.Function != nil && strings.TrimSpace(tc.Function.Arguments) != "" {
+				args = tc.Function.Arguments
+			} else if len(tc.Arguments) > 0 {
+				if data, err := json.Marshal(tc.Arguments); err == nil {
+					args = string(data)
+				}
+			}
 			out.ToolCalls = append(out.ToolCalls, PromptEnvelopeToolCall{
-				ID:   tc.ID,
-				Name: name,
+				ID:        tc.ID,
+				Name:      name,
+				Arguments: args,
 			})
 		}
 	}
