@@ -97,7 +97,7 @@ func doctorCmd() {
 func doctorHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nDoctor:")
-	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, service health, and key external tools (docx-review, xlsx-review, pptx-review, quarto, ImageMagick, irl, pandoc, PubMed CLI, optional pdf-form-filler).\n", commandName)
+	fmt.Printf("  %s doctor checks your sciClaw deployment, workspace, service health, and key external tools (docx-review, xlsx-review, pptx-review, quarto, ImageMagick, irl, pandoc, PubMed CLI, optional pdf-form-filler, optional ctxclaw).\n", commandName)
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --json        Machine-readable output")
@@ -354,6 +354,7 @@ func runDoctor(opts doctorOptions) doctorReport {
 			"install the sciclaw-claude-agent companion or set PICOCLAW_CLAUDE_AGENT_BINARY",
 		))
 	}
+	add(checkCtxclawBinary())
 
 	// Key external CLIs
 	add(checkBinaryWithHint("docx-review", []string{"--version"}, 3*time.Second, "install via Homebrew: brew tap drpedapati/tap && brew install sciclaw-docx-review (or reprovision the VM/bootstrap environment to pick up bundled companion tools)"))
@@ -485,6 +486,48 @@ func checkBinaryWithHint(name string, args []string, timeout time.Duration, inst
 		}
 	}
 	return c
+}
+
+func checkCtxclawBinary() doctorCheck {
+	path, err := resolvePromptHelperBinaryPath("ctxclaw", "ctxclaw", promptLookPath, promptHelperFallbackDirs())
+	if err != nil {
+		return doctorCheck{
+			Name:    "ctxclaw",
+			Status:  doctorSkip,
+			Message: "optional companion not installed (install: brew tap drpedapati/tap && brew install ctxclaw)",
+		}
+	}
+	info, err := inspectCtxclawBinary(path)
+	if err != nil {
+		return doctorCheck{
+			Name:    "ctxclaw",
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("installed at %s, but version check failed: %v", path, err),
+		}
+	}
+	if info.DevBuild {
+		return doctorCheck{
+			Name:    "ctxclaw",
+			Status:  doctorOK,
+			Message: fmt.Sprintf("%s (%s; dev build)", path, strings.TrimSpace(info.Raw)),
+		}
+	}
+	if !info.Compatible {
+		actual := strings.TrimSpace(info.Parsed)
+		if actual == "" {
+			actual = strings.TrimSpace(info.Raw)
+		}
+		return doctorCheck{
+			Name:    "ctxclaw",
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("%s (%s; need %s or newer)", path, actual, minimumCtxclawVersion),
+		}
+	}
+	return doctorCheck{
+		Name:    "ctxclaw",
+		Status:  doctorOK,
+		Message: fmt.Sprintf("%s (%s)", path, strings.TrimSpace(info.Parsed)),
+	}
 }
 
 func checkOptionalBinaryWithHint(name string, args []string, timeout time.Duration, installHint string) doctorCheck {

@@ -160,6 +160,19 @@ func promptOptimizePreviewCmd(args []string) {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
+	ctxInfo, err := inspectCtxclawBinary(resolvedCtxclawPath)
+	if err != nil {
+		fmt.Printf("Error: failed to inspect ctxclaw at %s: %v\n", resolvedCtxclawPath, err)
+		return
+	}
+	if !ctxInfo.Compatible {
+		actual := strings.TrimSpace(ctxInfo.Parsed)
+		if actual == "" {
+			actual = strings.TrimSpace(ctxInfo.Raw)
+		}
+		fmt.Printf("Error: ctxclaw at %s is too old (%s); need %s or newer. Upgrade with: brew update && brew upgrade ctxclaw\n", resolvedCtxclawPath, actual, minimumCtxclawVersion)
+		return
+	}
 	input, _ := json.Marshal(env)
 	cmd := exec.Command(resolvedCtxclawPath, "optimize")
 	cmd.Stdin = bytes.NewReader(input)

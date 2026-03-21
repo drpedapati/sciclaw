@@ -58,6 +58,12 @@ echo "  source:       ${sha_source}"
 
 claude_agent_dep='  depends_on "sciclaw-claude-agent"'
 claude_agent_test='    assert_match "stdin/stdout bridge", shell_output("#{Formula["sciclaw-claude-agent"].opt_bin}/sciclaw-claude-agent --help")'
+ctxclaw_dep=''
+ctxclaw_test=''
+if [ "${formula_name}" = "sciclaw-dev" ]; then
+  ctxclaw_dep='  depends_on "ctxclaw"'
+  ctxclaw_test='    assert_match "ctxclaw", shell_output("#{Formula["ctxclaw"].opt_bin}/ctxclaw version")'
+fi
 
 # Clone tap, render formula, push
 echo "  Updating tap formula: ${formula_path}"
@@ -79,6 +85,7 @@ class ${formula_class} < Formula
   depends_on "sciclaw-pubmed-cli"
   depends_on "sciclaw-xlsx-review"
 ${claude_agent_dep}
+${ctxclaw_dep}
   depends_on "uv"
 
   on_macos do
@@ -167,6 +174,7 @@ ${claude_agent_dep}
     assert_match "xlsx-review", shell_output("#{Formula["sciclaw-xlsx-review"].opt_bin}/xlsx-review --version")
     assert_match "PubMed", shell_output("#{Formula["sciclaw-pubmed-cli"].opt_bin}/pubmed --help")
 ${claude_agent_test}
+${ctxclaw_test}
     ENV["HOME"] = testpath
     system bin/"sciclaw", "onboard", "--yes"
     assert_path_exists testpath/"sciclaw/AGENTS.md"
