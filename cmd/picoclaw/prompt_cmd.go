@@ -15,6 +15,8 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 )
 
+var promptLookPath = exec.LookPath
+
 func promptCmd() {
 	if len(os.Args) < 3 {
 		promptHelp()
@@ -153,8 +155,13 @@ func promptOptimizePreviewCmd(args []string) {
 		return
 	}
 	applyPromptEnvelopeOverrides(env, *keepRecent, *recentBudget, *oldThreshold, *recentThreshold, *checkpointBullets)
+	resolvedCtxclawPath, err := resolvePromptHelperBinaryPath(strings.TrimSpace(*ctxclawPath), "ctxclaw", promptLookPath, promptHelperFallbackDirs())
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	input, _ := json.Marshal(env)
-	cmd := exec.Command(strings.TrimSpace(*ctxclawPath), "optimize")
+	cmd := exec.Command(resolvedCtxclawPath, "optimize")
 	cmd.Stdin = bytes.NewReader(input)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -255,6 +262,97 @@ func resolvePromptInspectWorkspace(cfg interface {
 	default:
 		return "", fmt.Errorf("session %q found in multiple workspaces (%s); pass --workspace explicitly", sessionKey, strings.Join(matches, ", "))
 	}
+}
+
+func resolvePromptHelperBinaryPath(explicit, defaultName string, lookPath func(string) (string, error), fallbackDirs []string) (string, error) {
+	target := strings.TrimSpace(explicit)
+	if target == "" {
+		target = strings.TrimSpace(defaultName)
+	}
+	if target == "" {
+		return "", fmt.Errorf("binary name is required")
+	}
+
+	if resolved := resolvePromptHelperPathCandidate(target); resolved != "" {
+		return resolved, nil
+	}
+	if !strings.ContainsRune(target, filepath.Separator) && lookPath != nil {
+		if found, err := lookPath(target); err == nil {
+			if resolved := resolvePromptHelperPathCandidate(found); resolved != "" {
+				return resolved, nil
+			}
+		}
+	}
+
+	base := filepath.Base(target)
+	checked := make([]string, 0, len(fallbackDirs)+2)
+	addChecked := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		for _, existing := range checked {
+			if existing == path {
+				return
+			}
+		}
+		checked = append(checked, path)
+	}
+	addChecked(target)
+	for _, dir := range fallbackDirs {
+		candidate := filepath.Join(strings.TrimSpace(dir), base)
+		addChecked(candidate)
+		if resolved := resolvePromptHelperPathCandidate(candidate); resolved != "" {
+			return resolved, nil
+		}
+	}
+	return "", fmt.Errorf("%s binary not found; checked %s", base, strings.Join(checked, ", "))
+}
+
+func resolvePromptHelperPathCandidate(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if stable := promptStableBinaryPathCandidate(path); stable != "" {
+		if _, err := os.Stat(stable); err == nil {
+			return stable
+		}
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	return ""
+}
+
+func promptStableBinaryPathCandidate(exePath string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(exePath))
+	if cleaned == "" {
+		return ""
+	}
+	marker := string(filepath.Separator) + "Cellar" + string(filepath.Separator)
+	idx := strings.Index(cleaned, marker)
+	if idx == -1 {
+		return ""
+	}
+	prefix := cleaned[:idx]
+	if prefix == "" {
+		prefix = string(filepath.Separator)
+	}
+	base := filepath.Base(cleaned)
+	if strings.TrimSpace(base) == "" || base == "." || base == string(filepath.Separator) {
+		return ""
+	}
+	return filepath.Join(prefix, "bin", base)
+}
+
+func promptHelperFallbackDirs() []string {
+	dirs := []string{}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		dirs = append(dirs, filepath.Join(home, ".local", "bin"))
+	}
+	dirs = append(dirs, "/opt/homebrew/bin", "/home/linuxbrew/.linuxbrew/bin", "/usr/local/bin")
+	return dirs
 }
 
 func printPromptInspectReport(r *agent.PromptInspectReport) {
