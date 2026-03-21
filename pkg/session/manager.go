@@ -168,6 +168,12 @@ func shouldCompactToolMessage(toolName string, contentLen int) bool {
 	return ok
 }
 
+// WouldCompactToolMessage reports whether the current durable-session compaction
+// rules would replace a raw tool message with a compact summary.
+func WouldCompactToolMessage(toolName string, contentLen int) bool {
+	return shouldCompactToolMessage(toolName, contentLen)
+}
+
 func (sm *SessionManager) RegisterArtifacts(sessionKey string, artifacts ...Artifact) {
 	if len(artifacts) == 0 {
 		return

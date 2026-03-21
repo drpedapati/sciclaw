@@ -253,6 +253,8 @@ func main() {
 		backupCmd()
 	case "archive":
 		archiveCmd()
+	case "prompt":
+		promptCmd()
 	case "version", "--version", "-v":
 		printVersion()
 	default:
@@ -514,6 +516,7 @@ func printHelp() {
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  backup      Backup key sciClaw config/workspace files")
 	fmt.Println("  archive     Manage Discord archive/recall memory")
+	fmt.Println("  prompt      Inspect assembled prompt weight for a saved session")
 	fmt.Println("  version     Show version information")
 	fmt.Println()
 	fmt.Println("Agent flags:")
