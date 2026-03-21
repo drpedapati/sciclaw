@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +23,10 @@ func promptCmd() {
 	switch os.Args[2] {
 	case "inspect":
 		promptInspectCmd(os.Args[3:])
+	case "export-envelope":
+		promptExportEnvelopeCmd(os.Args[3:])
+	case "optimize-preview":
+		promptOptimizePreviewCmd(os.Args[3:])
 	case "help", "--help", "-h":
 		promptHelp()
 	default:
@@ -33,8 +39,10 @@ func promptHelp() {
 	commandName := invokedCLIName()
 	fmt.Println("\nPrompt commands:")
 	fmt.Printf("  %s prompt inspect --session <session-key> [--workspace /abs/path] [--json]\n", commandName)
+	fmt.Printf("  %s prompt export-envelope --session <session-key> [--workspace /abs/path]\n", commandName)
+	fmt.Printf("  %s prompt optimize-preview --session <session-key> [--workspace /abs/path] [--ctxclaw /path/to/ctxclaw] [--json]\n", commandName)
 	fmt.Println()
-	fmt.Println("Read-only prompt forensics for real saved sessions.")
+	fmt.Println("Read-only prompt forensics and non-invasive ctxclaw adapter commands for real saved sessions.")
 }
 
 func promptInspectCmd(args []string) {
@@ -73,6 +81,92 @@ func promptInspectCmd(args []string) {
 		return
 	}
 	printPromptInspectReport(report)
+}
+
+func promptExportEnvelopeCmd(args []string) {
+	fs := flag.NewFlagSet("prompt export-envelope", flag.ContinueOnError)
+	fs.SetOutput(ioDiscard{})
+	sessionKey := fs.String("session", "", "session key to export")
+	workspace := fs.String("workspace", "", "absolute workspace path to inspect")
+	if err := fs.Parse(args); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("Usage: %s prompt export-envelope --session <session-key> [--workspace /abs/path]\n", invokedCLIName())
+		return
+	}
+	if strings.TrimSpace(*sessionKey) == "" {
+		fmt.Printf("Usage: %s prompt export-envelope --session <session-key> [--workspace /abs/path]\n", invokedCLIName())
+		return
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		return
+	}
+	resolvedWorkspace, err := resolvePromptInspectWorkspace(cfg, strings.TrimSpace(*sessionKey), strings.TrimSpace(*workspace))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	env, err := agent.BuildPromptEnvelope(cfg, agent.PromptInspectOptions{SessionKey: strings.TrimSpace(*sessionKey), Workspace: resolvedWorkspace})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	data, _ := json.MarshalIndent(env, "", "  ")
+	fmt.Println(string(data))
+}
+
+func promptOptimizePreviewCmd(args []string) {
+	fs := flag.NewFlagSet("prompt optimize-preview", flag.ContinueOnError)
+	fs.SetOutput(ioDiscard{})
+	sessionKey := fs.String("session", "", "session key to inspect")
+	workspace := fs.String("workspace", "", "absolute workspace path to inspect")
+	ctxclawPath := fs.String("ctxclaw", "ctxclaw", "path to ctxclaw binary")
+	jsonOut := fs.Bool("json", false, "emit raw ctxclaw JSON response")
+	if err := fs.Parse(args); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("Usage: %s prompt optimize-preview --session <session-key> [--workspace /abs/path] [--ctxclaw /path/to/ctxclaw] [--json]\n", invokedCLIName())
+		return
+	}
+	if strings.TrimSpace(*sessionKey) == "" {
+		fmt.Printf("Usage: %s prompt optimize-preview --session <session-key> [--workspace /abs/path] [--ctxclaw /path/to/ctxclaw] [--json]\n", invokedCLIName())
+		return
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		return
+	}
+	resolvedWorkspace, err := resolvePromptInspectWorkspace(cfg, strings.TrimSpace(*sessionKey), strings.TrimSpace(*workspace))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	env, err := agent.BuildPromptEnvelope(cfg, agent.PromptInspectOptions{SessionKey: strings.TrimSpace(*sessionKey), Workspace: resolvedWorkspace})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	input, _ := json.Marshal(env)
+	cmd := exec.Command(strings.TrimSpace(*ctxclawPath), "optimize")
+	cmd.Stdin = bytes.NewReader(input)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if strings.TrimSpace(stderr.String()) != "" {
+			fmt.Printf("Error: %v: %s\n", err, strings.TrimSpace(stderr.String()))
+		} else {
+			fmt.Printf("Error: %v\n", err)
+		}
+		return
+	}
+	if *jsonOut {
+		fmt.Println(strings.TrimSpace(stdout.String()))
+		return
+	}
+	printCtxclawPreview(env, stdout.Bytes())
 }
 
 type ioDiscard struct{}
@@ -227,6 +321,73 @@ func printPromptInspectReport(r *agent.PromptInspectReport) {
 			continue
 		}
 		fmt.Printf("  - %s: %d chars (~%d tokens)\n", item.name, item.chars, item.toks)
+	}
+}
+
+type ctxclawPreviewResponse struct {
+	Version           string `json:"version"`
+	CheckpointSummary string `json:"checkpoint_summary"`
+	Archives          []struct {
+		Path         string `json:"path"`
+		Kind         string `json:"kind"`
+		ToolName     string `json:"tool_name"`
+		ToolCallID   string `json:"tool_call_id"`
+		OriginalSize int    `json:"original_size"`
+	} `json:"archives"`
+	Stats struct {
+		MessagesBefore           int      `json:"messages_before"`
+		MessagesAfter            int      `json:"messages_after"`
+		EstimatedTokensBefore    int      `json:"estimated_tokens_before"`
+		EstimatedTokensAfter     int      `json:"estimated_tokens_after"`
+		EstimatedSavings         int      `json:"estimated_savings"`
+		CheckpointChars          int      `json:"checkpoint_chars"`
+		CompactedMessageCount    int      `json:"compacted_message_count"`
+		ArchivedArtifactCount    int      `json:"archived_artifact_count"`
+		KeptRecentMessageCount   int      `json:"kept_recent_message_count"`
+		OffloadedToolResultCount int      `json:"offloaded_tool_result_count"`
+		Notes                    []string `json:"notes"`
+	} `json:"stats"`
+}
+
+func printCtxclawPreview(env *agent.PromptEnvelope, raw []byte) {
+	var resp ctxclawPreviewResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		fmt.Printf("ctxclaw returned invalid JSON: %v\n", err)
+		fmt.Println(string(raw))
+		return
+	}
+	fmt.Printf("Session: %s\n", env.SessionKey)
+	fmt.Printf("Workspace: %s\n", env.Workspace)
+	fmt.Println()
+	fmt.Println("ctxclaw optimize preview")
+	fmt.Printf("  messages: %d -> %d\n", resp.Stats.MessagesBefore, resp.Stats.MessagesAfter)
+	fmt.Printf("  estimated tokens: %d -> %d (delta=%d)\n", resp.Stats.EstimatedTokensBefore, resp.Stats.EstimatedTokensAfter, resp.Stats.EstimatedSavings)
+	fmt.Printf("  offloaded tool results: %d\n", resp.Stats.OffloadedToolResultCount)
+	fmt.Printf("  compacted messages: %d\n", resp.Stats.CompactedMessageCount)
+	fmt.Printf("  kept recent messages: %d\n", resp.Stats.KeptRecentMessageCount)
+	if resp.Stats.CheckpointChars > 0 {
+		fmt.Printf("  checkpoint summary chars: %d\n", resp.Stats.CheckpointChars)
+	}
+	if len(resp.Archives) > 0 {
+		fmt.Println("  archives:")
+		for _, a := range resp.Archives {
+			label := a.ToolName
+			if strings.TrimSpace(label) == "" {
+				label = "tool"
+			}
+			fmt.Printf("    - %s %d chars -> %s\n", label, a.OriginalSize, a.Path)
+		}
+	}
+	if len(resp.Stats.Notes) > 0 {
+		fmt.Println("  notes:")
+		for _, note := range resp.Stats.Notes {
+			fmt.Printf("    - %s\n", note)
+		}
+	}
+	if strings.TrimSpace(resp.CheckpointSummary) != "" {
+		fmt.Println()
+		fmt.Println("Checkpoint summary preview")
+		fmt.Printf("  %q\n", truncateMiddlePrompt(strings.Join(strings.Fields(resp.CheckpointSummary), " "), 180))
 	}
 }
 

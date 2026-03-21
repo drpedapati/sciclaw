@@ -158,3 +158,62 @@ func TestInspectPromptMarksCompactedToolHistory(t *testing.T) {
 		t.Fatalf("did not expect already-compacted placeholder to be marked raw-compactable")
 	}
 }
+
+func TestBuildPromptEnvelopeIncludesLatestUserAndSchemas(t *testing.T) {
+	workspace := t.TempDir()
+	shared := t.TempDir()
+
+	for _, name := range []string{"AGENTS.md", "SOUL.md", "USER.md", "IDENTITY.md", "TOOLS.md"} {
+		if err := os.WriteFile(filepath.Join(shared, name), []byte("# "+name+"\n"), 0644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	sessionKey := "discord:allen-ernie@envelope"
+	sm := session.NewSessionManager(filepath.Join(workspace, "sessions"))
+	sess := sm.GetOrCreate(sessionKey)
+	sess.Messages = []providers.Message{
+		{Role: "user", Content: "earlier user prompt"},
+		{Role: "assistant", Content: "using tool", ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "read_file", Function: &providers.FunctionCall{Name: "read_file"}}}},
+		{Role: "tool", ToolName: "read_file", ToolCallID: "call_1", Content: "file content"},
+		{Role: "user", Content: "latest user prompt"},
+		{Role: "assistant", Content: "already answered"},
+	}
+	sess.Summary = "Earlier summary"
+	if err := sm.Save(sessionKey); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+	cfg.Agents.Defaults.SharedWorkspace = shared
+
+	env, err := BuildPromptEnvelope(cfg, PromptInspectOptions{
+		SessionKey: sessionKey,
+		Workspace:  workspace,
+	})
+	if err != nil {
+		t.Fatalf("BuildPromptEnvelope: %v", err)
+	}
+	if env.SessionKey != sessionKey {
+		t.Fatalf("unexpected session key: %q", env.SessionKey)
+	}
+	if env.SystemPrompt == "" {
+		t.Fatal("expected system prompt")
+	}
+	if env.Summary != "Earlier summary" {
+		t.Fatalf("unexpected summary: %q", env.Summary)
+	}
+	if len(env.Messages) != 4 {
+		t.Fatalf("expected history plus latest user, got %d", len(env.Messages))
+	}
+	if got := env.Messages[len(env.Messages)-1].Content; got != "latest user prompt" {
+		t.Fatalf("expected latest user in envelope, got %q", got)
+	}
+	if len(env.ToolSchemas) == 0 {
+		t.Fatal("expected tool schemas")
+	}
+	if env.Options.KeepRecentMessages == 0 {
+		t.Fatal("expected non-zero optimize options")
+	}
+}
