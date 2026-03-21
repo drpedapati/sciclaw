@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sipeed/picoclaw/pkg/agent"
 	"github.com/sipeed/picoclaw/pkg/config"
 )
 
@@ -59,5 +60,37 @@ func TestResolvePromptInspectWorkspaceErrorsOnMultipleMatches(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "multiple workspaces") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplyPromptEnvelopeOverrides(t *testing.T) {
+	env := &agent.PromptEnvelope{
+		Budget: agent.PromptEnvelopeBudget{
+			RecentBudgetTokens: 1800,
+		},
+		Options: agent.PromptEnvelopeOptions{
+			KeepRecentMessages:        6,
+			OldToolResultThreshold:    1200,
+			RecentToolResultThreshold: 30000,
+			CheckpointMaxBullets:      4,
+		},
+	}
+
+	applyPromptEnvelopeOverrides(env, 2, 120, 500, 9000, 3)
+
+	if env.Options.KeepRecentMessages != 2 {
+		t.Fatalf("expected keep recent override, got %d", env.Options.KeepRecentMessages)
+	}
+	if env.Budget.RecentBudgetTokens != 120 {
+		t.Fatalf("expected recent budget override, got %d", env.Budget.RecentBudgetTokens)
+	}
+	if env.Options.OldToolResultThreshold != 500 {
+		t.Fatalf("expected old threshold override, got %d", env.Options.OldToolResultThreshold)
+	}
+	if env.Options.RecentToolResultThreshold != 9000 {
+		t.Fatalf("expected recent threshold override, got %d", env.Options.RecentToolResultThreshold)
+	}
+	if env.Options.CheckpointMaxBullets != 3 {
+		t.Fatalf("expected checkpoint bullet override, got %d", env.Options.CheckpointMaxBullets)
 	}
 }

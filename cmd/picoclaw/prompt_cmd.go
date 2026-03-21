@@ -123,6 +123,11 @@ func promptOptimizePreviewCmd(args []string) {
 	workspace := fs.String("workspace", "", "absolute workspace path to inspect")
 	ctxclawPath := fs.String("ctxclaw", "ctxclaw", "path to ctxclaw binary")
 	jsonOut := fs.Bool("json", false, "emit raw ctxclaw JSON response")
+	keepRecent := fs.Int("keep-recent", -1, "override ctxclaw keep_recent_messages")
+	recentBudget := fs.Int("recent-budget", -1, "override ctxclaw recent_budget_tokens")
+	oldThreshold := fs.Int("old-threshold", -1, "override ctxclaw old_tool_result_threshold")
+	recentThreshold := fs.Int("recent-threshold", -1, "override ctxclaw recent_tool_result_threshold")
+	checkpointBullets := fs.Int("checkpoint-bullets", -1, "override ctxclaw checkpoint_max_bullets")
 	if err := fs.Parse(args); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		fmt.Printf("Usage: %s prompt optimize-preview --session <session-key> [--workspace /abs/path] [--ctxclaw /path/to/ctxclaw] [--json]\n", invokedCLIName())
@@ -147,6 +152,7 @@ func promptOptimizePreviewCmd(args []string) {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
+	applyPromptEnvelopeOverrides(env, *keepRecent, *recentBudget, *oldThreshold, *recentThreshold, *checkpointBullets)
 	input, _ := json.Marshal(env)
 	cmd := exec.Command(strings.TrimSpace(*ctxclawPath), "optimize")
 	cmd.Stdin = bytes.NewReader(input)
@@ -167,6 +173,27 @@ func promptOptimizePreviewCmd(args []string) {
 		return
 	}
 	printCtxclawPreview(env, stdout.Bytes())
+}
+
+func applyPromptEnvelopeOverrides(env *agent.PromptEnvelope, keepRecent, recentBudget, oldThreshold, recentThreshold, checkpointBullets int) {
+	if env == nil {
+		return
+	}
+	if keepRecent > 0 {
+		env.Options.KeepRecentMessages = keepRecent
+	}
+	if recentBudget > 0 {
+		env.Budget.RecentBudgetTokens = recentBudget
+	}
+	if oldThreshold > 0 {
+		env.Options.OldToolResultThreshold = oldThreshold
+	}
+	if recentThreshold > 0 {
+		env.Options.RecentToolResultThreshold = recentThreshold
+	}
+	if checkpointBullets > 0 {
+		env.Options.CheckpointMaxBullets = checkpointBullets
+	}
 }
 
 type ioDiscard struct{}
