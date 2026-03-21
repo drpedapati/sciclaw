@@ -144,10 +144,15 @@ func TestSessionManagerPreloadTimeoutDoesNotBlockConstructor(t *testing.T) {
 	}
 
 	start := time.Now()
-	_ = NewSessionManager(dir)
+	sm := NewSessionManager(dir)
 	elapsed := time.Since(start)
 	if elapsed > 120*time.Millisecond {
 		t.Fatalf("constructor blocked too long: %v", elapsed)
+	}
+	if err := sm.LoadError(); err == nil {
+		t.Fatalf("expected preload timeout error to be recorded")
+	} else if !IsLoadTimedOut(err) {
+		t.Fatalf("expected recorded preload error to be classified as timeout, got %v", err)
 	}
 
 	// Let background preload goroutine finish before restoring globals.
@@ -262,5 +267,23 @@ func TestSessionManagerCompactsHugeUnknownToolMessage(t *testing.T) {
 	}
 	if !strings.Contains(history[0].Content, "custom_tool") {
 		t.Fatalf("expected tool name preserved in compact summary, got %q", history[0].Content)
+	}
+}
+
+func TestSessionHelpersExposeCompactionState(t *testing.T) {
+	if !WouldCompactToolMessage("read_file", durableToolContentSoftLimit+50) {
+		t.Fatal("expected read_file to compact above soft limit")
+	}
+	if WouldCompactToolMessage("exec", durableToolContentSoftLimit+50) {
+		t.Fatal("did not expect exec to compact above soft limit")
+	}
+	if !WouldCompactToolMessage("exec", durableToolContentHardLimit) {
+		t.Fatal("expected hard limit to compact any tool")
+	}
+	if !IsCompactedToolMessageContent("Tool output from `read_file` omitted from durable session history for efficiency (1800 chars, 20 lines). Re-run the tool if full content is needed.") {
+		t.Fatal("expected compaction placeholder to be detected")
+	}
+	if IsCompactedToolMessageContent("plain output") {
+		t.Fatal("did not expect plain output to be detected as compacted")
 	}
 }

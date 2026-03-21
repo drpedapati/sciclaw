@@ -99,13 +99,62 @@ func TestInspectPromptBuildsBucketedReport(t *testing.T) {
 	if toolBucket.ToolName != "read_file" {
 		t.Fatalf("unexpected tool bucket: %#v", toolBucket)
 	}
-	if !toolBucket.WouldCompactNow {
+	if !toolBucket.WouldCompactRawNow {
 		t.Fatalf("expected read_file history to be marked as compactable")
+	}
+	if toolBucket.AlreadyCompacted {
+		t.Fatalf("expected raw legacy history, not already-compacted placeholder")
 	}
 	if report.ToolSchemas.Count == 0 || report.ToolSchemas.TotalChars == 0 {
 		t.Fatalf("expected non-empty tool schema report: %#v", report.ToolSchemas)
 	}
 	if report.Payload.MessagesJSONChars == 0 || report.Payload.ToolSchemasJSONChars == 0 {
 		t.Fatalf("expected non-zero payload measurements: %#v", report.Payload)
+	}
+}
+
+func TestInspectPromptMarksCompactedToolHistory(t *testing.T) {
+	workspace := t.TempDir()
+	shared := t.TempDir()
+
+	for _, name := range []string{"AGENTS.md", "SOUL.md", "USER.md", "IDENTITY.md", "TOOLS.md"} {
+		if err := os.WriteFile(filepath.Join(shared, name), []byte("# "+name+"\n"), 0644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	sessionKey := "discord:allen-ernie@compacted"
+	sm := session.NewSessionManager(filepath.Join(workspace, "sessions"))
+	sess := sm.GetOrCreate(sessionKey)
+	sess.Messages = []providers.Message{
+		{Role: "user", Content: "earlier user prompt"},
+		{Role: "tool", ToolName: "read_file", Content: "Tool output from `read_file` omitted from durable session history for efficiency (1800 chars, 20 lines). Re-run the tool if full content is needed."},
+		{Role: "user", Content: "latest user prompt"},
+	}
+	if err := sm.Save(sessionKey); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = workspace
+	cfg.Agents.Defaults.SharedWorkspace = shared
+
+	report, err := InspectPrompt(cfg, PromptInspectOptions{
+		SessionKey: sessionKey,
+		Workspace:  workspace,
+	})
+	if err != nil {
+		t.Fatalf("InspectPrompt: %v", err)
+	}
+
+	if len(report.History.ToolMessages) != 1 {
+		t.Fatalf("expected one tool message bucket, got %d", len(report.History.ToolMessages))
+	}
+	toolBucket := report.History.ToolMessages[0]
+	if !toolBucket.AlreadyCompacted {
+		t.Fatalf("expected tool history to be recognized as already compacted")
+	}
+	if toolBucket.WouldCompactRawNow {
+		t.Fatalf("did not expect already-compacted placeholder to be marked raw-compactable")
 	}
 }

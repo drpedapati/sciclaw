@@ -36,6 +36,7 @@ type SessionManager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
 	storage  string
+	loadErr  error
 }
 
 var (
@@ -66,6 +67,8 @@ var bulkyDurableToolNames = map[string]struct{}{
 	"xlsx_review_read": {},
 }
 
+const compactToolMessagePrefix = "Tool output from `"
+
 func NewSessionManager(storage string) *SessionManager {
 	sm := &SessionManager{
 		sessions: make(map[string]*Session),
@@ -75,6 +78,7 @@ func NewSessionManager(storage string) *SessionManager {
 	if storage != "" {
 		os.MkdirAll(storage, 0755)
 		if err := sm.loadSessionsWithTimeout(sessionLoadTimeout); err != nil {
+			sm.loadErr = err
 			logger.WarnCF("session", "Session preload skipped", map[string]interface{}{
 				"storage": storage,
 				"error":   err.Error(),
@@ -149,7 +153,7 @@ func compactMessageForStorage(msg providers.Message) providers.Message {
 	}
 	lineCount := 1 + strings.Count(content, "\n")
 	msg.Content = fmt.Sprintf(
-		"Tool output from `%s` omitted from durable session history for efficiency (%d chars, %d lines). Re-run the tool if full content is needed.",
+		compactToolMessagePrefix+"%s` omitted from durable session history for efficiency (%d chars, %d lines). Re-run the tool if full content is needed.",
 		toolLabel,
 		len(content),
 		lineCount,
@@ -172,6 +176,25 @@ func shouldCompactToolMessage(toolName string, contentLen int) bool {
 // rules would replace a raw tool message with a compact summary.
 func WouldCompactToolMessage(toolName string, contentLen int) bool {
 	return shouldCompactToolMessage(toolName, contentLen)
+}
+
+// IsCompactedToolMessageContent reports whether content already matches the
+// placeholder format emitted by durable session compaction.
+func IsCompactedToolMessageContent(content string) bool {
+	return strings.HasPrefix(strings.TrimSpace(content), compactToolMessagePrefix)
+}
+
+// LoadError reports any preload failure encountered while warming the session
+// cache from disk.
+func (sm *SessionManager) LoadError() error {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.loadErr
+}
+
+// IsLoadTimedOut reports whether a session preload failure timed out.
+func IsLoadTimedOut(err error) bool {
+	return errors.Is(err, errSessionLoadTimed)
 }
 
 func (sm *SessionManager) RegisterArtifacts(sessionKey string, artifacts ...Artifact) {

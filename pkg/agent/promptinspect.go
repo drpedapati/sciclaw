@@ -46,7 +46,7 @@ type PromptSectionBreakdown struct {
 	MemoryChars         int                   `json:"memoryChars"`
 	SessionBlockChars   int                   `json:"sessionBlockChars"`
 	SummaryChars        int                   `json:"summaryChars"`
-	SeparatorChars      int                   `json:"separatorChars"`
+	JoinSeparatorChars  int                   `json:"joinSeparatorChars"`
 }
 
 type PromptFileBreakdown struct {
@@ -79,7 +79,8 @@ type PromptHistoryToolBreakdown struct {
 	Chars               int    `json:"chars"`
 	EstimatedTokens     int    `json:"estimatedTokens"`
 	LargestMessageChars int    `json:"largestMessageChars"`
-	WouldCompactNow     bool   `json:"wouldCompactNow"`
+	WouldCompactRawNow  bool   `json:"wouldCompactRawNow"`
+	AlreadyCompacted    bool   `json:"alreadyCompacted"`
 }
 
 type PromptLargestHistoryBreakdown struct {
@@ -128,9 +129,15 @@ func InspectPrompt(cfg *config.Config, opts PromptInspectOptions) (*PromptInspec
 	}
 
 	sm := session.NewSessionManager(filepath.Join(workspace, "sessions"))
-	sess := sm.GetOrCreate(sessionKey)
-	if sess == nil {
-		return nil, fmt.Errorf("session %q could not be loaded", sessionKey)
+	sess, ok := sm.Snapshot(sessionKey)
+	if !ok {
+		if loadErr := sm.LoadError(); loadErr != nil {
+			if session.IsLoadTimedOut(loadErr) {
+				return nil, fmt.Errorf("session %q exists on disk but session preload timed out; retry this command or inspect %s directly", sessionKey, sessionPath)
+			}
+			return nil, fmt.Errorf("session %q could not be loaded from disk: %w", sessionKey, loadErr)
+		}
+		return nil, fmt.Errorf("session %q exists on disk but was not loaded into memory; check session JSON validity at %s", sessionKey, sessionPath)
 	}
 
 	lastUser := -1
@@ -155,7 +162,7 @@ func InspectPrompt(cfg *config.Config, opts PromptInspectOptions) (*PromptInspec
 	cb.SetVersion(Version)
 
 	identity := cb.getIdentity()
-	bootstrapFiles, bootstrapJoined, bootstrapTotalChars := inspectBootstrapFiles(workspace, cfg.SharedWorkspacePath())
+	bootstrapFiles, _, bootstrapTotalChars := inspectBootstrapFiles(workspace, cfg.SharedWorkspacePath())
 	skillsBlock := buildSkillsBlock(cb)
 	memoryFile, memoryBlock := inspectMemoryFile(workspace, cfg.SharedWorkspacePath())
 	sessionBlock := buildCurrentSessionBlock(channel, chatID)
@@ -167,6 +174,8 @@ func InspectPrompt(cfg *config.Config, opts PromptInspectOptions) (*PromptInspec
 	if sess.Summary != "" {
 		systemPrompt += summaryBlock
 	}
+
+	joinSeparatorChars := buildJoinSeparatorChars(identity, bootstrapTotalChars > 0, skillsBlock != "", memoryBlock != "")
 
 	messages := cb.BuildMessages(history, sess.Summary, currentUser, nil, channel, chatID)
 	providerToolDefs := registry.ToProviderDefs()
@@ -205,7 +214,7 @@ func InspectPrompt(cfg *config.Config, opts PromptInspectOptions) (*PromptInspec
 			MemoryChars:         len(memoryBlock),
 			SessionBlockChars:   len(sessionBlock),
 			SummaryChars:        len(summaryBlock),
-			SeparatorChars:      len(systemPrompt) - (len(identity) + len(bootstrapJoined) + len(skillsBlock) + len(memoryBlock) + len(sessionBlock) + len(summaryBlock)),
+			JoinSeparatorChars:  joinSeparatorChars,
 		},
 		History:     historyReport,
 		ToolSchemas: toolSchemaReport,
@@ -217,9 +226,6 @@ func InspectPrompt(cfg *config.Config, opts PromptInspectOptions) (*PromptInspec
 			ContentCharsBeforeJSON: messageContentChars + len(toolDefsJSON),
 			EstimatedContentTokens: estimateTokens(messageContentChars + len(toolDefsJSON)),
 		},
-	}
-	if report.SystemPrompt.SeparatorChars < 0 {
-		report.SystemPrompt.SeparatorChars = 0
 	}
 	return report, nil
 }
@@ -356,8 +362,10 @@ func buildHistoryBreakdown(history []providers.Message) PromptHistoryBreakdown {
 			if chars > tb.LargestMessageChars {
 				tb.LargestMessageChars = chars
 			}
-			if session.WouldCompactToolMessage(msg.ToolName, chars) {
-				tb.WouldCompactNow = true
+			if session.IsCompactedToolMessageContent(msg.Content) {
+				tb.AlreadyCompacted = true
+			} else if session.WouldCompactToolMessage(msg.ToolName, chars) {
+				tb.WouldCompactRawNow = true
 			}
 		}
 		if chars > largest.Chars {
@@ -415,6 +423,26 @@ func buildToolSchemaBreakdown(defs []providers.ToolDefinition) PromptToolSchemaR
 		EstimatedTokens: estimateTokens(total),
 		Largest:         largest,
 	}
+}
+
+func buildJoinSeparatorChars(identity string, hasBootstrap bool, hasSkills bool, hasMemory bool) int {
+	parts := 0
+	if identity != "" {
+		parts++
+	}
+	if hasBootstrap {
+		parts++
+	}
+	if hasSkills {
+		parts++
+	}
+	if hasMemory {
+		parts++
+	}
+	if parts <= 1 {
+		return 0
+	}
+	return (parts - 1) * len("\n\n---\n\n")
 }
 
 func estimateTokens(chars int) int {

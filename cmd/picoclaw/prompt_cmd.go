@@ -84,7 +84,14 @@ func resolvePromptInspectWorkspace(cfg interface {
 	SharedWorkspacePath() string
 }, sessionKey, explicit string) (string, error) {
 	if explicit != "" {
-		home, _ := os.UserHomeDir()
+		home := ""
+		if strings.HasPrefix(explicit, "~") {
+			var err error
+			home, err = os.UserHomeDir()
+			if err != nil {
+				return "", fmt.Errorf("could not resolve %q because the home directory is unavailable: %w", explicit, err)
+			}
+		}
 		path := filepath.Clean(expandHomePath(explicit, home))
 		if _, err := os.Stat(filepath.Join(path, "sessions", sessionKey+".json")); err == nil {
 			return path, nil
@@ -155,7 +162,7 @@ func printPromptInspectReport(r *agent.PromptInspectReport) {
 	fmt.Printf("  memory: %d chars (~%d tokens) [%s]\n", r.SystemPrompt.MemoryChars, r.SystemPrompt.Memory.EstimatedTokens, r.SystemPrompt.Memory.SourceWorkspace)
 	fmt.Printf("  current-session block: %d chars\n", r.SystemPrompt.SessionBlockChars)
 	fmt.Printf("  summary block: %d chars\n", r.SystemPrompt.SummaryChars)
-	fmt.Printf("  separators/formatting: %d chars\n", r.SystemPrompt.SeparatorChars)
+	fmt.Printf("  section join separators: %d chars\n", r.SystemPrompt.JoinSeparatorChars)
 	fmt.Println()
 	fmt.Println("History before latest user turn")
 	fmt.Printf("  messages: %d\n", r.History.MessageCount)
@@ -166,11 +173,18 @@ func printPromptInspectReport(r *agent.PromptInspectReport) {
 	if len(r.History.ToolMessages) > 0 {
 		fmt.Println("  tool-heavy history")
 		for _, item := range r.History.ToolMessages {
-			flag := ""
-			if item.WouldCompactNow {
-				flag = " [would compact now]"
+			flags := make([]string, 0, 2)
+			if item.WouldCompactRawNow {
+				flags = append(flags, "would compact raw now")
 			}
-			fmt.Printf("    - %s: %d msgs, %d chars (~%d tokens), largest=%d%s\n", item.ToolName, item.MessageCount, item.Chars, item.EstimatedTokens, item.LargestMessageChars, flag)
+			if item.AlreadyCompacted {
+				flags = append(flags, "already compacted")
+			}
+			suffix := ""
+			if len(flags) > 0 {
+				suffix = " [" + strings.Join(flags, "; ") + "]"
+			}
+			fmt.Printf("    - %s: %d msgs, %d chars (~%d tokens), largest=%d%s\n", item.ToolName, item.MessageCount, item.Chars, item.EstimatedTokens, item.LargestMessageChars, suffix)
 		}
 	}
 	if r.History.LargestMessage.Chars > 0 {
