@@ -1740,8 +1740,8 @@ func (s *webServer) handleSystem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	primary := cfg.WorkspacePath()
-	shared := cfg.SharedWorkspacePath()
+	primary := filepath.Clean(cfg.WorkspacePath())
+	shared := filepath.Clean(cfg.SharedWorkspacePath())
 
 	// Build routing workspace list (deduplicate by path).
 	type routingEntry struct {
@@ -1851,11 +1851,19 @@ func (s *webServer) handleSystemAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	primary := cfg.WorkspacePath()
-	shared := cfg.SharedWorkspacePath()
+	primary := filepath.Clean(cfg.WorkspacePath())
+	shared := filepath.Clean(cfg.SharedWorkspacePath())
+	sharedReadOnly := cfg.Agents.Defaults.SharedWorkspaceReadOnly
 
-	// Build allowed workspace set.
-	allowed := map[string]bool{primary: true, shared: true}
+	// Build allowed workspace set (writable).
+	// Reject empty or relative workspace paths.
+	allowed := make(map[string]bool)
+	if filepath.IsAbs(primary) {
+		allowed[primary] = true
+	}
+	if filepath.IsAbs(shared) && !sharedReadOnly {
+		allowed[shared] = true
+	}
 	for _, m := range cfg.Routing.Mappings {
 		wp := m.Workspace
 		if wp == "" {
@@ -1865,7 +1873,10 @@ func (s *webServer) handleSystemAction(w http.ResponseWriter, r *http.Request) {
 			home, _ := os.UserHomeDir()
 			wp = filepath.Join(home, wp[2:])
 		}
-		allowed[wp] = true
+		wp = filepath.Clean(wp)
+		if filepath.IsAbs(wp) {
+			allowed[wp] = true
+		}
 	}
 
 	switch action {

@@ -19,8 +19,9 @@ import {
 type DiffLine = { kind: 'common' | 'added' | 'removed'; text: string };
 
 function lineDiff(before: string, after: string): DiffLine[] {
-  const a = before.split('\n');
-  const b = after.split('\n');
+  if (before === after) return before ? before.split('\n').map((t) => ({ kind: 'common', text: t })) : [];
+  const a = before ? before.split('\n') : [];
+  const b = after ? after.split('\n') : [];
 
   // Build LCS table
   const m = a.length;
@@ -84,7 +85,7 @@ export default function SystemPage() {
   const [loading, setLoading] = useState(false);
   const [flash, setFlash] = useState('');
   const [error, setError] = useState('');
-  const [activeWorkspace, setActiveWorkspace] = useState('');
+  const [pendingWorkspace, setPendingWorkspace] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
@@ -96,6 +97,10 @@ export default function SystemPage() {
     setTimeout(() => setFlash(''), 4000);
   };
 
+  // activeWorkspace is always derived from the last successful response,
+  // not from optimistic local state, to avoid cross-workspace writes.
+  const activeWorkspace = data?.activeWorkspace ?? '';
+
   const fetchData = async (workspace?: string) => {
     setLoading(true);
     setEditMode(false);
@@ -104,7 +109,7 @@ export default function SystemPage() {
       const ws = workspace || activeWorkspace || undefined;
       const next = await getSystemFiles(ws);
       setData(next);
-      setActiveWorkspace(next.activeWorkspace);
+      setPendingWorkspace('');
       setError('');
       setSelectedPath((current) => {
         if (current && next.files.some((f) => f.relativePath === current)) return current;
@@ -172,7 +177,7 @@ export default function SystemPage() {
   };
 
   const handleWorkspaceChange = (ws: string) => {
-    setActiveWorkspace(ws);
+    setPendingWorkspace(ws);
     fetchData(ws);
   };
 
@@ -251,7 +256,7 @@ export default function SystemPage() {
           <div className="flex items-center gap-3">
             <label className="text-xs uppercase tracking-[0.16em] text-zinc-500">Workspace</label>
             <select
-              value={activeWorkspace}
+              value={pendingWorkspace || activeWorkspace}
               onChange={(e) => handleWorkspaceChange(e.target.value)}
               className="rounded-md border border-border bg-surface-100 px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-brand/40"
             >
