@@ -357,6 +357,49 @@ func TestDiscordProcessIncomingMessage_RoleMentionDoesNotCountAsBotMention(t *te
 	}
 }
 
+func TestDiscordProcessIncomingMessage_BotRoleMentionCountsAsMention(t *testing.T) {
+	ch := &DiscordChannel{
+		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, bus.NewMessageBus(), nil),
+		ctx:         context.Background(),
+		typing:      make(map[string]*typingState),
+		typingEvery: 10 * time.Millisecond,
+		botUserID:   "bot-1",
+		botRoleIDs:  map[string]bool{"role-bot": true},
+	}
+	ch.sendTypingFn = func(channelID string) error { return nil }
+	ch.setRunning(true)
+
+	msg := &discordgo.Message{
+		ID:           "m-bot-role",
+		ChannelID:    "chan-1",
+		GuildID:      "guild-1",
+		Content:      "<@&role-bot> check status",
+		Author:       &discordgo.User{ID: "user-1", Username: "alice"},
+		MentionRoles: []string{"role-bot"},
+	}
+
+	ch.processIncomingMessage(newTestSession("bot-1"), msg, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	in, ok := ch.BaseChannel.bus.ConsumeInbound(ctx)
+	if !ok {
+		t.Fatal("expected inbound message")
+	}
+	if got := in.Metadata["has_direct_mention"]; got != "true" {
+		t.Fatalf("has_direct_mention = %q, want true", got)
+	}
+	if got := in.Metadata["is_mention"]; got != "true" {
+		t.Fatalf("is_mention = %q, want true", got)
+	}
+	if strings.Contains(in.Content, "<@&role-bot>") {
+		t.Fatal("role mention should be stripped from content")
+	}
+	if !strings.Contains(in.Content, "check status") {
+		t.Fatalf("content should contain 'check status', got %q", in.Content)
+	}
+}
+
 func TestDiscordProcessIncomingMessage_AttachmentsUseFilenamesInContent(t *testing.T) {
 	ch := &DiscordChannel{
 		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, bus.NewMessageBus(), nil),

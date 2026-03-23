@@ -53,6 +53,7 @@ type DiscordChannel struct {
 	transcriber *voice.GroqTranscriber
 	ctx         context.Context
 	botUserID   string
+	botRoleIDs  map[string]bool // managed role IDs (one per guild)
 
 	typingMu              sync.Mutex
 	typing                map[string]*typingState
@@ -131,6 +132,30 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		},
 		recentInbound: make(map[string]inboundMessageFingerprint),
 	}, nil
+}
+
+// discoverBotRoleIDs finds the bot's managed role in each guild the session
+// belongs to.  Discord auto-creates one managed role per bot whose name
+// matches the bot user; users frequently select it from autocomplete instead
+// of the bot user mention.
+func discoverBotRoleIDs(s *discordgo.Session, botUserID string) map[string]bool {
+	ids := make(map[string]bool)
+	botUser, err := s.User(botUserID)
+	if err != nil {
+		return ids
+	}
+	botName := strings.ToLower(strings.TrimSpace(botUser.Username))
+	if botName == "" {
+		return ids
+	}
+	for _, g := range s.State.Guilds {
+		for _, r := range g.Roles {
+			if r.Managed && strings.ToLower(r.Name) == botName {
+				ids[r.ID] = true
+			}
+		}
+	}
+	return ids
 }
 
 func (c *DiscordChannel) shouldDropDuplicateInbound(messageID, content string, media []string, hasDirectMention, replyToBot bool) bool {
@@ -235,9 +260,11 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to get bot user: %w", err)
 	}
 	c.botUserID = botUser.ID
+	c.botRoleIDs = discoverBotRoleIDs(c.session, botUser.ID)
 	logger.InfoCF("discord", "Discord bot connected", map[string]any{
-		"username": botUser.Username,
-		"user_id":  botUser.ID,
+		"username":     botUser.Username,
+		"user_id":      botUser.ID,
+		"bot_role_ids": c.botRoleIDs,
 	})
 	if err := c.ensureSlashCommands(); err != nil {
 		logger.WarnCF("discord", "Failed to sync Discord slash commands", map[string]any{
@@ -849,6 +876,18 @@ func (c *DiscordChannel) processIncomingMessage(_ *discordgo.Session, m *discord
 				break
 			}
 		}
+		// Check if the bot's managed role was mentioned (Discord creates a
+		// role with the same name as the bot; users frequently pick the role
+		// from autocomplete instead of the bot user).
+		if !isMention && len(c.botRoleIDs) > 0 {
+			for _, roleID := range m.MentionRoles {
+				if c.botRoleIDs[roleID] {
+					isMention = true
+					hasDirectMention = true
+					break
+				}
+			}
+		}
 		// Check if replying to a bot message
 		if !isMention && m.MessageReference != nil && m.ReferencedMessage != nil {
 			if m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == c.botUserID {
@@ -866,6 +905,10 @@ func (c *DiscordChannel) processIncomingMessage(_ *discordgo.Session, m *discord
 	content := m.Content
 	if isMention && c.botUserID != "" {
 		content = regexp.MustCompile(`<@!?`+regexp.QuoteMeta(c.botUserID)+`>`).ReplaceAllString(content, "")
+		// Also strip the bot's managed role mention (<@&ROLE_ID>)
+		for roleID := range c.botRoleIDs {
+			content = strings.ReplaceAll(content, "<@&"+roleID+">", "")
+		}
 		content = strings.TrimSpace(content)
 	}
 	mediaPaths := make([]string, 0, len(m.Attachments))
