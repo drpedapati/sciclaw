@@ -52,8 +52,9 @@ type DiscordChannel struct {
 	config      config.DiscordConfig
 	transcriber *voice.GroqTranscriber
 	ctx         context.Context
-	botUserID   string
-	botRoleIDs  map[string]bool // managed role IDs (one per guild)
+	botUserID  string
+	botRoleMu  sync.Mutex
+	botRoleIDs map[string]bool // managed role IDs discovered lazily per guild
 
 	typingMu              sync.Mutex
 	typing                map[string]*typingState
@@ -134,28 +135,46 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 	}, nil
 }
 
-// discoverBotRoleIDs finds the bot's managed role in each guild the session
-// belongs to.  Discord auto-creates one managed role per bot whose name
-// matches the bot user; users frequently select it from autocomplete instead
-// of the bot user mention.
-func discoverBotRoleIDs(s *discordgo.Session, botUserID string) map[string]bool {
-	ids := make(map[string]bool)
-	botUser, err := s.User(botUserID)
-	if err != nil {
-		return ids
+// isBotRoleMention checks whether roleID is the bot's managed role for the
+// given guild.  Results are cached so the guild roles are only inspected once.
+func (c *DiscordChannel) isBotRoleMention(guildID, roleID string) bool {
+	c.botRoleMu.Lock()
+	defer c.botRoleMu.Unlock()
+
+	// Fast path: already resolved this role.
+	if c.botRoleIDs[roleID] {
+		return true
 	}
-	botName := strings.ToLower(strings.TrimSpace(botUser.Username))
+
+	// Have we already scanned this guild?
+	sentinelKey := "guild:" + guildID
+	if c.botRoleIDs[sentinelKey] {
+		return false // scanned before, roleID wasn't a match
+	}
+
+	// Lazy discovery: scan guild roles now.
+	if c.botRoleIDs == nil {
+		c.botRoleIDs = make(map[string]bool)
+	}
+	c.botRoleIDs[sentinelKey] = true // mark guild as scanned
+
+	if c.session == nil || c.session.State == nil || c.session.State.User == nil {
+		return false
+	}
+	botName := strings.ToLower(strings.TrimSpace(c.session.State.User.Username))
 	if botName == "" {
-		return ids
+		return false
 	}
-	for _, g := range s.State.Guilds {
-		for _, r := range g.Roles {
-			if r.Managed && strings.ToLower(r.Name) == botName {
-				ids[r.ID] = true
-			}
+	guild, err := c.session.State.Guild(guildID)
+	if err != nil {
+		return false
+	}
+	for _, r := range guild.Roles {
+		if r.Managed && strings.ToLower(r.Name) == botName {
+			c.botRoleIDs[r.ID] = true
 		}
 	}
-	return ids
+	return c.botRoleIDs[roleID]
 }
 
 func (c *DiscordChannel) shouldDropDuplicateInbound(messageID, content string, media []string, hasDirectMention, replyToBot bool) bool {
@@ -260,11 +279,9 @@ func (c *DiscordChannel) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to get bot user: %w", err)
 	}
 	c.botUserID = botUser.ID
-	c.botRoleIDs = discoverBotRoleIDs(c.session, botUser.ID)
 	logger.InfoCF("discord", "Discord bot connected", map[string]any{
-		"username":     botUser.Username,
-		"user_id":      botUser.ID,
-		"bot_role_ids": c.botRoleIDs,
+		"username": botUser.Username,
+		"user_id":  botUser.ID,
 	})
 	if err := c.ensureSlashCommands(); err != nil {
 		logger.WarnCF("discord", "Failed to sync Discord slash commands", map[string]any{
@@ -879,9 +896,9 @@ func (c *DiscordChannel) processIncomingMessage(_ *discordgo.Session, m *discord
 		// Check if the bot's managed role was mentioned (Discord creates a
 		// role with the same name as the bot; users frequently pick the role
 		// from autocomplete instead of the bot user).
-		if !isMention && len(c.botRoleIDs) > 0 {
+		if !isMention && m.GuildID != "" {
 			for _, roleID := range m.MentionRoles {
-				if c.botRoleIDs[roleID] {
+				if c.isBotRoleMention(m.GuildID, roleID) {
 					isMention = true
 					hasDirectMention = true
 					break
@@ -906,8 +923,10 @@ func (c *DiscordChannel) processIncomingMessage(_ *discordgo.Session, m *discord
 	if isMention && c.botUserID != "" {
 		content = regexp.MustCompile(`<@!?`+regexp.QuoteMeta(c.botUserID)+`>`).ReplaceAllString(content, "")
 		// Also strip the bot's managed role mention (<@&ROLE_ID>)
-		for roleID := range c.botRoleIDs {
-			content = strings.ReplaceAll(content, "<@&"+roleID+">", "")
+		for _, roleID := range m.MentionRoles {
+			if m.GuildID != "" && c.isBotRoleMention(m.GuildID, roleID) {
+				content = strings.ReplaceAll(content, "<@&"+roleID+">", "")
+			}
 		}
 		content = strings.TrimSpace(content)
 	}

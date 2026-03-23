@@ -358,13 +358,22 @@ func TestDiscordProcessIncomingMessage_RoleMentionDoesNotCountAsBotMention(t *te
 }
 
 func TestDiscordProcessIncomingMessage_BotRoleMentionCountsAsMention(t *testing.T) {
+	sess := newTestSession("bot-1")
+	sess.State.User.Username = "sciclaw-app"
+	_ = sess.State.GuildAdd(&discordgo.Guild{
+		ID: "guild-1",
+		Roles: []*discordgo.Role{
+			{ID: "role-bot", Name: "sciclaw-app", Managed: true},
+			{ID: "role-other", Name: "moderator", Managed: false},
+		},
+	})
 	ch := &DiscordChannel{
 		BaseChannel: NewBaseChannel("discord", config.DiscordConfig{}, bus.NewMessageBus(), nil),
 		ctx:         context.Background(),
+		session:     sess,
 		typing:      make(map[string]*typingState),
 		typingEvery: 10 * time.Millisecond,
 		botUserID:   "bot-1",
-		botRoleIDs:  map[string]bool{"role-bot": true},
 	}
 	ch.sendTypingFn = func(channelID string) error { return nil }
 	ch.setRunning(true)
@@ -378,7 +387,7 @@ func TestDiscordProcessIncomingMessage_BotRoleMentionCountsAsMention(t *testing.
 		MentionRoles: []string{"role-bot"},
 	}
 
-	ch.processIncomingMessage(newTestSession("bot-1"), msg, false)
+	ch.processIncomingMessage(sess, msg, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
