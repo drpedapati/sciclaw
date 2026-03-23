@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   Home, MessageSquare, Radio, Mail, Users, LogIn,
   Stethoscope, Server, Cpu, Brain, Puzzle, Clock,
-  GitBranch, Settings, Activity,
+  GitBranch, Settings, Activity, FileCode2,
 } from 'lucide-react';
 import { useSnapshot } from '../hooks/useSnapshot';
 import ThemePicker from './ThemePicker';
@@ -18,6 +18,7 @@ const navItems = [
   { to: '/models',   icon: Cpu,           label: 'Models' },
   { to: '/phi',      icon: Brain,         label: 'PHI' },
   { to: '/skills',   icon: Puzzle,        label: 'Skills' },
+  { to: '/system',   icon: FileCode2,     label: 'System' },
   { to: '/schedule', icon: Clock,         label: 'Schedule' },
 ] as const;
 

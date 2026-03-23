@@ -323,6 +323,43 @@ export const removeRoutingMapping = (id: string) =>
 export const routingReload = () =>
   request<{ ok: boolean }>('/routing/reload', { method: 'POST' });
 
+// ── System (Personality Files) ──
+export interface WorkspaceFileInfo {
+  name: string;
+  relativePath: string;
+  absolutePath: string;
+  source: string;
+  size: number;
+  modTime: string;
+  content: string;
+  status: 'current' | 'customized' | 'missing';
+  hasTemplate: boolean;
+  templateContent: string;
+}
+
+export interface SystemFilesResponse {
+  primaryWorkspace: string;
+  sharedWorkspace: string;
+  routingWorkspaces: { label: string; workspace: string; channel: string; chatId: string }[];
+  activeWorkspace: string;
+  files: WorkspaceFileInfo[];
+}
+
+export const getSystemFiles = (workspace?: string) => {
+  const qs = workspace ? `?workspace=${encodeURIComponent(workspace)}` : '';
+  return request<SystemFilesResponse>(`/system${qs}`);
+};
+export const saveSystemFile = (workspace: string, path: string, content: string) =>
+  request<{ ok: boolean }>('/system/file', {
+    method: 'PUT',
+    body: JSON.stringify({ workspace, path, content }),
+  });
+export const resetSystemFile = (workspace: string, path: string) =>
+  request<{ ok: boolean }>('/system/reset', {
+    method: 'POST',
+    body: JSON.stringify({ workspace, path }),
+  });
+
 // ── Settings ──
 export interface Settings {
   discord: { enabled: boolean };

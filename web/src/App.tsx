@@ -13,6 +13,7 @@ import JobsPage from './pages/JobsPage';
 import ModelsPage from './pages/ModelsPage';
 import PhiPage from './pages/PhiPage';
 import SkillsPage from './pages/SkillsPage';
+import SystemPage from './pages/SystemPage';
 import SchedulePage from './pages/SchedulePage';
 import RoutingPage from './pages/RoutingPage';
 import SettingsPage from './pages/SettingsPage';
@@ -39,6 +40,7 @@ export default function App() {
               <Route path="/models" element={<ModelsPage />} />
               <Route path="/phi" element={<PhiPage />} />
               <Route path="/skills" element={<SkillsPage />} />
+              <Route path="/system" element={<SystemPage />} />
               <Route path="/schedule" element={<SchedulePage />} />
               <Route path="/routing" element={<RoutingPage />} />
               <Route path="/settings" element={<SettingsPage />} />

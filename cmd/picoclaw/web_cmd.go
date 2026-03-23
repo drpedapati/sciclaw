@@ -23,6 +23,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/routing"
 	"github.com/sipeed/picoclaw/pkg/skills"
+	"github.com/sipeed/picoclaw/pkg/workspacetpl"
 	webui "github.com/sipeed/picoclaw/web"
 )
 
@@ -133,6 +134,8 @@ func (s *webServer) registerRoutes() {
 	s.mux.HandleFunc("/api/routing/", s.handleRouting)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/home/onboard", s.handleOnboard)
+	s.mux.HandleFunc("/api/system", s.handleSystem)
+	s.mux.HandleFunc("/api/system/", s.handleSystemAction)
 
 	// Static files
 	if s.static != nil {
@@ -1638,6 +1641,346 @@ func (s *webServer) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		jsonErr(w, "method not allowed", 405)
+	}
+}
+
+// ── System (Personality Files) ──
+
+// knownSystemFiles is the hardcoded allowlist of workspace personality files.
+var knownSystemFiles = []string{
+	"AGENTS.md",
+	"SOUL.md",
+	"USER.md",
+	"IDENTITY.md",
+	"TOOLS.md",
+	"HOOKS.md",
+	"memory/MEMORY.md",
+}
+
+type workspaceFileInfo struct {
+	Name            string `json:"name"`
+	RelativePath    string `json:"relativePath"`
+	AbsolutePath    string `json:"absolutePath"`
+	Source          string `json:"source"`
+	Size            int64  `json:"size"`
+	ModTime         string `json:"modTime"`
+	Content         string `json:"content"`
+	Status          string `json:"status"` // current | customized | missing
+	HasTemplate     bool   `json:"hasTemplate"`
+	TemplateContent string `json:"templateContent"`
+}
+
+type systemFilesResponse struct {
+	PrimaryWorkspace  string `json:"primaryWorkspace"`
+	SharedWorkspace   string `json:"sharedWorkspace"`
+	RoutingWorkspaces []struct {
+		Label     string `json:"label"`
+		Workspace string `json:"workspace"`
+		Channel   string `json:"channel"`
+		ChatID    string `json:"chatId"`
+	} `json:"routingWorkspaces"`
+	ActiveWorkspace string              `json:"activeWorkspace"`
+	Files           []workspaceFileInfo `json:"files"`
+}
+
+func collectWorkspaceFiles(workspace, source string, templates []workspacetpl.Template) []workspaceFileInfo {
+	tplMap := make(map[string]string, len(templates))
+	for _, t := range templates {
+		tplMap[t.RelativePath] = t.Content
+	}
+
+	files := make([]workspaceFileInfo, 0, len(knownSystemFiles))
+	for _, rel := range knownSystemFiles {
+		abs := filepath.Join(workspace, rel)
+		info := workspaceFileInfo{
+			Name:         filepath.Base(rel),
+			RelativePath: rel,
+			AbsolutePath: abs,
+			Source:       source,
+		}
+		tplContent, hasTpl := tplMap[rel]
+		info.HasTemplate = hasTpl
+		info.TemplateContent = tplContent
+
+		data, err := os.ReadFile(abs)
+		if err != nil {
+			info.Status = "missing"
+		} else {
+			info.Content = string(data)
+			info.Size = int64(len(data))
+			if fi, statErr := os.Stat(abs); statErr == nil {
+				info.ModTime = fi.ModTime().UTC().Format(time.RFC3339)
+			}
+			if hasTpl && info.Content == tplContent {
+				info.Status = "current"
+			} else {
+				info.Status = "customized"
+			}
+		}
+		files = append(files, info)
+	}
+	return files
+}
+
+func (s *webServer) handleSystem(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, "method not allowed", 405)
+		return
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+
+	templates, err := workspacetpl.Load()
+	if err != nil {
+		jsonErr(w, "failed to load templates: "+err.Error(), 500)
+		return
+	}
+
+	primary := cfg.WorkspacePath()
+	shared := cfg.SharedWorkspacePath()
+
+	// Build routing workspace list (deduplicate by path).
+	type routingEntry struct {
+		Label     string `json:"label"`
+		Workspace string `json:"workspace"`
+		Channel   string `json:"channel"`
+		ChatID    string `json:"chatId"`
+	}
+	seen := map[string]bool{}
+	var routingWorkspaces []routingEntry
+	for _, m := range cfg.Routing.Mappings {
+		wp := m.Workspace
+		if wp == "" {
+			continue
+		}
+		expanded := wp
+		if strings.HasPrefix(expanded, "~/") {
+			home, _ := os.UserHomeDir()
+			expanded = filepath.Join(home, expanded[2:])
+		}
+		if seen[expanded] {
+			continue
+		}
+		seen[expanded] = true
+		label := m.Label
+		if label == "" {
+			label = m.Channel + ":" + m.ChatID
+		}
+		routingWorkspaces = append(routingWorkspaces, routingEntry{
+			Label:     label,
+			Workspace: expanded,
+			Channel:   m.Channel,
+			ChatID:    m.ChatID,
+		})
+	}
+
+	// Determine active workspace from query param, default to primary.
+	activeWorkspace := r.URL.Query().Get("workspace")
+	if activeWorkspace == "" {
+		activeWorkspace = primary
+	}
+
+	// Validate the requested workspace against configured ones.
+	allowed := []string{primary, shared}
+	for _, rw := range routingWorkspaces {
+		allowed = append(allowed, rw.Workspace)
+	}
+	valid := false
+	for _, a := range allowed {
+		if a == activeWorkspace {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		activeWorkspace = primary
+	}
+
+	// Determine source label for active workspace.
+	source := "primary"
+	if activeWorkspace == shared && shared != primary {
+		source = "shared"
+	}
+	for _, rw := range routingWorkspaces {
+		if rw.Workspace == activeWorkspace {
+			source = "routing"
+			break
+		}
+	}
+
+	files := collectWorkspaceFiles(activeWorkspace, source, templates)
+
+	resp := systemFilesResponse{
+		PrimaryWorkspace: primary,
+		SharedWorkspace:  shared,
+		ActiveWorkspace:  activeWorkspace,
+		Files:            files,
+	}
+	// Marshal routing workspaces into the anonymous struct slice.
+	type routingSliceEntry struct {
+		Label     string `json:"label"`
+		Workspace string `json:"workspace"`
+		Channel   string `json:"channel"`
+		ChatID    string `json:"chatId"`
+	}
+	routingSlice := make([]routingSliceEntry, len(routingWorkspaces))
+	for i, rw := range routingWorkspaces {
+		routingSlice[i] = routingSliceEntry(rw)
+	}
+
+	jsonResp(w, map[string]interface{}{
+		"primaryWorkspace":  resp.PrimaryWorkspace,
+		"sharedWorkspace":   resp.SharedWorkspace,
+		"routingWorkspaces": routingSlice,
+		"activeWorkspace":   resp.ActiveWorkspace,
+		"files":             resp.Files,
+	})
+}
+
+func (s *webServer) handleSystemAction(w http.ResponseWriter, r *http.Request) {
+	// Extract the action segment: /api/system/file or /api/system/reset
+	action := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/system/"), "/")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+
+	primary := cfg.WorkspacePath()
+	shared := cfg.SharedWorkspacePath()
+
+	// Build allowed workspace set.
+	allowed := map[string]bool{primary: true, shared: true}
+	for _, m := range cfg.Routing.Mappings {
+		wp := m.Workspace
+		if wp == "" {
+			continue
+		}
+		if strings.HasPrefix(wp, "~/") {
+			home, _ := os.UserHomeDir()
+			wp = filepath.Join(home, wp[2:])
+		}
+		allowed[wp] = true
+	}
+
+	switch action {
+	case "file":
+		if r.Method != http.MethodPut {
+			jsonErr(w, "method not allowed", 405)
+			return
+		}
+		var body struct {
+			Workspace string `json:"workspace"`
+			Path      string `json:"path"`
+			Content   string `json:"content"`
+		}
+		if err := readBody(r, &body); err != nil {
+			jsonErr(w, "invalid request body", 400)
+			return
+		}
+
+		// Validate path against allowlist.
+		validPath := false
+		for _, known := range knownSystemFiles {
+			if body.Path == known {
+				validPath = true
+				break
+			}
+		}
+		if !validPath {
+			jsonErr(w, "file path not allowed", 400)
+			return
+		}
+
+		// Validate workspace.
+		if !allowed[body.Workspace] {
+			jsonErr(w, "workspace not allowed", 400)
+			return
+		}
+
+		abs := filepath.Join(body.Workspace, body.Path)
+		// Ensure parent directory exists (for memory/MEMORY.md).
+		if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
+			jsonErr(w, "failed to create directory: "+err.Error(), 500)
+			return
+		}
+		if err := os.WriteFile(abs, []byte(body.Content), 0644); err != nil {
+			jsonErr(w, "failed to write file: "+err.Error(), 500)
+			return
+		}
+		jsonResp(w, map[string]interface{}{"ok": true})
+
+	case "reset":
+		if r.Method != http.MethodPost {
+			jsonErr(w, "method not allowed", 405)
+			return
+		}
+		var body struct {
+			Workspace string `json:"workspace"`
+			Path      string `json:"path"`
+		}
+		if err := readBody(r, &body); err != nil {
+			jsonErr(w, "invalid request body", 400)
+			return
+		}
+
+		// Validate path against allowlist.
+		validPath := false
+		for _, known := range knownSystemFiles {
+			if body.Path == known {
+				validPath = true
+				break
+			}
+		}
+		if !validPath {
+			jsonErr(w, "file path not allowed", 400)
+			return
+		}
+
+		// Validate workspace.
+		if !allowed[body.Workspace] {
+			jsonErr(w, "workspace not allowed", 400)
+			return
+		}
+
+		templates, err := workspacetpl.Load()
+		if err != nil {
+			jsonErr(w, "failed to load templates: "+err.Error(), 500)
+			return
+		}
+
+		var tplContent string
+		found := false
+		for _, t := range templates {
+			if t.RelativePath == body.Path {
+				tplContent = t.Content
+				found = true
+				break
+			}
+		}
+		if !found {
+			jsonErr(w, "no template found for this file", 404)
+			return
+		}
+
+		abs := filepath.Join(body.Workspace, body.Path)
+		if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
+			jsonErr(w, "failed to create directory: "+err.Error(), 500)
+			return
+		}
+		if err := os.WriteFile(abs, []byte(tplContent), 0644); err != nil {
+			jsonErr(w, "failed to write file: "+err.Error(), 500)
+			return
+		}
+		jsonResp(w, map[string]interface{}{"ok": true})
+
+	default:
+		jsonErr(w, "unknown action", 404)
 	}
 }
 
