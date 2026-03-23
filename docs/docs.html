@@ -563,6 +563,13 @@
       <a class="sidebar-link nested" href="#tui-settings">Settings</a>
     </div>
     <div class="sidebar-section">
+      <div class="sidebar-heading">Web Interface</div>
+      <a class="sidebar-link" href="#web-overview">Overview</a>
+      <a class="sidebar-link nested" href="#web-gateway-vs-web">Gateway vs Web Server</a>
+      <a class="sidebar-link nested" href="#web-accessing">Accessing the Web UI</a>
+      <a class="sidebar-link nested" href="#web-system-tab">System Tab</a>
+    </div>
+    <div class="sidebar-section">
       <div class="sidebar-heading">Configuration</div>
       <a class="sidebar-link" href="#configuration">Overview</a>
       <a class="sidebar-link nested" href="#providers">Providers</a>
@@ -1010,6 +1017,122 @@
         <img src="assets/tui/tui-settings.png" alt="sciClaw TUI — Settings tab showing channels, routing, agent, integrations, service, and general sections" class="tui-screenshot" />
 
         <p>Settings are grouped into sections: <strong>Channels</strong>, <strong>Routing</strong>, <strong>Agent</strong> (model and reasoning effort), <strong>Integrations</strong> (PubMed API key), <strong>Service</strong>, and <strong>General</strong>. Service controls (<strong>[s]</strong> start, <strong>[t]</strong> stop) are available directly from this tab.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ WEB INTERFACE ━━━━━ -->
+      <div class="section" id="web-overview">
+        <h2>Web Interface</h2>
+        <p class="page-subtitle">A browser-based dashboard for managing sciClaw. Same capabilities as the TUI, accessible from any device on your network.</p>
+
+        <div class="callout callout-info">
+          <strong>Key concept:</strong> sciClaw has two separate server processes. The <strong>gateway</strong> runs the Discord/Telegram bot. The <strong>web server</strong> provides the browser dashboard. They are independent &mdash; the gateway can run without the web UI and vice versa. Both are usually installed together.
+        </div>
+      </div>
+
+      <div class="section" id="web-gateway-vs-web">
+        <h3>Gateway vs Web Server</h3>
+        <p>This is the most common source of confusion for new users, so here&rsquo;s a clear breakdown:</p>
+
+        <table>
+          <tr>
+            <th>Process</th>
+            <th>What it does</th>
+            <th>Command</th>
+            <th>Default port</th>
+            <th>Service name</th>
+          </tr>
+          <tr>
+            <td><strong>Gateway</strong></td>
+            <td>Connects to Discord/Telegram, processes messages, runs the AI agent loop</td>
+            <td><code>sciclaw gateway</code></td>
+            <td>None (connects outbound to chat APIs)</td>
+            <td><code>sciclaw-gateway.service</code></td>
+          </tr>
+          <tr>
+            <td><strong>Web Server</strong></td>
+            <td>Serves the browser dashboard for configuration, monitoring, and file editing</td>
+            <td><code>sciclaw web</code></td>
+            <td><code>4142</code></td>
+            <td><code>sciclaw-web.service</code></td>
+          </tr>
+        </table>
+
+        <p>Both are installed as background services with <code>sciclaw service install</code>. You can check their status independently:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> service gateway status
+<span class="hl-cmd">sciclaw</span> service web status</code></pre>
+
+        <p>The web server reads the same <code>config.json</code> and workspace files as the gateway, but it does not process chat messages or run the agent loop.</p>
+      </div>
+
+      <div class="section" id="web-accessing">
+        <h3>Accessing the Web UI</h3>
+        <p>How you access the web UI depends on where sciClaw is running:</p>
+
+        <h4>Same machine (localhost)</h4>
+        <p>If you&rsquo;re sitting at the machine running sciClaw, open a browser to:</p>
+        <pre><code>http://localhost:4142</code></pre>
+
+        <h4>Another machine on your local network</h4>
+        <p>By default, the web server binds to <code>127.0.0.1</code> (localhost only) for security. To access it from another machine on your LAN or VPN:</p>
+
+        <p><strong>Option 1 &mdash; Bind to all interfaces</strong> (simplest, use when on a trusted network like ZeroTier):</p>
+        <pre><code><span class="hl-comment"># Stop the default service</span>
+systemctl --user stop sciclaw-web
+
+<span class="hl-comment"># Edit the service to listen on all interfaces</span>
+systemctl --user edit sciclaw-web --force
+
+<span class="hl-comment"># Add this content:</span>
+[Service]
+ExecStart=
+ExecStart=/home/linuxbrew/.linuxbrew/bin/sciclaw web --listen 0.0.0.0:4142
+
+<span class="hl-comment"># Reload and restart</span>
+systemctl --user daemon-reload
+systemctl --user start sciclaw-web</code></pre>
+
+        <p>Then access from any machine on the same network using the server&rsquo;s IP:</p>
+        <pre><code>http://&lt;server-ip&gt;:4142</code></pre>
+
+        <p><strong>Option 2 &mdash; SSH tunnel</strong> (more secure, no config changes needed):</p>
+        <pre><code><span class="hl-comment"># Run this on your laptop/desktop:</span>
+ssh -L 4142:127.0.0.1:4142 your-server
+
+<span class="hl-comment"># Then open in your browser:</span>
+http://localhost:4142</code></pre>
+        <p>The tunnel forwards your local port 4142 to the server&rsquo;s localhost:4142 through SSH. No firewall changes needed.</p>
+
+        <p><strong>Option 3 &mdash; Cloudflare Tunnel</strong> (for access from anywhere):</p>
+        <p>If your server already has a Cloudflare Tunnel (<code>cloudflared</code>), add a route for the web UI. This gives you HTTPS access from any browser without exposing ports.</p>
+
+        <div class="callout callout-warn">
+          <strong>Security note:</strong> The web UI has no built-in authentication. Anyone who can reach port 4142 can view and edit your configuration. Use SSH tunnels, VPN (ZeroTier), or Cloudflare Access to restrict access on untrusted networks.
+        </div>
+      </div>
+
+      <div class="section" id="web-system-tab">
+        <h3>System Tab</h3>
+        <p>The System tab provides a transparent view of all workspace personality files that shape how your sciClaw agent behaves. These are the markdown files in your workspace root: <code>AGENTS.md</code>, <code>SOUL.md</code>, <code>USER.md</code>, <code>IDENTITY.md</code>, <code>TOOLS.md</code>, <code>HOOKS.md</code>, and <code>memory/MEMORY.md</code>.</p>
+
+        <h4>What you can do</h4>
+        <ul>
+          <li><strong>View</strong> the full content of any file</li>
+          <li><strong>Edit</strong> files directly in the browser and save changes</li>
+          <li><strong>Compare</strong> your local file against the release template to see what you&rsquo;ve customized</li>
+          <li><strong>Reset</strong> any file to the default template with one click</li>
+          <li><strong>Switch workspaces</strong> if you have routing-specific workspaces configured</li>
+        </ul>
+
+        <h4>File status badges</h4>
+        <ul>
+          <li><span style="color:#16a34a;font-weight:600">Current</span> &mdash; Your file matches the release template exactly</li>
+          <li><span style="color:#d97706;font-weight:600">Customized</span> &mdash; Your file has been modified from the template</li>
+          <li><span style="color:#dc2626;font-weight:600">Missing</span> &mdash; The file does not exist in your workspace</li>
+        </ul>
+
+        <p>This tab is especially useful after upgrading sciClaw, since the release may include updated templates. You can diff your local files against the new templates and decide whether to merge the changes or reset to defaults.</p>
       </div>
 
       <hr />
