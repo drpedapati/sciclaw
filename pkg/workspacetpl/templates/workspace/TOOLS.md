@@ -12,6 +12,12 @@ Use tools as part of reproducible workflows, not ad-hoc actions.
 - Run code and shell commands in idempotent, reversible ways.
 - Prefer explicit inputs/outputs and deterministic scripts where possible.
 
+## Python
+
+Always use `uv run python` instead of bare `python` for all Python scripts.
+The `uv` tool manages the local virtual environment in the workspace directory.
+Do NOT use the system Python or pip directly.
+
 ## Validation
 
 - Re-run critical steps before claiming completion.
