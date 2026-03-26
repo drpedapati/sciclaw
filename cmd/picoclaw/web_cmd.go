@@ -131,6 +131,8 @@ func (s *webServer) registerRoutes() {
 	s.mux.HandleFunc("/api/skills/", s.handleSkillsAction)
 	s.mux.HandleFunc("/api/cron", s.handleCron)
 	s.mux.HandleFunc("/api/cron/", s.handleCronAction)
+	s.mux.HandleFunc("/api/routing/discord-rooms", s.handleDiscordRooms)
+	s.mux.HandleFunc("/api/routing/browse", s.handleBrowseDir)
 	s.mux.HandleFunc("/api/routing/", s.handleRouting)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/home/onboard", s.handleOnboard)
@@ -1549,6 +1551,95 @@ func (s *webServer) handleRouting(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonErr(w, "unknown routing action", 400)
 	}
+}
+
+func (s *webServer) handleDiscordRooms(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	out, err := s.runCLI(15*time.Second, "channels", "list-rooms", "--channel", "discord")
+	if err != nil {
+		jsonErr(w, out, http.StatusBadGateway)
+		return
+	}
+	type discordRoom struct {
+		ChannelID   string `json:"channelId"`
+		GuildName   string `json:"guildName"`
+		ChannelName string `json:"channelName"`
+	}
+	var rooms []discordRoom
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		rooms = append(rooms, discordRoom{
+			ChannelID:   strings.TrimSpace(parts[0]),
+			GuildName:   strings.TrimSpace(parts[1]),
+			ChannelName: strings.TrimSpace(parts[2]),
+		})
+	}
+	if rooms == nil {
+		rooms = []discordRoom{}
+	}
+	jsonResp(w, rooms)
+}
+
+func (s *webServer) handleBrowseDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonErr(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	rawPath := r.URL.Query().Get("path")
+	if rawPath == "" {
+		rawPath = "~"
+	}
+	// Expand ~
+	if rawPath == "~" || strings.HasPrefix(rawPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			jsonErr(w, "cannot resolve home directory", http.StatusInternalServerError)
+			return
+		}
+		if rawPath == "~" {
+			rawPath = home
+		} else {
+			rawPath = filepath.Join(home, rawPath[2:])
+		}
+	}
+	cleanPath := filepath.Clean(rawPath)
+	if !filepath.IsAbs(cleanPath) {
+		jsonErr(w, "path must be absolute", http.StatusBadRequest)
+		return
+	}
+	entries, err := os.ReadDir(cleanPath)
+	if err != nil {
+		jsonErr(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	type dirEntry struct {
+		Name  string `json:"name"`
+		IsDir bool   `json:"isDir"`
+	}
+	dirs := make([]dirEntry, 0)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if !e.IsDir() {
+			continue
+		}
+		dirs = append(dirs, dirEntry{Name: e.Name(), IsDir: true})
+	}
+	jsonResp(w, map[string]interface{}{
+		"path": cleanPath,
+		"dirs": dirs,
+	})
 }
 
 // ── Settings ──

@@ -323,6 +323,22 @@ export const removeRoutingMapping = (id: string) =>
 export const routingReload = () =>
   request<{ ok: boolean }>('/routing/reload', { method: 'POST' });
 
+export interface DiscordRoom {
+  channelId: string;
+  guildName: string;
+  channelName: string;
+}
+export const getDiscordRooms = () => request<DiscordRoom[]>('/routing/discord-rooms');
+
+export interface BrowseResponse {
+  path: string;
+  dirs: { name: string; isDir: boolean }[];
+}
+export const browseDirectory = (path?: string) => {
+  const qs = path ? `?path=${encodeURIComponent(path)}` : '';
+  return request<BrowseResponse>(`/routing/browse${qs}`);
+};
+
 // ── System (Personality Files) ──
 export interface WorkspaceFileInfo {
   name: string;

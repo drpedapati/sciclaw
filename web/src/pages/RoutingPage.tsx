@@ -7,11 +7,32 @@ import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
+import DirectoryBrowser from '../components/DirectoryBrowser';
 import {
   getRoutingStatus, getRoutingMappings, addRoutingMapping,
-  removeRoutingMapping, routingReload,
-  type RoutingStatus, type RoutingMapping,
+  removeRoutingMapping, routingReload, getDiscordRooms, browseDirectory,
+  type RoutingStatus, type RoutingMapping, type DiscordRoom, type BrowseResponse,
 } from '../lib/api';
+
+// Group rooms by guild for the picker UI.
+function groupByGuild(rooms: DiscordRoom[], search: string): Map<string, DiscordRoom[]> {
+  const q = search.toLowerCase();
+  const filtered = q
+    ? rooms.filter(
+        (r) =>
+          r.channelName.toLowerCase().includes(q) ||
+          r.guildName.toLowerCase().includes(q) ||
+          r.channelId.includes(q),
+      )
+    : rooms;
+  const map = new Map<string, DiscordRoom[]>();
+  for (const r of filtered) {
+    const list = map.get(r.guildName) ?? [];
+    list.push(r);
+    map.set(r.guildName, list);
+  }
+  return map;
+}
 
 export default function RoutingPage() {
   const [status, setStatus] = useState<RoutingStatus | null>(null);
@@ -25,6 +46,19 @@ export default function RoutingPage() {
   const [reloading, setReloading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
+
+  // Discord room picker state
+  const [discordRooms, setDiscordRooms] = useState<DiscordRoom[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState('');
+  const [roomSearch, setRoomSearch] = useState('');
+  const [manualChatId, setManualChatId] = useState(false);
+
+  // Directory browser state
+  const [browseData, setBrowseData] = useState<BrowseResponse | null>(null);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseError, setBrowseError] = useState('');
+  const [manualPath, setManualPath] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -44,6 +78,57 @@ export default function RoutingPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Auto-fetch directory listing when entering step 2 in browser mode.
+  useEffect(() => {
+    if (addStep === 2 && !manualPath) {
+      const startPath = addData.workspace || undefined;
+      setBrowseLoading(true);
+      setBrowseError('');
+      browseDirectory(startPath)
+        .then((data) => setBrowseData(data))
+        .catch((e) => setBrowseError(e instanceof Error ? e.message : 'Failed to load directory'))
+        .finally(() => setBrowseLoading(false));
+    }
+  }, [addStep, manualPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchDiscordRooms = async () => {
+    setRoomsLoading(true);
+    setRoomsError('');
+    try {
+      const rooms = await getDiscordRooms();
+      setDiscordRooms(rooms);
+    } catch (e) {
+      setRoomsError(e instanceof Error ? e.message : 'Failed to load Discord channels');
+    } finally {
+      setRoomsLoading(false);
+    }
+  };
+
+  const navigateDir = async (path: string) => {
+    setBrowseLoading(true);
+    setBrowseError('');
+    try {
+      const data = await browseDirectory(path);
+      setBrowseData(data);
+    } catch (e) {
+      setBrowseError(e instanceof Error ? e.message : 'Failed to load directory');
+    } finally {
+      setBrowseLoading(false);
+    }
+  };
+
+  const resetWizardState = () => {
+    setDiscordRooms([]);
+    setRoomsLoading(false);
+    setRoomsError('');
+    setRoomSearch('');
+    setManualChatId(false);
+    setBrowseData(null);
+    setBrowseLoading(false);
+    setBrowseError('');
+    setManualPath(false);
+  };
+
   const showFlash = (msg: string) => {
     setFlash(msg);
     setTimeout(() => setFlash(''), 4000);
@@ -57,6 +142,7 @@ export default function RoutingPage() {
       setAddMode(false);
       setAddStep(0);
       setAddData({ channel: 'discord', chatId: '', workspace: '', label: '' });
+      resetWizardState();
       await fetchData();
     } catch (e) {
       showFlash(`Error: ${e}`);
@@ -87,6 +173,11 @@ export default function RoutingPage() {
       setReloading(false);
     }
   };
+
+  // Whether the Next button should be hidden (picker/browser is auto-advancing).
+  const hideNext =
+    (addStep === 1 && addData.channel === 'discord' && !manualChatId) ||
+    (addStep === 2 && !manualPath);
 
   const selectedMapping = mappings[selected];
 
@@ -159,6 +250,7 @@ export default function RoutingPage() {
               {/* Add wizard */}
               {addMode && (
                 <div className="mb-4 p-3 rounded-md border border-brand/20 bg-brand/5 space-y-3 animate-fade-in">
+                  {/* Step 0: select channel */}
                   {addStep === 0 && (
                     <div>
                       <label className="text-xs text-zinc-500 block mb-2">Channel</label>
@@ -166,7 +258,11 @@ export default function RoutingPage() {
                         {(['discord', 'telegram'] as const).map((ch) => (
                           <button
                             key={ch}
-                            onClick={() => { setAddData({ ...addData, channel: ch }); setAddStep(1); }}
+                            onClick={() => {
+                              setAddData({ ...addData, channel: ch });
+                              if (ch === 'discord') fetchDiscordRooms();
+                              setAddStep(1);
+                            }}
                             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors ${
                               addData.channel === ch ? 'border-brand/30 bg-brand/10 text-brand' : 'border-border text-zinc-400 hover:bg-surface-50'
                             }`}
@@ -178,32 +274,120 @@ export default function RoutingPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Step 1: Chat ID */}
                   {addStep === 1 && (
                     <div>
-                      <label className="text-xs text-zinc-500 block mb-1">Chat ID</label>
-                      <input
-                        type="text"
-                        value={addData.chatId}
-                        onChange={(e) => setAddData({ ...addData, chatId: e.target.value })}
-                        placeholder="Channel/chat ID"
-                        className="w-full rounded-md border border-border bg-surface-100 px-3 py-1.5 text-sm text-zinc-200 font-mono placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-brand/50"
-                        autoFocus
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs text-zinc-500">Chat ID</label>
+                        {addData.channel === 'discord' && (
+                          <button
+                            onClick={() => setManualChatId((v) => !v)}
+                            className="text-xs text-brand hover:underline"
+                          >
+                            {manualChatId ? 'Browse channels' : 'Enter ID manually'}
+                          </button>
+                        )}
+                      </div>
+                      {addData.channel === 'discord' && !manualChatId ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={roomSearch}
+                            onChange={(e) => setRoomSearch(e.target.value)}
+                            placeholder="Search channels..."
+                            className="w-full rounded-md border border-border bg-surface-100 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-brand/50"
+                          />
+                          {roomsLoading && (
+                            <div className="flex items-center gap-2 py-3 text-xs text-zinc-500">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Loading channels...
+                            </div>
+                          )}
+                          {roomsError && (
+                            <div className="text-xs text-red-400 py-1">{roomsError}</div>
+                          )}
+                          {!roomsLoading && !roomsError && (
+                            <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border-subtle">
+                              {Array.from(groupByGuild(discordRooms, roomSearch)).map(([guild, rooms]) => (
+                                <div key={guild}>
+                                  <p className="px-3 py-1.5 text-xs font-medium text-zinc-500 bg-surface-50/50">{guild}</p>
+                                  {rooms.map((room) => (
+                                    <button
+                                      key={room.channelId}
+                                      onClick={() => {
+                                        setAddData({
+                                          ...addData,
+                                          chatId: room.channelId,
+                                          label: `${room.guildName}/${room.channelName}`,
+                                        });
+                                        setAddStep(2);
+                                      }}
+                                      className="flex items-center justify-between w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-surface-50 transition-colors"
+                                    >
+                                      <span>{room.channelName}</span>
+                                      <span className="text-zinc-600 font-mono">{room.channelId}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                              {groupByGuild(discordRooms, roomSearch).size === 0 && (
+                                <p className="px-3 py-3 text-xs text-zinc-500">No channels found</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={addData.chatId}
+                          onChange={(e) => setAddData({ ...addData, chatId: e.target.value })}
+                          placeholder="Channel/chat ID"
+                          className="w-full rounded-md border border-border bg-surface-100 px-3 py-1.5 text-sm text-zinc-200 font-mono placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-brand/50"
+                          autoFocus
+                        />
+                      )}
                     </div>
                   )}
+
+                  {/* Step 2: Workspace Path */}
                   {addStep === 2 && (
                     <div>
-                      <label className="text-xs text-zinc-500 block mb-1">Workspace Path</label>
-                      <input
-                        type="text"
-                        value={addData.workspace}
-                        onChange={(e) => setAddData({ ...addData, workspace: e.target.value })}
-                        placeholder="/path/to/workspace"
-                        className="w-full rounded-md border border-border bg-surface-100 px-3 py-1.5 text-sm text-zinc-200 font-mono placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-brand/50"
-                        autoFocus
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs text-zinc-500">Workspace Path</label>
+                        <button
+                          onClick={() => setManualPath((v) => !v)}
+                          className="text-xs text-brand hover:underline"
+                        >
+                          {manualPath ? 'Browse folders' : 'Type path manually'}
+                        </button>
+                      </div>
+                      {!manualPath ? (
+                        <DirectoryBrowser
+                          currentPath={browseData?.path ?? ''}
+                          dirs={browseData?.dirs ?? []}
+                          loading={browseLoading}
+                          error={browseError}
+                          onNavigate={navigateDir}
+                          onSelect={(path) => {
+                            setAddData({ ...addData, workspace: path });
+                            setAddStep(3);
+                          }}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={addData.workspace}
+                          onChange={(e) => setAddData({ ...addData, workspace: e.target.value })}
+                          placeholder="/path/to/workspace"
+                          className="w-full rounded-md border border-border bg-surface-100 px-3 py-1.5 text-sm text-zinc-200 font-mono placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-brand/50"
+                          autoFocus
+                        />
+                      )}
                     </div>
                   )}
+
+                  {/* Step 3: Label */}
                   {addStep === 3 && (
                     <div>
                       <label className="text-xs text-zinc-500 block mb-1">Label (optional)</label>
@@ -217,13 +401,24 @@ export default function RoutingPage() {
                       />
                     </div>
                   )}
+
                   <div className="flex gap-2 pt-1">
-                    <button onClick={() => { setAddMode(false); setAddStep(0); }} className="px-3 py-1.5 text-xs rounded-md border border-border text-zinc-400 hover:bg-surface-50 transition-colors">
+                    <button
+                      onClick={() => {
+                        setAddMode(false);
+                        setAddStep(0);
+                        setAddData({ channel: 'discord', chatId: '', workspace: '', label: '' });
+                        resetWizardState();
+                      }}
+                      className="px-3 py-1.5 text-xs rounded-md border border-border text-zinc-400 hover:bg-surface-50 transition-colors"
+                    >
                       Cancel
                     </button>
-                    <button onClick={handleAdd} className="px-3 py-1.5 text-xs rounded-md bg-brand text-surface-500 hover:bg-brand-500 transition-colors font-medium">
-                      {addStep < 3 ? 'Next' : 'Add'}
-                    </button>
+                    {!hideNext && (
+                      <button onClick={handleAdd} className="px-3 py-1.5 text-xs rounded-md bg-brand text-surface-500 hover:bg-brand-500 transition-colors font-medium">
+                        {addStep < 3 ? 'Next' : 'Add'}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
