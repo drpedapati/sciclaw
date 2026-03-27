@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/paths"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -25,11 +26,7 @@ type ContextBuilder struct {
 }
 
 func getGlobalConfigDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".picoclaw")
+	return paths.AppHome()
 }
 
 func defaultSharedWorkspaceDir() string {
@@ -43,7 +40,7 @@ func defaultSharedWorkspaceDir() string {
 func resolveGlobalSkillsDir(sharedWorkspace string) string {
 	sharedRoot := strings.TrimSpace(sharedWorkspace)
 	if sharedRoot != "" {
-		sharedSkills := filepath.Join(sharedRoot, "skills")
+		sharedSkills := filepath.Join(sharedRoot, "global-skills")
 		if hasSkillsDir(sharedSkills) {
 			return sharedSkills
 		}
@@ -57,7 +54,7 @@ func resolveGlobalSkillsDir(sharedWorkspace string) string {
 		return ""
 	}
 	workspaceSkills := filepath.Join(base, "workspace", "skills")
-	legacySkills := filepath.Join(base, "skills")
+	legacySkills := paths.GlobalSkillsDir()
 
 	// Legacy fallback only when shared workspace is unspecified.
 	if hasSkillsDir(workspaceSkills) {

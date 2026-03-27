@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sipeed/picoclaw/pkg/paths"
 )
 
 // VMSnapshot holds the complete runtime state collected from the VM or local host.
@@ -425,11 +427,7 @@ func shellEscape(s string) string {
 }
 
 func hostConfigRaw() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(home, ".picoclaw", "config.json")
+	path := paths.ConfigPath()
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", err

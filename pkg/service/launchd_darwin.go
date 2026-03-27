@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sipeed/picoclaw/pkg/paths"
 )
 
 type launchdManager struct {
@@ -40,8 +42,8 @@ func newLaunchdManagerForSpec(exePath string, runner commandRunner, spec Spec) M
 		domainTarget:  domain,
 		serviceTarget: serviceTarget,
 		plistPath:     filepath.Join(home, "Library", "LaunchAgents", label+".plist"),
-		stdoutPath:    filepath.Join(home, ".picoclaw", spec.StdoutFile),
-		stderrPath:    filepath.Join(home, ".picoclaw", spec.StderrFile),
+		stdoutPath:    filepath.Join(paths.AppHome(), spec.StdoutFile),
+		stderrPath:    filepath.Join(paths.AppHome(), spec.StderrFile),
 	}
 }
 
