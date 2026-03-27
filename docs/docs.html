@@ -614,6 +614,9 @@
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Advanced</div>
+      <a class="sidebar-link" href="#ctxclaw">ctxclaw</a>
+      <a class="sidebar-link nested" href="#ctxclaw-how">How It Works</a>
+      <a class="sidebar-link nested" href="#ctxclaw-inspect">Prompt Inspection</a>
       <a class="sidebar-link" href="#hooks">Hooks</a>
       <a class="sidebar-link nested" href="#hook-events">Events</a>
       <a class="sidebar-link nested" href="#hook-policy">Policy</a>
@@ -2106,6 +2109,83 @@ http://localhost:4142</code></pre>
         </ul>
 
         <p><strong>MLX support</strong> is planned for Apple Silicon and will be preferred when implemented. Currently all platforms use Ollama.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ CTXCLAW ━━━━━ -->
+      <div class="section" id="ctxclaw">
+        <h2>ctxclaw</h2>
+        <p class="page-subtitle">A standalone prompt-context optimizer that keeps your agent&rsquo;s context window clean and efficient.</p>
+
+        <h3>Why it exists</h3>
+        <p>Long-running sciClaw sessions &mdash; multi-hour literature reviews, document drafting, data analysis &mdash; accumulate stale history. A 2000-line file read from 40 turns ago stays in the prompt, and every new turn pays for it. Eventually the agent either hits the context window limit or wastes most of its budget replaying content nobody needs.</p>
+
+        <p><code>ctxclaw</code> is a separate Go binary that solves this narrow problem. It is not an agent, not a memory store, and not a workflow engine. It sits between the agent runtime and the model call, and it makes the prompt smaller.</p>
+
+        <h3>Installation</h3>
+        <p><code>ctxclaw</code> is installed automatically as a sciClaw dependency. To install or update it standalone:</p>
+        <pre><code><span class="hl-cmd">brew</span> install drpedapati/tap/ctxclaw
+<span class="hl-cmd">ctxclaw</span> version</code></pre>
+      </div>
+
+      <div class="section" id="ctxclaw-how">
+        <h3>How It Works</h3>
+        <p><code>ctxclaw</code> reads a structured prompt envelope from stdin and emits an optimized version on stdout:</p>
+
+        <pre><code><span class="hl-comment"># Basic pipeline</span>
+<span class="hl-cmd">sciclaw</span> prompt export <span class="hl-flag">--session</span> &lt;key&gt; | <span class="hl-cmd">ctxclaw</span> optimize | <span class="hl-cmd">sciclaw</span> prompt preview</code></pre>
+
+        <p>What it does during optimization:</p>
+        <ul>
+          <li><strong>Archives oversized tool outputs</strong> &mdash; large file reads, web fetches, and search results from old turns are moved to archive files instead of being replayed in the live prompt</li>
+          <li><strong>Checkpoint summaries</strong> &mdash; older conversation history is replaced with a deterministic summary, preserving key decisions and context without carrying full verbatim content</li>
+          <li><strong>Preserves the tail</strong> &mdash; recent, structurally valid conversation turns are kept intact so the agent has full context for the current task</li>
+        </ul>
+
+        <p>The key design principle: <strong>context management is separated from agent behavior</strong>. The agent runtime continues doing agent work. <code>ctxclaw</code> decides what old context should stay live. This separation makes both easier to test, benchmark, and maintain.</p>
+      </div>
+
+      <div class="section" id="ctxclaw-inspect">
+        <h3>Prompt Inspection</h3>
+        <p>Before optimizing, you often want to understand where your tokens are going. The <code>sciclaw prompt inspect</code> command gives you a full breakdown:</p>
+
+        <pre><code><span class="hl-cmd">sciclaw</span> prompt inspect <span class="hl-flag">--session</span> &lt;session-key&gt;
+
+<span class="hl-comment"># Example output:</span>
+Session: discord:1476333670787711140@38b972148867
+Workspace: /home/ernie/sciclaw/nihc3i-dave
+
+System prompt
+  total: 8432 chars (~2108 tokens)
+  identity: 1205 chars
+  bootstrap total: 4812 chars
+    - AGENTS.md: 1900 chars (~475 tokens)
+    - TOOLS.md: 3613 chars (~903 tokens)
+  skills summary: 892 chars
+  memory: 487 chars (~122 tokens)
+
+History before latest user turn
+  messages: 24
+  total: 31204 chars (~7801 tokens)
+    - tool: 12 msgs, 22108 chars (~5527 tokens)
+    - assistant: 8 msgs, 6420 chars (~1605 tokens)
+    - user: 4 msgs, 2676 chars (~669 tokens)
+
+Top contributors
+  - tool schemas: 14200 chars (~3550 tokens)
+  - history: 31204 chars (~7801 tokens)
+  - bootstrap files: 4812 chars (~1203 tokens)</code></pre>
+
+        <p>This tells you exactly which parts of the prompt are consuming the most tokens. Common findings:</p>
+        <ul>
+          <li><strong>Tool outputs dominating history</strong> &mdash; a few large <code>read_file</code> or <code>web_search</code> results can account for 70%+ of the history budget</li>
+          <li><strong>Tool schemas overhead</strong> &mdash; 32 registered tools can consume 3500+ tokens just for their JSON schemas</li>
+          <li><strong>Bootstrap file drift</strong> &mdash; customized TOOLS.md or AGENTS.md may be larger than the release template</li>
+        </ul>
+
+        <p>Use the <code>--json</code> flag for machine-readable output:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> prompt inspect <span class="hl-flag">--session</span> &lt;key&gt; <span class="hl-flag">--json</span></code></pre>
       </div>
 
       <hr />
