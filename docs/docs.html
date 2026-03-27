@@ -737,7 +737,7 @@
 
 <span class="hl-comment"># CLI alternative</span>
 <span class="hl-cmd">sciclaw</span> onboard</code></pre>
-        <p>Both commands run the same first-time setup flow. It creates your config (<code>~/.picoclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. On Linux it also bootstraps a managed workspace Python venv at <code>~/sciclaw/.venv</code> (prefers <code>uv</code>, falls back to <code>python3 -m venv</code>) and installs required packages used by scientific workflows. Then it asks optional questions:</p>
+        <p>Both commands run the same first-time setup flow. It creates your config (<code>~/sciclaw/config.json</code>), workspace directories (<code>~/sciclaw/</code> with <code>memory/</code>, <code>skills/</code>, <code>sessions/</code>, <code>cron/</code>), starter template files, and the baseline science skill pack. On Linux it also bootstraps a managed workspace Python venv at <code>~/sciclaw/.venv</code> (prefers <code>uv</code>, falls back to <code>python3 -m venv</code>) and installs required packages used by scientific workflows. Then it asks optional questions:</p>
         <ol>
           <li><strong>OpenAI login</strong> &mdash; Uses device-code login for ChatGPT Plus, Team, or Enterprise (a link opens in your browser). Skip this if you plan to use a different provider.</li>
           <li><strong>Chat smoke test</strong> &mdash; If authentication succeeds, a single test message is sent automatically to confirm your AI provider is connected and responding.</li>
@@ -861,7 +861,7 @@
               <tr><td><code>irl</code> runtime</td><td><code>brew upgrade sciclaw</code> (dependency)</td><td><code>$(brew --prefix)/bin/irl</code></td></tr>
               <tr><td><code>quarto</code> (optional)</td><td>macOS: <code>brew upgrade --cask quarto</code> / Linux: <code>brew upgrade sciclaw</code> (dependency)</td><td><code>$(brew --prefix)/bin/quarto</code></td></tr>
               <tr><td>Baseline skills</td><td><code>sciclaw skills install-builtin</code></td><td><code>~/sciclaw/skills/</code></td></tr>
-              <tr><td>Config file</td><td>Manual or <code>sciclaw models set</code></td><td><code>~/.picoclaw/config.json</code></td></tr>
+              <tr><td>Config file</td><td>Manual or <code>sciclaw models set</code></td><td><code>~/sciclaw/config.json</code></td></tr>
               <tr><td>Workspace templates</td><td><code>sciclaw onboard</code></td><td><code>~/sciclaw/</code></td></tr>
             </tbody>
           </table>
@@ -1172,7 +1172,7 @@ http://localhost:4142</code></pre>
         <div class="callout">
           <div class="callout-title">Where your work lives</div>
           <p><strong>Workspace (visible):</strong> <code>~/sciclaw/</code> (sessions, evidence, skills, hooks, IRL audit logs).</p>
-          <p><strong>Config + auth (hidden):</strong> <code>~/.picoclaw/config.json</code> and <code>~/.picoclaw/auth.json</code> (secrets and provider credentials).</p>
+          <p><strong>Config + auth (hidden):</strong> <code>~/sciclaw/config.json</code> and <code>~/sciclaw/auth.json</code> (secrets and provider credentials).</p>
         </div>
 
         <div class="callout callout-warn">
@@ -1198,7 +1198,7 @@ http://localhost:4142</code></pre>
       <!-- ━━━━━ CONFIGURATION ━━━━━ -->
       <div class="section" id="configuration">
         <h2>Configuration</h2>
-        <p class="page-subtitle">All settings live in <code>~/.picoclaw/config.json</code>.</p>
+        <p class="page-subtitle">All settings live in <code>~/sciclaw/config.json</code>.</p>
 
         <p>The config file controls agent defaults, provider credentials, channel integrations, tool settings, and heartbeat behavior. A complete example is shipped at <code>config/config.example.json</code> in the repository.</p>
 
@@ -1326,7 +1326,7 @@ http://localhost:4142</code></pre>
 <span class="hl-comment"># Remove stored credential</span>
 <span class="hl-cmd">sciclaw</span> auth logout <span class="hl-flag">--provider</span> openai</code></pre>
 
-        <p>Credentials are stored in <code>~/.picoclaw/auth.json</code> with user-only file permissions. A successful login sets <code>providers.&lt;name&gt;.auth_method</code> in the config (<code>oauth</code> or <code>token</code>). On current Anthropic dev builds, oat-token credentials can be routed through the companion Claude bridge automatically when available.</p>
+        <p>Credentials are stored in <code>~/sciclaw/auth.json</code> with user-only file permissions. A successful login sets <code>providers.&lt;name&gt;.auth_method</code> in the config (<code>oauth</code> or <code>token</code>). On current Anthropic dev builds, oat-token credentials can be routed through the companion Claude bridge automatically when available.</p>
       </div>
 
       <!-- ─── Workspace ─── -->
@@ -1351,7 +1351,7 @@ http://localhost:4142</code></pre>
 ├── TOOLS.md           <span class="hl-comment"># Tool descriptions</span>
 └── USER.md            <span class="hl-comment"># User preferences</span></code></pre>
 
-        <p>Bootstrap templates are versioned at <code>pkg/workspacetpl/templates/workspace/</code> and also installed to <code>~/.picoclaw/templates/workspace/</code> for review and customization.</p>
+        <p>Bootstrap templates are versioned at <code>pkg/workspacetpl/templates/workspace/</code> and also installed to <code>~/sciclaw/templates/workspace/</code> for review and customization.</p>
       </div>
 
       <hr />
@@ -1422,7 +1422,7 @@ http://localhost:4142</code></pre>
       <!-- ─── Model Switching ─── -->
       <div class="section" id="model-switching">
         <h3>Model Switching</h3>
-        <p>Previously, switching models required editing <code>~/.picoclaw/config.json</code> by hand and restarting. sciClaw now supports three ways to change models &mdash; a one-shot CLI flag, a persistent subcommand, and the config file. In practice, use <code>gpt-5.2</code> as the primary path and tune reasoning effort per task.</p>
+        <p>Previously, switching models required editing <code>~/sciclaw/config.json</code> by hand and restarting. sciClaw now supports three ways to change models &mdash; a one-shot CLI flag, a persistent subcommand, and the config file. In practice, use <code>gpt-5.2</code> as the primary path and tune reasoning effort per task.</p>
 
         <h4>1. Per-invocation override (<code>--model</code>)</h4>
         <p>The <code>--model</code> flag overrides the model for a single command. Your config file is <strong>not changed</strong>, so the next invocation returns to your default. Use this when testing a model, when your primary provider is down, or when a specific task needs a different model.</p>
@@ -1450,7 +1450,7 @@ http://localhost:4142</code></pre>
 <span class="hl-comment">#         Provider: openai</span></code></pre>
 
         <h4>3. Config file</h4>
-        <p>You can also set the model directly in <code>~/.picoclaw/config.json</code>. This is the same file that <code>sciclaw models set</code> writes to.</p>
+        <p>You can also set the model directly in <code>~/sciclaw/config.json</code>. This is the same file that <code>sciclaw models set</code> writes to.</p>
         <pre><code>{
   <span class="hl-key">"agents"</span>: {
     <span class="hl-key">"defaults"</span>: {
@@ -1599,7 +1599,7 @@ http://localhost:4142</code></pre>
             <tr><th>Check</th><th>What it verifies</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>config</code></td><td><code>~/.picoclaw/config.json</code> exists and loads</td></tr>
+            <tr><td><code>config</code></td><td><code>~/sciclaw/config.json</code> exists and loads</td></tr>
             <tr><td><code>workspace</code></td><td>Workspace directory exists</td></tr>
             <tr><td><code>auth.openai</code></td><td>OAuth status: authenticated, expired, or needs refresh</td></tr>
             <tr><td><code>auth.anthropic</code></td><td>Anthropic auth status, including Claude OAuth/oat-token bridge state when configured</td></tr>
