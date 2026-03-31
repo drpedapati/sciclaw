@@ -9,12 +9,14 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Platforms](https://img.shields.io/badge/Platforms-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-blue)](https://github.com/drpedapati/sciclaw/releases)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Discord](https://img.shields.io/discord/1488473301889191977?logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/UwGGGqU7yf)
 
 [Website](https://sciclaw.dev) ·
 [Documentation](https://sciclaw.dev/docs.html) ·
 [Manuscript (pending arXiv submission #7284050)](docs/assets/sciclaw-arxiv.pdf) ·
 [YouTube Tutorial](https://www.youtube.com/watch?v=P3pDulPnCzU) ·
 [Releases](https://github.com/drpedapati/sciclaw/releases) ·
+[Discord](https://discord.gg/UwGGGqU7yf) ·
 [Discussions](https://github.com/drpedapati/sciclaw/discussions)
 
 </div>
