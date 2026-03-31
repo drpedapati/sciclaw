@@ -250,17 +250,36 @@
           <div class="track">
             <strong>Stable channel</strong>
             <code>brew install sciclaw</code>
-            <div class="meta">Production track. Current public stable: <strong>v0.2.3</strong>.</div>
+            <div class="meta">Production track. Current public stable: <strong>v0.2.6</strong>.</div>
           </div>
           <div class="track">
             <strong>Dev channel</strong>
             <code>brew install sciclaw-dev</code>
-            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.2.4-dev.20</strong>.</div>
+            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.2.7-dev.1</strong>.</div>
           </div>
         </div>
       </section>
 
       <section class="timeline">
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag dev">dev</span>
+              <span class="rel">v0.2.7-dev.1</span>
+            </div>
+            <span class="date">March 31, 2026</span>
+          </div>
+          <ul>
+            <li>Fixed routing wizard silently failing when adding mappings: backend now passes required <code>--allow</code> flag, returns proper error codes on CLI failure, and shell-quotes all user-supplied arguments.</li>
+            <li>Added Discord community server with programmatic channel/role scaffolding and linked the invite across README, docs, and landing page.</li>
+            <li>Documented <code>ctxclaw</code> context optimizer and <code>sciclaw prompt inspect</code> for token budget analysis.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.7-dev.1" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.6...v0.2.7-dev.1" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
         <article class="item">
           <div class="item-head">
             <div class="tagline">
@@ -409,7 +428,7 @@
       </section>
 
       <p class="foot">
-        Last updated: March 15, 2026. Highlights are curated for user impact from release notes and compare ranges.
+        Last updated: March 31, 2026. Highlights are curated for user impact from release notes and compare ranges.
       </p>
     </div>
   </body>

@@ -416,9 +416,15 @@ Current sources of truth:
 | `sciclaw channels setup <channel>` | Configure a chat channel |
 | `sciclaw auth login\|logout\|status\|import-op` | Manage credentials |
 | `sciclaw skills list\|install` | Manage skills |
+| `sciclaw web` | Open the web management UI (routing, system config) |
+| `sciclaw prompt inspect --session <key>` | Token/turn breakdown of a session's prompt |
 | `sciclaw cron list\|add` | Manage scheduled jobs |
 
 </details>
+
+### ctxclaw
+
+`ctxclaw` is a standalone context-window optimizer installed automatically with sciClaw. It sits between the agent runtime and the model, compressing stale history to reclaim tokens in long-running sessions. Use `sciclaw prompt inspect` to see where tokens are going before optimizing. See [docs](https://sciclaw.dev/docs.html#ctxclaw) for details.
 
 ## License
 

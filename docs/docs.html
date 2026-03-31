@@ -569,6 +569,7 @@
       <a class="sidebar-link nested" href="#web-gateway-vs-web">Gateway vs Web Server</a>
       <a class="sidebar-link nested" href="#web-accessing">Accessing the Web UI</a>
       <a class="sidebar-link nested" href="#web-system-tab">System Tab</a>
+      <a class="sidebar-link nested" href="#web-routing-tab">Routing Tab</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Configuration</div>
@@ -1137,6 +1138,18 @@ http://localhost:4142</code></pre>
         </ul>
 
         <p>This tab is especially useful after upgrading sciClaw, since the release may include updated templates. You can diff your local files against the new templates and decide whether to merge the changes or reset to defaults.</p>
+      </div>
+
+      <div class="section" id="web-routing-tab">
+        <h3>Routing Tab</h3>
+        <p>The web UI includes a routing wizard for adding and managing channel-to-workspace mappings. It provides a Discord channel picker and directory browser so you can configure routing without touching the CLI.</p>
+
+        <h4>Adding a mapping</h4>
+        <p>Click <strong>Add Mapping</strong> to open the wizard. Select a channel type, pick a chat room, choose a workspace folder, and optionally specify allowed senders. If you leave the allowed-senders field empty, the backend defaults to <code>--allow *</code> (all senders permitted).</p>
+
+        <div class="callout callout-info">
+          <strong>Error handling:</strong> The wizard reports backend failures inline. If the underlying CLI command fails (for example, an invalid chat ID or unreachable workspace path), the web UI displays the error message instead of silently succeeding.
+        </div>
       </div>
 
       <hr />

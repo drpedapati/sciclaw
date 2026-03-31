@@ -183,6 +183,7 @@
       <nav class="nav-links">
         <a class="util" href="index.html">Home</a>
         <a class="util" href="docs.html">Documentation</a>
+        <a class="util" href="https://discord.gg/UwGGGqU7yf" target="_blank" rel="noopener noreferrer">Discord</a>
         <a class="util" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
       </nav>
     </header>
@@ -201,8 +202,8 @@
         <p>There's no hidden cache somewhere else on your system. No data stashed in a temp directory. It's all right there.</p>
 
         <h2>Nothing is exposed to the internet</h2>
-        <p>sciClaw doesn't open any ports. It doesn't listen for incoming connections. It doesn't run a web server. When you send a message, it reaches out to your AI provider (OpenAI, Anthropic, whoever you chose) and to any tools you explicitly told it to use (like PubMed). That's it.</p>
-        <p>If you're behind a hospital firewall or a VPN, sciClaw works fine because it only makes outbound HTTPS requests. Nothing inbound. No one can connect to it from outside your machine.</p>
+        <p>sciClaw doesn't listen for incoming connections from the network. The optional web dashboard (<code>sciclaw web</code>) binds to <code>127.0.0.1</code> (localhost only) by default, so it's accessible only from your own machine. When you send a message, it reaches out to your AI provider (OpenAI, Anthropic, whoever you chose) and to any tools you explicitly told it to use (like PubMed). That's it.</p>
+        <p>If you're behind a hospital firewall or a VPN, sciClaw works fine because it only makes outbound HTTPS requests. No one can connect to it from outside your machine unless you explicitly reconfigure the web server to bind to a wider interface.</p>
 
         <h2>Messages go through your private bot</h2>
         <p>When you chat via Telegram or Discord, the messages travel through a bot that you created and you control. It's registered to your account, with your token. Nobody else can talk to it unless you explicitly add them to the allow list.</p>
@@ -242,7 +243,7 @@
         <ul>
           <li>Runs on your machine. Not ours.</li>
           <li>All data stays in <code>~/sciclaw</code>. One folder, your control.</li>
-          <li>No open ports. No incoming connections. Outbound HTTPS only.</li>
+          <li>No network-facing ports by default. Web dashboard binds to localhost only. Outbound HTTPS only.</li>
           <li>Chat goes through your private bot. We don't operate a relay.</li>
           <li>API keys stored locally. Never sent to us.</li>
           <li>Zero telemetry. We don't know you're running it.</li>
@@ -250,7 +251,7 @@
           <li>AI conversations go directly to your chosen provider. We're not in the middle.</li>
         </ul>
 
-        <p>If you have questions about security or find something that doesn't match what we've described here, please <a href="https://github.com/drpedapati/sciclaw/issues">open an issue</a> or reach out on <a href="https://github.com/drpedapati/sciclaw/discussions">GitHub Discussions</a>.</p>
+        <p>If you have questions about security or find something that doesn't match what we've described here, please <a href="https://github.com/drpedapati/sciclaw/issues">open an issue</a>, reach out on <a href="https://github.com/drpedapati/sciclaw/discussions">GitHub Discussions</a>, or join the <a href="https://discord.gg/UwGGGqU7yf" target="_blank" rel="noopener noreferrer">Discord community</a>.</p>
       </article>
 
       <footer>
