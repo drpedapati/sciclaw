@@ -316,8 +316,11 @@ export interface RoutingMapping {
 }
 export const getRoutingStatus = () => request<RoutingStatus>('/routing/status');
 export const getRoutingMappings = () => request<RoutingMapping[]>('/routing/mappings');
-export const addRoutingMapping = (data: Partial<RoutingMapping>) =>
-  request<{ ok: boolean }>('/routing/mappings', { method: 'POST', body: JSON.stringify(data) });
+export const addRoutingMapping = async (data: Partial<RoutingMapping>) => {
+  const res = await request<{ ok: boolean; output?: string }>('/routing/mappings', { method: 'POST', body: JSON.stringify(data) });
+  if (!res.ok) throw new Error(res.output || 'Failed to add mapping');
+  return res;
+};
 export const removeRoutingMapping = (id: string) =>
   request<{ ok: boolean }>(`/routing/mappings/${id}`, { method: 'DELETE' });
 export const routingReload = () =>
