@@ -70,8 +70,14 @@ type DiscordChannel struct {
 	createCommandFn       func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 	editCommandFn         func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 	skillCatalogFn        func(channelID, guildID, userID string) ([]SlashSkillChoice, error)
+	themeSetFn            func(senderID, displayName, theme string) error
 	inboundMu             sync.Mutex
 	recentInbound         map[string]inboundMessageFingerprint
+}
+
+// SetThemeHandler sets the callback for the /theme slash command.
+func (c *DiscordChannel) SetThemeHandler(fn func(senderID, displayName, theme string) error) {
+	c.themeSetFn = fn
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -479,6 +485,26 @@ func buildSkillSlashCommand() *discordgo.ApplicationCommand {
 	}
 }
 
+func buildThemeSlashCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        "theme",
+		Description: "Set your answer theme (clear, formal, brief)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Name:        "style",
+				Description: "Answer theme to use",
+				Type:        discordgo.ApplicationCommandOptionString,
+				Required:    true,
+				Choices: []*discordgo.ApplicationCommandOptionChoice{
+					{Name: "Clear (default — plain language, dense prose)", Value: "clear"},
+					{Name: "Formal (academic, publication-ready)", Value: "formal"},
+					{Name: "Brief (3-5 sentences max)", Value: "brief"},
+				},
+			},
+		},
+	}
+}
+
 func interactionAuthor(i *discordgo.Interaction) *discordgo.User {
 	if i == nil {
 		return nil
@@ -620,7 +646,7 @@ func (c *DiscordChannel) ensureSlashCommands() error {
 		}
 		existingByName[existing.Name] = existing
 	}
-	for _, cmd := range []*discordgo.ApplicationCommand{buildBTWSlashCommand(), buildSkillSlashCommand()} {
+	for _, cmd := range []*discordgo.ApplicationCommand{buildBTWSlashCommand(), buildSkillSlashCommand(), buildThemeSlashCommand()} {
 		existing := existingByName[cmd.Name]
 		if existing == nil {
 			if _, err := c.createCommandFn(c.botUserID, "", cmd); err != nil {
@@ -670,6 +696,8 @@ func (c *DiscordChannel) handleInteractionCreate(_ *discordgo.Session, i *discor
 		c.handleBTWInteraction(i, data)
 	case "skill":
 		c.handleSkillInteraction(i, data)
+	case "theme":
+		c.handleThemeInteraction(i, data)
 	}
 }
 
@@ -820,6 +848,45 @@ func (c *DiscordChannel) handleSkillInteraction(i *discordgo.InteractionCreate, 
 	metadata := buildSlashMetadata(i.Interaction, data.Name, author)
 	metadata["requested_skill_name"] = selected.Name
 	c.publishSlashTask(i, author, skillSlashContent(selected.Name, prompt), metadata, fmt.Sprintf("Started. I’m using the skill %q and will reply in the channel below.", selected.Name))
+}
+
+func (c *DiscordChannel) handleThemeInteraction(i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	style := slashOptionString(data.Options, "style")
+	if style == "" {
+		c.respondInteractionEphemeral(i.Interaction, "Please select a theme.")
+		return
+	}
+	author := interactionAuthor(i.Interaction)
+	if author == nil {
+		return
+	}
+	if !c.IsAllowed(author.ID) {
+		c.respondInteractionEphemeral(i.Interaction, "You are not allowed to use this sciClaw bot.")
+		return
+	}
+	if c.themeSetFn == nil {
+		c.respondInteractionEphemeral(i.Interaction, "Theme preferences are not configured on this sciClaw instance.")
+		return
+	}
+	if err := c.themeSetFn("discord:"+author.ID, author.Username, style); err != nil {
+		c.respondInteractionEphemeral(i.Interaction, fmt.Sprintf("Failed to set theme: %v", err))
+		return
+	}
+	label := strings.ToUpper(style[:1]) + style[1:]
+	c.respondInteractionEphemeral(i.Interaction, fmt.Sprintf("Answer theme set to **%s**. I'll use this style for all your messages.", label))
+}
+
+func (c *DiscordChannel) respondInteractionEphemeral(interaction *discordgo.Interaction, content string) {
+	if c.interactionRespondFn == nil {
+		return
+	}
+	c.interactionRespondFn(interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
 }
 
 func (c *DiscordChannel) handleMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) {

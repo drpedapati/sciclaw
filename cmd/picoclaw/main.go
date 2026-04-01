@@ -41,6 +41,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/phi"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/routing"
+	"github.com/sipeed/picoclaw/pkg/profile"
 	svcmgr "github.com/sipeed/picoclaw/pkg/service"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -1509,6 +1510,10 @@ func gatewayCmd() {
 	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
 
+	// Wire per-user profile store for answer theme resolution
+	gatewayProfileStore := profile.NewStore(filepath.Join(picoDir, "profiles"))
+	agentLoop.SetProfileStore(gatewayProfileStore)
+
 	// Print agent startup info
 	fmt.Println("\n📦 Agent Status:")
 	startupInfo := agentLoop.GetStartupInfo()
@@ -1605,6 +1610,9 @@ func gatewayCmd() {
 			dc.SetSlashSkillCatalogCallback(func(channelID, guildID, userID string) ([]channels.SlashSkillChoice, error) {
 				return listDiscordSlashSkills(cfg, channelID, guildID, userID)
 			})
+			dc.SetThemeHandler(func(senderID, displayName, theme string) error {
+				return gatewayProfileStore.SetAnswerTheme(senderID, displayName, theme)
+			})
 			logger.InfoC("tools", "Channel history tool attached to Discord")
 		}
 	}
@@ -1665,8 +1673,11 @@ func gatewayCmd() {
 			fmt.Printf("Error initializing routing: %v\n", err)
 			os.Exit(1)
 		}
-		// Build a setup function that wires channel_history for each routed agent loop.
+		// Build a setup function that wires channel_history and profile store for each routed agent loop.
 		var poolSetup []routing.LoopSetupFunc
+		poolSetup = append(poolSetup, func(al *agent.AgentLoop) {
+			al.SetProfileStore(gatewayProfileStore)
+		})
 		if channelHistoryCB != nil {
 			poolSetup = append(poolSetup, func(al *agent.AgentLoop) {
 				attachChannelHistoryCallback(al, channelHistoryCB)
