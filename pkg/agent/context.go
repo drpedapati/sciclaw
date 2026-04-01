@@ -22,6 +22,29 @@ type ContextBuilder struct {
 	memory                     *MemoryStore
 	tools                      *tools.ToolRegistry // Direct reference to tool registry
 	includePromptToolSummaries bool
+
+	// Per-turn sender context (set before each BuildMessages call)
+	senderID    string
+	senderName  string
+	answerTheme string
+}
+
+// SetSenderContext sets per-turn sender identity and answer theme.
+// Call this before BuildMessages on each turn.
+func (cb *ContextBuilder) SetSenderContext(senderID, displayName, theme string) {
+	cb.senderID = senderID
+	// Sanitize display name: single line, bounded length, no control chars
+	name := strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r < 32 {
+			return ' '
+		}
+		return r
+	}, strings.TrimSpace(displayName))
+	if len(name) > 64 {
+		name = name[:64]
+	}
+	cb.senderName = name
+	cb.answerTheme = theme
 }
 
 func getGlobalConfigDir() string {
@@ -206,6 +229,17 @@ func (cb *ContextBuilder) BuildSystemPrompt() string {
 	bootstrapContent := cb.LoadBootstrapFiles()
 	if bootstrapContent != "" {
 		parts = append(parts, bootstrapContent)
+	}
+
+	// Active user profile (injected after bootstrap so theme definitions are in context)
+	if cb.answerTheme != "" {
+		userSection := "## Active User\n"
+		if cb.senderName != "" {
+			userSection += fmt.Sprintf("Name: %s\n", cb.senderName)
+		}
+		userSection += fmt.Sprintf("Answer Theme: %s\n\nIMPORTANT: Follow the %s theme rules from the Answer Themes section above.",
+			cb.answerTheme, cb.answerTheme)
+		parts = append(parts, userSection)
 	}
 
 	// Skills - show summary, AI can read full content with read_file tool

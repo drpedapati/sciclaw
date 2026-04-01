@@ -64,6 +64,17 @@ type AgentLoop struct {
 	turnCounter     uint64
 	running         atomic.Bool
 	summarizing     sync.Map // Tracks which sessions are currently being summarized
+	profileStore    ThemeResolver
+}
+
+// ThemeResolver looks up per-user answer theme preferences.
+type ThemeResolver interface {
+	AnswerTheme(senderID string) string
+}
+
+// SetProfileStore sets the per-user theme resolver.
+func (al *AgentLoop) SetProfileStore(store ThemeResolver) {
+	al.profileStore = store
 }
 
 type ToolProfile string
@@ -109,6 +120,8 @@ type processOptions struct {
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
 	Ephemeral       bool   // If true, do not mutate session/state on disk
 	OnProgress      func(phase, detail string)
+	SenderID        string // Sender identifier for per-user profile lookup
+	SenderName      string // Sender display name (from channel metadata)
 }
 
 type userVisibleError interface {
@@ -682,6 +695,8 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 		SendResponse:    false,
 		Ephemeral:       al.toolProfile.isSideLane(),
 		OnProgress:      onProgress,
+		SenderID:        msg.Channel + ":" + msg.SenderID,
+		SenderName:      msg.Metadata["username"],
 	})
 	return result.FinalContent, err
 }
@@ -877,6 +892,13 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 				"artifact_chars":  len(artifactContext),
 				"user_prompt_len": len(userMessageForPrompt),
 			})
+	}
+	// Clear per-turn sender context to prevent leaking between users/turns,
+	// then resolve per-user answer theme if available.
+	al.contextBuilder.SetSenderContext("", "", "")
+	if opts.SenderID != "" && al.profileStore != nil {
+		theme := al.profileStore.AnswerTheme(opts.SenderID)
+		al.contextBuilder.SetSenderContext(opts.SenderID, opts.SenderName, theme)
 	}
 	messages := al.contextBuilder.BuildMessages(
 		history,
