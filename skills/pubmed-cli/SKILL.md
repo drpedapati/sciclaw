@@ -27,7 +27,7 @@ Set your NCBI API key for higher rate limits (recommended):
 export NCBI_API_KEY="your-key"
 ```
 
-If you're using sciClaw, you can also set this via the `sciclaw onboard` wizard, or in `~/.picoclaw/config.json`:
+If you're using sciClaw, you can also set this via the `sciclaw onboard` wizard, or in `~/sciclaw/config.json`:
 
 ```json
 {

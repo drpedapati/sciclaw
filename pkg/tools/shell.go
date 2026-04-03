@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/paths"
 )
 
 type ExecTool struct {
@@ -553,14 +554,10 @@ func sciclawTemplateCandidatePaths() []string {
 
 func defaultNIHTemplatePath() string {
 	home := strings.TrimSpace(os.Getenv("PICOCLAW_HOME"))
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil || strings.TrimSpace(userHome) == "" {
-			return ""
-		}
-		home = filepath.Join(userHome, ".picoclaw")
+	if home != "" {
+		return filepath.Join(home, "templates", "nih-standard.docx")
 	}
-	return filepath.Join(home, "templates", "nih-standard.docx")
+	return filepath.Join(paths.TemplatesDir(), "nih-standard.docx")
 }
 
 func ensureEmbeddedNIHTemplate(destPath string) error {

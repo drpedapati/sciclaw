@@ -38,6 +38,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/migrate"
 	"github.com/sipeed/picoclaw/pkg/models"
+	"github.com/sipeed/picoclaw/pkg/paths"
 	"github.com/sipeed/picoclaw/pkg/phi"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/routing"
@@ -1182,6 +1183,8 @@ func migrateCmd() {
 			opts.WorkspaceOnly = true
 		case "--force":
 			opts.Force = true
+		case "--unify":
+			opts.Unify = true
 		case "--refresh":
 			opts.Refresh = true
 		case "--openclaw-home":
@@ -1224,6 +1227,7 @@ func migrateHelp() {
 	fmt.Println("  --config-only      Only migrate config, skip workspace files")
 	fmt.Println("  --workspace-only   Only migrate workspace files, skip config")
 	fmt.Println("  --force            Skip confirmation prompts")
+	fmt.Println("  --unify            Unify ~/.picoclaw into ~/sciclaw and create symlink")
 	fmt.Println("  --openclaw-home    Override OpenClaw home directory (default: ~/.openclaw)")
 	fmt.Println("  --picoclaw-home    Override PicoClaw home directory (default: ~/.picoclaw)")
 	fmt.Println()
@@ -1232,6 +1236,7 @@ func migrateHelp() {
 	fmt.Printf("  %s migrate --dry-run    Show what would be migrated\n", commandName)
 	fmt.Printf("  %s migrate --refresh    Re-sync workspace files\n", commandName)
 	fmt.Printf("  %s migrate --force      Migrate without confirmation\n", commandName)
+	fmt.Printf("  %s migrate --unify      Unify ~/.picoclaw into ~/sciclaw\n", commandName)
 }
 
 func agentCmd() {
@@ -1453,8 +1458,8 @@ func gatewayCmd() {
 
 	// Resolve home directory once for all path construction below (status
 	// file, log file, etc.). If it fails, skip home-dependent setup.
-	gwHome, gwHomeErr := os.UserHomeDir()
-	picoDir := filepath.Join(gwHome, ".picoclaw")
+	_, gwHomeErr := os.UserHomeDir()
+	picoDir := paths.AppHome()
 
 	// Kill any stale gateway process from a previous run (e.g. orphaned SSH session).
 	// The status file is written on startup and removed on clean shutdown — if it
@@ -2687,8 +2692,7 @@ func authStatusCmd() {
 }
 
 func getConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".picoclaw", "config.json")
+	return paths.ConfigPath()
 }
 
 func runGatewayDefaultDispatch(ctx context.Context, msgBus *bus.MessageBus, agentLoop *agent.AgentLoop, jobManager *routing.JobManager, target routing.LoopTarget) {
