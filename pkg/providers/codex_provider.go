@@ -71,13 +71,18 @@ func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []To
 	defer stream.Close()
 
 	var finalResp *responses.Response
+	// Collect output items from ResponseOutputItemDoneEvent because
+	// ResponseCompletedEvent.Response.Output may be empty (known backend bug:
+	// content is delivered via output_item.done events, not in the completed payload).
+	var collectedOutputItems []responses.ResponseOutputItemUnion
 	for stream.Next() {
 		switch event := stream.Current().AsAny().(type) {
+		case responses.ResponseOutputItemDoneEvent:
+			collectedOutputItems = append(collectedOutputItems, event.Item)
 		case responses.ResponseCompletedEvent:
 			resp := event.Response
 			finalResp = &resp
 		case responses.ResponseIncompleteEvent:
-			// Keep the incomplete response payload so callers can map finish reason.
 			resp := event.Response
 			finalResp = &resp
 		case responses.ResponseErrorEvent:
@@ -94,6 +99,12 @@ func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []To
 	}
 	if finalResp == nil {
 		return nil, fmt.Errorf("codex API call: stream ended without a response payload")
+	}
+
+	// If the completed response has an empty Output array but we collected
+	// items from output_item.done events, inject them.
+	if len(finalResp.Output) == 0 && len(collectedOutputItems) > 0 {
+		finalResp.Output = collectedOutputItems
 	}
 
 	return parseCodexResponse(finalResp), nil
