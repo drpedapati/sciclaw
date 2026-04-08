@@ -112,7 +112,7 @@ RUN ln -sf sciclaw /usr/local/bin/picoclaw
 COPY --from=builder /src/skills /opt/sciclaw/skills
 
 # Create default workspace with baseline skills
-RUN mkdir -p /root/sciclaw/skills /root/.picoclaw && \
+RUN mkdir -p /root/sciclaw/skills && \
     cp -r /opt/sciclaw/skills/* /root/sciclaw/skills/ 2>/dev/null || true
 
 ENTRYPOINT ["sciclaw"]

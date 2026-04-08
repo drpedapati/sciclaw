@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sipeed/picoclaw/pkg/paths"
 )
 
 func buildSystemdPath(installerPath, brewPrefix string) string {
@@ -56,6 +58,7 @@ func managedVenvBinCandidates() []string {
 		return nil
 	}
 	return []string{
+		filepath.Join(paths.AppHome(), ".venv", "bin"),
 		filepath.Join(home, "sciclaw", ".venv", "bin"),
 		filepath.Join(home, ".picoclaw", "workspace", ".venv", "bin"),
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/paths"
 	svcmgr "github.com/sipeed/picoclaw/pkg/service"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
@@ -166,6 +167,8 @@ func runDoctor(opts doctorOptions) doctorReport {
 			add(doctorCheck{Name: "config.load", Status: doctorErr, Message: cfgErr.Error()})
 		}
 	}
+
+	add(checkDirUnification())
 
 	if cfgErr == nil && cfg != nil {
 		for _, c := range checkConfigHealth(cfg, configPath, opts) {
@@ -745,12 +748,40 @@ func checkHostVMChannelConflict(hostCfg *config.Config) doctorCheck {
 	}
 }
 
-func checkGatewayLog(telegramEnabled bool) doctorCheck {
+func checkDirUnification() doctorCheck {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "home directory unavailable"}
+		return doctorCheck{Name: "home.unification", Status: doctorSkip, Message: "home directory unavailable"}
 	}
-	p := filepath.Join(home, ".picoclaw", "gateway.log")
+	oldDir := filepath.Join(home, ".picoclaw")
+	newDir := filepath.Join(home, "sciclaw")
+
+	oldInfo, oldErr := os.Lstat(oldDir)
+	newInfo, newErr := os.Lstat(newDir)
+	if os.IsNotExist(oldErr) && os.IsNotExist(newErr) {
+		return doctorCheck{Name: "home.unification", Status: doctorSkip, Message: "no legacy or unified directories found"}
+	}
+	if oldErr == nil && (oldInfo.Mode()&os.ModeSymlink) != 0 {
+		return doctorCheck{Name: "home.unification", Status: doctorOK, Message: "~/.picoclaw is symlinked to unified root"}
+	}
+	if oldErr == nil && newErr == nil {
+		oldCfg := filepath.Join(oldDir, "config.json")
+		newCfg := filepath.Join(newDir, "config.json")
+		if fileExists(oldCfg) && fileExists(newCfg) {
+			return doctorCheck{Name: "home.unification", Status: doctorWarn, Message: "Config found in both directories — run: sciclaw migrate --unify"}
+		}
+		if oldInfo.IsDir() && newInfo.IsDir() {
+			return doctorCheck{Name: "home.unification", Status: doctorWarn, Message: "split home directories detected — run: sciclaw migrate --unify"}
+		}
+	}
+	if oldErr == nil {
+		return doctorCheck{Name: "home.unification", Status: doctorWarn, Message: "legacy ~/.picoclaw directory detected — run: sciclaw migrate --unify"}
+	}
+	return doctorCheck{Name: "home.unification", Status: doctorOK, Message: "unified ~/sciclaw layout detected"}
+}
+
+func checkGatewayLog(telegramEnabled bool) doctorCheck {
+	p := filepath.Join(paths.AppHome(), "gateway.log")
 	if !fileExists(p) {
 		return doctorCheck{Name: "gateway.log", Status: doctorSkip, Message: "not found"}
 	}
