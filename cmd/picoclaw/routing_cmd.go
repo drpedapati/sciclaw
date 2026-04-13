@@ -266,6 +266,7 @@ func routingAddCmd() {
 		fmt.Printf("Error saving config: %v\n", err)
 		return
 	}
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
 
 	if updated {
 		fmt.Printf("Updated routing mapping for %s:%s\n", channel, chatID)
@@ -322,6 +323,7 @@ func routingRemoveCmd() {
 		fmt.Printf("Error saving config: %v\n", err)
 		return
 	}
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
 	fmt.Printf("Removed routing mapping for %s:%s\n", channel, chatID)
 }
 
@@ -382,6 +384,7 @@ func routingSetUsersCmd() {
 		fmt.Printf("Error saving config: %v\n", err)
 		return
 	}
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
 	fmt.Printf("Updated allowed_senders for %s:%s\n", channel, chatID)
 }
 
@@ -486,6 +489,7 @@ func routingSetRuntimeCmd() {
 		fmt.Printf("Error saving config: %v\n", err)
 		return
 	}
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
 	fmt.Printf("Updated runtime for %s:%s\n", channel, chatID)
 }
 

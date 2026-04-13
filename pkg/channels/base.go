@@ -96,6 +96,11 @@ func (c *BaseChannel) IsAllowed(senderID string) bool {
 }
 
 func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []string, metadata map[string]string) {
+	// TODO(addon-hooks): emit "user_added" / "user_removed" events once
+	// first-appearance detection lands. See docs/issues/addon-system-rfc.md
+	// section 4 (Hook Dispatch) — the open design question is where to store
+	// the "seen senders" set (per-channel? shared?) and when to prune it.
+	// Leaving deferred for Wave 3b.
 	if !c.IsAllowed(senderID) {
 		logger.InfoCF(c.name, "Message rejected by allowlist",
 			map[string]interface{}{

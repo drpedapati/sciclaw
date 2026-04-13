@@ -25,6 +25,7 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	"github.com/sipeed/picoclaw/pkg/addons"
 	"github.com/sipeed/picoclaw/pkg/agent"
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/bus"
@@ -1510,8 +1511,51 @@ func gatewayCmd() {
 	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
 
+	// Initialize the addon hook dispatcher before any emission site can fire.
+	//
+	// The dispatcher is a no-op when the addon registry is empty, so it is
+	// safe to wire in unconditionally — core code pays nothing until the user
+	// installs an addon. The Lookup callback is hardcoded to return nil here
+	// because Wave 3a (addon enable/disable CLI) has not yet landed the
+	// sidecar-process registry that would resolve a name to a running
+	// Sidecar. Once that exists, Wave 4 will replace this with a real lookup
+	// against the live sidecar table.
+	//
+	// sciclawHome is the canonical ~/sciclaw path established by the unified
+	// home migration. If os.UserHomeDir() failed earlier (gwHomeErr != nil),
+	// fall back to a zero-value home — Dispatcher.Fire will degrade cleanly
+	// because the registry file will be absent.
+	sciclawHome := ""
+	if gwHomeErr == nil {
+		sciclawHome = filepath.Join(gwHome, "sciclaw")
+	}
+	// TODO(addon-hooks, Wave 4): replace the hardcoded nil Lookup with a real
+	// sidecar registry once addon enable/disable is wired end-to-end.
+	addonStore := addons.NewStore(sciclawHome)
+	SetAddonDispatcher(&addons.Dispatcher{
+		Store:       addonStore,
+		SciclawHome: sciclawHome,
+		Lookup:      func(name string) *addons.Sidecar { return nil },
+		Timeout:     5 * time.Second,
+		Log: func(name, event string, err error) {
+			if err != nil {
+				logger.WarnCF("addons", "hook dispatch error", map[string]interface{}{
+					"addon": name,
+					"event": event,
+					"error": err.Error(),
+				})
+			}
+		},
+	})
+
 	// Wire per-user profile store for answer theme resolution
 	gatewayProfileStore := profile.NewStore(filepath.Join(picoDir, "profiles"))
+	gatewayProfileStore.OnProfileUpdated = func(senderID string, p *profile.UserProfile) {
+		fireAddonHook("profile_updated", map[string]any{
+			"sender_id": senderID,
+			"profile":   p,
+		})
+	}
 	agentLoop.SetProfileStore(gatewayProfileStore)
 
 	// Print agent startup info

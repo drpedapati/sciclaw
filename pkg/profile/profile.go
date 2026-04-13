@@ -29,6 +29,18 @@ type UserProfile struct {
 // Store manages per-user profile files on disk.
 type Store struct {
 	dir string
+
+	// OnProfileUpdated is invoked after SetAnswerTheme successfully persists a
+	// profile to disk. It is wired by main() at startup to fan the change out
+	// to the addon hook dispatcher as a "profile_updated" event. Nil is a
+	// no-op, so tests and cold-start code paths that do not care about the
+	// addon system can leave it unset.
+	//
+	// The callback runs synchronously on the caller's goroutine, so
+	// implementations must be cheap or self-dispatch. The main wiring uses the
+	// addon dispatcher's bounded-context helper, which is non-blocking in
+	// practice.
+	OnProfileUpdated func(senderID string, p *UserProfile)
 }
 
 // NewStore creates a profile store at the given directory.
@@ -92,6 +104,10 @@ func (s *Store) AnswerTheme(senderID string) string {
 }
 
 // SetAnswerTheme validates and persists the user's answer theme.
+//
+// On a successful save, Store.OnProfileUpdated is invoked if set. The callback
+// runs synchronously and its errors are swallowed — the contract is that
+// hooks are fire-and-forget and must not block profile writes.
 func (s *Store) SetAnswerTheme(senderID, displayName, theme string) error {
 	theme = strings.TrimSpace(strings.ToLower(theme))
 	if !IsValidTheme(theme) {
@@ -105,7 +121,13 @@ func (s *Store) SetAnswerTheme(senderID, displayName, theme string) error {
 	if displayName != "" {
 		p.DisplayName = displayName
 	}
-	return s.Save(senderID, p)
+	if err := s.Save(senderID, p); err != nil {
+		return err
+	}
+	if s.OnProfileUpdated != nil {
+		s.OnProfileUpdated(senderID, p)
+	}
+	return nil
 }
 
 // IsValidTheme returns true if the theme name is recognized.
