@@ -35,7 +35,16 @@ type Lifecycle struct {
 	// a sidecar and registers it; Disable/Uninstall/Upgrade stop and
 	// unregister as appropriate. When nil, state transitions still happen
 	// but no process management occurs — useful in CLI-only tests and in
-	// one-shot commands that do not need live sidecars.
+	// the real CLI, which runs in a short-lived process and cannot own
+	// long-running sidecars.
+	//
+	// Ownership model: the gateway sets Registry = liveRegistry so its
+	// Lifecycle mutations (e.g. web UI "enable" button) drive processes
+	// immediately. The CLI sets Registry = nil and relies on the gateway's
+	// *Reconciler to converge the live set against registry.json on the
+	// next tick (or immediately, after the CLI touches the reload marker
+	// via TriggerReload). This keeps the CLI fast and side-effect-free at
+	// the process layer while still giving users a near-synchronous feel.
 	Registry *SidecarRegistry
 	// Launcher builds and starts a Sidecar for an addon. Exposed as an
 	// interface (not a concrete *Sidecar) so tests can inject fakes without

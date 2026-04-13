@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1549,6 +1550,31 @@ func gatewayCmd() {
 		},
 	})
 
+	// Wave 4d: reconciliation control loop. The CLI (`sciclaw addon enable
+	// …`) mutates registry.json in a short-lived process and does NOT own
+	// sidecars — this Reconciler is the long-lived process that turns those
+	// persisted state changes into real spawn/stop calls on the
+	// addonSidecarRegistry. A ticker drives eventual consistency, and the
+	// CLI also touches addons/reload via addons.TriggerReload so the loop
+	// kicks off an immediate pass and `addon enable` feels synchronous.
+	addonReconciler := &addons.Reconciler{
+		Store:        addonStore,
+		Registry:     addonSidecarRegistry,
+		SciclawHome:  sciclawHome,
+		Interval:     10 * time.Second,
+		StartTimeout: 10 * time.Second,
+		StopTimeout:  10 * time.Second,
+		Log: func(name, event string, err error) {
+			if err != nil {
+				logger.WarnCF("addons", "reconcile", map[string]interface{}{
+					"addon": name,
+					"event": event,
+					"error": err.Error(),
+				})
+			}
+		},
+	}
+
 	// Wire per-user profile store for answer theme resolution
 	gatewayProfileStore := profile.NewStore(filepath.Join(picoDir, "profiles"))
 	gatewayProfileStore.OnProfileUpdated = func(senderID string, p *profile.UserProfile) {
@@ -1674,6 +1700,24 @@ func gatewayCmd() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start the addon reconciliation loop. Uses the same ctx that the
+	// shutdown sequence below cancels, so the reconciler goroutine exits
+	// before addonSidecarRegistry.StopAll runs and tears down the
+	// sidecars. Run returns ctx.Err() on cancel; that is expected, not an
+	// error condition, and is filtered below. The shutdown path blocks on
+	// addonReconcilerDone so a reconcile pass that is mid-spawn cannot
+	// race StopAll and leak a freshly-registered sidecar.
+	addonReconcilerDone := make(chan struct{})
+	go func() {
+		defer close(addonReconcilerDone)
+		if err := addonReconciler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			logger.WarnCF("addons", "reconciler exited", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}()
+
 	var loopPool *routing.AgentLoopPool
 	var jobManager *routing.JobManager
 	btwLaneResolver := func(target routing.LoopTarget) (routing.JobRunner, error) {
@@ -1787,6 +1831,17 @@ func gatewayCmd() {
 	}
 	agentLoop.Stop()
 	channelManager.StopAll(ctx)
+	// Wait for the reconciler goroutine to exit BEFORE StopAll, so an
+	// in-flight reconcile pass cannot race StopAll's registry snapshot and
+	// leave a freshly-spawned sidecar running. ctx was just cancelled above,
+	// so Run will return promptly; the 5s cap is defense-in-depth.
+	if addonReconcilerDone != nil {
+		select {
+		case <-addonReconcilerDone:
+		case <-time.After(5 * time.Second):
+			logger.WarnCF("addons", "reconciler shutdown timeout", nil)
+		}
+	}
 	// Stop all live addon sidecars before exiting. Uses a fresh bounded
 	// context because the gateway ctx was just cancelled above — StopAll
 	// must still be able to reach its 10s deadline.

@@ -241,15 +241,26 @@ func buildLifecycle() *addons.Lifecycle {
 	lc.Clone = gitCloneFn
 	lc.Runner = addons.DefaultRunner{}
 	lc.Now = time.Now
-	// Thread the process-wide sidecar registry so Enable/Disable/Upgrade/
-	// Uninstall actually manage live processes. The registry is nil for
-	// one-shot CLI invocations (e.g. `sciclaw addon install`) that run
-	// before main() has started the gateway, in which case Lifecycle
-	// degrades to metadata-only operations and state still moves
-	// correctly in the Store — the sidecar will be spawned next time the
-	// gateway runs and the user re-enables the addon.
-	lc.Registry = addonSidecarRegistry
+	// CLI does not own sidecars — the gateway reconciles via addons.Reconciler.
+	//
+	// The CLI runs in a short-lived process: any sidecar it spawned would die
+	// on CLI exit. Instead, Enable/Disable/Upgrade/Uninstall here mutate the
+	// registry.json state only, and the long-lived gateway's *Reconciler
+	// notices the state change (either on the next tick or immediately via
+	// the reload marker written by addons.TriggerReload below) and converges
+	// its live *SidecarRegistry to match.
+	lc.Registry = nil
 	return lc
+}
+
+// triggerGatewayReload nudges any running gateway's Reconciler to perform a
+// reconcile pass immediately instead of waiting for the next ticker tick.
+// Failures are logged as warnings (not errors) because the eventual-
+// consistency path still converges without the marker.
+func triggerGatewayReload(w io.Writer) {
+	if err := addons.TriggerReload(sciclawHomeDir()); err != nil {
+		fmt.Fprintf(w, "warning: could not notify gateway to reload addons: %v\n", err)
+	}
 }
 
 func ctxWithSignals() (context.Context, context.CancelFunc) {
@@ -654,6 +665,7 @@ func runInstall(ctx context.Context, env *addonEnv, args []string) int {
 		printInstallFailureHint(env.Stderr, err)
 		return 1
 	}
+	triggerGatewayReload(env.Stderr)
 
 	name := flags.Name
 	if name == "" {
@@ -721,6 +733,7 @@ func runEnable(ctx context.Context, env *addonEnv, args []string) int {
 		}
 		return 1
 	}
+	triggerGatewayReload(env.Stderr)
 	fmt.Fprintf(env.Stdout, "Addon %q enabled (commit %s).\n", name, shortCommit(entry.InstalledCommit))
 	return 0
 }
@@ -736,6 +749,7 @@ func runDisable(ctx context.Context, env *addonEnv, args []string) int {
 		fmt.Fprintf(env.Stderr, "Disable failed: %v\n", err)
 		return 1
 	}
+	triggerGatewayReload(env.Stderr)
 	fmt.Fprintf(env.Stdout, "Addon %q disabled (state=%s).\n", name, entry.State)
 	return 0
 }
@@ -775,6 +789,7 @@ func runUninstall(ctx context.Context, env *addonEnv, args []string) int {
 		fmt.Fprintf(env.Stderr, "Uninstall failed: %v\n", err)
 		return 1
 	}
+	triggerGatewayReload(env.Stderr)
 	fmt.Fprintf(env.Stdout, "Addon %q uninstalled.\n", name)
 	return 0
 }
@@ -829,6 +844,7 @@ func runUpgrade(ctx context.Context, env *addonEnv, args []string) int {
 		fmt.Fprintf(env.Stderr, "Upgrade failed: %v\n", err)
 		return 1
 	}
+	triggerGatewayReload(env.Stderr)
 
 	fmt.Fprintln(env.Stdout)
 	fmt.Fprintln(env.Stdout, "Upgrade diff:")
@@ -1025,6 +1041,7 @@ func runRollback(ctx context.Context, env *addonEnv, args []string) int {
 		fmt.Fprintf(env.Stderr, "Rollback failed: %v\n", err)
 		return 1
 	}
+	triggerGatewayReload(env.Stderr)
 	fmt.Fprintf(env.Stdout, "Addon %q rolled back.\n", name)
 	fmt.Fprintf(env.Stdout, "  commit:  %s → %s\n", shortCommit(entry.InstalledCommit), shortCommit(updated.InstalledCommit))
 	fmt.Fprintf(env.Stdout, "  version: %s → %s\n", entry.Version, updated.Version)
