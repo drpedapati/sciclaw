@@ -1518,11 +1518,10 @@ func gatewayCmd() {
 	//
 	// The dispatcher is a no-op when the addon registry is empty, so it is
 	// safe to wire in unconditionally — core code pays nothing until the user
-	// installs an addon. The Lookup callback is hardcoded to return nil here
-	// because Wave 3a (addon enable/disable CLI) has not yet landed the
-	// sidecar-process registry that would resolve a name to a running
-	// Sidecar. Once that exists, Wave 4 will replace this with a real lookup
-	// against the live sidecar table.
+	// installs an addon. Wave 4a wires the real SidecarRegistry into both
+	// the Dispatcher.Lookup callback and the addon Lifecycle so that
+	// `sciclaw addon enable <name>` actually spawns a process and hook
+	// events can find the live sidecar.
 	//
 	// sciclawHome is the canonical ~/sciclaw path established by the unified
 	// home migration. If os.UserHomeDir() failed earlier (gwHomeErr != nil),
@@ -1532,13 +1531,12 @@ func gatewayCmd() {
 	if gwHomeErr == nil {
 		sciclawHome = filepath.Join(gwHome, "sciclaw")
 	}
-	// TODO(addon-hooks, Wave 4): replace the hardcoded nil Lookup with a real
-	// sidecar registry once addon enable/disable is wired end-to-end.
 	addonStore := addons.NewStore(sciclawHome)
+	addonSidecarRegistry = addons.NewSidecarRegistry()
 	SetAddonDispatcher(&addons.Dispatcher{
 		Store:       addonStore,
 		SciclawHome: sciclawHome,
-		Lookup:      func(name string) *addons.Sidecar { return nil },
+		Lookup:      addonSidecarRegistry.Lookup,
 		Timeout:     5 * time.Second,
 		Log: func(name, event string, err error) {
 			if err != nil {
@@ -1789,6 +1787,19 @@ func gatewayCmd() {
 	}
 	agentLoop.Stop()
 	channelManager.StopAll(ctx)
+	// Stop all live addon sidecars before exiting. Uses a fresh bounded
+	// context because the gateway ctx was just cancelled above — StopAll
+	// must still be able to reach its 10s deadline.
+	if addonSidecarRegistry != nil {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		addonSidecarRegistry.StopAll(stopCtx, func(name string, err error) {
+			logger.WarnCF("addons", "sidecar stop error on shutdown", map[string]interface{}{
+				"addon": name,
+				"error": err.Error(),
+			})
+		})
+		stopCancel()
+	}
 	_ = os.Remove(gatewayStatusPath)
 	logger.DisableFileLogging()
 	fmt.Println("✓ Gateway stopped")

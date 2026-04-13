@@ -31,7 +31,55 @@ type Lifecycle struct {
 	Clone       func(ctx context.Context, repoURL, dest string) error
 	Runner      CommandRunner
 	Now         func() time.Time
+	// Registry tracks live sidecar processes. When non-nil, Enable spawns
+	// a sidecar and registers it; Disable/Uninstall/Upgrade stop and
+	// unregister as appropriate. When nil, state transitions still happen
+	// but no process management occurs — useful in CLI-only tests and in
+	// one-shot commands that do not need live sidecars.
+	Registry *SidecarRegistry
+	// Launcher builds and starts a Sidecar for an addon. Exposed as an
+	// interface (not a concrete *Sidecar) so tests can inject fakes without
+	// spawning real processes. When nil, a defaultLauncher is used that
+	// wraps NewSidecar + Sidecar.Start.
+	Launcher SidecarLauncher
 }
+
+// SidecarLauncher builds and starts the sidecar for an addon and returns a
+// handle that the registry can store. Implementations must not leak
+// processes on error — if Launch returns an error, any partial process MUST
+// already be cleaned up.
+//
+// This interface exists so Enable/Upgrade are exercisable in tests without
+// spawning real binaries. Production uses defaultLauncher which delegates to
+// NewSidecar and Sidecar.Start.
+type SidecarLauncher interface {
+	Launch(ctx context.Context, name, addonDir string, spec SidecarSpec) (*Sidecar, error)
+}
+
+// defaultLauncher is the production SidecarLauncher: NewSidecar + Start.
+type defaultLauncher struct{}
+
+func (defaultLauncher) Launch(ctx context.Context, name, addonDir string, spec SidecarSpec) (*Sidecar, error) {
+	s := NewSidecar(addonDir, spec)
+	s.Name = name
+	if err := s.Start(ctx); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// launcher returns Lifecycle.Launcher if set, otherwise the default.
+func (l *Lifecycle) launcher() SidecarLauncher {
+	if l.Launcher != nil {
+		return l.Launcher
+	}
+	return defaultLauncher{}
+}
+
+// stopSidecarTimeout is the hard cap on a single Sidecar.Stop call issued
+// from lifecycle transitions. Matches the RFC section 2 wording ("SIGTERM
+// then SIGKILL after 5s") with headroom for the HTTP /shutdown handshake.
+const stopSidecarTimeout = 10 * time.Second
 
 // InstallOptions are the user-facing install knobs.
 type InstallOptions struct {
@@ -194,9 +242,13 @@ func (l *Lifecycle) Install(ctx context.Context, opts InstallOptions) (*Registry
 	return entry, nil
 }
 
-// Enable verifies the installed addon still matches its integrity record and
-// flips the state to enabled. The actual sidecar spawn is the sidecar
-// package's job — lifecycle only manages metadata.
+// Enable verifies the installed addon still matches its integrity record,
+// spawns the sidecar process via the registered launcher (when
+// l.Registry != nil), registers it, and flips the state to enabled.
+//
+// If the sidecar fails to start, the registry state is NOT flipped to
+// enabled — the caller receives a wrapped error that includes "sidecar
+// failed to start" so operators can grep for it.
 func (l *Lifecycle) Enable(ctx context.Context, name string) (*RegistryEntry, error) {
 	entry, err := l.Store.Get(name)
 	if err != nil {
@@ -226,15 +278,39 @@ func (l *Lifecycle) Enable(ctx context.Context, name string) (*RegistryEntry, er
 		return nil, fmt.Errorf("enable: %w\nrun 'sciclaw addon upgrade %s' to re-pin against the current tree", err, name)
 	}
 
+	// Spawn the sidecar BEFORE flipping state — a crashed sidecar must not
+	// leave a stale "enabled" entry in the registry file.
+	if l.Registry != nil && manifest.Sidecar.Binary != "" {
+		side, lerr := l.launcher().Launch(ctx, name, dir, manifest.Sidecar)
+		if lerr != nil {
+			return nil, fmt.Errorf("enable: sidecar failed to start for %q: %w", name, lerr)
+		}
+		l.Registry.Register(name, side)
+	}
+
 	entry.State = StateEnabled
 	if err := l.Store.Set(name, entry); err != nil {
+		// Best-effort: the sidecar is already running but the registry
+		// write failed, so unregister + stop so we don't leak. The
+		// operator will see the save error and retry.
+		if l.Registry != nil {
+			if side := l.Registry.Lookup(name); side != nil {
+				stopCtx, cancel := context.WithTimeout(context.Background(), stopSidecarTimeout)
+				_ = side.Stop(stopCtx)
+				cancel()
+			}
+			l.Registry.Unregister(name)
+		}
 		return nil, fmt.Errorf("enable: saving registry: %w", err)
 	}
 	return entry, nil
 }
 
-// Disable marks an addon as installed-but-not-enabled. It does not stop any
-// running sidecar — the caller is responsible for calling sidecar.Stop first.
+// Disable marks an addon as installed-but-not-enabled and, when
+// l.Registry != nil, stops+unregisters the live sidecar. Sidecar Stop errors
+// are not fatal: we log via the injected StopLog if available, then proceed
+// with the state flip. A hung sidecar must never prevent disable from
+// completing — operators have to be able to recover the state machine.
 func (l *Lifecycle) Disable(ctx context.Context, name string) (*RegistryEntry, error) {
 	entry, err := l.Store.Get(name)
 	if err != nil {
@@ -243,6 +319,12 @@ func (l *Lifecycle) Disable(ctx context.Context, name string) (*RegistryEntry, e
 	if entry == nil {
 		return nil, fmt.Errorf("disable: addon %q is not installed", name)
 	}
+
+	// Always attempt to stop + unregister the sidecar, even if the registry
+	// entry is already marked "installed" — a caller may have invoked
+	// Disable after a crash to clean up leaked process handles.
+	l.stopAndUnregister(ctx, name)
+
 	if entry.State == StateInstalled {
 		return entry, nil
 	}
@@ -251,6 +333,25 @@ func (l *Lifecycle) Disable(ctx context.Context, name string) (*RegistryEntry, e
 		return nil, fmt.Errorf("disable: saving registry: %w", err)
 	}
 	return entry, nil
+}
+
+// stopAndUnregister stops a live sidecar (if any) with a bounded timeout and
+// removes it from the registry. Errors are discarded: we cannot block
+// Disable/Uninstall/Upgrade on a misbehaving addon, and the process is
+// killed via SIGKILL as part of Sidecar.Stop's fallback ladder regardless.
+func (l *Lifecycle) stopAndUnregister(ctx context.Context, name string) {
+	if l.Registry == nil {
+		return
+	}
+	side := l.Registry.Lookup(name)
+	if side == nil {
+		l.Registry.Unregister(name)
+		return
+	}
+	stopCtx, cancel := context.WithTimeout(ctx, stopSidecarTimeout)
+	defer cancel()
+	_ = side.Stop(stopCtx)
+	l.Registry.Unregister(name)
 }
 
 // Uninstall runs the optional uninstall hook, removes the install directory,
@@ -270,6 +371,11 @@ func (l *Lifecycle) Uninstall(ctx context.Context, name string, force bool) erro
 	if entry.State == StateEnabled && !force {
 		return fmt.Errorf("uninstall: addon %q is enabled; run 'sciclaw addon disable %s' first, or pass --force", name, name)
 	}
+
+	// If the caller reached here with --force on an enabled addon, the
+	// live sidecar is still running. Tear it down before removing files so
+	// the process does not keep the addon directory mapped.
+	l.stopAndUnregister(ctx, name)
 
 	dir := l.AddonDir(name)
 	// Best-effort uninstall hook; we still tear down even if it fails, so
@@ -301,6 +407,12 @@ func (l *Lifecycle) Uninstall(ctx context.Context, name string, force bool) erro
 // value, the prior pinning strategy (track → auto-latest → signed tag) is
 // reused. Returns ErrAlreadyAtCommit wrapped with the current entry when the
 // resolved commit is unchanged.
+//
+// If the addon is currently enabled, Upgrade stops the running sidecar
+// BEFORE the git checkout (so the on-disk binary is safe to swap), then
+// starts a new sidecar after the hashes are recomputed. If the new sidecar
+// fails to start, the registry entry moves back to StateInstalled and a
+// clear error is returned pointing at `sciclaw addon enable <name>`.
 func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*RegistryEntry, error) {
 	entry, err := l.Store.Get(name)
 	if err != nil {
@@ -309,6 +421,8 @@ func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*
 	if entry == nil {
 		return nil, fmt.Errorf("upgrade: addon %q is not installed", name)
 	}
+
+	wasEnabled := entry.State == StateEnabled
 
 	dir := l.AddonDir(name)
 
@@ -336,6 +450,12 @@ func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*
 		return entry, fmt.Errorf("%w: %s is at %s", ErrAlreadyAtCommit, name, resolved.Commit)
 	}
 
+	// Stop the live sidecar before touching the binary on disk. If the
+	// addon was not enabled, or the registry is nil, this is a no-op.
+	if wasEnabled {
+		l.stopAndUnregister(ctx, name)
+	}
+
 	if _, err := l.Runner.Run(ctx, dir, "git checkout -q "+resolved.Commit, nil); err != nil {
 		return nil, fmt.Errorf("upgrade: checking out %s: %w", resolved.Commit, err)
 	}
@@ -353,6 +473,8 @@ func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*
 	}
 
 	prev := entry.InstalledCommit
+	// Start from the original state; if restart fails below we drop back
+	// to StateInstalled before saving.
 	updated := &RegistryEntry{
 		Version:           manifest.Version,
 		InstalledAt:       l.now().UTC().Format(time.RFC3339),
@@ -367,8 +489,25 @@ func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*
 		SignatureVerified: resolved.SignatureVerified,
 		PreviousCommit:    &prev,
 	}
+
+	// Restart the sidecar from the new binary, if applicable. Failure here
+	// drops the state to installed and returns an actionable error.
+	var restartErr error
+	if wasEnabled && l.Registry != nil && manifest.Sidecar.Binary != "" {
+		side, lerr := l.launcher().Launch(ctx, name, dir, manifest.Sidecar)
+		if lerr != nil {
+			restartErr = lerr
+			updated.State = StateInstalled
+		} else {
+			l.Registry.Register(name, side)
+		}
+	}
+
 	if err := l.Store.Set(name, updated); err != nil {
 		return nil, fmt.Errorf("upgrade: saving registry: %w", err)
+	}
+	if restartErr != nil {
+		return updated, fmt.Errorf("upgrade: new sidecar failed to start for %q: %w; addon is now installed but not enabled — run 'sciclaw addon enable %s' to retry", name, restartErr, name)
 	}
 	return updated, nil
 }

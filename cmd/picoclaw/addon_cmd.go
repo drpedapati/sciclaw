@@ -206,6 +206,14 @@ func buildLifecycle() *addons.Lifecycle {
 	lc.Clone = gitCloneFn
 	lc.Runner = addons.DefaultRunner{}
 	lc.Now = time.Now
+	// Thread the process-wide sidecar registry so Enable/Disable/Upgrade/
+	// Uninstall actually manage live processes. The registry is nil for
+	// one-shot CLI invocations (e.g. `sciclaw addon install`) that run
+	// before main() has started the gateway, in which case Lifecycle
+	// degrades to metadata-only operations and state still moves
+	// correctly in the Store — the sidecar will be spawned next time the
+	// gateway runs and the user re-enables the addon.
+	lc.Registry = addonSidecarRegistry
 	return lc
 }
 

@@ -22,6 +22,20 @@ import (
 // dispatcher at runtime, add a sync.RWMutex around this variable.
 var addonDispatcher *addons.Dispatcher
 
+// addonSidecarRegistry is the process-wide live sidecar registry. Wave 4a
+// added this so the Lifecycle knows where to register newly spawned
+// sidecars and so Dispatcher.Lookup can resolve a name to a live process.
+//
+// Like addonDispatcher it is nil until main() initializes it. All CLI
+// subcommands that construct a Lifecycle thread it in so enable/disable/
+// upgrade/uninstall actually manage processes.
+//
+// The registry is kept as a package-level variable (rather than a
+// function injected into addon_cmd.go) because the web backend in Wave 4b
+// will need to reach the same instance from HTTP handlers, and a package
+// var is the smallest seam that both CLI and web share.
+var addonSidecarRegistry *addons.SidecarRegistry
+
 // SetAddonDispatcher installs the process-wide dispatcher. Called once from
 // main() after the addon store has been constructed. Passing nil is a valid
 // way to tear the dispatcher down in tests.
