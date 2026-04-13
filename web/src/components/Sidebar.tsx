@@ -5,6 +5,7 @@ import {
   GitBranch, Settings, Activity, FileCode2,
 } from 'lucide-react';
 import { useSnapshot } from '../hooks/useSnapshot';
+import { useEnabledAddons } from '../addons/AddonTabs';
 import ThemePicker from './ThemePicker';
 
 const navItems = [
@@ -41,6 +42,8 @@ function StatusDot({ running }: { running: boolean }) {
 
 export default function Sidebar() {
   const { snapshot } = useSnapshot();
+  const addons = useEnabledAddons();
+  const addonTabs = addons.filter((a) => a.ui_tab);
 
   return (
     <aside className="w-56 flex-shrink-0 flex flex-col bg-surface-200 border-r border-border h-screen sticky top-0">
@@ -72,6 +75,30 @@ export default function Sidebar() {
             {label}
           </NavLink>
         ))}
+
+        {addonTabs.length > 0 && (
+          <>
+            <p className="px-3 pt-4 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+              Addons
+            </p>
+            {addonTabs.map((addon) => (
+              <NavLink
+                key={addon.name}
+                to={`/addons/${addon.name}`}
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                    isActive
+                      ? 'bg-brand/10 text-brand border-l-2 border-brand -ml-px'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-surface-50/50'
+                  }`
+                }
+              >
+                <Puzzle className="w-4 h-4 flex-shrink-0" />
+                {addon.ui_tab?.name ?? addon.name}
+              </NavLink>
+            ))}
+          </>
+        )}
 
         <p className="px-3 pt-4 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
           Admin

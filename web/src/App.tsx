@@ -17,6 +17,7 @@ import SystemPage from './pages/SystemPage';
 import SchedulePage from './pages/SchedulePage';
 import RoutingPage from './pages/RoutingPage';
 import SettingsPage from './pages/SettingsPage';
+import AddonPage from './pages/AddonPage';
 
 export default function App() {
   const snapshotValue = useSnapshotProvider();
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/schedule" element={<SchedulePage />} />
               <Route path="/routing" element={<RoutingPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/addons/:name" element={<AddonPage />} />
             </Routes>
           </div>
         </div>
