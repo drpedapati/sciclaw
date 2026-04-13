@@ -1,10 +1,32 @@
 package addons
 
 import (
+	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 )
+
+// execScript runs a bootstrap script directly (no shell) with the supplied
+// working directory and environment. The script path is passed as argv[0],
+// so shell metacharacters in the path are harmless — exec takes a literal
+// filename. Used for manifest-declared Bootstrap.Install/Uninstall scripts
+// so a hostile manifest path cannot inject commands.
+func execScript(ctx context.Context, dir, scriptPath string, env []string) ([]byte, error) {
+	if scriptPath == "" {
+		return nil, fmt.Errorf("execScript: empty script path")
+	}
+	cmd := exec.CommandContext(ctx, scriptPath)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	if len(env) > 0 {
+		cmd.Env = env
+	}
+	return cmd.CombinedOutput()
+}
 
 // now returns Lifecycle.Now if set, otherwise wall-clock time. Split out so
 // tests can freeze time without the whole Lifecycle struct being aware of it.

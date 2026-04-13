@@ -172,6 +172,34 @@ func sciclawVersionForAddons() string {
 	return v
 }
 
+// validateCloneURL rejects URLs that begin with '-' (would be parsed as a
+// git flag), that use a scheme outside the allowlist, or that otherwise
+// look hostile. The allowlist is the set of transports real addons are
+// expected to use: https, http (lab intranets), git (read-only), ssh,
+// and the git-ssh shorthand "user@host:path".
+func validateCloneURL(repoURL string) error {
+	u := strings.TrimSpace(repoURL)
+	if u == "" {
+		return fmt.Errorf("git clone: repo URL is empty")
+	}
+	if strings.HasPrefix(u, "-") {
+		return fmt.Errorf("git clone: repo URL %q must not start with '-'", u)
+	}
+	schemes := []string{"https://", "http://", "ssh://", "git://", "git+ssh://"}
+	for _, s := range schemes {
+		if strings.HasPrefix(u, s) {
+			return nil
+		}
+	}
+	// user@host:path shorthand, e.g. git@github.com:foo/bar.git
+	if at := strings.IndexByte(u, '@'); at > 0 {
+		if colon := strings.IndexByte(u[at:], ':'); colon > 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("git clone: repo URL %q must use https, http, ssh, git, or user@host:path", u)
+}
+
 // gitCloneFn shells out to `git clone`. Returns an error that wraps git's
 // combined output for actionability. Context cancellation propagates to
 // the child process.
@@ -182,12 +210,19 @@ func gitCloneFn(ctx context.Context, repoURL, dest string) error {
 	if strings.TrimSpace(dest) == "" {
 		return fmt.Errorf("git clone: destination is empty")
 	}
+	if err := validateCloneURL(repoURL); err != nil {
+		return err
+	}
 	// Lifecycle.Install pre-creates the staging dir; git refuses to clone
 	// into a non-empty directory, so we clear it first.
 	if err := os.RemoveAll(dest); err != nil {
 		return fmt.Errorf("git clone: clearing staging %s: %w", dest, err)
 	}
-	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", repoURL, dest)
+	// `--` is mandatory here: without it, a repoURL starting with `-` (e.g.,
+	// `--upload-pack=/tmp/evil`) would be parsed as a git option and turn
+	// `addon install` into arbitrary command execution (CVE-2017-1000117
+	// class).
+	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", "--", repoURL, dest)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		trimmed := strings.TrimSpace(string(out))
 		if trimmed == "" {

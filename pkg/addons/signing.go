@@ -8,15 +8,15 @@ import (
 )
 
 // CommandRunner runs an external command in a directory and returns combined
-// output. Tests inject a fake runner so signature verification can be
-// exercised without a real gpg/git installation; production code uses
-// DefaultRunner.
+// output. Used by the signing Verifier to invoke git/gpg, by the lifecycle
+// runner to invoke shell-parsed git operations, and by the rollback path.
+// Tests inject a fake runner so signature verification can be exercised
+// without a real gpg/git installation; production code uses DefaultRunner.
 //
-// This interface shape is intentionally identical to the one Wave 2a defines
-// in lifecycle.go so that both definitions are interchangeable at merge time.
-// Signature:
-//
-//	Run(ctx context.Context, dir, script string, env []string) ([]byte, error)
+// Note: DefaultRunner runs via `/bin/sh -c` for backwards compatibility with
+// lifecycle.go's shell-parsed git command strings. Bootstrap scripts from
+// untrusted manifests MUST NOT be executed via this path — use execScript
+// in lifecycle_helpers.go which exec's the script file directly.
 type CommandRunner interface {
 	Run(ctx context.Context, dir, script string, env []string) ([]byte, error)
 }

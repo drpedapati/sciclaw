@@ -29,10 +29,10 @@ func ParseManifest(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// Validate checks that all required addon.json fields are present.
+// Validate checks that all required addon.json fields are present and safe.
 func (m *Manifest) Validate() error {
-	if strings.TrimSpace(m.Name) == "" {
-		return fmt.Errorf("addon.json missing required field: name")
+	if err := ValidateAddonName(m.Name); err != nil {
+		return err
 	}
 	if strings.TrimSpace(m.Version) == "" {
 		return fmt.Errorf("addon.json missing required field: version")
@@ -42,6 +42,60 @@ func (m *Manifest) Validate() error {
 	}
 	if strings.TrimSpace(m.Sidecar.Binary) == "" {
 		return fmt.Errorf("addon.json missing required field: sidecar.binary")
+	}
+	if err := validateBootstrapPath(m.Bootstrap.Install, "bootstrap.install"); err != nil {
+		return err
+	}
+	if err := validateBootstrapPath(m.Bootstrap.Uninstall, "bootstrap.uninstall"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ValidateAddonName enforces a safe character set on addon names so that
+// filesystem paths, shell arguments, and URL segments derived from the name
+// cannot be used for traversal or injection.
+//
+// The accepted pattern is: [a-z0-9] followed by [a-z0-9._-]{0,63}.
+// Names must not begin with '.' (blocks "." and ".." as names) or contain
+// path separators, NUL, or other metacharacters.
+func ValidateAddonName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("addon name is required")
+	}
+	if len(name) > 64 {
+		return fmt.Errorf("addon name %q too long (max 64 chars)", name)
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '.' || r == '_' || r == '-':
+			if i == 0 && r == '.' {
+				return fmt.Errorf("addon name %q must not start with '.'", name)
+			}
+		default:
+			return fmt.Errorf("addon name %q contains invalid character %q (allowed: a-z 0-9 . _ -)", name, r)
+		}
+	}
+	return nil
+}
+
+// validateBootstrapPath rejects bootstrap script paths that contain shell
+// metacharacters or absolute/traversal segments. Bootstrap paths are
+// resolved relative to the addon directory and executed directly (not via
+// shell), but we still reject obviously hostile inputs at parse time so
+// that manifest review catches them.
+func validateBootstrapPath(path, field string) error {
+	if path == "" {
+		return nil
+	}
+	if strings.ContainsAny(path, "\x00\n\r;&|`$<>*?(){}[]\"'\\") {
+		return fmt.Errorf("addon.json %s %q contains shell metacharacter", field, path)
+	}
+	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "..") || strings.Contains(path, "/..") {
+		return fmt.Errorf("addon.json %s %q must be a relative path inside the addon directory", field, path)
 	}
 	return nil
 }
@@ -133,7 +187,7 @@ func parseSemver(s string) ([3]int, error) {
 		s = s[:i]
 	}
 	parts := strings.Split(s, ".")
-	if len(parts) == 0 || len(parts) > 3 {
+	if len(parts) != 3 {
 		return out, fmt.Errorf("expected X.Y.Z, got %q", s)
 	}
 	for i := 0; i < len(parts); i++ {

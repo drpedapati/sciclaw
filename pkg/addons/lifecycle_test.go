@@ -52,8 +52,16 @@ func (c *captureRunner) Run(ctx context.Context, dir, script string, env []strin
 
 // lifecycleRepo seeds a real git repo with a manifest and a test bootstrap
 // script, then returns its path so the fake Clone function can copy it into
-// place.
+// place. The default bootstrap script drops a marker file in $ADDON_DIR so
+// tests can verify it actually ran.
 func lifecycleRepo(t *testing.T) string {
+	return lifecycleRepoWithBootstrap(t, "#!/bin/sh\ntouch \"$ADDON_DIR/.bootstrap-ran\"\n")
+}
+
+// lifecycleRepoWithBootstrap is like lifecycleRepo but lets the caller
+// supply a custom install.sh body — used by tests that need a failing
+// bootstrap or a script that records different state.
+func lifecycleRepoWithBootstrap(t *testing.T, bootstrap string) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -77,7 +85,7 @@ func lifecycleRepo(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "bin", "install.sh"), []byte("#!/bin/sh\necho ok\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "bin", "install.sh"), []byte(bootstrap), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "bin", "test-sidecar"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -192,22 +200,11 @@ func TestLifecycle_InstallHappyPath(t *testing.T) {
 		t.Errorf("InstalledAt = %q", got.InstalledAt)
 	}
 
-	// Bootstrap install script was invoked with the right env.
-	var found bool
-	for _, c := range runner.calls {
-		if strings.HasSuffix(c.Script, "bin/install.sh") {
-			found = true
-			envKV := strings.Join(c.Env, ",")
-			if !strings.Contains(envKV, "ADDON_NAME=testaddon") {
-				t.Errorf("bootstrap env missing ADDON_NAME=testaddon: %v", c.Env)
-			}
-			if !strings.Contains(envKV, "SCICLAW_HOME=") {
-				t.Errorf("bootstrap env missing SCICLAW_HOME: %v", c.Env)
-			}
-		}
-	}
-	if !found {
-		t.Error("install bootstrap script was not invoked")
+	// Bootstrap install script left its marker file, proving it actually
+	// ran via direct exec with $ADDON_DIR in the environment.
+	marker := filepath.Join(l.AddonDir("testaddon"), ".bootstrap-ran")
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("bootstrap marker %s missing: %v", marker, err)
 	}
 }
 
@@ -339,26 +336,27 @@ func TestLifecycle_UninstallBlocksWhenEnabledUnlessForce(t *testing.T) {
 }
 
 func TestLifecycle_UninstallHappyPathRunsHook(t *testing.T) {
-	seed := lifecycleRepo(t)
-	runner := &captureRunner{}
-	l := newTestLifecycle(t, runner)
+	// Custom bootstrap records a marker in a persistent location (outside
+	// the addon dir so it survives RemoveAll) whenever it runs. We assert
+	// that running Uninstall caused a second invocation.
+	markerDir := t.TempDir()
+	body := fmt.Sprintf("#!/bin/sh\necho \"$ADDON_NAME\" >> %s/runs\n", markerDir)
+	seed := lifecycleRepoWithBootstrap(t, body)
+	l := newTestLifecycle(t, &captureRunner{})
 	l.Clone = fakeClone(seed)
 	if _, err := l.Install(context.Background(), InstallOptions{Source: "https://example.com/testaddon", Ref: NewAutoRef()}); err != nil {
 		t.Fatal(err)
 	}
-	before := len(runner.calls)
 	if err := l.Uninstall(context.Background(), "testaddon", false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
-	after := runner.calls[before:]
-	var sawUninstallScript bool
-	for _, c := range after {
-		if strings.HasSuffix(c.Script, "bin/install.sh") {
-			sawUninstallScript = true
-		}
+	data, err := os.ReadFile(filepath.Join(markerDir, "runs"))
+	if err != nil {
+		t.Fatalf("reading marker: %v", err)
 	}
-	if !sawUninstallScript {
-		t.Error("uninstall hook was not invoked")
+	runs := strings.Count(string(data), "testaddon")
+	if runs < 2 {
+		t.Errorf("expected install + uninstall bootstrap to run (2 invocations), got %d", runs)
 	}
 }
 
@@ -514,16 +512,10 @@ func TestLifecycle_InstallMissingSource(t *testing.T) {
 }
 
 func TestLifecycle_InstallBootstrapFailureRollsBack(t *testing.T) {
-	seed := lifecycleRepo(t)
-	runner := &captureRunner{
-		failIf: func(dir, script string) error {
-			if strings.HasSuffix(script, "bin/install.sh") {
-				return errors.New("bootstrap crashed")
-			}
-			return nil
-		},
-	}
-	l := newTestLifecycle(t, runner)
+	// Bootstrap script exits non-zero — Install must roll back the addon
+	// dir and not persist a registry entry.
+	seed := lifecycleRepoWithBootstrap(t, "#!/bin/sh\nexit 1\n")
+	l := newTestLifecycle(t, &captureRunner{})
 	l.Clone = fakeClone(seed)
 
 	_, err := l.Install(context.Background(), InstallOptions{

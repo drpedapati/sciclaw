@@ -214,7 +214,7 @@ func (l *Lifecycle) Install(ctx context.Context, opts InstallOptions) (*Registry
 	}
 	if manifest.Bootstrap.Install != "" {
 		script := resolveUnder(finalDir, manifest.Bootstrap.Install)
-		if _, err := l.Runner.Run(ctx, finalDir, script, env); err != nil {
+		if _, err := execScript(ctx, finalDir, script, env); err != nil {
 			// Best-effort rollback so retrying is idempotent.
 			_ = os.RemoveAll(finalDir)
 			return nil, fmt.Errorf("install: bootstrap %q failed: %w; fix the script and retry",
@@ -388,7 +388,7 @@ func (l *Lifecycle) Uninstall(ctx context.Context, name string, force bool) erro
 				"ADDON_DIR=" + dir,
 				"ADDON_NAME=" + name,
 			}
-			if _, err := l.Runner.Run(ctx, dir, script, env); err != nil && !force {
+			if _, err := execScript(ctx, dir, script, env); err != nil && !force {
 				return fmt.Errorf("uninstall: bootstrap %q failed: %w; pass --force to ignore", manifest.Bootstrap.Uninstall, err)
 			}
 		}

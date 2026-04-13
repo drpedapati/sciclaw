@@ -61,7 +61,23 @@ func Resolve(addonDir string, ref InstallRef) (*ResolvedRef, error) {
 	}
 }
 
+// rejectGitFlagLike rejects strings that would be parsed as a git flag
+// instead of a ref name. `--` is supported by some git subcommands but not
+// all, so the robust defense is to refuse the input at the boundary.
+func rejectGitFlagLike(kind, value string) error {
+	if strings.HasPrefix(value, "-") {
+		return fmt.Errorf("%s %q must not start with '-'", kind, value)
+	}
+	if strings.ContainsAny(value, "\x00\n\r") {
+		return fmt.Errorf("%s %q contains control characters", kind, value)
+	}
+	return nil
+}
+
 func resolveCommit(addonDir, sha string) (*ResolvedRef, error) {
+	if err := rejectGitFlagLike("commit", sha); err != nil {
+		return nil, err
+	}
 	if err := runGit(addonDir, "cat-file", "-e", sha+"^{commit}"); err != nil {
 		return nil, fmt.Errorf("commit %q not found in %s; run 'git fetch' or check the SHA", sha, addonDir)
 	}
@@ -73,13 +89,18 @@ func resolveCommit(addonDir, sha string) (*ResolvedRef, error) {
 }
 
 func resolveVersion(addonDir, version string) (*ResolvedRef, error) {
+	if err := rejectGitFlagLike("version", version); err != nil {
+		return nil, err
+	}
 	candidates := []string{version}
 	if !strings.HasPrefix(version, "v") {
 		candidates = append([]string{"v" + version}, candidates...)
 	}
 	for _, tag := range candidates {
-		// Dereference annotated tags with ^{} so we always land on a commit.
-		commit, err := gitOutput(addonDir, "rev-parse", tag+"^{}")
+		// Use a fully-qualified refs/tags/ path so ambiguous short names
+		// can't resolve to a branch or arbitrary ref, and dereference
+		// annotated tags with ^{} so we always land on a commit.
+		commit, err := gitOutput(addonDir, "rev-parse", "refs/tags/"+tag+"^{}")
 		if err == nil {
 			// TODO(signing): verify tag signature here once signing.go exists.
 			return &ResolvedRef{Commit: commit, SignedTag: tag, SignatureVerified: false}, nil
@@ -90,6 +111,9 @@ func resolveVersion(addonDir, version string) (*ResolvedRef, error) {
 }
 
 func resolveTrack(addonDir, branch string) (*ResolvedRef, error) {
+	if err := rejectGitFlagLike("branch", branch); err != nil {
+		return nil, err
+	}
 	// Prefer the local branch head; fall back to origin's tracking ref.
 	if commit, err := gitOutput(addonDir, "rev-parse", "refs/heads/"+branch); err == nil {
 		return &ResolvedRef{Commit: commit}, nil
@@ -139,15 +163,30 @@ func LatestSignedTag(addonDir string) (tag, commit string, err error) {
 func runGit(dir string, args ...string) error {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.Command("git", full...)
-	return cmd.Run()
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			return err
+		}
+		return fmt.Errorf("%w: %s", err, msg)
+	}
+	return nil
 }
 
 func gitOutput(dir string, args ...string) (string, error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.Command("git", full...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", err
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			return "", err
+		}
+		return "", fmt.Errorf("%w: %s", err, msg)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
