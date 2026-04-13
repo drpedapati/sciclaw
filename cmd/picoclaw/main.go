@@ -199,6 +199,8 @@ func main() {
 		cronCmd()
 	case "routing":
 		routingCmd()
+	case "addon", "addons":
+		addonCmd()
 	case "modes":
 		modesCmd()
 	case "models":
@@ -514,6 +516,7 @@ func printHelp() {
 	fmt.Println("  doctor      Check deployment health and dependencies")
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  routing     Manage channel->workspace routing and ACLs")
+	fmt.Println("  addon       Install and manage sciClaw addons (webtop, jupyter, etc.)")
 	fmt.Println("  migrate     Migrate from OpenClaw to sciClaw")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  backup      Backup key sciClaw config/workspace files")
