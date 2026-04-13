@@ -138,6 +138,8 @@ func (s *webServer) registerRoutes() {
 	s.mux.HandleFunc("/api/home/onboard", s.handleOnboard)
 	s.mux.HandleFunc("/api/system", s.handleSystem)
 	s.mux.HandleFunc("/api/system/", s.handleSystemAction)
+	s.mux.HandleFunc("/api/addons/enabled", s.handleAddonsEnabled)
+	s.mux.HandleFunc("/addons/", s.handleAddonProxy)
 
 	// Static files
 	if s.static != nil {
