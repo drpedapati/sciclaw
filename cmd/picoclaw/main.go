@@ -1758,6 +1758,12 @@ func gatewayCmd() {
 			fmt.Println("✓ Discord background jobs enabled")
 		}
 	}
+	// watchRoutingReload is always started, even when routing is disabled,
+	// so CLI-initiated routing changes (which touch the reload marker and
+	// may also flip Routing.Enabled) reach addon hooks without requiring
+	// a gateway restart. A nil dispatcher means "only fire addon hooks,
+	// don't try to ReplaceResolver".
+	var routingDispatcher *routing.Dispatcher
 	if cfg.Routing.Enabled {
 		resolver, err := routing.NewResolver(cfg)
 		if err != nil {
@@ -1778,19 +1784,20 @@ func gatewayCmd() {
 		if jobManager != nil {
 			jobManager.SetSideLaneResolver(loopPool.ResolveBTWJobHandler)
 		}
-		dispatcher := routing.NewDispatcher(msgBus, resolver, loopPool)
+		routingDispatcher = routing.NewDispatcher(msgBus, resolver, loopPool)
 		if jobManager != nil {
-			dispatcher.SetJobManager(jobManager)
+			routingDispatcher.SetJobManager(jobManager)
 		}
 		go func() {
-			if err := dispatcher.Run(ctx); err != nil {
+			if err := routingDispatcher.Run(ctx); err != nil {
 				logger.ErrorCF("routing", "route_invalid", map[string]interface{}{"reason": err.Error()})
 			}
 		}()
-		go watchRoutingReload(ctx, dispatcher)
 		fmt.Printf("✓ Routing enabled: %d mapping(s)\n", len(cfg.Routing.Mappings))
-		fmt.Printf("✓ Routing reload trigger: %s\n", routingReloadTriggerPath())
-	} else {
+	}
+	go watchRoutingReload(ctx, routingDispatcher)
+	fmt.Printf("✓ Routing reload trigger: %s\n", routingReloadTriggerPath())
+	if !cfg.Routing.Enabled {
 		if jobManager != nil {
 			go runGatewayDefaultDispatch(ctx, msgBus, agentLoop, jobManager, routing.LoopTarget{
 				Workspace: cfg.WorkspacePath(),
@@ -2835,6 +2842,14 @@ func routingReloadTriggerPath() string {
 	return filepath.Join(filepath.Dir(getConfigPath()), "routing.reload")
 }
 
+// watchRoutingReload polls the reload marker every 2s and reacts to mtime
+// changes. If dispatcher is non-nil, it replaces the resolver so live
+// routing picks up the new mappings without a gateway restart. Regardless
+// of dispatcher state, it fires the routing_changed addon hook so addons
+// see the change. This is always started at gateway boot, even when
+// routing is currently disabled, because the user may enable routing
+// at runtime and CLI addon hooks should reach addons as soon as routing
+// marker updates appear.
 func watchRoutingReload(ctx context.Context, dispatcher *routing.Dispatcher) {
 	triggerPath := routingReloadTriggerPath()
 	lastSeen := time.Time{}
@@ -2866,17 +2881,22 @@ func watchRoutingReload(ctx context.Context, dispatcher *routing.Dispatcher) {
 				})
 				continue
 			}
-			resolver, err := routing.NewResolver(cfg)
-			if err != nil {
-				logger.ErrorCF("routing", "route_reload_failure", map[string]interface{}{
-					"reason": err.Error(),
-				})
-				continue
-			}
 
-			dispatcher.ReplaceResolver(resolver)
+			// If a dispatcher exists, rebuild the resolver and swap it in
+			// so routing dispatch picks up the new mappings.
+			if dispatcher != nil {
+				resolver, rerr := routing.NewResolver(cfg)
+				if rerr != nil {
+					logger.ErrorCF("routing", "route_reload_failure", map[string]interface{}{
+						"reason": rerr.Error(),
+					})
+					continue
+				}
+				dispatcher.ReplaceResolver(resolver)
+			}
 			logger.InfoCF("routing", "route_reload_success", map[string]interface{}{
-				"mappings": len(cfg.Routing.Mappings),
+				"mappings":   len(cfg.Routing.Mappings),
+				"dispatcher": dispatcher != nil,
 			})
 
 			// Fire routing_changed addon hook from inside the gateway
