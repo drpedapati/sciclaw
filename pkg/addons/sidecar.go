@@ -118,8 +118,10 @@ func (s *Sidecar) Start(ctx context.Context) error {
 	// diagnose crashes and so reconciler logs surface addon-side errors.
 	// The log file lives next to the addon install to keep everything
 	// scoped to one directory. Append mode so multiple restarts stack.
+	// 0600 because sidecar stdout may contain secrets (env vars, tokens,
+	// stack traces) and the file shares a directory with other addon data.
 	logPath := filepath.Join(s.AddonDir, "sidecar.log")
-	if lf, lerr := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); lerr == nil {
+	if lf, lerr := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); lerr == nil {
 		cmd.Stdout = lf
 		cmd.Stderr = lf
 		s.logFile = lf
@@ -132,6 +134,15 @@ func (s *Sidecar) Start(ctx context.Context) error {
 	deadline := time.Now().Add(s.StartTimeout)
 	for time.Now().Before(deadline) {
 		if err := s.Health(ctx); err == nil {
+			// Enforce 0600 on the socket so only the sciclaw user can
+			// connect. Go's net.Listen("unix", ...) creates the socket
+			// with umask-dependent permissions; chmod here guarantees
+			// the perm regardless of how the child process was started.
+			// Best-effort — if chmod fails the health check already
+			// succeeded so don't fail Start, just log.
+			if cerr := os.Chmod(s.SocketPath, 0o600); cerr != nil {
+				fmt.Fprintf(os.Stderr, "sidecar %q: chmod socket: %v\n", s.Name, cerr)
+			}
 			return nil
 		}
 		select {

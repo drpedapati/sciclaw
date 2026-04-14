@@ -25,7 +25,7 @@ func TestFireAddonHookNilDispatcher(t *testing.T) {
 	t.Cleanup(func() { addonDispatcher = prev })
 
 	// Must not panic. The payload is arbitrary; no subscriber will see it.
-	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []string{"a", "b"}})
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []RoutingChangedRule{{Channel: "a"}, {Channel: "b"}}})
 	fireAddonHook("profile_updated", map[string]any{"sender_id": "u1"})
 }
 
@@ -84,7 +84,7 @@ func TestFireAddonHookWithDispatcher(t *testing.T) {
 		Timeout: 2 * time.Second,
 	})
 
-	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []string{"a", "b"}})
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []RoutingChangedRule{{Channel: "a"}, {Channel: "b"}}})
 
 	if got := delivered.Load(); got != 1 {
 		t.Fatalf("expected 1 delivery to sidecar, got %d", got)
@@ -146,7 +146,7 @@ func TestFireAddonHookBoundedContext(t *testing.T) {
 	})
 
 	start := time.Now()
-	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []string{"x"}})
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []RoutingChangedRule{{Channel: "x"}}})
 	elapsed := time.Since(start)
 	// Generous upper bound: the per-addon timeout is 150ms, so the emission
 	// site should return well before 2s. If this fails the bounded context

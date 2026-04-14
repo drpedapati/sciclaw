@@ -163,8 +163,21 @@ func (s *webServer) handleAddonProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name, subpath := splitAddonPath(rest)
-	if err := validateAddonName(name); err != nil {
+	// Use the canonical addon name validator from pkg/addons so the
+	// web-layer check can't diverge and let an unexpected character
+	// through that later handlers assume is safe.
+	if err := addons.ValidateAddonName(name); err != nil {
 		jsonErr(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Allowlist the subpaths that are safe to expose over the HTTP
+	// listener. The sidecar's admin surface (/shutdown, /hook/*) must
+	// stay reachable ONLY over the Unix socket where sciclaw core talks
+	// to it — otherwise any browser request to the web port could
+	// terminate sidecars or inject synthetic hook events.
+	if !addonProxyPathAllowed(subpath) {
+		jsonErr(w, "path not exposed over web proxy", http.StatusForbidden)
 		return
 	}
 
@@ -242,12 +255,59 @@ func lookupSidecarOnDisk(name string) (*addons.Sidecar, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing manifest: %w", err)
 	}
+	// Defense in depth: even though ParseManifest rejects absolute or
+	// path-segmented sidecar.socket values, re-check here so a future
+	// relaxation of the manifest validator cannot make the web proxy
+	// blindly forward traffic to an attacker-chosen local socket
+	// (e.g. /var/run/docker.sock).
+	if strings.HasPrefix(manifest.Sidecar.Socket, "/") ||
+		strings.Contains(manifest.Sidecar.Socket, "/") ||
+		strings.Contains(manifest.Sidecar.Socket, "..") {
+		return nil, fmt.Errorf("manifest sidecar.socket %q must be a plain filename", manifest.Sidecar.Socket)
+	}
 	side := addons.NewSidecar(addonDir, manifest.Sidecar)
 	side.Name = name
-	if _, serr := os.Stat(side.SocketPath); serr != nil {
+	// Use Lstat so a symlinked socket is detected — the proxy must not
+	// follow a symlink out of the addon directory and hit a socket owned
+	// by another service.
+	info, serr := os.Lstat(side.SocketPath)
+	if serr != nil {
 		return nil, fmt.Errorf("socket %s: %w", side.SocketPath, serr)
 	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("socket %s is a symlink", side.SocketPath)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return nil, fmt.Errorf("socket %s is not a unix socket", side.SocketPath)
+	}
 	return side, nil
+}
+
+// addonProxyPathAllowed returns true only for subpaths the web proxy is
+// willing to forward to a sidecar. The sidecar's admin surface
+// (/shutdown, /hook/*) is intentionally NOT on this list — those routes
+// must stay reachable only over the Unix socket where sciclaw core owns
+// the connection. Exposing them over the web port would let any HTTP
+// caller terminate sidecars or inject synthetic hook events.
+//
+// The allowed prefixes are:
+//   - /ui/*       — addon-owned static assets and SPA routes
+//   - /control/*  — addon-owned control API (addons gate their own auth)
+//   - /health     — readiness probe for the admin UI
+//   - /version    — version info for the admin UI
+//
+// Anything else (including /shutdown, /hook/*, /metrics, /debug/*)
+// returns 403 at the web layer, even if the sidecar would have served it.
+func addonProxyPathAllowed(subpath string) bool {
+	switch {
+	case strings.HasPrefix(subpath, "/ui/"), subpath == "/ui":
+		return true
+	case strings.HasPrefix(subpath, "/control/"), subpath == "/control":
+		return true
+	case subpath == "/health", subpath == "/version":
+		return true
+	}
+	return false
 }
 
 // splitAddonPath splits "name/rest/of/path" into ("name", "/rest/of/path").

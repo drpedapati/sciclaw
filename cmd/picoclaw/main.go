@@ -2904,7 +2904,7 @@ func watchRoutingReload(ctx context.Context, dispatcher *routing.Dispatcher) {
 			// CLI-initiated routing changes reach addons via this path
 			// (CLI writes config.json + touches routing.reload → this
 			// watcher picks it up → fires the hook to subscribed addons).
-			fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
+			fireAddonHook("routing_changed", RoutingChangedPayload{Rules: projectRoutingMappings(cfg.Routing.Mappings)})
 		}
 	}
 }

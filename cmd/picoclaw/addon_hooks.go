@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/addons"
+	"github.com/sipeed/picoclaw/pkg/config"
 )
 
 // addonDispatcher is the process-wide addon hook dispatcher.
@@ -63,9 +64,40 @@ func fireAddonHook(event string, payload any) {
 
 // RoutingChangedPayload is the payload for the "routing_changed" event.
 //
-// Rules is typed as `any` rather than []config.RoutingMapping so callers at
-// emission sites do not need to import pkg/config; the payload is serialized
-// to JSON by the sidecar transport and addons receive it as a generic object.
+// Rules is a projection of config.RoutingMapping that excludes fields
+// addons don't need: allowed_senders (per-chat ACL), local_backend,
+// local_model, local_preset, and any other runtime knobs. Leaking those
+// to every enabled addon would expose the guest list of every routed
+// chat and reveal which local model each channel prefers.
 type RoutingChangedPayload struct {
-	Rules any `json:"rules"`
+	Rules []RoutingChangedRule `json:"rules"`
+}
+
+// RoutingChangedRule is the addon-visible projection of a routing mapping.
+// Only channel, chat_id, workspace, label, and mode are surfaced. The
+// allowed_senders list and local_* runtime knobs are deliberately omitted
+// so addons cannot exfiltrate per-chat ACLs or model preferences.
+type RoutingChangedRule struct {
+	Channel   string `json:"channel"`
+	ChatID    string `json:"chat_id"`
+	Workspace string `json:"workspace"`
+	Label     string `json:"label,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+}
+
+// projectRoutingMappings converts the internal config.RoutingMapping slice
+// into the addon-safe projection that Dispatcher.Fire will serialise as
+// JSON. Any field not listed in RoutingChangedRule is dropped.
+func projectRoutingMappings(in []config.RoutingMapping) []RoutingChangedRule {
+	out := make([]RoutingChangedRule, 0, len(in))
+	for _, m := range in {
+		out = append(out, RoutingChangedRule{
+			Channel:   m.Channel,
+			ChatID:    m.ChatID,
+			Workspace: m.Workspace,
+			Label:     m.Label,
+			Mode:      m.Mode,
+		})
+	}
+	return out
 }

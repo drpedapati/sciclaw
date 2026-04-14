@@ -272,7 +272,7 @@ func routingAddCmd() {
 	// the dispatcher, and fire the hook from its own process where the
 	// addon dispatcher is live. This is how addons actually receive
 	// routing_changed from CLI-initiated changes.
-	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: projectRoutingMappings(cfg.Routing.Mappings)})
 	if err := requestRoutingReload(); err != nil {
 		fmt.Printf("warning: failed to nudge gateway reload: %v\n", err)
 	}
@@ -338,7 +338,7 @@ func routingRemoveCmd() {
 	// the dispatcher, and fire the hook from its own process where the
 	// addon dispatcher is live. This is how addons actually receive
 	// routing_changed from CLI-initiated changes.
-	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: projectRoutingMappings(cfg.Routing.Mappings)})
 	if err := requestRoutingReload(); err != nil {
 		fmt.Printf("warning: failed to nudge gateway reload: %v\n", err)
 	}
@@ -408,7 +408,7 @@ func routingSetUsersCmd() {
 	// the dispatcher, and fire the hook from its own process where the
 	// addon dispatcher is live. This is how addons actually receive
 	// routing_changed from CLI-initiated changes.
-	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: projectRoutingMappings(cfg.Routing.Mappings)})
 	if err := requestRoutingReload(); err != nil {
 		fmt.Printf("warning: failed to nudge gateway reload: %v\n", err)
 	}
@@ -522,7 +522,7 @@ func routingSetRuntimeCmd() {
 	// the dispatcher, and fire the hook from its own process where the
 	// addon dispatcher is live. This is how addons actually receive
 	// routing_changed from CLI-initiated changes.
-	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
+	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: projectRoutingMappings(cfg.Routing.Mappings)})
 	if err := requestRoutingReload(); err != nil {
 		fmt.Printf("warning: failed to nudge gateway reload: %v\n", err)
 	}

@@ -43,11 +43,23 @@ func (m *Manifest) Validate() error {
 	if strings.TrimSpace(m.Sidecar.Binary) == "" {
 		return fmt.Errorf("addon.json missing required field: sidecar.binary")
 	}
+	if err := validateBootstrapPath(m.Sidecar.Binary, "sidecar.binary"); err != nil {
+		return err
+	}
 	if err := validateBootstrapPath(m.Bootstrap.Install, "bootstrap.install"); err != nil {
 		return err
 	}
 	if err := validateBootstrapPath(m.Bootstrap.Uninstall, "bootstrap.uninstall"); err != nil {
 		return err
+	}
+	// sidecar.socket must either be empty (default "sock" in addonDir) or a
+	// plain relative filename. Absolute paths or path segments let a hostile
+	// manifest point the sidecar at /var/run/docker.sock or similar, which
+	// the web proxy fallback would then happily reverse-proxy into.
+	if s := strings.TrimSpace(m.Sidecar.Socket); s != "" {
+		if strings.HasPrefix(s, "/") || strings.Contains(s, "/") || strings.Contains(s, "..") || strings.Contains(s, "\x00") {
+			return fmt.Errorf("addon.json sidecar.socket %q must be a plain filename", s)
+		}
 	}
 	return nil
 }
