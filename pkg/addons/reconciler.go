@@ -231,7 +231,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 	// Kick off an immediate pass so a gateway starting with
 	// state=enabled addons does not wait for the first ticker tick.
 	if err := r.Reconcile(ctx); err != nil {
-		r.logEvent("", "reconcile_error", err)
+		r.logEvent("reconciler", "reconcile_error", err)
 	}
 
 	interval := r.interval()
@@ -253,7 +253,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return err
 				}
-				r.logEvent("", "reconcile_error", err)
+				r.logEvent("reconciler", "reconcile_error", err)
 			}
 		case <-pollTicker.C:
 			mt := markerMTime(marker)
@@ -265,7 +265,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return err
 				}
-				r.logEvent("", "reconcile_error", err)
+				r.logEvent("reconciler", "reconcile_error", err)
 			}
 		}
 	}

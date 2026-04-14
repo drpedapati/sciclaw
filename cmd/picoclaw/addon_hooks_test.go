@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -71,7 +72,8 @@ func TestFireAddonHookWithDispatcher(t *testing.T) {
 	})
 
 	prev := addonDispatcher
-	t.Cleanup(func() { addonDispatcher = prev })
+	prevCtx := addonHookParentCtx
+	t.Cleanup(func() { addonDispatcher = prev; addonHookParentCtx = prevCtx })
 	SetAddonDispatcher(&addons.Dispatcher{
 		Store:       store,
 		SciclawHome: home,
@@ -82,7 +84,7 @@ func TestFireAddonHookWithDispatcher(t *testing.T) {
 			return nil
 		},
 		Timeout: 2 * time.Second,
-	})
+	}, context.Background())
 
 	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []RoutingChangedRule{{Channel: "a"}, {Channel: "b"}}})
 
@@ -136,14 +138,15 @@ func TestFireAddonHookBoundedContext(t *testing.T) {
 	})
 
 	prev := addonDispatcher
-	t.Cleanup(func() { addonDispatcher = prev })
+	prevCtx := addonHookParentCtx
+	t.Cleanup(func() { addonDispatcher = prev; addonHookParentCtx = prevCtx })
 	SetAddonDispatcher(&addons.Dispatcher{
 		Store:       store,
 		SciclawHome: home,
 		Lookup:      func(name string) *addons.Sidecar { return side },
 		// Short per-addon timeout so the test doesn't need to wait 10s.
 		Timeout: 150 * time.Millisecond,
-	})
+	}, context.Background())
 
 	start := time.Now()
 	fireAddonHook("routing_changed", RoutingChangedPayload{Rules: []RoutingChangedRule{{Channel: "x"}}})

@@ -1533,6 +1533,13 @@ func gatewayCmd() {
 	sciclawHome := sciclawHomeDir()
 	addonStore := addons.NewStore(sciclawHome)
 	addonSidecarRegistry = addons.NewSidecarRegistry()
+	// Create the gateway shutdown context early so the addon dispatcher
+	// can derive its per-call hook timeouts from it. When shutdown
+	// cancels this ctx below (via the defer), every in-flight hook
+	// delivery short-circuits instead of holding the shutdown path
+	// hostage to a 10s-per-call stack of addon timeouts.
+	gatewayCtx, gatewayCancel := context.WithCancel(context.Background())
+	defer gatewayCancel()
 	SetAddonDispatcher(&addons.Dispatcher{
 		Store:       addonStore,
 		SciclawHome: sciclawHome,
@@ -1547,7 +1554,7 @@ func gatewayCmd() {
 				})
 			}
 		},
-	})
+	}, gatewayCtx)
 
 	// Wave 4d: reconciliation control loop. The CLI (`sciclaw addon enable
 	// …`) mutates registry.json in a short-lived process and does NOT own
@@ -1700,8 +1707,13 @@ func gatewayCmd() {
 	fmt.Println("✓ Gateway started")
 	fmt.Println("Press Ctrl+C to stop")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Reuse the gateway shutdown ctx that was created earlier for the
+	// addon dispatcher so hook deliveries and the reconciler share a
+	// single cancellation signal. Shadowing the name keeps the rest of
+	// the function unchanged.
+	ctx := gatewayCtx
+	cancel := gatewayCancel
+	_ = cancel // cancel is invoked via the earlier defer gatewayCancel()
 
 	// Start the addon reconciliation loop. Uses the same ctx that the
 	// shutdown sequence below cancels, so the reconciler goroutine exits

@@ -23,6 +23,18 @@ import (
 // dispatcher at runtime, add a sync.RWMutex around this variable.
 var addonDispatcher *addons.Dispatcher
 
+// addonHookParentCtx is the long-lived gateway context fireAddonHook derives
+// its per-call timeouts from. When the gateway shutdown cancels this ctx,
+// every in-flight hook delivery short-circuits immediately instead of
+// running out its full 10s timeout — which matters because the shutdown
+// path calls fireAddonHook several times (channels.StopAll, profile
+// flushes, cron teardown) and serial 10s timeouts would stack into
+// minutes of shutdown lag.
+//
+// Set alongside addonDispatcher via SetAddonDispatcher. Falls back to
+// context.Background() when nil so unit tests and CLI one-shots still work.
+var addonHookParentCtx context.Context
+
 // addonSidecarRegistry is the process-wide live sidecar registry. Wave 4a
 // added this so the Lifecycle knows where to register newly spawned
 // sidecars and so Dispatcher.Lookup can resolve a name to a live process.
@@ -40,16 +52,24 @@ var addonSidecarRegistry *addons.SidecarRegistry
 // SetAddonDispatcher installs the process-wide dispatcher. Called once from
 // main() after the addon store has been constructed. Passing nil is a valid
 // way to tear the dispatcher down in tests.
-func SetAddonDispatcher(d *addons.Dispatcher) {
+//
+// parentCtx should be the gateway's shutdown ctx so in-flight hook
+// deliveries abort immediately when shutdown is requested, rather than
+// holding the shutdown sequence hostage to their 10s per-call timeout.
+// nil parentCtx falls back to context.Background().
+func SetAddonDispatcher(d *addons.Dispatcher, parentCtx context.Context) {
 	addonDispatcher = d
+	addonHookParentCtx = parentCtx
 }
 
 // fireAddonHook is the safe entrypoint for emitting an addon hook event from
 // core code. It is a no-op if the dispatcher has not been initialized.
 //
-// Uses a bounded 10s context so that a misbehaving addon sidecar cannot block
-// the caller's hot path indefinitely. The dispatcher itself also applies its
-// own per-addon timeout (5s default) on top of this.
+// Uses a bounded 10s context derived from the gateway shutdown ctx so that
+// a misbehaving addon sidecar cannot block the caller's hot path AND
+// cannot keep the gateway from shutting down by stalling hook deliveries
+// through the entire timeout window. The dispatcher itself also applies
+// its own per-addon timeout (5s default) on top of this.
 //
 // Hook emission is fire-and-forget: errors are logged by the dispatcher and
 // never propagated back to the caller.
@@ -57,7 +77,17 @@ func fireAddonHook(event string, payload any) {
 	if addonDispatcher == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	parent := addonHookParentCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	// If the parent is already cancelled, don't even bother dispatching —
+	// every addon handler would immediately return ctx.Err() anyway, and
+	// the dispatcher's WaitGroup still holds us for one scheduling round.
+	if err := parent.Err(); err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	addonDispatcher.Fire(ctx, event, payload)
 }
