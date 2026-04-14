@@ -2878,6 +2878,13 @@ func watchRoutingReload(ctx context.Context, dispatcher *routing.Dispatcher) {
 			logger.InfoCF("routing", "route_reload_success", map[string]interface{}{
 				"mappings": len(cfg.Routing.Mappings),
 			})
+
+			// Fire routing_changed addon hook from inside the gateway
+			// process, where addonDispatcher is actually initialized.
+			// CLI-initiated routing changes reach addons via this path
+			// (CLI writes config.json + touches routing.reload → this
+			// watcher picks it up → fires the hook to subscribed addons).
+			fireAddonHook("routing_changed", RoutingChangedPayload{Rules: cfg.Routing.Mappings})
 		}
 	}
 }
