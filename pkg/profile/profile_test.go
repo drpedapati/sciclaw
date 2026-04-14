@@ -17,6 +17,50 @@ func TestLoadMissing(t *testing.T) {
 	}
 }
 
+func TestListEmpty(t *testing.T) {
+	store := NewStore(t.TempDir())
+	ids, err := store.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected empty list, got %v", ids)
+	}
+}
+
+func TestListMissingDir(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "does-not-exist"))
+	ids, err := store.List()
+	if err != nil {
+		t.Fatalf("List should not error on missing dir, got %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected empty list, got %v", ids)
+	}
+}
+
+func TestListSorted(t *testing.T) {
+	store := NewStore(t.TempDir())
+	for _, sender := range []string{"discord:zeta", "discord:alpha", "discord:mu"} {
+		if err := store.SetAnswerTheme(sender, "", ThemeClear); err != nil {
+			t.Fatalf("SetAnswerTheme %s: %v", sender, err)
+		}
+	}
+	ids, err := store.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(ids) != 3 {
+		t.Fatalf("expected 3 entries, got %d: %v", len(ids), ids)
+	}
+	want := []string{"discord:alpha", "discord:mu", "discord:zeta"}
+	for i, id := range ids {
+		if id != want[i] {
+			t.Errorf("ids[%d] = %q, want %q (full: %v)", i, id, want[i], ids)
+		}
+	}
+}
+
 func TestSaveAndLoad(t *testing.T) {
 	store := NewStore(t.TempDir())
 	err := store.SetAnswerTheme("user123", "Alice", ThemeBrief)

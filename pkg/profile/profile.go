@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -128,6 +129,43 @@ func (s *Store) SetAnswerTheme(senderID, displayName, theme string) error {
 		s.OnProfileUpdated(senderID, p)
 	}
 	return nil
+}
+
+// List returns every senderID that has a persisted profile, sorted.
+// Returns an empty slice (not an error) if the directory is missing —
+// fresh installs have no profiles until /theme is invoked at least once.
+//
+// The directory layout maps each senderID to a single .json file via
+// path(), which sluggifies path separators to "_". This function reverses
+// that mapping by stripping the .json extension; sluggified IDs (those
+// that originally contained "/" or "\") still come back with "_"
+// substituted. That's safe because every code path writes via Save()
+// which uses the same sluggifier.
+func (s *Store) List() ([]string, error) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("listing profile directory %s: %w", s.dir, err)
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		// Skip atomic-write temp files that survived a crash.
+		if strings.HasSuffix(name, ".tmp") || strings.HasSuffix(name, ".tmp.json") {
+			continue
+		}
+		out = append(out, strings.TrimSuffix(name, ".json"))
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // IsValidTheme returns true if the theme name is recognized.
