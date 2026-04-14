@@ -64,11 +64,15 @@ func TestExport_HappyPath(t *testing.T) {
 	if sbom.InstalledCommit != "abc123def456" {
 		t.Errorf("InstalledCommit = %q", sbom.InstalledCommit)
 	}
-	if sbom.SignedTag != "v0.1.0" {
-		t.Errorf("SignedTag = %q", sbom.SignedTag)
+	if sbom.UnverifiedTag != "v0.1.0" {
+		t.Errorf("UnverifiedTag = %q", sbom.UnverifiedTag)
 	}
-	if !sbom.SignatureVerified {
-		t.Error("SignatureVerified should be true")
+	// The registry entry in populatedStore has SignatureVerified=true,
+	// so Export flips VerificationStatus to "verified". This branch is
+	// the happy path; the "not_implemented" branch is exercised by
+	// TestExport_UnverifiedDefault below.
+	if sbom.VerificationStatus != "verified" {
+		t.Errorf("VerificationStatus = %q, want verified", sbom.VerificationStatus)
 	}
 	if sbom.Track != "main" {
 		t.Errorf("Track = %q", sbom.Track)
@@ -224,10 +228,67 @@ func TestWriteSBOM_NullableFieldsOmitted(t *testing.T) {
 	}
 	s := buf.String()
 	// Omitempty fields should not appear in the output.
-	for _, field := range []string{"signed_tag", "track", "bootstrap_sha256", "sidecar_sha256"} {
+	for _, field := range []string{"unverified_tag", "track", "bootstrap_sha256", "sidecar_sha256"} {
 		if strings.Contains(s, field) {
 			t.Errorf("expected %q to be omitted from SBOM with nullable fields, got:\n%s", field, s)
 		}
+	}
+	// The "signed_tag" field must NOT appear — the old (pre-H1-honesty)
+	// schema used that name and would mislead auditors.
+	if strings.Contains(s, `"signed_tag"`) {
+		t.Errorf("legacy signed_tag field leaked into SBOM output:\n%s", s)
+	}
+	// verification_status must always be present and honest.
+	if !strings.Contains(s, `"verification_status"`) {
+		t.Errorf("verification_status missing from SBOM:\n%s", s)
+	}
+	// This entry has SignatureVerified=false, so the status must be
+	// "not_implemented" — not a pretty "unsigned" that implies we
+	// actually looked.
+	if !strings.Contains(s, `"not_implemented"`) {
+		t.Errorf("expected verification_status: not_implemented, got:\n%s", s)
+	}
+}
+
+// TestExport_SignatureNotImplementedSurfacesHonestly is the H1 honesty
+// regression. When the registry has SignedTag populated but
+// SignatureVerified=false (the current production state, since signing
+// is stubbed), the SBOM must:
+//  1. Use the field name "unverified_tag", NOT "signed_tag", so the
+//     audit reader sees explicit uncertainty.
+//  2. Carry a verification_status of "not_implemented", NOT omit the
+//     field, NOT claim "verified".
+func TestExport_SignatureNotImplementedSurfacesHonestly(t *testing.T) {
+	store := NewStore(t.TempDir())
+	tag := "v0.1.0"
+	entry := &RegistryEntry{
+		Version:           "0.1.0",
+		InstalledAt:       "2026-04-13T14:22:00Z",
+		InstalledCommit:   "def",
+		ManifestSHA256:    "h",
+		State:             StateEnabled,
+		Source:            "https://example.com/y",
+		SignedTag:         &tag,
+		SignatureVerified: false, // stubbed verification path
+	}
+	if err := store.Set("y", entry); err != nil {
+		t.Fatal(err)
+	}
+	m := &Manifest{
+		Name:     "y",
+		Version:  "0.1.0",
+		Requires: Requirements{Sciclaw: ">=0.1.0"},
+		Sidecar:  SidecarSpec{Binary: "bin/y"},
+	}
+	sbom, err := Export(store, m, "y", "linux/amd64", sbomFixedClock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sbom.UnverifiedTag != "v0.1.0" {
+		t.Errorf("UnverifiedTag = %q, want v0.1.0", sbom.UnverifiedTag)
+	}
+	if sbom.VerificationStatus != "not_implemented" {
+		t.Errorf("VerificationStatus = %q, want not_implemented", sbom.VerificationStatus)
 	}
 }
 

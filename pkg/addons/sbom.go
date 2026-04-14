@@ -13,21 +13,40 @@ import (
 // checks. It combines the registry's pinned-commit / hash fields with the
 // manifest's declared dependencies so a single document captures every
 // piece of information an auditor needs to reason about trust.
+//
+// Signing note: sciclaw ships with GPG signature verification stubbed
+// out. The addon's git tag is recorded in UnverifiedTag and the SBOM
+// makes the status explicit via VerificationStatus so an auditor cannot
+// misread a populated tag field as proof of verification. When real
+// signing lands, UnverifiedTag is replaced by SignedTag and the status
+// flips to "verified" (or "untrusted" / "signature_failed" depending on
+// the outcome).
 type SBOM struct {
-	Name              string           `json:"name"`
-	Version           string           `json:"version"`
-	Source            string           `json:"source"`
-	InstalledCommit   string           `json:"installed_commit"`
-	InstalledAt       string           `json:"installed_at"`
-	ManifestSHA256    string           `json:"manifest_sha256"`
-	BootstrapSHA256   string           `json:"bootstrap_sha256,omitempty"`
-	SidecarSHA256     string           `json:"sidecar_sha256,omitempty"`
-	SignedTag         string           `json:"signed_tag,omitempty"`
-	SignatureVerified bool             `json:"signature_verified"`
-	Track             string           `json:"track,omitempty"`
-	Dependencies      []SBOMDependency `json:"dependencies,omitempty"`
-	Platform          string           `json:"platform"`
-	ExportedAt        string           `json:"exported_at"`
+	Name            string           `json:"name"`
+	Version         string           `json:"version"`
+	Source          string           `json:"source"`
+	InstalledCommit string           `json:"installed_commit"`
+	InstalledAt     string           `json:"installed_at"`
+	ManifestSHA256  string           `json:"manifest_sha256"`
+	BootstrapSHA256 string           `json:"bootstrap_sha256,omitempty"`
+	SidecarSHA256   string           `json:"sidecar_sha256,omitempty"`
+	// UnverifiedTag is the git tag recorded at install time. Named
+	// "unverified" to make the audit posture obvious until real GPG
+	// verification is wired up — the tag identifies the commit but
+	// carries no trust claim.
+	UnverifiedTag string `json:"unverified_tag,omitempty"`
+	// VerificationStatus is one of:
+	//   "not_implemented" — sciclaw has not run signature verification
+	//                       on this install. This is the default today.
+	//   "verified"        — signature checked against trusted keyring.
+	//   "untrusted"       — signature exists but signer key is not trusted.
+	//   "unsigned"        — tag exists but is not signed.
+	//   "signature_failed"— verification was attempted and failed.
+	VerificationStatus string           `json:"verification_status"`
+	Track              string           `json:"track,omitempty"`
+	Dependencies       []SBOMDependency `json:"dependencies,omitempty"`
+	Platform           string           `json:"platform"`
+	ExportedAt         string           `json:"exported_at"`
 }
 
 // SBOMDependency describes an external requirement declared by the addon.
@@ -70,20 +89,31 @@ func Export(store *Store, manifest *Manifest, name, platform string, now func() 
 	}
 
 	sbom := &SBOM{
-		Name:              name,
-		Version:           entry.Version,
-		Source:            entry.Source,
-		InstalledCommit:   entry.InstalledCommit,
-		InstalledAt:       entry.InstalledAt,
-		ManifestSHA256:    entry.ManifestSHA256,
-		BootstrapSHA256:   entry.BootstrapSHA256,
-		SidecarSHA256:     entry.SidecarSHA256,
-		SignatureVerified: entry.SignatureVerified,
-		Platform:          platform,
-		ExportedAt:        now().UTC().Format(time.RFC3339),
+		Name:            name,
+		Version:         entry.Version,
+		Source:          entry.Source,
+		InstalledCommit: entry.InstalledCommit,
+		InstalledAt:     entry.InstalledAt,
+		ManifestSHA256:  entry.ManifestSHA256,
+		BootstrapSHA256: entry.BootstrapSHA256,
+		SidecarSHA256:   entry.SidecarSHA256,
+		// Signing is not yet implemented (H1 deferred). Surface the
+		// honest audit status so a downstream reader cannot mistake
+		// an unverified tag for a verified one. When signing.go is
+		// wired into the install flow, flip this field based on the
+		// entry.SignatureVerified boolean and rename UnverifiedTag to
+		// SignedTag in the serialized form.
+		VerificationStatus: "not_implemented",
+		Platform:           platform,
+		ExportedAt:         now().UTC().Format(time.RFC3339),
+	}
+	if entry.SignatureVerified {
+		// Once signing lands this branch runs; until then it is dead
+		// code but keeps the flip mechanical when H1 is closed.
+		sbom.VerificationStatus = "verified"
 	}
 	if entry.SignedTag != nil {
-		sbom.SignedTag = *entry.SignedTag
+		sbom.UnverifiedTag = *entry.SignedTag
 	}
 	if entry.Track != nil {
 		sbom.Track = *entry.Track

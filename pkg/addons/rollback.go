@@ -25,6 +25,25 @@ type Rollbacker struct {
 	// Now returns the current time for InstalledAt bookkeeping; tests
 	// inject a fixed clock so round-trip assertions are deterministic.
 	Now func() time.Time
+	// Registry, when non-nil, tracks live sidecars across this sciclaw
+	// process. Rollback uses it to stop the running sidecar BEFORE the
+	// git checkout swaps the on-disk binary, and to restart it from the
+	// new (older) binary AFTER the checkout completes. When nil (the
+	// short-lived CLI case), Rollback only rewrites persisted state and
+	// relies on the gateway's Reconciler to converge the live set on
+	// its next tick. Mirrors the Registry=nil vs non-nil split in
+	// Lifecycle.
+	Registry *SidecarRegistry
+	// Launcher spawns the replacement sidecar after a successful
+	// rollback. When nil a defaultLauncher is used. Matches Lifecycle.
+	Launcher SidecarLauncher
+	// StopTimeout bounds the graceful-shutdown wait for the old sidecar
+	// before rollback forcibly kills it. Defaults to stopSidecarTimeout
+	// (10s) when zero.
+	StopTimeout time.Duration
+	// StartTimeout bounds the replacement sidecar's spawn + /health
+	// probe. Defaults to 10s when zero.
+	StartTimeout time.Duration
 }
 
 // Rollback reverts the named addon to the commit recorded in its registry
@@ -83,6 +102,19 @@ func (r *Rollbacker) Rollback(ctx context.Context, name string) (*RegistryEntry,
 		return nil, fmt.Errorf("addon %q: addon directory resolver returned empty path", name)
 	}
 
+	// L5: if the addon is currently enabled AND we own a SidecarRegistry,
+	// stop the live sidecar before swapping the binary on disk. The old
+	// sidecar is running against the current commit's binary; without
+	// stopping, `git checkout` rewrites the executable under an active
+	// process and the next hook call can SIGBUS on macOS or read stale
+	// in-memory state on Linux.
+	wasEnabled := entry.State == StateEnabled && r.Registry != nil
+	if wasEnabled {
+		if err := r.stopLiveSidecar(ctx, name); err != nil {
+			return nil, fmt.Errorf("addon %q: stopping live sidecar before rollback: %w", name, err)
+		}
+	}
+
 	// git checkout to the previous commit. Use --detach because the
 	// previous commit is not necessarily a branch tip.
 	script := fmt.Sprintf("git -C %s checkout --detach %s", shellQuote(dir), shellQuote(prev))
@@ -123,8 +155,73 @@ func (r *Rollbacker) Rollback(ctx context.Context, name string) (*RegistryEntry,
 		PreviousCommit:    nil, // one-level history: cleared after rollback
 	}
 
+	// L5 restart: spawn a new sidecar from the rolled-back binary. If
+	// the restart fails we drop state to StateInstalled so the user
+	// knows to run `sciclaw addon enable` again, mirroring Upgrade.
+	var restartErr error
+	if wasEnabled && manifest.Sidecar.Binary != "" {
+		side, lerr := r.launcher().Launch(ctx, name, dir, manifest.Sidecar)
+		if lerr != nil {
+			restartErr = lerr
+			updated.State = StateInstalled
+		} else {
+			r.Registry.Register(name, side)
+		}
+	}
+
 	if err := r.Store.Set(name, updated); err != nil {
+		// Persisting the rolled-back entry failed. If we managed to
+		// restart the sidecar against the old binary, tear it down
+		// again so we don't leave a live process the registry doesn't
+		// know about.
+		if wasEnabled && r.Registry != nil && restartErr == nil {
+			_ = r.stopLiveSidecar(ctx, name)
+		}
 		return nil, fmt.Errorf("addon %q: saving rolled-back registry entry: %w", name, err)
 	}
+	if restartErr != nil {
+		return updated, fmt.Errorf("addon %q: rolled back to %s but sidecar failed to restart: %w; run 'sciclaw addon enable %s' to retry", name, shortSHA(prev), restartErr, name)
+	}
 	return updated, nil
+}
+
+// shortSHA returns the first 12 characters of a git SHA for logging,
+// or the full string if shorter. Safe to call on test fixtures that use
+// synthetic non-40-char commit IDs.
+func shortSHA(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
+}
+
+// stopLiveSidecar is the mirror of Lifecycle.stopAndUnregister, scoped to
+// the rollback path so tests can exercise it without a full Lifecycle.
+func (r *Rollbacker) stopLiveSidecar(ctx context.Context, name string) error {
+	if r.Registry == nil {
+		return nil
+	}
+	side := r.Registry.Lookup(name)
+	if side == nil {
+		return nil
+	}
+	timeout := r.StopTimeout
+	if timeout <= 0 {
+		timeout = stopSidecarTimeout
+	}
+	stopCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	// Best-effort graceful stop, ignoring the error — we unregister
+	// regardless so a stuck sidecar can't block rollback.
+	_ = side.Stop(stopCtx)
+	r.Registry.Unregister(name)
+	return nil
+}
+
+// launcher returns Rollbacker.Launcher if set, otherwise the default.
+func (r *Rollbacker) launcher() SidecarLauncher {
+	if r.Launcher != nil {
+		return r.Launcher
+	}
+	return defaultLauncher{}
 }

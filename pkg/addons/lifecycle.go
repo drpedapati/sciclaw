@@ -562,9 +562,9 @@ func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*
 			l.stopAndUnregister(ctx, name)
 		}
 		if rollbackErr != nil {
-			return nil, fmt.Errorf("upgrade: saving registry: %w; working-tree rollback to %s ALSO FAILED: %v — run 'sciclaw addon verify %s' and consider manual git checkout", err, prev[:12], rollbackErr, name)
+			return nil, fmt.Errorf("upgrade: saving registry: %w; working-tree rollback to %s ALSO FAILED: %v — run 'sciclaw addon verify %s' and consider manual git checkout", err, shortSHA(prev), rollbackErr, name)
 		}
-		return nil, fmt.Errorf("upgrade: saving registry: %w (working tree rolled back to %s)", err, prev[:12])
+		return nil, fmt.Errorf("upgrade: saving registry: %w (working tree rolled back to %s)", err, shortSHA(prev))
 	}
 	if restartErr != nil {
 		return updated, fmt.Errorf("upgrade: new sidecar failed to start for %q: %w; addon is now installed but not enabled — run 'sciclaw addon enable %s' to retry", name, restartErr, name)

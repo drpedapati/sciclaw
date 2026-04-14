@@ -1028,6 +1028,15 @@ func runRollback(ctx context.Context, env *addonEnv, args []string) int {
 	// Rollback uses the real Store rooted at sciclawHomeDir(); tests that
 	// exercise this path without a real addons tree should stop at the
 	// confirmation prompt or seed the registry on disk.
+	//
+	// Registry stays nil on the CLI side (same rationale as Lifecycle.Registry
+	// per the Wave 4d design note): CLI runs in a short-lived process and
+	// cannot own long-running sidecars. When a user invokes
+	// `sciclaw addon rollback` the on-disk registry is mutated and the
+	// reload marker is touched at the end of this function — the gateway's
+	// Reconciler sees the new state on its next tick and stops/restarts
+	// the live sidecar from the rolled-back binary. This is the same
+	// CLI→marker→gateway dance Enable/Disable/Upgrade already use.
 	store := addons.NewStore(sciclawHomeDir())
 	rollbacker := &addons.Rollbacker{
 		Store:    store,

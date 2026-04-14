@@ -284,6 +284,145 @@ func TestRollback_EmptyPreviousCommitStringErrors(t *testing.T) {
 	}
 }
 
+// TestRollback_StopsAndRestartsSidecarWhenEnabled is the L5 regression.
+// When an addon is enabled at rollback time, the old sidecar must be
+// stopped BEFORE the git checkout swaps the binary, and a fresh sidecar
+// must be started from the rolled-back tree AFTER the checkout — the
+// same dance Upgrade already does.
+func TestRollback_StopsAndRestartsSidecarWhenEnabled(t *testing.T) {
+	home := t.TempDir()
+	store := NewStore(home)
+	addonDir := setupRollbackAddon(t, "webtop", "0.1.0")
+
+	prev := "aaa111"
+	entry := &RegistryEntry{
+		Version:         "0.2.0",
+		InstalledAt:     "2026-04-13T12:00:00Z",
+		InstalledCommit: "bbb222",
+		State:           StateEnabled, // KEY: enabled means the sidecar is live
+		Source:          "https://example.com/webtop",
+		PreviousCommit:  &prev,
+	}
+	if err := store.Set("webtop", entry); err != nil {
+		t.Fatal(err)
+	}
+
+	registry := NewSidecarRegistry()
+	// Pre-populate the registry with a fake "live" sidecar so the
+	// Rollback path has something to Stop and Unregister. Reuses the
+	// unix-socket fakeLauncher from lifecycle_enable_test.go which
+	// backs each Launch with an httptest server that answers /health
+	// and /shutdown properly — so Sidecar.Stop follows its real HTTP
+	// shutdown path instead of panicking on a nil client.
+	fl := &fakeLauncher{t: t}
+	t.Cleanup(fl.close)
+	side, err := fl.Launch(context.Background(), "webtop", addonDir, SidecarSpec{Binary: "bin/sciclaw-addon-webtop"})
+	if err != nil {
+		t.Fatalf("pre-launch: %v", err)
+	}
+	registry.Register("webtop", side)
+
+	r := &Rollbacker{
+		Store:    store,
+		Runner:   &rollbackRunner{},
+		AddonDir: func(string) string { return addonDir },
+		Now:      fixedClock("2026-04-13T13:00:00Z"),
+		Registry: registry,
+		Launcher: fl,
+	}
+	if _, err := r.Rollback(context.Background(), "webtop"); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	// Assertions about the Rollbacker's effect on the live registry:
+	//   1. The OLD sidecar was Stopped before the git checkout.
+	//   2. A NEW sidecar is registered after the rollback completed.
+	//   3. The launcher was invoked exactly twice total (once pre-test,
+	//      once inside Rollback).
+	if got := fl.callCount(); got != 2 {
+		t.Errorf("expected 2 launches (pre-test + rollback restart), got %d", got)
+	}
+	// The NEW sidecar is a different pointer than the original one we
+	// pre-registered. Registry.Lookup should return the second one.
+	current := registry.Lookup("webtop")
+	if current == nil {
+		t.Fatal("registry.Lookup returned nil after rollback — restart did not re-register")
+	}
+	if current == side {
+		t.Error("registry still points at the ORIGINAL pre-rollback sidecar; restart did not replace it")
+	}
+	// Final entry must be in StateEnabled (restart succeeded) and at
+	// the previous commit.
+	got, _ := store.Get("webtop")
+	if got.State != StateEnabled {
+		t.Errorf("final state = %q, want %q (restart succeeded)", got.State, StateEnabled)
+	}
+	if got.InstalledCommit != prev {
+		t.Errorf("InstalledCommit = %q, want %q", got.InstalledCommit, prev)
+	}
+}
+
+// TestRollback_StateInstalledWhenSidecarRestartFails verifies that a
+// Launcher whose Launch returns an error drops the state back to
+// StateInstalled so the operator knows to re-enable, mirroring the
+// Upgrade failure path.
+func TestRollback_StateInstalledWhenSidecarRestartFails(t *testing.T) {
+	home := t.TempDir()
+	store := NewStore(home)
+	addonDir := setupRollbackAddon(t, "webtop", "0.1.0")
+
+	prev := "aaa111"
+	entry := &RegistryEntry{
+		Version:         "0.2.0",
+		InstalledCommit: "bbb222",
+		State:           StateEnabled,
+		Source:          "https://example.com/webtop",
+		PreviousCommit:  &prev,
+	}
+	if err := store.Set("webtop", entry); err != nil {
+		t.Fatal(err)
+	}
+
+	registry := NewSidecarRegistry()
+	// Pre-populate with a real-ish stoppable sidecar so the stop phase
+	// succeeds cleanly. Then the launcher is swapped to one whose
+	// failOn map makes the post-checkout Launch return an error.
+	prestartLauncher := &fakeLauncher{t: t}
+	t.Cleanup(prestartLauncher.close)
+	side, _ := prestartLauncher.Launch(context.Background(), "webtop", addonDir, SidecarSpec{Binary: "bin/sciclaw-addon-webtop"})
+	registry.Register("webtop", side)
+
+	failingLauncher := &fakeLauncher{
+		t:      t,
+		failOn: map[string]error{"webtop": errors.New("spawn boom")},
+	}
+	t.Cleanup(failingLauncher.close)
+	r := &Rollbacker{
+		Store:    store,
+		Runner:   &rollbackRunner{},
+		AddonDir: func(string) string { return addonDir },
+		Now:      fixedClock("2026-04-13T13:00:00Z"),
+		Registry: registry,
+		Launcher: failingLauncher,
+	}
+	entry2, err := r.Rollback(context.Background(), "webtop")
+	if err == nil {
+		t.Fatal("expected rollback to return an error when restart fails")
+	}
+	if !strings.Contains(err.Error(), "sidecar failed to restart") {
+		t.Errorf("error should mention sidecar restart failure, got %v", err)
+	}
+	if entry2 == nil || entry2.State != StateInstalled {
+		t.Errorf("entry state after failed restart = %v, want %q", entry2, StateInstalled)
+	}
+	// Persisted state must also reflect installed (the updated entry
+	// is saved before the restart error is returned to the caller).
+	got, _ := store.Get("webtop")
+	if got.State != StateInstalled {
+		t.Errorf("persisted state = %q, want %q", got.State, StateInstalled)
+	}
+}
+
 func TestRollback_NilDependenciesError(t *testing.T) {
 	// Missing Store
 	r := &Rollbacker{Runner: &rollbackRunner{}, AddonDir: func(string) string { return "/tmp" }}
