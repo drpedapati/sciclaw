@@ -392,6 +392,128 @@ func TestLifecycle_UpgradeAdvancesCommit(t *testing.T) {
 	}
 }
 
+// TestLifecycle_ConcurrentInstallSameNameSerializes is the H2
+// regression. Two concurrent Install calls for the same name used to
+// race on Store.Get/Set — both could pass the existence check, both
+// clone, both rename into finalDir (last wins), and both persist a
+// registry entry. The flock taken inside Install now serializes them:
+// the first wins outright, the second observes "already installed".
+func TestLifecycle_ConcurrentInstallSameNameSerializes(t *testing.T) {
+	seed := lifecycleRepo(t)
+	// Two separate Lifecycles pointing at the same SciclawHome so they
+	// share the same addons/<name>.lock file. This mirrors the real
+	// scenario: two CLI processes on the same host.
+	home := t.TempDir()
+	newL := func() *Lifecycle {
+		runner := &captureRunner{}
+		store := NewStore(home)
+		l := New(store, home, "0.2.0", "linux")
+		l.LookPath = func(string) (string, error) { return "/usr/bin/sh", nil }
+		l.Runner = runner
+		// Use real time so each goroutine gets a unique staging dir
+		// (the staging name includes UnixNano).
+		l.Now = time.Now
+		l.Clone = fakeClone(seed)
+		return l
+	}
+
+	var wg sync.WaitGroup
+	results := make([]error, 2)
+	start := make(chan struct{})
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			l := newL()
+			<-start
+			_, err := l.Install(context.Background(), InstallOptions{
+				Source: "https://example.com/testaddon",
+				Ref:    NewAutoRef(),
+			})
+			results[idx] = err
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	// Exactly one Install should succeed, the other should fail with
+	// "already installed".
+	var ok, dup int
+	for _, e := range results {
+		switch {
+		case e == nil:
+			ok++
+		case strings.Contains(e.Error(), "already installed"):
+			dup++
+		default:
+			t.Errorf("unexpected install error: %v", e)
+		}
+	}
+	if ok != 1 || dup != 1 {
+		t.Errorf("expected 1 success + 1 already-installed, got ok=%d dup=%d results=%v", ok, dup, results)
+	}
+	// Exactly one registry entry should remain.
+	store := NewStore(home)
+	names, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 1 || names[0] != "testaddon" {
+		t.Errorf("expected [testaddon], got %v", names)
+	}
+}
+
+// TestLifecycle_UpgradeStoreSetFailureRollsBackWorkingTree is the H5
+// regression. After Upgrade checks out the new commit, if Store.Set
+// fails, the working tree used to be left at the new commit while the
+// persisted registry still named the old one — producing an "integrity
+// check failed" state on next startup. The fix rolls the working tree
+// back to the previous commit before returning the error.
+func TestLifecycle_UpgradeStoreSetFailureRollsBackWorkingTree(t *testing.T) {
+	seed := lifecycleRepo(t)
+	runner := &captureRunner{}
+	l := newTestLifecycle(t, runner)
+	l.Clone = fakeClone(seed)
+
+	if _, err := l.Install(context.Background(), InstallOptions{
+		Source: "https://example.com/testaddon",
+		Ref:    NewVersionRef("v0.1.0"),
+	}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	prev, _ := l.Store.Get("testaddon")
+	addonDir := l.AddonDir("testaddon")
+
+	// Force Store.Set to fail during Upgrade by making the directory
+	// that holds registry.json read-only. Save writes to a .tmp sibling
+	// and then os.Rename's it; the rename returns EACCES/EPERM on a
+	// read-only parent.
+	registryDir := filepath.Dir(l.Store.Path())
+	if err := os.Chmod(registryDir, 0o555); err != nil {
+		t.Fatalf("chmod ro: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(registryDir, 0o755) })
+
+	_, err := l.Upgrade(context.Background(), "testaddon", NewVersionRef("v0.2.0"))
+	if err == nil {
+		t.Fatal("expected upgrade to return error when Store.Set fails")
+	}
+	if !strings.Contains(err.Error(), "saving registry") {
+		t.Errorf("error should mention saving registry, got %v", err)
+	}
+	// The critical assertion: the working tree has been reverted to the
+	// previous commit, so disk state and registry agree.
+	headCmd := exec.Command("git", "-C", addonDir, "rev-parse", "HEAD")
+	out, gerr := headCmd.Output()
+	if gerr != nil {
+		t.Fatalf("rev-parse after failed upgrade: %v", gerr)
+	}
+	head := strings.TrimSpace(string(out))
+	if head != prev.InstalledCommit {
+		t.Errorf("working tree at %s after failed upgrade, want rollback to %s", head, prev.InstalledCommit)
+	}
+}
+
 func TestLifecycle_UpgradeNoOpWhenAtCommit(t *testing.T) {
 	seed := lifecycleRepo(t)
 	runner := &captureRunner{}

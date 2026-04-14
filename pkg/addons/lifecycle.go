@@ -133,6 +133,15 @@ func (l *Lifecycle) Install(ctx context.Context, opts InstallOptions) (*Registry
 			return nil, fmt.Errorf("addon %q is already installed (state=%s); use 'sciclaw addon upgrade %s' instead",
 				opts.Name, existing.State, opts.Name)
 		}
+		// H2: take a per-name lock BEFORE any filesystem work so a
+		// concurrent Install/Upgrade/Uninstall of the same name from
+		// another CLI process (or from the gateway reconciler) blocks
+		// until we're done. Released via defer at function return.
+		lock, err := AcquireLock(l.SciclawHome, opts.Name)
+		if err != nil {
+			return nil, fmt.Errorf("install: %w", err)
+		}
+		defer lock.Release()
 	}
 	// Stage the clone so a failed install does not pollute addons/<name>/.
 	parent := filepath.Join(l.SciclawHome, "addons")
@@ -163,8 +172,20 @@ func (l *Lifecycle) Install(ctx context.Context, opts InstallOptions) (*Registry
 	}
 	name := manifest.Name
 
-	// Second check: we may not have known the name before clone.
+	// Second check: we may not have known the name before clone, in
+	// which case we also couldn't take the per-name lock up front. Take
+	// it here now that we know the name. The ordering means that for
+	// opts.Name == "" invocations, TWO concurrent installs of the same
+	// underlying addon will both clone successfully but then serialize
+	// on the lock, and the loser will see the "already installed"
+	// error below. That wastes one clone but keeps correctness.
 	if opts.Name == "" {
+		lock, err := AcquireLock(l.SciclawHome, name)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("install: %w", err)
+		}
+		defer lock.Release()
 		existing, err := l.Store.Get(name)
 		if err != nil {
 			cleanup()
@@ -367,6 +388,13 @@ func (l *Lifecycle) stopAndUnregister(ctx context.Context, name string) {
 // and deletes the registry entry. Enabled addons are refused unless force is
 // true, mirroring RFC section 2.
 func (l *Lifecycle) Uninstall(ctx context.Context, name string, force bool) error {
+	// H2: serialize with concurrent install/upgrade/uninstall of the
+	// same name. Blocks until we own the lock.
+	lock, err := AcquireLock(l.SciclawHome, name)
+	if err != nil {
+		return fmt.Errorf("uninstall: %w", err)
+	}
+	defer lock.Release()
 	entry, err := l.Store.Get(name)
 	if err != nil {
 		return fmt.Errorf("uninstall: reading registry: %w", err)
@@ -423,6 +451,12 @@ func (l *Lifecycle) Uninstall(ctx context.Context, name string, force bool) erro
 // fails to start, the registry entry moves back to StateInstalled and a
 // clear error is returned pointing at `sciclaw addon enable <name>`.
 func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*RegistryEntry, error) {
+	// H2: block concurrent install/upgrade/uninstall of the same name.
+	lock, err := AcquireLock(l.SciclawHome, name)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade: %w", err)
+	}
+	defer lock.Release()
 	entry, err := l.Store.Get(name)
 	if err != nil {
 		return nil, fmt.Errorf("upgrade: reading registry: %w", err)
@@ -513,12 +547,40 @@ func (l *Lifecycle) Upgrade(ctx context.Context, name string, ref InstallRef) (*
 	}
 
 	if err := l.Store.Set(name, updated); err != nil {
-		return nil, fmt.Errorf("upgrade: saving registry: %w", err)
+		// H5 fix: if Store.Set fails after the git checkout has already
+		// advanced the working tree, we'd leave the on-disk state at the
+		// new commit but the registry still pointing at the old one. The
+		// next integrity check would fail on startup and the operator
+		// would see a confusing "commit drift" error. Roll the working
+		// tree back to the previous commit so the persistent state
+		// remains consistent, and stop any newly-spawned sidecar.
+		rollbackErr := l.rollbackUpgradeWorkingTree(ctx, dir, prev)
+		if wasEnabled && l.Registry != nil && restartErr == nil {
+			// We had successfully restarted the sidecar against the new
+			// binary; tear it down so we don't leave a live process
+			// running against a version the registry doesn't know about.
+			l.stopAndUnregister(ctx, name)
+		}
+		if rollbackErr != nil {
+			return nil, fmt.Errorf("upgrade: saving registry: %w; working-tree rollback to %s ALSO FAILED: %v — run 'sciclaw addon verify %s' and consider manual git checkout", err, prev[:12], rollbackErr, name)
+		}
+		return nil, fmt.Errorf("upgrade: saving registry: %w (working tree rolled back to %s)", err, prev[:12])
 	}
 	if restartErr != nil {
 		return updated, fmt.Errorf("upgrade: new sidecar failed to start for %q: %w; addon is now installed but not enabled — run 'sciclaw addon enable %s' to retry", name, restartErr, name)
 	}
 	return updated, nil
+}
+
+// rollbackUpgradeWorkingTree is called when Store.Set fails mid-upgrade
+// to keep disk state and registry state consistent. It tries a best-effort
+// `git checkout -q <prev>` in the addon directory.
+func (l *Lifecycle) rollbackUpgradeWorkingTree(ctx context.Context, dir, prevCommit string) error {
+	if prevCommit == "" {
+		return fmt.Errorf("no previous commit recorded")
+	}
+	_, err := l.Runner.Run(ctx, dir, "git checkout -q "+prevCommit, nil)
+	return err
 }
 
 // List returns every registered addon entry sorted by name.
