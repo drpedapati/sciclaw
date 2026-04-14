@@ -1524,14 +1524,13 @@ func gatewayCmd() {
 	// `sciclaw addon enable <name>` actually spawns a process and hook
 	// events can find the live sidecar.
 	//
-	// sciclawHome is the canonical ~/sciclaw path established by the unified
-	// home migration. If os.UserHomeDir() failed earlier (gwHomeErr != nil),
-	// fall back to a zero-value home — Dispatcher.Fire will degrade cleanly
-	// because the registry file will be absent.
-	sciclawHome := ""
-	if gwHomeErr == nil {
-		sciclawHome = filepath.Join(gwHome, "sciclaw")
-	}
+	// sciclawHome must match whatever path the CLI's sciclawHomeDir() uses
+	// so gateway reconciler and CLI install/enable agree on where
+	// registry.json lives. On unmigrated installs this is still ~/.picoclaw,
+	// not ~/sciclaw — the directory-unification migration from the RFC has
+	// not been implemented yet. Going through sciclawHomeDir() keeps the
+	// two sides in sync automatically when that migration lands.
+	sciclawHome := sciclawHomeDir()
 	addonStore := addons.NewStore(sciclawHome)
 	addonSidecarRegistry = addons.NewSidecarRegistry()
 	SetAddonDispatcher(&addons.Dispatcher{
@@ -1565,13 +1564,16 @@ func gatewayCmd() {
 		StartTimeout: 10 * time.Second,
 		StopTimeout:  10 * time.Second,
 		Log: func(name, event string, err error) {
-			if err != nil {
-				logger.WarnCF("addons", "reconcile", map[string]interface{}{
-					"addon": name,
-					"event": event,
-					"error": err.Error(),
-				})
+			fields := map[string]interface{}{
+				"addon": name,
+				"event": event,
 			}
+			if err != nil {
+				fields["error"] = err.Error()
+				logger.WarnCF("addons", "reconcile", fields)
+				return
+			}
+			logger.InfoCF("addons", "reconcile", fields)
 		},
 	}
 
