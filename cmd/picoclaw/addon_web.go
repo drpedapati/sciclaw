@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -167,24 +168,29 @@ func (s *webServer) handleAddonProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reg := addonSidecarRegistry
-	if reg == nil {
-		// Defensive: should never be nil in production because main()
-		// installs the registry before ListenAndServe. If it is, fail
-		// soft rather than panic — the web UI will show the addon tab
-		// but the iframe will show a 503, which is debuggable.
-		logger.WarnCF("web", "addon proxy called without sidecar registry", map[string]interface{}{
-			"addon": name,
-			"path":  r.URL.Path,
-		})
-		jsonErr(w, fmt.Sprintf("addon %q not running", name), http.StatusServiceUnavailable)
-		return
+	// Try the in-process registry first. This is populated in gatewayCmd()
+	// where sidecars are actually spawned. In the web-server-only process
+	// (sciclaw web) the registry is nil, so fall through to the disk lookup.
+	var side *addons.Sidecar
+	if addonSidecarRegistry != nil {
+		side = addonSidecarRegistry.Lookup(name)
 	}
-
-	side := reg.Lookup(name)
 	if side == nil {
-		jsonErr(w, fmt.Sprintf("addon %q not running", name), http.StatusServiceUnavailable)
-		return
+		// Disk fallback: the web server and the gateway are separate
+		// processes. The gateway owns the sidecar lifecycle, but the web
+		// server only needs the socket path to proxy through. Read the
+		// persisted registry to confirm the addon is enabled, parse the
+		// manifest, and construct a client Sidecar on demand.
+		resolved, err := lookupSidecarOnDisk(name)
+		if err != nil {
+			logger.WarnCF("web", "addon proxy disk lookup failed", map[string]interface{}{
+				"addon": name,
+				"error": err.Error(),
+			})
+			jsonErr(w, fmt.Sprintf("addon %q not running: %s", name, err.Error()), http.StatusServiceUnavailable)
+			return
+		}
+		side = resolved
 	}
 
 	// Rewrite r.URL.Path so the sidecar sees its own root. A nil URL or a
@@ -203,6 +209,45 @@ func (s *webServer) handleAddonProxy(w http.ResponseWriter, r *http.Request) {
 	newReq.RequestURI = "" // Required when sending an outbound request.
 
 	side.Proxy(w, newReq)
+}
+
+// lookupSidecarOnDisk constructs a client Sidecar for an already-running
+// addon by reading persisted state instead of going through the in-process
+// SidecarRegistry. It is used by handleAddonProxy when the web server runs
+// in a different process from the gateway (sciclaw web vs sciclaw gateway):
+// the gateway owns the sidecar process and its SidecarRegistry, but the web
+// server only needs the socket path to reverse-proxy UI traffic.
+//
+// Returns an error if:
+//   - the addon is not registered at all
+//   - the addon is registered but not enabled (caller should 503)
+//   - the manifest is missing/unparseable
+//   - the socket file does not exist (sidecar not running, or the gateway
+//     has not reconciled it yet)
+func lookupSidecarOnDisk(name string) (*addons.Sidecar, error) {
+	home := sciclawHomeDir()
+	store := addons.NewStore(home)
+	entry, err := store.Get(name)
+	if err != nil {
+		return nil, fmt.Errorf("reading registry: %w", err)
+	}
+	if entry == nil {
+		return nil, fmt.Errorf("addon %q not installed", name)
+	}
+	if entry.State != addons.StateEnabled {
+		return nil, fmt.Errorf("addon %q is %s (not enabled)", name, entry.State)
+	}
+	addonDir := filepath.Join(home, "addons", name)
+	manifest, err := addons.ParseManifest(filepath.Join(addonDir, "addon.json"))
+	if err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+	side := addons.NewSidecar(addonDir, manifest.Sidecar)
+	side.Name = name
+	if _, serr := os.Stat(side.SocketPath); serr != nil {
+		return nil, fmt.Errorf("socket %s: %w", side.SocketPath, serr)
+	}
+	return side, nil
 }
 
 // splitAddonPath splits "name/rest/of/path" into ("name", "/rest/of/path").
