@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
@@ -28,8 +29,9 @@ type Sidecar struct {
 	HealthPath   string
 	StartTimeout time.Duration
 
-	cmd    *exec.Cmd
-	client *http.Client
+	cmd     *exec.Cmd
+	client  *http.Client
+	logFile *os.File
 }
 
 // SidecarVersion is the response shape for GET /version.
@@ -62,9 +64,16 @@ func NewSidecar(addonDir string, spec SidecarSpec) *Sidecar {
 
 	binary := spec.Binary
 	if binary != "" && !filepath.IsAbs(binary) {
-		// Common install layout: addonDir/bin/<binary>.
-		candidate := filepath.Join(addonDir, "bin", binary)
-		binary = candidate
+		// Resolve the binary path using the same logic as sidecarBinaryPath
+		// in lifecycle_helpers.go so integrity hashing and spawning agree:
+		// prefer the manifest-declared relative path, fall back to the
+		// common addonDir/bin/<name> layout.
+		primary := filepath.Join(addonDir, binary)
+		if info, err := os.Lstat(primary); err == nil && info.Mode().IsRegular() {
+			binary = primary
+		} else {
+			binary = filepath.Join(addonDir, "bin", binary)
+		}
 	}
 
 	s := &Sidecar{
@@ -92,12 +101,29 @@ func (s *Sidecar) Start(ctx context.Context) error {
 	if s.Binary == "" {
 		return fmt.Errorf("sidecar %q: no binary configured", s.Name)
 	}
-	cmd := exec.CommandContext(ctx, s.Binary)
+	// Use plain exec.Command (NOT CommandContext) so the child process's
+	// lifetime is NOT tied to the start-operation context. Callers
+	// (Reconciler, Lifecycle) pass a timeout-bounded ctx to limit how
+	// long they wait for /health; if we bound cmd's lifetime to that
+	// ctx, the defer cancel() in the caller kills the child the moment
+	// Start returns successfully. The child must live until explicit
+	// Stop() (graceful) or process exit.
+	cmd := exec.Command(s.Binary)
 	cmd.Dir = s.AddonDir
 	cmd.Env = append(cmd.Environ(),
 		"ADDON_DIR="+s.AddonDir,
 		"ADDON_SOCKET="+s.SocketPath,
 	)
+	// Capture the sidecar's stdout+stderr to a log file so operators can
+	// diagnose crashes and so reconciler logs surface addon-side errors.
+	// The log file lives next to the addon install to keep everything
+	// scoped to one directory. Append mode so multiple restarts stack.
+	logPath := filepath.Join(s.AddonDir, "sidecar.log")
+	if lf, lerr := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); lerr == nil {
+		cmd.Stdout = lf
+		cmd.Stderr = lf
+		s.logFile = lf
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("sidecar %q: spawning %s: %w", s.Name, s.Binary, err)
 	}

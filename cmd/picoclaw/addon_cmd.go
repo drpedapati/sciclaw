@@ -185,7 +185,7 @@ func validateCloneURL(repoURL string) error {
 	if strings.HasPrefix(u, "-") {
 		return fmt.Errorf("git clone: repo URL %q must not start with '-'", u)
 	}
-	schemes := []string{"https://", "http://", "ssh://", "git://", "git+ssh://"}
+	schemes := []string{"https://", "http://", "ssh://", "git://", "git+ssh://", "file://"}
 	for _, s := range schemes {
 		if strings.HasPrefix(u, s) {
 			return nil
