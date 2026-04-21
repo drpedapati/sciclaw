@@ -101,24 +101,23 @@
       <section class="hero">
         <h1><span style="color:var(--accent);">sciClaw</span> &mdash; your paired scientist</h1>
         <p class="hero-sub" style="font-size:19px;max-width:680px;">
-          An AI research agent that lives on your computer, not in someone else&rsquo;s cloud.
+          An AI research agent that runs on your machine, not in someone else&rsquo;s cloud.
         </p>
-        <p style="margin:0 auto 20px;max-width:620px;color:var(--muted);font-size:15px;line-height:1.6;">
-          sciClaw runs locally. Your data stays on your machine. You bring your own AI&mdash;OpenAI, Anthropic, Groq&mdash;and switch anytime.
-          Message it from Telegram or Discord, and everything it produces lands in a single
-          <code style="font-size:13px;background:var(--accent-soft);padding:2px 6px;border-radius:4px;">~/sciclaw</code> folder you can open, version, and audit.
+        <p style="margin:0 auto 20px;max-width:580px;color:var(--muted);font-size:15px;line-height:1.6;">
+          Bring your own model. OpenAI, Anthropic, or Groq. Talk to it from Discord or Telegram. Every file it touches lands in one folder you can open, version, and audit. Your data never leaves.
         </p>
         <div style="margin:0 auto 14px;max-width:520px;background:#0f172a;border-radius:10px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
           <code style="color:#e2e8f0;font-size:14px;white-space:nowrap;">brew tap drpedapati/tap && brew install sciclaw</code>
           <button onclick="navigator.clipboard.writeText('brew tap drpedapati/tap && brew install sciclaw').then(function(){this.textContent='Copied';setTimeout(function(){this.textContent='Copy'}.bind(this),1500)}.bind(this))" style="background:none;border:1px solid #334155;border-radius:6px;padding:4px 8px;cursor:pointer;color:#94a3b8;font-size:12px;white-space:nowrap;" title="Copy to clipboard">Copy</button>
         </div>
-        <p style="margin:0 auto 10px;max-width:760px;color:var(--muted);font-size:13px;line-height:1.6;">
-          <strong>Install map:</strong> <code>sciclaw.dev</code> is this website, <code>drpedapati/sciclaw</code> is the source repo and releases, <code>drpedapati/tap</code> installs sciClaw itself, and <code>drpedapati/tools</code> installs standalone utilities like <code>docx-review</code>, <code>pubmed-cli</code>, <code>pdf-form-filler</code>, and <code>phi-cleaner</code>.
+        <p style="margin:0 auto 10px;max-width:520px;color:var(--muted);font-size:12px;">
+          Source: <a href="https://github.com/drpedapati/sciclaw" style="color:var(--accent);text-decoration:none;">drpedapati/sciclaw</a>
+          &middot; Tools: <a href="https://github.com/drpedapati/tools" style="color:var(--accent);text-decoration:none;">drpedapati/tools</a>
         </p>
         <!-- Inline email signup (form targets hidden iframe to avoid CORS) -->
         <form id="signup-form" action="https://list.sciclaw.dev/subscription/form" method="post" target="signup-frame"
           style="margin:0 auto 6px;max-width:460px;display:flex;gap:8px;align-items:center;"
-          onsubmit="setTimeout(function(){document.getElementById('signup-msg').textContent='You are subscribed. Welcome.';document.getElementById('signup-msg').style.color='var(--accent)';document.getElementById('signup-email').value='';},600)">
+          onsubmit="setTimeout(function(){document.getElementById('signup-msg').textContent='Done. Check your inbox.';document.getElementById('signup-msg').style.color='var(--accent)';document.getElementById('signup-email').value='';},600)">
           <input type="hidden" name="l" value="65c776a2-7647-4baf-8136-7dae429df1a0" />
           <input id="signup-email" name="email" type="email" placeholder="you@lab.edu" required
             style="flex:1;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;outline:none;background:#fff;color:var(--ink);transition:border-color .15s;"
@@ -132,7 +131,7 @@
           </button>
         </form>
         <iframe name="signup-frame" style="display:none;" tabindex="-1"></iframe>
-        <p id="signup-msg" style="margin:0 auto 12px;font-size:12px;color:var(--muted);text-align:center;min-height:16px;">Release notes and workflow tips. No spam. Unsubscribe anytime.</p>
+        <p id="signup-msg" style="margin:0 auto 12px;font-size:12px;color:var(--muted);text-align:center;min-height:16px;">Occasional updates on new releases. No spam.</p>
 
         <div class="btn-row">
           <a class="btn btn-primary" href="section-install.html">Getting started</a>
@@ -145,10 +144,7 @@
           &middot;
           <a href="https://github.com/drpedapati/sciclaw/discussions" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;">Discussions</a>
         </p>
-        <p style="margin:0 auto 10px;max-width:760px;color:var(--muted);font-size:12px;">
-          If you still have the deprecated legacy tap installed, remove it with <code>brew untap drpedapati/sciclaw</code>.
-        </p>
-        <p class="trust">Free and open source. MIT licensed. Runs locally. Your data never leaves your machine.</p>
+        <p class="trust">Free and open source. MIT licensed. Your data never leaves your machine.</p>
         <p style="margin:12px auto 0;font-size:13px;color:var(--muted);line-height:1.5;">
           <a href="sciclaw-open.pdf" style="color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--accent) 40%, transparent);">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Pedapati, E. (2025). sciClaw: A Lightweight Paired-Scientist Agent for Reproducible Biomedical Research Workflows.</a>
