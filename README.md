@@ -19,6 +19,8 @@
 [Discord](https://discord.gg/UwGGGqU7yf) ·
 [Discussions](https://github.com/drpedapati/sciclaw/discussions)
 
+📬 [**Get email updates**](https://list.sciclaw.dev/subscription/form) — occasional release notes, no spam.
+
 </div>
 
 ---
