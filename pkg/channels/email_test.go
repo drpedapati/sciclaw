@@ -65,8 +65,11 @@ func TestSendEmailMessage_PostsResendPayload(t *testing.T) {
 	if payload.Subject != "Status update" {
 		t.Fatalf("subject=%q want Status update", payload.Subject)
 	}
-	if !strings.Contains(payload.From, "support@example.com") || !strings.Contains(payload.From, "sciClaw") {
-		t.Fatalf("from=%q", payload.From)
+	// formatFromAddress now always returns the bare email (no display
+	// name decoration) because self-hosted Resend instances reject any
+	// Name <addr> format in the from field.
+	if payload.From != "support@example.com" {
+		t.Fatalf("from=%q want bare email", payload.From)
 	}
 	if len(payload.To) != 2 || payload.To[0] != "alice@example.com" || payload.To[1] != "bob@example.com" {
 		t.Fatalf("to=%v", payload.To)
