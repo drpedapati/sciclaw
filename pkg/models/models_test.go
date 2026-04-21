@@ -19,7 +19,7 @@ func TestSetModelSyncsProvider(t *testing.T) {
 		t.Fatalf("seed config: %v", err)
 	}
 
-	if err := SetModel(cfg, configPath, "anthropic/claude-sonnet-4.6"); err != nil {
+	if err := SetModel(cfg, configPath, "anthropic/claude-sonnet-4-6"); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 
@@ -39,7 +39,7 @@ func TestSetModelSyncsProvider(t *testing.T) {
 
 func TestResolveDiscoveryProviderPrefersModel(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Agents.Defaults.Model = "claude-sonnet-4.6"
+	cfg.Agents.Defaults.Model = "claude-sonnet-4-6"
 	cfg.Agents.Defaults.Provider = "openai"
 
 	if got, want := resolveDiscoveryProvider(cfg), "anthropic"; got != want {
@@ -49,7 +49,7 @@ func TestResolveDiscoveryProviderPrefersModel(t *testing.T) {
 
 func TestDiscoverFallsBackToBuiltinModels(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Agents.Defaults.Model = "claude-sonnet-4.6"
+	cfg.Agents.Defaults.Model = "claude-sonnet-4-6"
 	cfg.Agents.Defaults.Provider = ""
 	cfg.Providers.Anthropic.APIKey = ""
 	cfg.Providers.Anthropic.AuthMethod = ""
@@ -66,7 +66,7 @@ func TestDiscoverFallsBackToBuiltinModels(t *testing.T) {
 	}
 	found := false
 	for _, m := range result.Models {
-		if m == "claude-sonnet-4.6" {
+		if m == "claude-sonnet-4-6" {
 			found = true
 			break
 		}
@@ -78,7 +78,7 @@ func TestDiscoverFallsBackToBuiltinModels(t *testing.T) {
 
 func TestDiscoverIncludesSecondaryConfiguredProviders(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Agents.Defaults.Model = "claude-sonnet-4.6"
+	cfg.Agents.Defaults.Model = "claude-sonnet-4-6"
 	cfg.Agents.Defaults.Provider = "anthropic"
 	cfg.Providers.Anthropic.AuthMethod = "token"
 	cfg.Providers.OpenAI.AuthMethod = "oauth"
@@ -91,7 +91,7 @@ func TestDiscoverIncludesSecondaryConfiguredProviders(t *testing.T) {
 	hasClaude := false
 	hasGPT := false
 	for _, m := range result.Models {
-		if m == "claude-sonnet-4.6" {
+		if m == "claude-sonnet-4-6" {
 			hasClaude = true
 		}
 		if m == "gpt-5.4" {
@@ -114,7 +114,7 @@ func TestResolveProviderSupportsPrefixedModelIDs(t *testing.T) {
 		want  string
 	}{
 		{"openai/gpt-5.4", "openai"},
-		{"anthropic/claude-sonnet-4.6", "anthropic"},
+		{"anthropic/claude-sonnet-4-6", "anthropic"},
 	}
 	for _, tt := range tests {
 		if got := ResolveProvider(tt.model, cfg); got != tt.want {
