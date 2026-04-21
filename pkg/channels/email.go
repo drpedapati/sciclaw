@@ -203,7 +203,13 @@ func formatFromAddress(displayName, address string) string {
 	if displayName == "" {
 		return address
 	}
-	return (&mail.Address{Name: displayName, Address: address}).String()
+	// Resend's API (including self-hosted instances) expects the from
+	// field in "Name <addr>" format, not the RFC 5322 quoted form
+	// Go's mail.Address.String() produces ("\"Name\" <addr>"). The
+	// quoted form works with cloud Resend but some self-hosted builds
+	// reject it as an invalid email. Use the simpler format that both
+	// accept.
+	return displayName + " <" + address + ">"
 }
 
 func emailBaseURL(raw string) string {
