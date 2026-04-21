@@ -250,17 +250,143 @@
           <div class="track">
             <strong>Stable channel</strong>
             <code>brew install sciclaw</code>
-            <div class="meta">Production track. Current public stable: <strong>v0.2.6</strong>.</div>
+            <div class="meta">Production track. Current public stable: <strong>v0.3.1</strong>.</div>
           </div>
           <div class="track">
             <strong>Dev channel</strong>
             <code>brew install sciclaw-dev</code>
-            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.2.7-dev.1</strong>.</div>
+            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.2.7-dev.4</strong>.</div>
           </div>
         </div>
       </section>
 
       <section class="timeline">
+
+        <!-- v0.3.1 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.3.1</span>
+            </div>
+            <span class="date">April 21, 2026</span>
+          </div>
+          <ul>
+            <li>Fixed email delivery on self-hosted Resend instances. The <code>from</code> field now sends the bare email address instead of wrapping it in a display name, which self-hosted builds reject.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.1" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.0...v0.3.1" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <!-- v0.3.0 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.3.0</span>
+            </div>
+            <span class="date">April 21, 2026</span>
+          </div>
+          <ul>
+            <li><strong>Addon system.</strong> sciClaw can now host optional capabilities as installable addons. Addons are separate git repos with a manifest, a sidecar binary, and optional install scripts. Ten CLI commands: <code>install</code>, <code>enable</code>, <code>disable</code>, <code>uninstall</code>, <code>upgrade</code>, <code>verify</code>, <code>rollback</code>, <code>sbom</code>, <code>list</code>, <code>status</code>.</li>
+            <li><strong>Gateway reconciler.</strong> The gateway automatically spawns sidecar processes for enabled addons on startup and converges live state against the on-disk registry every 10 seconds. CLI changes take effect without a gateway restart.</li>
+            <li><strong>Web UI addon tabs.</strong> The sidebar dynamically injects tabs for each enabled addon. Clicking a tab loads the addon's own React UI in an iframe, proxied over the addon's Unix socket.</li>
+            <li><strong>User identity endpoint.</strong> <code>GET /api/core/users</code> returns the union of profile store entries and routing rule allowed senders. Addon UIs source a dropdown from this instead of accepting freeform names.</li>
+            <li><strong>Two reference addons</strong> (private repos under the sciclaw org):
+              <ul>
+                <li><strong>sciclaw-addon-webtop:</strong> per-user Ubuntu XFCE browser desktops via linuxserver/webtop and Docker. Shared workspace mounts. React admin panel with the identity dropdown.</li>
+                <li><strong>sciclaw-addon-jupyter:</strong> per-user Jupyter Lab with token auth. Tokens rotate on restart. One-shot URL display with explicit copy/open actions. React admin panel.</li>
+              </ul>
+            </li>
+            <li><strong>Security hardening.</strong> Two full review passes closed 13 findings: proxy path allowlisting, mount source validation against an allowlist, Docker flag injection blocked via <code>--</code> terminators, hook payload stripped of per-chat ACLs, socket 0600 enforced, concurrent installs serialized with file locks, upgrade failures roll back the working tree, rollback stops and restarts the live sidecar, symlink escape blocked in UI handlers.</li>
+            <li><strong>Hook pipeline.</strong> Routing changes fire <code>routing_changed</code> hooks to subscribed addons via the gateway's reload watcher. Profile updates fire <code>profile_updated</code>. The reload watcher now starts unconditionally so addons receive hooks even when routing is enabled at runtime.</li>
+            <li><strong>Cross-process proxy.</strong> The web server (separate process from the gateway) can proxy addon UIs by reading the on-disk registry and constructing a client for the addon's Unix socket, so the standard <code>sciclaw gateway</code> + <code>sciclaw web</code> two-process deployment works with addons.</li>
+            <li><strong>SBOM honesty.</strong> The <code>sciclaw addon sbom</code> output now reports <code>verification_status: not_implemented</code> instead of the old misleading <code>signature_verified: false</code> field. GPG signing is not yet wired into the install flow.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.8...v0.3.0" target="_blank" rel="noopener noreferrer">Compare</a>
+            <a href="devlog.html" target="_blank" rel="noopener noreferrer">Dev log</a>
+          </div>
+        </article>
+
+        <!-- v0.2.8 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.2.8</span>
+            </div>
+            <span class="date">April 7, 2026</span>
+          </div>
+          <ul>
+            <li>Rewrote SOUL.md from corporate bullet points to direct, opinionated prose: "I am sciClaw. I work with scientists, not for them."</li>
+            <li>Hotfix for Codex provider streaming. The OpenAI backend delivers content via <code>output_item.done</code> events but the <code>response.completed</code> payload arrives with an empty output array. sciClaw now collects output items from stream events and injects them into the final response.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.8" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.7-dev.4...v0.2.8" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <!-- v0.2.7-dev.4 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag dev">dev</span>
+              <span class="rel">v0.2.7-dev.4</span>
+            </div>
+            <span class="date">April 7, 2026</span>
+          </div>
+          <ul>
+            <li>Fixed Codex provider empty responses caused by relying on <code>ResponseCompletedEvent.Response.Output</code> instead of collecting from <code>ResponseOutputItemDoneEvent</code> stream events.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.7-dev.4" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.7-dev.3...v0.2.7-dev.4" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <!-- v0.2.7-dev.3 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag dev">dev</span>
+              <span class="rel">v0.2.7-dev.3</span>
+            </div>
+            <span class="date">April 1, 2026</span>
+          </div>
+          <ul>
+            <li>Added per-user answer theme profiles and the <code>/theme</code> Discord slash command. Scientists pick Clear, Formal, or Brief; the agent adjusts its response style per user across all channels.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.7-dev.3" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.7-dev.2...v0.2.7-dev.3" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <!-- v0.2.7-dev.2 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag dev">dev</span>
+              <span class="rel">v0.2.7-dev.2</span>
+            </div>
+            <span class="date">April 1, 2026</span>
+          </div>
+          <ul>
+            <li>Added answer theme definitions to the AGENTS.md workspace template so new workspaces get Clear/Formal/Brief descriptions out of the box.</li>
+            <li>Surgical documentation update across all five doc surfaces (docs.html, README, security.html, philosophy.html, pubmed SKILL.md) for the v0.2.7-dev.1 feature set.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.7-dev.2" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.7-dev.1...v0.2.7-dev.2" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <!-- v0.2.7-dev.1 -->
         <article class="item">
           <div class="item-head">
             <div class="tagline">
@@ -277,6 +403,25 @@
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.7-dev.1" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.6...v0.2.7-dev.1" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
+
+        <!-- v0.2.6 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.2.6</span>
+            </div>
+            <span class="date">March 27, 2026</span>
+          </div>
+          <ul>
+            <li>Added Discord channel picker and directory browser to the routing wizard so operators point and click instead of typing raw channel IDs and paths.</li>
+            <li>Added Web Interface documentation section covering the gateway vs web split, access methods, and the System tab.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.2.6" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.5-dev.21...v0.2.6" target="_blank" rel="noopener noreferrer">Compare</a>
           </div>
         </article>
 
@@ -428,7 +573,7 @@
       </section>
 
       <p class="foot">
-        Last updated: March 31, 2026. Highlights are curated for user impact from release notes and compare ranges.
+        Last updated: April 21, 2026. Highlights are curated for user impact from release notes and compare ranges.
       </p>
     </div>
   </body>
