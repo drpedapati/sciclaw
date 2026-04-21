@@ -1,6 +1,8 @@
+//go:build unix
+
 package addons
 
-// locks.go implements per-addon-name exclusive file locks so concurrent
+// locks_unix.go implements per-addon-name exclusive file locks so concurrent
 // `sciclaw addon install`/`upgrade`/`uninstall` invocations on the same
 // host cannot race. The lock is held by Install/Upgrade/Uninstall for the
 // duration of the operation — both CLI processes and in-gateway callers
