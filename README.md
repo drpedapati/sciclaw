@@ -278,9 +278,9 @@ Example:
 ```bash
 sciclaw routing add \
   --channel discord \
-  --chat-id 1467290563052048476 \
+  --chat-id 123456789012345678 \
   --workspace /absolute/path/to/project-a \
-  --allow 8535331528,1467290563052048476 \
+  --allow 987654321098765432,123456789012345678 \
   --label project-a
 
 sciclaw routing enable
@@ -293,9 +293,9 @@ To let the bot respond to every message (no `@mention` needed), add `--no-mentio
 ```bash
 sciclaw routing add \
   --channel discord \
-  --chat-id 1467290563052048476 \
+  --chat-id 123456789012345678 \
   --workspace /absolute/path/to/project-a \
-  --allow 8535331528 \
+  --allow 987654321098765432 \
   --no-mention
 ```
 

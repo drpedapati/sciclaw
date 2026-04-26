@@ -89,3 +89,7 @@ docs/v*-thread.html
 manuscript/
 
 env.local
+
+# Private key material
+*.key
+*.pem

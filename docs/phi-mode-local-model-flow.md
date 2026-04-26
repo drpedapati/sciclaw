@@ -64,7 +64,7 @@ Only needed for automation/scripts:
 # Force one room to local PHI
 sciclaw routing set-runtime \
   --channel discord \
-  --chat-id 1467333670787711140 \
+  --chat-id 123456789012345678 \
   --mode phi \
   --local-backend ollama \
   --local-model qwen3.5:4b \
@@ -73,7 +73,7 @@ sciclaw routing set-runtime \
 # Return that room to inherited default behavior
 sciclaw routing set-runtime \
   --channel discord \
-  --chat-id 1467333670787711140 \
+  --chat-id 123456789012345678 \
   --mode default
 
 # Validate and reload routing after scripted changes
@@ -83,8 +83,8 @@ sciclaw routing reload
 # Explain why a message did or did not route
 sciclaw routing explain \
   --channel discord \
-  --chat-id 1467333670787711140 \
-  --sender 8535331528 \
+  --chat-id 123456789012345678 \
+  --sender 987654321098765432 \
   --mention
 ```
 
