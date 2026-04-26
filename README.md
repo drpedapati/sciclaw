@@ -49,6 +49,23 @@ Discord on current `main`/dev builds also supports:
 - queued background jobs with status/cancel cards
 - `/btw` for explicit read-only side questions in the current workspace
 - `/skill` with workspace-aware autocomplete for explicit skill use
+- `/theme` to pick a response style (Clear, Formal, or Brief) that persists per user across sessions
+
+## Addons
+
+Addons are optional capabilities installed separately from the core binary. Each addon is a standalone repo with a manifest, a sidecar binary, and optional install scripts. The gateway reconciler spawns addon sidecars automatically and keeps them in sync.
+
+Two reference addons ship under the sciclaw org (private repos):
+- **sciclaw-addon-webtop**: per-user Ubuntu XFCE browser desktops via Docker.
+- **sciclaw-addon-jupyter**: per-user Jupyter Lab servers with rotating token auth.
+
+Addons share the same workspace and user identity as your chat channels. Install with:
+
+```bash
+sciclaw addon install <url> --version v0.1.0
+```
+
+Ten lifecycle commands: `install`, `enable`, `disable`, `uninstall`, `upgrade`, `verify`, `rollback`, `sbom`, `list`, `status`. The web UI injects sidebar tabs for each enabled addon. See the [dev log](docs/devlog.html) for implementation details.
 
 ## Install
 
@@ -159,7 +176,7 @@ sciClaw auto-detects the provider from the model name. Set credentials via the o
 
 | Provider | Models | Auth |
 |----------|--------|------|
-| **OpenAI** | gpt-5.2 (primary), gpt-5.2-chat-latest, gpt-5.2-pro | API key or device-code OAuth |
+| **OpenAI** | gpt-5.5, gpt-5.2 (primary), gpt-5.2-chat-latest, gpt-5.2-pro | API key or device-code OAuth |
 | **Anthropic** | claude-sonnet-4.6, claude-opus-4-6, claude-haiku-4-5-20251001 | API key, token paste, or Claude.ai oat-token bridge |
 | **Gemini** | gemini-2.5-pro, gemini-2.5-flash | API key |
 | **OpenRouter** | All models via `openrouter/` prefix | API key |
@@ -214,6 +231,7 @@ Discord-specific features on current `main`/dev builds:
 - background jobs for long-running requests, with queue-aware progress cards
 - `/btw` slash command for read-only side questions in the same workspace
 - `/skill` slash command with workspace-aware skill autocomplete
+- `/theme` slash command to pick Clear, Formal, or Brief response styles (persists per user)
 
 <details>
 <summary><strong>Telegram setup</strong> (easiest)</summary>

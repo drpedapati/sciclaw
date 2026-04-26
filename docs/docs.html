@@ -603,7 +603,16 @@
       <a class="sidebar-link" href="#channels">Overview</a>
       <a class="sidebar-link nested" href="#telegram">Telegram</a>
       <a class="sidebar-link nested" href="#discord">Discord</a>
+      <a class="sidebar-link nested" href="#email-channel">Email</a>
       <a class="sidebar-link nested" href="#routing">Collaborative Routing</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">Addons</div>
+      <a class="sidebar-link" href="#addons">Overview</a>
+      <a class="sidebar-link nested" href="#addon-cli">CLI Commands</a>
+      <a class="sidebar-link nested" href="#addon-reference">Reference Addons</a>
+      <a class="sidebar-link nested" href="#addon-security">Security</a>
+      <a class="sidebar-link nested" href="#user-identity">User Identity</a>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-heading">Local Mode</div>
@@ -1265,7 +1274,7 @@ http://localhost:4142</code></pre>
           <tbody>
             <tr><td><code>openrouter</code></td><td>LLM &mdash; access to all models</td><td>API key</td></tr>
             <tr><td><code>anthropic</code></td><td>Claude direct</td><td>API key or <code>sciclaw auth login</code></td></tr>
-            <tr><td><code>openai</code></td><td>GPT direct (primary: <code>gpt-5.2</code>)</td><td>API key or device-code OAuth</td></tr>
+            <tr><td><code>openai</code></td><td>GPT direct (<code>gpt-5.5</code>, <code>gpt-5.2</code>)</td><td>API key or device-code OAuth</td></tr>
             <tr><td><code>azure</code></td><td>Azure OpenAI Service</td><td>API key (<code>api-key</code> header)</td></tr>
             <tr><td><code>gemini</code></td><td>Gemini direct</td><td>API key</td></tr>
             <tr><td><code>zhipu</code></td><td>GLM models, best for Chinese users</td><td>API key</td></tr>
@@ -1868,6 +1877,7 @@ http://localhost:4142</code></pre>
           <tbody>
             <tr><td><strong>Telegram</strong></td><td>Easy</td><td>Recommended. Just a bot token.</td></tr>
             <tr><td><strong>Discord</strong></td><td>Easy</td><td>Bot token + message content intent</td></tr>
+            <tr><td><strong>Email</strong></td><td>Easy</td><td>Outbound via Resend (self-hosted or cloud). No inbound yet.</td></tr>
             <tr><td><strong>Slack</strong></td><td>Medium</td><td>App + bot token</td></tr>
             <tr><td><strong>QQ</strong></td><td>Easy</td><td>AppID + AppSecret</td></tr>
             <tr><td><strong>DingTalk</strong></td><td>Medium</td><td>Client ID + secret</td></tr>
@@ -1876,7 +1886,7 @@ http://localhost:4142</code></pre>
         </table>
         <div class="callout">
           <div class="callout-title">Current Discord workflow</div>
-          <p>On current builds, long Discord requests run as background jobs with queue-aware progress cards. Discord also supports real slash commands for <code>/btw</code> (read-only side questions) and <code>/skill</code> (explicit skill invocation with autocomplete).</p>
+          <p>On current builds, long Discord requests run as background jobs with queue-aware progress cards. Discord also supports real slash commands for <code>/btw</code> (read-only side questions), <code>/skill</code> (explicit skill invocation with autocomplete), and <code>/theme</code> (per-user response style: Clear, Formal, or Brief).</p>
         </div>
       </div>
 
@@ -1942,12 +1952,24 @@ http://localhost:4142</code></pre>
         <div class="callout">
           <div class="callout-title">Background jobs and slash commands</div>
           <p>Discord rooms now support queue-aware background jobs for long tasks. Exact job controls are exposed through replyable cards, and lightweight side questions can use <code>/btw</code> without interrupting the main workspace job. Explicit skill runs can use <code>/skill</code> with workspace-aware autocomplete.</p>
+          <p>The <code>/theme</code> slash command lets each user pick a response style: <strong>Clear</strong>, <strong>Formal</strong>, or <strong>Brief</strong>. The preference is stored in the profile system (<code>pkg/profile/</code>) and persists across sessions and channels.</p>
         </div>
 
         <div class="callout">
           <div class="callout-title">Warning &mdash; Host + VM conflict</div>
           <p>Do not run the same Discord bot token on both the host and a VM gateway simultaneously. Discord delivers each message to every connected client, causing duplicate or racing replies. Run the gateway on <strong>one</strong> side only, or use separate bot tokens with non-overlapping routed channels. <code>sciclaw doctor</code> detects this conflict automatically.</p>
         </div>
+      </div>
+
+      <!-- ─── Email Channel ─── -->
+      <div class="section" id="email-channel">
+        <h3>Email</h3>
+        <p>sciClaw supports outbound email via <a href="https://resend.com" target="_blank" rel="noopener">Resend</a> (self-hosted or cloud). The agent can send email with file attachments using the <code>message</code> tool.</p>
+
+        <p>Configure email through the web UI, the TUI Channels tab, or the CLI:</p>
+        <pre><code><span class="hl-cmd">sciclaw</span> channels setup email</code></pre>
+
+        <p>Outbound-only for now. Inbound email (receiving and processing incoming messages) is not yet supported.</p>
       </div>
 
       <!-- ─── Collaborative Routing ─── -->
@@ -1995,6 +2017,80 @@ http://localhost:4142</code></pre>
         </ul>
 
         <p>Session keys are namespaced as <code>&lt;channel&gt;:&lt;chat_id&gt;@&lt;workspace_hash&gt;</code> to isolate context across workspaces.</p>
+      </div>
+
+      <hr />
+
+      <!-- ━━━━━ ADDONS ━━━━━ -->
+      <div class="section" id="addons">
+        <h2>Addons</h2>
+        <p class="page-subtitle">Optional capabilities installed separately from the core binary.</p>
+
+        <p>Addons extend sciClaw with heavyweight features that do not belong in the main binary: browser desktops, notebook servers, or custom integrations. Each addon is a standalone git repo containing a manifest, a sidecar binary, and optional install/upgrade scripts.</p>
+
+        <p>The gateway reconciler automatically spawns sidecar processes for enabled addons on startup and converges live state against the on-disk registry every 10 seconds. CLI changes (install, enable, disable) take effect without a gateway restart.</p>
+
+        <p>The web UI sidebar dynamically injects a tab for each enabled addon. Clicking a tab loads the addon's React UI in an iframe, proxied over the addon's Unix socket.</p>
+      </div>
+
+      <div class="section" id="addon-cli">
+        <h3>CLI Commands</h3>
+
+        <pre><code><span class="hl-comment"># Install an addon from a git URL at a specific version</span>
+<span class="hl-cmd">sciclaw</span> addon install &lt;url&gt; <span class="hl-flag">--version</span> v0.1.0
+
+<span class="hl-comment"># Lifecycle</span>
+<span class="hl-cmd">sciclaw</span> addon enable &lt;name&gt;
+<span class="hl-cmd">sciclaw</span> addon disable &lt;name&gt;
+<span class="hl-cmd">sciclaw</span> addon uninstall &lt;name&gt;
+<span class="hl-cmd">sciclaw</span> addon upgrade &lt;name&gt; <span class="hl-flag">--version</span> v0.2.0
+
+<span class="hl-comment"># Inspection</span>
+<span class="hl-cmd">sciclaw</span> addon list
+<span class="hl-cmd">sciclaw</span> addon status &lt;name&gt;
+<span class="hl-cmd">sciclaw</span> addon verify &lt;name&gt;
+<span class="hl-cmd">sciclaw</span> addon sbom &lt;name&gt;
+
+<span class="hl-comment"># Recovery</span>
+<span class="hl-cmd">sciclaw</span> addon rollback &lt;name&gt;</code></pre>
+
+        <p>Upgrade failures automatically roll back the working tree. Concurrent installs are serialized with file locks.</p>
+      </div>
+
+      <div class="section" id="addon-reference">
+        <h3>Reference Addons</h3>
+        <p>Two reference addons ship under the sciclaw org (private repos):</p>
+
+        <table>
+          <thead>
+            <tr><th>Addon</th><th>What it provides</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>sciclaw-addon-webtop</strong></td><td>Per-user Ubuntu XFCE browser desktops via linuxserver/webtop and Docker. Shared workspace mounts. React admin panel with identity dropdown.</td></tr>
+            <tr><td><strong>sciclaw-addon-jupyter</strong></td><td>Per-user Jupyter Lab with token auth. Tokens rotate on restart. One-shot URL display with explicit copy/open actions. React admin panel.</td></tr>
+          </tbody>
+        </table>
+
+        <p>Both addons share the same workspace and user identity as the chat channels. Addon UIs source user dropdowns from the <code>GET /api/core/users</code> endpoint instead of accepting freeform names.</p>
+      </div>
+
+      <div class="section" id="addon-security">
+        <h3>Addon Security</h3>
+        <p>Two security review passes closed 13 findings. Key hardening measures:</p>
+        <ul>
+          <li><strong>Mount validation</strong> against an allowlist prevents Docker volume escape.</li>
+          <li><strong>Proxy path allowlisting</strong> scopes addon UIs to their declared routes.</li>
+          <li><strong>Socket permissions</strong> are enforced at 0600 so only the owning process can connect.</li>
+          <li><strong>Docker flag injection</strong> is blocked via <code>--</code> terminators.</li>
+          <li><strong>Hook payloads</strong> are stripped of per-chat ACLs before delivery to addon sidecars.</li>
+          <li><strong>Symlink escape</strong> is blocked in web UI file handlers.</li>
+        </ul>
+      </div>
+
+      <!-- ━━━━━ USER IDENTITY ━━━━━ -->
+      <div class="section" id="user-identity">
+        <h3>User Identity Endpoint</h3>
+        <p><code>GET /api/core/users</code> returns the union of profile store entries and routing rule allowed senders. Addon UIs use this endpoint to populate identity dropdowns instead of freeform text input, so the same user list is consistent across the web UI and all addons.</p>
       </div>
 
       <hr />
@@ -2385,6 +2481,7 @@ Top contributors
 <!-- ═══════════ FOOTER ═══════════ -->
 <footer class="footer">
   sciClaw &mdash; an autonomous paired-scientist CLI for reproducible research workflows. MIT License.
+  <br /><a href="https://list.sciclaw.dev/subscription/form">Mailing list</a> &middot; occasional release notes, no spam.
 </footer>
 
 <!-- ═══════════ JS ═══════════ -->
