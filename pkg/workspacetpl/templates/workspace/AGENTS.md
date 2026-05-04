@@ -56,3 +56,23 @@ Treat them as a starting pack, not a fixed identity. Keep, remove, or extend as 
 - `pdf`: PDF extraction/transformation workflows (Anthropic official office skill)
 - `acroform-fill`: inspect/schema/fill workflow for true fillable AcroForm PDFs
 - `xlsx`: spreadsheet creation/editing workflows (Anthropic official office skill)
+
+## Memory Policy
+
+The `memory/MEMORY.md` file is for **persistent project knowledge**, not execution logs. It should contain decisions, context, and facts that matter across sessions. It should NOT contain routine run confirmations.
+
+### What belongs in MEMORY.md:
+- Scientific decisions (thresholds chosen, methods selected, hypotheses framed)
+- Data provenance notes (where files came from, date ranges, exclusion criteria)
+- Errors discovered and how they were resolved
+- Cross-session context that would be lost without a written record
+- Collaborator preferences and project conventions
+
+### What does NOT belong in MEMORY.md:
+- "Script ran successfully" confirmations
+- File sizes, byte counts, or row counts from routine executions
+- Repetitive summaries of commands that completed without error
+- Validation outputs that are already captured in the output files themselves
+- Anything that could be reconstructed by re-running the script
+
+### Rule: if a task completed without error and produced its expected output file, do NOT append to MEMORY.md. The output file is the record. Only write to memory when something unexpected happened, a decision was made, or context would be lost between sessions.
