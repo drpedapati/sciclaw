@@ -22,14 +22,14 @@ import (
 // flips to "verified" (or "untrusted" / "signature_failed" depending on
 // the outcome).
 type SBOM struct {
-	Name            string           `json:"name"`
-	Version         string           `json:"version"`
-	Source          string           `json:"source"`
-	InstalledCommit string           `json:"installed_commit"`
-	InstalledAt     string           `json:"installed_at"`
-	ManifestSHA256  string           `json:"manifest_sha256"`
-	BootstrapSHA256 string           `json:"bootstrap_sha256,omitempty"`
-	SidecarSHA256   string           `json:"sidecar_sha256,omitempty"`
+	Name            string `json:"name"`
+	Version         string `json:"version"`
+	Source          string `json:"source"`
+	InstalledCommit string `json:"installed_commit"`
+	InstalledAt     string `json:"installed_at"`
+	ManifestSHA256  string `json:"manifest_sha256"`
+	BootstrapSHA256 string `json:"bootstrap_sha256,omitempty"`
+	SidecarSHA256   string `json:"sidecar_sha256,omitempty"`
 	// UnverifiedTag is the git tag recorded at install time. Named
 	// "unverified" to make the audit posture obvious until real GPG
 	// verification is wired up — the tag identifies the commit but

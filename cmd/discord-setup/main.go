@@ -3,7 +3,8 @@
 // channels, roles, and permissions on the target guild.
 //
 // Usage:
-//   go run ./cmd/discord-setup --guild 1488473301889191977
+//
+//	go run ./cmd/discord-setup --guild 1488473301889191977
 package main
 
 import (

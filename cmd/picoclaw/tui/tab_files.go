@@ -15,9 +15,9 @@ import (
 type filesMode int
 
 const (
-	filesNormal       filesMode = iota
-	filesAddMount               // text input wizard for new mount
-	filesConfirmRemove          // confirm removal of selected mount
+	filesNormal        filesMode = iota
+	filesAddMount                // text input wizard for new mount
+	filesConfirmRemove           // confirm removal of selected mount
 )
 
 // FilesModel handles the Your Files tab.

@@ -22,12 +22,12 @@ import (
 )
 
 const (
-	transcriptionTimeout = 30 * time.Second
-	sendTimeout          = 10 * time.Second
-	typingInterval       = 8 * time.Second
-	maxTypingDuration    = 3 * time.Minute // safety net: auto-cancel typing if stopTyping is never called
-	discordMaxRunes      = 2000
-	discordMaxFileBytes  = 25 * 1024 * 1024
+	transcriptionTimeout   = 30 * time.Second
+	sendTimeout            = 10 * time.Second
+	typingInterval         = 8 * time.Second
+	maxTypingDuration      = 3 * time.Minute // safety net: auto-cancel typing if stopTyping is never called
+	discordMaxRunes        = 2000
+	discordMaxFileBytes    = 25 * 1024 * 1024
 	discordInboundDedupTTL = 2 * time.Minute
 )
 
@@ -52,9 +52,9 @@ type DiscordChannel struct {
 	config      config.DiscordConfig
 	transcriber *voice.GroqTranscriber
 	ctx         context.Context
-	botUserID  string
-	botRoleMu  sync.Mutex
-	botRoleIDs map[string]bool // managed role IDs discovered lazily per guild
+	botUserID   string
+	botRoleMu   sync.Mutex
+	botRoleIDs  map[string]bool // managed role IDs discovered lazily per guild
 
 	typingMu              sync.Mutex
 	typing                map[string]*typingState

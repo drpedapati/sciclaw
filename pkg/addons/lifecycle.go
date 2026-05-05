@@ -601,4 +601,3 @@ func (l *Lifecycle) List(ctx context.Context) ([]*RegistryEntry, error) {
 	}
 	return out, nil
 }
-

@@ -220,7 +220,7 @@ func TestReconcile_HandlesLauncherFailure(t *testing.T) {
 	fl.failOn = map[string]error{"testaddon": errors.New("bind failed")}
 
 	var (
-		mu     sync.Mutex
+		mu         sync.Mutex
 		errorCount int
 	)
 	r := newTestReconciler(t, l, reg, fl)

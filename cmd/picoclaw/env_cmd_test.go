@@ -15,4 +15,3 @@ func TestTuiCmdRunsLocalAppTUI(t *testing.T) {
 		t.Fatal("expected tuiCmd to invoke local app launcher")
 	}
 }
-

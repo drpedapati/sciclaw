@@ -117,4 +117,3 @@ type fakeExitError struct {
 
 func (e *fakeExitError) Error() string { return "exit status" }
 func (e *fakeExitError) ExitCode() int { return e.code }
-

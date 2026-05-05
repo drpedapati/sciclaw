@@ -130,10 +130,10 @@ func TestParseInstallFlags_Help(t *testing.T) {
 
 func TestInstallFlags_DescribeRef(t *testing.T) {
 	cases := map[string]installFlags{
-		"commit abc":                                                          {Commit: "abc"},
-		"version v1.2.3":                                                      {Version: "v1.2.3"},
-		"branch main (track mode — not recommended for production)":           {Track: "main"},
-		"latest signed tag (auto)":                                            {},
+		"commit abc":     {Commit: "abc"},
+		"version v1.2.3": {Version: "v1.2.3"},
+		"branch main (track mode — not recommended for production)": {Track: "main"},
+		"latest signed tag (auto)":                                  {},
 	}
 	for want, f := range cases {
 		if got := f.describeRef(); got != want {
@@ -409,8 +409,8 @@ func TestFormatStatusReport(t *testing.T) {
 // --- fake lifecycle / interface round-trip ---------------------------------
 
 type fakeLifecycle struct {
-	installCalls  []addons.InstallOptions
-	upgradeCalls  []struct {
+	installCalls []addons.InstallOptions
+	upgradeCalls []struct {
 		Name string
 		Ref  addons.InstallRef
 	}
@@ -829,11 +829,11 @@ func TestRunInstall_FailureWithHint(t *testing.T) {
 
 func TestPrintInstallFailureHint_Classifier(t *testing.T) {
 	cases := map[string]string{
-		"addon requires docker on PATH; install":    "install the missing binary",
-		"no signed tags found":                      "pin explicitly",
-		"git not found on PATH":                     "install git",
+		"addon requires docker on PATH; install":     "install the missing binary",
+		"no signed tags found":                       "pin explicitly",
+		"git not found on PATH":                      "install git",
 		"addon is already installed (state=enabled)": "sciclaw addon upgrade",
-		"does not support platform \"windows\"":     "addon.json requires.platform",
+		"does not support platform \"windows\"":      "addon.json requires.platform",
 	}
 	for errMsg, want := range cases {
 		buf := &bytes.Buffer{}

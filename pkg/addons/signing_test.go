@@ -223,12 +223,12 @@ func TestDefaultRunner_RunEchoesCommand(t *testing.T) {
 
 func TestShellQuote(t *testing.T) {
 	cases := map[string]string{
-		"":              "''",
-		"simple":        "'simple'",
-		"with space":    "'with space'",
-		"it's a thing":  `'it'\''s a thing'`,
-		"$(evil)":       "'$(evil)'",
-		"multi\nline":   "'multi\nline'",
+		"":             "''",
+		"simple":       "'simple'",
+		"with space":   "'with space'",
+		"it's a thing": `'it'\''s a thing'`,
+		"$(evil)":      "'$(evil)'",
+		"multi\nline":  "'multi\nline'",
 	}
 	for in, want := range cases {
 		if got := shellQuote(in); got != want {
@@ -239,13 +239,13 @@ func TestShellQuote(t *testing.T) {
 
 func TestLooksLikeFingerprint(t *testing.T) {
 	cases := map[string]bool{
-		"A1B2C3D4":                                 true,
-		"A1B2C3D4E5F60000":                         true,
+		"A1B2C3D4":         true,
+		"A1B2C3D4E5F60000": true,
 		"A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F80123": true,
-		"NOTHEX00":                                 false,
-		"short":                                    false,
-		"":                                         false,
-		"A1B2C3D":                                  false, // length 7
+		"NOTHEX00": false,
+		"short":    false,
+		"":         false,
+		"A1B2C3D":  false, // length 7
 	}
 	for in, want := range cases {
 		if got := looksLikeFingerprint(in); got != want {

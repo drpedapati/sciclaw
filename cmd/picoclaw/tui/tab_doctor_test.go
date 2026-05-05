@@ -98,4 +98,3 @@ func TestRunDoctorCmd_ReportsCommandFailureWhenOutputIsNotJSON(t *testing.T) {
 		t.Fatalf("expected raw output in error, got %v", msg.err)
 	}
 }
-

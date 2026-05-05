@@ -30,11 +30,11 @@ type HomeModel struct {
 	anthropicInput textinput.Model
 
 	// Onboard wizard state
-	wizardChecked    bool   // whether the first snapshot was checked
-	onboardActive    bool   // wizard overlay visible
-	onboardStep      int    // current wizard step
-	onboardLoading   bool   // async command in progress
-	onboardResult    string // result text from last async op
+	wizardChecked      bool   // whether the first snapshot was checked
+	onboardActive      bool   // wizard overlay visible
+	onboardStep        int    // current wizard step
+	onboardLoading     bool   // async command in progress
+	onboardResult      string // result text from last async op
 	onboardSmokePass   bool   // smoke test passed
 	onboardTesting     bool   // connection test running after auth
 	onboardSmokeOutput string // AI response from connection test
@@ -657,10 +657,10 @@ func (m HomeModel) viewWizard(snap *VMSnapshot, width int) string {
 			}
 			content +=
 				"  Connect a messaging app?\n" +
-				"\n" +
-				"  " + styleKey.Render("[t]") + " Set up Telegram\n" +
-				"  " + styleKey.Render("[d]") + " Set up Discord\n" +
-				"  " + styleKey.Render("[s]") + " Skip for now\n"
+					"\n" +
+					"  " + styleKey.Render("[t]") + " Set up Telegram\n" +
+					"  " + styleKey.Render("[d]") + " Set up Discord\n" +
+					"  " + styleKey.Render("[s]") + " Skip for now\n"
 			if m.onboardLoading {
 				content += "\n  " + styleDim.Render("Saving channel settings...") + "\n"
 			} else if m.onboardResult != "" {
