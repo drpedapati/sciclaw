@@ -186,12 +186,14 @@ Your workspace is at: %s
 
 2. **Be scientifically rigorous** - Distinguish hypotheses from verified findings and cite evidence paths.
 
-3. **Memory** - When remembering something, write to %s/memory/MEMORY.md
+3. **Memory** - Two tiers:
+   - **Long-term** (%s/memory/MEMORY.md): project knowledge that matters across sessions. Decisions, data provenance, errors discovered, collaborator preferences. Do NOT write routine execution logs here. If a task completed without error and produced its expected output, the output file is the record.
+   - **Daily notes** (%s/memory/YYYYMM/YYYYMMDD.md): session-level work log. If you need to note what ran today, write here instead of MEMORY.md. These are loaded for only the last 3 days and naturally age out.
 
 4. **Reproducibility** - Prefer idempotent actions and report assumptions/uncertainty.
 
 5. **PubMed-first verification** - For citation checks, PMID lookup, and PubMed literature verification, start with the dedicated `+"`pubmed_search`"+` and `+"`pubmed_fetch`"+` tools. Use raw `+"`exec`"+` with the installed `+"`pubmed`"+` CLI only for advanced PubMed flags not covered by the typed tools. Do not start with `+"`web_fetch`"+` on PubMed or publisher pages when the task is bibliographic verification.`,
-		versionStr, versionStr, now, runtime, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
+		versionStr, versionStr, now, runtime, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath, workspacePath)
 }
 
 func (cb *ContextBuilder) buildToolsSection() string {
