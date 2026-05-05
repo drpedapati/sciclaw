@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sciClaw Blog</title>
+<script defer data-domain="sciclaw.dev" src="https://analytics.cincineuro.com/js/script.file-downloads.outbound-links.tagged-events.js"></script>
+<meta name="description" content="Development updates from sciClaw, a paired-scientist AI for research workspaces." />
+<link rel="canonical" href="https://sciclaw.dev/blog.html" />
+<style>
+  :root {
+    --forest: #155236;
+    --forest-deep: #0c2e1e;
+    --forest-soft: #c5f2da;
+    --teal: #0f766e;
+    --teal-light: #5eead4;
+    --dark: #1e293b;
+    --mid: #475569;
+    --light: #94a3b8;
+    --bg: #f8fafc;
+    --border: #e2e8f0;
+    --white: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--dark);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, var(--forest) 0%, var(--forest-deep) 100%);
+    border-bottom: 3px solid var(--teal);
+    padding: 32px 24px;
+    text-align: center;
+  }
+  header .eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--forest-soft);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-size: 28px;
+    color: var(--white);
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  header .subtitle {
+    font-size: 14px;
+    color: var(--forest-soft);
+    margin-top: 6px;
+  }
+  header nav {
+    margin-top: 12px;
+  }
+  header nav a {
+    color: var(--forest-soft);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 8px;
+  }
+  header nav a:hover { color: var(--white); }
+  main {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  .entry { margin-bottom: 48px; }
+  .entry-header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid var(--teal);
+    padding-bottom: 8px;
+  }
+  .entry-date {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--teal);
+    white-space: nowrap;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  .entry-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--dark);
+  }
+  .section { margin-bottom: 24px; }
+  .section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--forest);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .section p {
+    margin-bottom: 10px;
+    font-size: 15px;
+    color: var(--dark);
+  }
+  .section ul {
+    margin: 8px 0 12px 20px;
+    font-size: 15px;
+    color: var(--dark);
+  }
+  .section li { margin-bottom: 6px; }
+  .section code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--forest-soft);
+    color: var(--forest-deep);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .commits {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 13px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: var(--mid);
+    line-height: 1.8;
+  }
+  .commits .sha { color: var(--teal); }
+  .commits .msg { color: var(--dark); }
+  .callout {
+    border-left: 3px solid var(--teal);
+    background: #f0fdf4;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .callout strong { color: var(--teal); }
+  .stats {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+  }
+  .stat {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 18px;
+    text-align: center;
+    flex: 1;
+    min-width: 120px;
+  }
+  .stat .num {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--forest);
+    display: block;
+  }
+  .stat .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--light);
+    font-weight: 600;
+  }
+  footer {
+    text-align: center;
+    padding: 24px;
+    font-size: 12px;
+    color: var(--light);
+    border-top: 1px solid var(--border);
+    margin-top: 48px;
+  }
+  footer a { color: var(--teal); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Development Updates</div>
+  <h1>sciClaw Blog</h1>
+  <div class="subtitle">What changed, why it changed, and what it means for your research workflow.</div>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="docs.html">Docs</a>
+    <a href="changelog.html">Changelog</a>
+    <a href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============================================================ -->
+<!-- MAY 5: MEMORY BLOAT FIX                                      -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-05-05-memory">
+  <div class="entry-header">
+    <span class="entry-date">2026-05-04</span>
+    <span class="entry-title">Your MEMORY.md Was Getting Bloated. Here Is Why and How We Fixed It.</span>
+  </div>
+
+  <div class="section">
+    <h3>The problem</h3>
+    <p>A researcher running Python scripts through sciClaw noticed that <code>memory/MEMORY.md</code> was growing steadily. Every time a script completed, the agent appended a dated entry with the command, output file paths, byte counts, and validation summaries. Over a few weeks of active use, the file was tens of kilobytes and still growing.</p>
+    <p>This matters because MEMORY.md is injected into the system prompt on every single turn. The bigger it gets, the more tokens the agent burns reading execution logs that provide no value. The output files already exist as the execution record. Writing a second copy into the prompt is waste.</p>
+  </div>
+
+  <div class="section">
+    <h3>Why it happened</h3>
+    <p>sciClaw's memory system actually has two tiers built into the Go code. <code>memory/MEMORY.md</code> is meant for long-term project knowledge: decisions, data provenance, errors discovered, collaborator preferences. <code>memory/YYYYMM/YYYYMMDD.md</code> is meant for daily session notes that are loaded for only the last three days and then naturally age out.</p>
+    <p>But the system prompt only mentioned MEMORY.md. It said: "When remembering something, write to memory/MEMORY.md." The agent never knew daily notes existed. So everything went into the long-term file, because that was the only path it had been told about.</p>
+  </div>
+
+  <div class="section">
+    <h3>The fix</h3>
+    <p>Two changes. First, the system prompt in <code>pkg/agent/context.go</code> now describes both tiers and gives explicit rules about what belongs where. MEMORY.md is for durable project knowledge. Daily notes are for transient session context. And if a task completed without error and produced its expected output, the output file is the record. Do not write to either.</p>
+    <p>Second, the workspace template (<code>AGENTS.md</code>) now includes a Memory Policy section that reinforces the same rules. This is belt-and-suspenders: the system prompt is the primary control, and the workspace-level instruction is defense in depth.</p>
+  </div>
+
+  <div class="callout">
+    <strong>If your MEMORY.md is already bloated:</strong> you can safely delete the dated log entries (the ones that start with "## 2026-XX-XX" and describe routine script runs). Keep any entries that record actual project decisions, error discoveries, or data provenance notes. Those are the ones worth keeping.
+  </div>
+
+  <div class="section">
+    <h3>Commits</h3>
+    <div class="commits">
+      <span class="sha">bfa41cfd</span> <span class="msg">fix(agent): route execution logs to daily notes, not MEMORY.md</span><br>
+      <span class="sha">aff810c8</span> <span class="msg">feat(agent): add Memory Policy to workspace template</span>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================ -->
+<!-- APRIL 26: GPT-5.5 + PRIVACY SCRUB                           -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-04-26-gpt55">
+  <div class="entry-header">
+    <span class="entry-date">2026-04-26</span>
+    <span class="entry-title">gpt-5.5, a Privacy Scrub, and a Mailing List</span>
+  </div>
+
+  <div class="section">
+    <h3>Model update</h3>
+    <p>Added <code>gpt-5.5</code> to the OpenAI model list. Two lines in <code>pkg/models/models.go</code>. The model resolution already routes anything containing "gpt" to the OpenAI provider, so there is nothing else to change. Set it with <code>sciclaw models set gpt-5.5</code>.</p>
+  </div>
+
+  <div class="section">
+    <h3>Privacy scrub</h3>
+    <p>A full scan of the repository found real Discord user and channel IDs in CLI usage examples in the README and docs. These were not credentials, but they did identify real people. Replaced all of them with obviously fake placeholder IDs. Also added <code>*.key</code> and <code>*.pem</code> to <code>.gitignore</code> so private key material cannot be accidentally committed.</p>
+    <p>No API keys, passwords, or email addresses were found in the git history. The scan checked for Resend keys, database passwords, Cloudflare tokens, and personal email addresses. All clean.</p>
+  </div>
+
+  <div class="section">
+    <h3>Mailing list</h3>
+    <p>Set up a self-hosted <a href="https://list.sciclaw.dev/subscription/form">Listmonk instance</a> on hel2 for release announcements. It runs behind Caddy with security headers (X-Frame-Options, nosniff, referrer policy) and sends through AWS SES. The subscription form is embedded inline on the sciclaw.dev homepage so signing up does not require a page bounce.</p>
+  </div>
+
+  <div class="section">
+    <h3>Commits</h3>
+    <div class="commits">
+      <span class="sha">a9059e68</span> <span class="msg">feat(models): add gpt-5.5 + scrub real Discord IDs from docs</span><br>
+      <span class="sha">c0088fea</span> <span class="msg">feat(site): inline email signup in hero, no page bounce</span><br>
+      <span class="sha">1c94a632</span> <span class="msg">copy: clean up hero text, kill redundancy, tighten signup</span>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================ -->
+<!-- APRIL 21: EMAIL FIX + V0.3.1                                -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-04-21-email">
+  <div class="entry-header">
+    <span class="entry-date">2026-04-21</span>
+    <span class="entry-title">Email Delivery Fixed for Self-Hosted Resend</span>
+  </div>
+
+  <div class="section">
+    <p>sciClaw sends outbound email through the Resend API. The from address was being wrapped in RFC 5322 display-name format: <code>"sciClaw" &lt;noreply@send.sciclaw.dev&gt;</code>. Cloud Resend accepts this. Self-hosted Resend instances (like the one at <code>resend.cincineuro.com</code>) reject it as an invalid email.</p>
+    <p>The root cause was Go's <code>mail.Address.String()</code> producing angle brackets even when the display name was empty, plus the config loader silently defaulting the display name to "sciClaw" on every read. The fix sends the bare email address in all cases. The display name is cosmetic anyway: what the recipient sees is controlled by DKIM and SPF, not the API payload.</p>
+    <p>Verified on data3: test email to a real inbox delivered successfully from <code>noreply@send.sciclaw.dev</code>.</p>
+  </div>
+
+  <div class="section">
+    <h3>Commits</h3>
+    <div class="commits">
+      <span class="sha">e289183d</span> <span class="msg">fix(email): send bare from address for self-hosted Resend compat</span>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================ -->
+<!-- APRIL 14: ADDON SYSTEM LAUNCH                                -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-04-14-addons">
+  <div class="entry-header">
+    <span class="entry-date">2026-04-14</span>
+    <span class="entry-title">Addon System: sciClaw Can Host Real Scientific Tools Now</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span class="num">23</span><span class="label">Core Commits</span></div>
+    <div class="stat"><span class="num">3</span><span class="label">Repos</span></div>
+    <div class="stat"><span class="num">180+</span><span class="label">New Tests</span></div>
+    <div class="stat"><span class="num">0</span><span class="label">New Deps</span></div>
+  </div>
+
+  <div class="section">
+    <h3>What shipped</h3>
+    <p>sciClaw can now host optional capabilities as installable addons. Each addon is a separate git repository with a manifest (<code>addon.json</code>), a sidecar binary that speaks HTTP over a Unix socket, and optional install scripts. The core binary stays lean. Scientists who do not need addons pay nothing for them.</p>
+    <p>Ten CLI commands handle the full lifecycle: <code>install</code>, <code>enable</code>, <code>disable</code>, <code>uninstall</code>, <code>upgrade</code>, <code>verify</code>, <code>rollback</code>, <code>sbom</code>, <code>list</code>, <code>status</code>. The gateway has a reconciler that spawns addon sidecar processes on startup and converges live state against the on-disk registry every ten seconds. The web UI injects tabs in the sidebar for each enabled addon.</p>
+  </div>
+
+  <div class="section">
+    <h3>Two reference addons</h3>
+    <p><strong>sciclaw-addon-webtop</strong> gives each scientist a full Ubuntu XFCE desktop in the browser via linuxserver/webtop and Docker. The workspace is bind-mounted into the container so the agent and the desktop see the same files. A React admin panel in the sciClaw web UI lets the operator add users, assign workspace mounts, and manage container state.</p>
+    <p><strong>sciclaw-addon-jupyter</strong> gives each scientist a Jupyter Lab instance with token-based authentication. Tokens are stored as SHA-256 hashes. Plaintext is shown exactly once when a user is created and never persisted. Rotating the token invalidates the old URL immediately.</p>
+    <p>Both addons share the same workspace and user identity system. Adding a user in the webtop admin panel shows a dropdown sourced from <code>/api/core/users</code>, the same identity list that the chat routing and <code>/theme</code> profiles already use.</p>
+  </div>
+
+  <div class="section">
+    <h3>Security</h3>
+    <p>The addon system went through two full security reviews that produced 14 findings. All but one (GPG tag signing, consciously deferred) were closed before the reference addons shipped. Mount sources are validated against an allowlist so a container cannot bind-mount the host root. Docker flag injection is blocked by a <code>--</code> terminator before the image name. The web proxy only forwards safe paths (<code>/ui/*</code>, <code>/control/*</code>, <code>/health</code>, <code>/version</code>) to addon sidecars. Admin routes like <code>/shutdown</code> and <code>/hook/*</code> are reachable only over the Unix socket where sciClaw core owns the connection.</p>
+  </div>
+
+  <div class="section">
+    <h3>How it extends the base</h3>
+    <p>The addon system sits on top of the existing routing and profile infrastructure without moving any of it. When a routing rule changes, core emits a <code>routing_changed</code> hook to every subscribed addon. The webtop addon catches that hook, recomputes mount sets per user, and restarts containers whose mounts changed. The agent and the desktop stay in sync because both watch the same workspace folder.</p>
+  </div>
+
+  <div class="section">
+    <h3>Notable commits</h3>
+    <div class="commits">
+      <span class="sha">0ac4755e</span> <span class="msg">phase 1 data plane: manifest, registry, integrity, resolver</span><br>
+      <span class="sha">d2008e22</span> <span class="msg">wave 2a runtime: lifecycle, sidecar, hooks</span><br>
+      <span class="sha">b165f97f</span> <span class="msg">wave 3a: CLI subcommand group</span><br>
+      <span class="sha">880c7000</span> <span class="msg">wave 4d: gateway reconciliation control loop</span><br>
+      <span class="sha">9d013459</span> <span class="msg">security hardening from wave 3 review</span><br>
+      <span class="sha">ec21f2ba</span> <span class="msg">security sweep round 2: proxy scope, payload leak, socket lockdown</span><br>
+      <span class="sha">29b8ec06</span> <span class="msg">/api/core/users endpoint for addon identity dropdown</span>
+    </div>
+  </div>
+</article>
+
+</main>
+
+<footer>
+  <p>sciClaw is a paired-scientist AI for research workspaces. <a href="https://github.com/drpedapati/sciclaw">Source</a> · <a href="changelog.html">Changelog</a> · <a href="https://list.sciclaw.dev/subscription/form">Subscribe</a></p>
+</footer>
+
+</body>
+</html>
