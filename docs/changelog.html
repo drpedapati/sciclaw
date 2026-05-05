@@ -250,7 +250,7 @@
           <div class="track">
             <strong>Stable channel</strong>
             <code>brew install sciclaw</code>
-            <div class="meta">Production track. Current public stable: <strong>v0.3.3</strong>.</div>
+            <div class="meta">Production track. Current public stable: <strong>v0.3.4</strong>.</div>
           </div>
           <div class="track">
             <strong>Dev channel</strong>
@@ -262,6 +262,30 @@
 
       <section class="timeline">
 
+        <!-- v0.3.4 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.3.4</span>
+            </div>
+            <span class="date">May 5, 2026</span>
+          </div>
+          <ul>
+            <li><strong>Curated workspace memory.</strong> Added the dedicated <code>remember</code> tool for durable project facts: method decisions, data provenance, project conventions, canonical artifacts, known recurring issues, open questions, and collaborator preferences.</li>
+            <li><strong>MEMORY.md guardrails.</strong> Generic <code>write_file</code>, <code>edit_file</code>, and <code>append_file</code> calls now refuse direct writes to <code>memory/MEMORY.md</code>. Obvious shell bypasses such as <code>&gt;&gt; memory/MEMORY.md</code> and <code>tee -a MEMORY.md</code> are blocked too.</li>
+            <li><strong>No more execution-log memory.</strong> Routine successful runs, validation summaries, row counts, file sizes, and command transcripts stay in session history, jobs, hooks, artifacts, or output files instead of being injected as long-term memory on every turn.</li>
+            <li><strong>Cleaner workspace templates.</strong> <code>AGENTS.md</code>, <code>HOOKS.md</code>, and the starter <code>MEMORY.md</code> template now describe memory as curated durable context, not runtime state or an activity ledger.</li>
+            <li><strong>Public explanation.</strong> Added the <a href="blog.html#entry-2026-05-05-memory">Memory Is Not a Log File</a> blog post and the curated workspace memory RFC.</li>
+            <li><strong>Release hygiene.</strong> Re-ran Go formatting so GitHub build checks pass from the tagged release commit.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.4" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.2...v0.3.4" target="_blank" rel="noopener noreferrer">Compare</a>
+            <a href="blog.html#entry-2026-05-05-memory" target="_blank" rel="noopener noreferrer">Blog</a>
+          </div>
+        </article>
+
         <!-- v0.3.3 -->
         <article class="item">
           <div class="item-head">
@@ -272,16 +296,11 @@
             <span class="date">May 5, 2026</span>
           </div>
           <ul>
-            <li><strong>Curated workspace memory.</strong> Added the dedicated <code>remember</code> tool for durable project facts: method decisions, data provenance, project conventions, canonical artifacts, known recurring issues, open questions, and collaborator preferences.</li>
-            <li><strong>MEMORY.md guardrails.</strong> Generic <code>write_file</code>, <code>edit_file</code>, and <code>append_file</code> calls now refuse direct writes to <code>memory/MEMORY.md</code>. Obvious shell bypasses such as <code>&gt;&gt; memory/MEMORY.md</code> and <code>tee -a MEMORY.md</code> are blocked too.</li>
-            <li><strong>No more execution-log memory.</strong> Routine successful runs, validation summaries, row counts, file sizes, and command transcripts stay in session history, jobs, hooks, artifacts, or output files instead of being injected as long-term memory on every turn.</li>
-            <li><strong>Cleaner workspace templates.</strong> <code>AGENTS.md</code>, <code>HOOKS.md</code>, and the starter <code>MEMORY.md</code> template now describe memory as curated durable context, not runtime state or an activity ledger.</li>
-            <li><strong>Public explanation.</strong> Added the <a href="blog.html#entry-2026-05-05-memory">Memory Is Not a Log File</a> blog post and the curated workspace memory RFC.</li>
+            <li>First public cut of curated workspace memory. Superseded by <code>v0.3.4</code>, which carries the same feature payload from a CI-clean formatted commit.</li>
           </ul>
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.3" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.2...v0.3.3" target="_blank" rel="noopener noreferrer">Compare</a>
-            <a href="blog.html#entry-2026-05-05-memory" target="_blank" rel="noopener noreferrer">Blog</a>
           </div>
         </article>
 
