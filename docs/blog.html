@@ -202,35 +202,38 @@
 
 <article class="entry" id="entry-2026-05-05-memory">
   <div class="entry-header">
-    <span class="entry-date">2026-05-04</span>
-    <span class="entry-title">Your MEMORY.md Was Getting Bloated. Here Is Why and How We Fixed It.</span>
+    <span class="entry-date">2026-05-05</span>
+    <span class="entry-title">Memory Is Not a Log File</span>
   </div>
 
   <div class="section">
-    <h3>The problem</h3>
-    <p>A researcher running Python scripts through sciClaw noticed that <code>memory/MEMORY.md</code> was growing steadily. Every time a script completed, the agent appended a dated entry with the command, output file paths, byte counts, and validation summaries. Over a few weeks of active use, the file was tens of kilobytes and still growing.</p>
-    <p>This matters because MEMORY.md is injected into the system prompt on every single turn. The bigger it gets, the more tokens the agent burns reading execution logs that provide no value. The output files already exist as the execution record. Writing a second copy into the prompt is waste.</p>
+    <h3>What broke</h3>
+    <p>A routed EEG workspace exposed a bad habit in sciClaw. A Python analysis completed successfully, wrote the expected workbook, and then the agent appended a full dated run summary to <code>memory/MEMORY.md</code>: command inputs, output paths, byte counts, sheet names, row counts, validation status, and one unmatched event marker.</p>
+    <p>That felt useful for one run. It is poisonous as a system behavior. <code>MEMORY.md</code> is injected into context on future turns. If routine successes go there, every future request pays to reread stale execution receipts. The workbook, session history, job state, hook audit log, and output files already carry that record. Copying it into long-term memory makes the agent slower and less focused without making the science more reproducible.</p>
   </div>
 
   <div class="section">
-    <h3>Why it happened</h3>
-    <p>sciClaw's memory system actually has two tiers built into the Go code. <code>memory/MEMORY.md</code> is meant for long-term project knowledge: decisions, data provenance, errors discovered, collaborator preferences. <code>memory/YYYYMM/YYYYMMDD.md</code> is meant for daily session notes that are loaded for only the last three days and then naturally age out.</p>
-    <p>But the system prompt only mentioned MEMORY.md. It said: "When remembering something, write to memory/MEMORY.md." The agent never knew daily notes existed. So everything went into the long-term file, because that was the only path it had been told about.</p>
+    <h3>The first fix was not enough</h3>
+    <p>The early draft of this post said the answer was to tell the model about daily notes and route routine work there instead of <code>MEMORY.md</code>. That was still wrong. Daily notes are also injected for a few days. Moving execution spam from one injected file to another only delays the bloat.</p>
+    <p>The real issue was architectural: sciClaw had deterministic memory readers but no deterministic memory writer. The agent could mutate <code>MEMORY.md</code> with generic file tools, so memory became whatever the model guessed was worth preserving. That is too loose for scientific workspaces.</p>
   </div>
 
   <div class="section">
-    <h3>The fix</h3>
-    <p>Two changes. First, the system prompt in <code>pkg/agent/context.go</code> now describes both tiers and gives explicit rules about what belongs where. MEMORY.md is for durable project knowledge. Daily notes are for transient session context. And if a task completed without error and produced its expected output, the output file is the record. Do not write to either.</p>
-    <p>Second, the workspace template (<code>AGENTS.md</code>) now includes a Memory Policy section that reinforces the same rules. This is belt-and-suspenders: the system prompt is the primary control, and the workspace-level instruction is defense in depth.</p>
+    <h3>The real fix</h3>
+    <p>sciClaw now has a narrow <code>remember</code> tool for long-term memory. It accepts only durable categories: user preferences, project conventions, canonical artifacts, method decisions, known recurring issues, open questions, and data provenance. It rejects execution-log categories and obvious routine-success text.</p>
+    <p>Generic mutation paths are blocked from touching <code>memory/MEMORY.md</code>. <code>write_file</code>, <code>edit_file</code>, and <code>append_file</code> refuse the write and tell the agent to use <code>remember</code>. The shell guard also blocks obvious bypasses like <code>&gt;&gt; memory/MEMORY.md</code> and <code>tee -a MEMORY.md</code>. Reading memory still works. Manual edits through the System tab still work. The agent just cannot quietly turn long-term memory into an activity log.</p>
+    <p>The prompts and workspace templates were tightened too. Hooks now mean audit logs, plans, reports, and artifacts, not memory. Daily notes are short-lived context, not a second execution ledger. The default <code>MEMORY.md</code> template no longer asks for runtime state or current objectives; it asks for stable decisions and provenance.</p>
   </div>
 
   <div class="callout">
-    <strong>If your MEMORY.md is already bloated:</strong> you can safely delete the dated log entries (the ones that start with "## 2026-XX-XX" and describe routine script runs). Keep any entries that record actual project decisions, error discoveries, or data provenance notes. Those are the ones worth keeping.
+    <strong>If your MEMORY.md is already bloated:</strong> delete routine dated run entries. Keep method choices, data provenance, project conventions, collaborator preferences, canonical artifact notes, open questions, and recurring problems that should change future work. The new system does not need old execution logs to function.
   </div>
 
   <div class="section">
     <h3>Commits</h3>
     <div class="commits">
+      <span class="sha">af5bc250</span> <span class="msg">feat: enforce curated workspace memory</span><br>
+      <span class="sha">14a16a4c</span> <span class="msg">docs: add curated workspace memory RFC</span><br>
       <span class="sha">bfa41cfd</span> <span class="msg">fix(agent): route execution logs to daily notes, not MEMORY.md</span><br>
       <span class="sha">aff810c8</span> <span class="msg">feat(agent): add Memory Policy to workspace template</span>
     </div>
