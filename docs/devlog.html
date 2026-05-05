@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sciClaw Development Log</title>
+<style>
+  :root {
+    --forest: #155236;
+    --forest-deep: #0c2e1e;
+    --forest-soft: #c5f2da;
+    --teal: #0f766e;
+    --teal-light: #5eead4;
+    --dark: #0f172a;
+    --mid: #475569;
+    --light: #94a3b8;
+    --bg: #f8fafc;
+    --border: #dbe3ee;
+    --white: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--dark);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, var(--forest) 0%, var(--forest-deep) 100%);
+    border-bottom: 3px solid var(--teal);
+    padding: 32px 24px;
+    text-align: center;
+  }
+  header .eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--forest-soft);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-size: 28px;
+    color: var(--white);
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  header .subtitle {
+    font-size: 14px;
+    color: var(--forest-soft);
+    margin-top: 6px;
+  }
+  main {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+
+  /* --- Entry --- */
+  .entry {
+    margin-bottom: 48px;
+  }
+  .entry-header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid var(--teal);
+    padding-bottom: 8px;
+  }
+  .entry-date {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--teal);
+    white-space: nowrap;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  .entry-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--dark);
+  }
+
+  /* --- Section --- */
+  .section {
+    margin-bottom: 24px;
+  }
+  .section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--forest);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .section p {
+    margin-bottom: 10px;
+    font-size: 15px;
+    color: var(--dark);
+  }
+  .section ul {
+    margin: 8px 0 12px 20px;
+    font-size: 15px;
+    color: var(--dark);
+  }
+  .section li {
+    margin-bottom: 6px;
+  }
+  .section code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--forest-soft);
+    color: var(--forest-deep);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* --- Commit list --- */
+  .commits {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 13px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: var(--mid);
+    line-height: 1.8;
+  }
+  .commits .sha { color: var(--teal); }
+  .commits .msg { color: var(--dark); }
+
+  /* --- Status table --- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th {
+    background: var(--forest);
+    color: var(--white);
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: var(--bg); }
+
+  /* --- Callout --- */
+  .callout {
+    border-left: 3px solid var(--teal);
+    background: #f0fdf4;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .callout strong { color: var(--teal); }
+
+  .callout-amber {
+    border-left-color: #d97706;
+    background: #fef3c7;
+  }
+  .callout-amber strong { color: #92400e; }
+
+  /* --- Stats strip --- */
+  .stats {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+  }
+  .stat {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 18px;
+    text-align: center;
+    flex: 1;
+    min-width: 120px;
+  }
+  .stat .num {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--forest);
+    display: block;
+  }
+  .stat .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--light);
+    font-weight: 600;
+  }
+
+  /* --- Pipeline diagram --- */
+  .pipeline {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    margin: 12px 0;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--mid);
+    white-space: pre;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+
+  /* --- Footer --- */
+  footer {
+    text-align: center;
+    padding: 24px;
+    font-size: 12px;
+    color: var(--light);
+    border-top: 1px solid var(--border);
+    margin-top: 48px;
+  }
+  footer a { color: var(--teal); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">sciClaw Engineering</div>
+  <h1>sciClaw Development Log</h1>
+  <div class="subtitle">Paired scientist AI for research workspaces</div>
+</header>
+
+<main>
+
+<!-- ============================================================ -->
+<!-- APRIL 14: ADDON SYSTEM + WEBTOP + JUPYTER                    -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-04-14-addons">
+  <div class="entry-header">
+    <span class="entry-date">2026-04-14</span>
+    <span class="entry-title">Addon System: sciClaw Can Host Real Scientific Tools Now</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span class="num">23</span><span class="label">Core Commits</span></div>
+    <div class="stat"><span class="num">3</span><span class="label">Repos</span></div>
+    <div class="stat"><span class="num">180+</span><span class="label">New Tests</span></div>
+    <div class="stat"><span class="num">0</span><span class="label">New Deps</span></div>
+  </div>
+
+  <div class="section">
+    <h3>Why We Built This</h3>
+
+    <p>Three pressures hit sciClaw at the same time. First, scientists asked for browser desktops so collaborators outside the lab network could open the files the agent is discussing, not just chat about them. Second, labs wanted Jupyter notebooks wired into the same workspace. Third, every new capability was starting to land as a conditional in <code>main.go</code>, which was going to bloat the binary for laptop users who just wanted Discord and local skills.</p>
+
+    <p>The answer is a plugin system. Optional capabilities ship as separate installable addons that core sciClaw has zero knowledge of at build time. Laptop users who do not install the webtop addon pay nothing. Server operators who do, get a real Ubuntu desktop per scientist plus Jupyter Lab, both sharing the same workspace the agent already watches.</p>
+
+    <p>The design lives in <code>docs/issues/addon-system-rfc.md</code>. It was written before any code, reviewed, and then implemented across roughly two dozen commits.</p>
+  </div>
+
+  <div class="section">
+    <h3>What An Addon Actually Is</h3>
+
+    <p>An addon is a separate git repository with three things in it:</p>
+
+    <ul>
+      <li>An <code>addon.json</code> manifest declaring name, version, required runtime (docker or podman), sidecar binary path, and which hooks it wants to subscribe to.</li>
+      <li>A sidecar binary that speaks HTTP over a Unix socket, answering a small protocol: <code>/health</code>, <code>/version</code>, <code>/hook/routing_changed</code>, <code>/shutdown</code>, plus whatever control endpoints the addon needs.</li>
+      <li>Optional install and uninstall shell scripts for one-time setup like pulling Docker images.</li>
+    </ul>
+
+    <p>The sidecar is spawned by the sciClaw gateway, talks to core over <code>~/.picoclaw/addons/&lt;name&gt;/sock</code>, and has no direct access to any of sciClaw's internal Go types. The contract is HTTP, so addons can be written in any language a future maintainer prefers.</p>
+  </div>
+
+  <div class="section">
+    <h3>The Pipeline From <code>sciclaw addon install</code> To A Running Desktop</h3>
+
+    <p>Trace through what happens when an operator runs <code>sciclaw addon install file:///path/to/webtop --version v0.1.0</code>:</p>
+
+    <div class="pipeline">CLI process                              Gateway process
+----------                              ---------------
+git clone the addon repo
+parse addon.json + validate
+resolve --version to a commit SHA
+compute SHA256 of manifest + bin
+run install.sh (pulls Docker images)
+write ~/.picoclaw/addons/registry.json
+touch ~/.picoclaw/addons/reload  ─────►  watchRoutingReload sees mtime bump
+exit                                     Reconciler loads registry
+                                         finds webtop state=enabled
+                                         NewSidecar(addonDir, spec)
+                                         exec.Command(bin/sciclaw-addon-webtop)
+                                         poll /health until 200
+                                         Register in live SidecarRegistry
+                                         log {"event":"start","addon":"webtop"}
+
+User clicks "Desktops" in the web UI
+browser GET /addons/webtop/ui/      ─────►  sciClaw web proxies over the socket
+                                            sidecar serves React bundle
+user clicks "Add user: alice"
+POST /addons/webtop/control/users    ────►  sidecar validates mount paths
+                                            docker run --mount ... linuxserver/webtop
+                                            registers alice in webtop.json
+alice clicks the returned URL
+  (redirect to /addons/webtop/alice/)────►  selkies WebRTC desktop loads</div>
+
+    <p>Every step above is real. It was smoke-tested end to end on this machine with the actual <code>linuxserver/webtop:ubuntu-xfce</code> image. Total time from install to running container was about 30 seconds on a cold cache.</p>
+  </div>
+
+  <div class="section">
+    <h3>What Shipped</h3>
+
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Repo</th><th>Lines</th><th>What It Does</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Core addon system</strong></td>
+          <td>sciClaw main</td>
+          <td>~3000 Go + 3100 tests</td>
+          <td>Manifest parsing, registry, integrity hashing, git ref resolution, lifecycle state machine, sidecar HTTP client, hook dispatcher, reconciler, CLI commands, web proxy.</td>
+        </tr>
+        <tr>
+          <td><strong>webtop addon</strong></td>
+          <td>sciclaw-addon-webtop</td>
+          <td>~2800 Go + 1200 React</td>
+          <td>Per-user Ubuntu XFCE desktops via linuxserver/webtop, shared workspace mounts derived from routing rules, React admin panel.</td>
+        </tr>
+        <tr>
+          <td><strong>jupyter addon</strong></td>
+          <td>sciclaw-addon-jupyter</td>
+          <td>~2800 Go</td>
+          <td>Per-user Jupyter Lab with token auth, shared workspace mounts, token rotation, one-shot URL retrieval.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>The two reference addons were built in sequence on purpose. The first one (webtop) forced every design question in the core contract. The second one (jupyter) proved the contract generalized by stressing different patterns: token auth instead of forward-proxy auth, own-UI iframing, and different hook semantics.</p>
+  </div>
+
+  <div class="section">
+    <h3>How It Extends The sciClaw Base</h3>
+
+    <p>The base sciClaw model is one scientist talking to one agent in a chat channel. Multiple scientists in the same channel share the agent's context but each keeps their own <code>/theme</code> profile. Routing rules scope channels to workspaces so the agent only touches files the channel is allowed to see.</p>
+
+    <p>The addon system layers on top without moving any of that. When a routing rule changes, core emits a <code>routing_changed</code> hook with the new rules. The webtop addon catches that hook, recomputes the list of mounts each scientist should see, and restarts their container with the new bind mounts. The agent and the desktop now see the same files. A scientist who edits a <code>.docx</code> in Thunar sees the change reflected in the next agent turn, because both are writing to the same bytes on disk.</p>
+
+    <p>The user identity is unified through a new <code>/api/core/users</code> endpoint. Adding a user to webtop or jupyter no longer accepts freeform text. It reads from the profile store and routing allowed_senders, presents a dropdown of known scientists, and scopes all subsequent state to their existing sender ID. The same alice in Discord is the same alice in webtop and jupyter.</p>
+  </div>
+
+  <div class="section">
+    <h3>Security Went Through Two Full Reviews</h3>
+
+    <p>The first review after the core system landed found three critical items. Proxy scope was wrong, so any HTTP request to the sciClaw web port could hit the sidecar's /shutdown endpoint. Container mount sources were unvalidated, so a well-crafted POST could mount <code>/</code> into a container with <code>--privileged</code>. Docker image names were unvalidated, so an image field of <code>--privileged</code> would get parsed as a flag by docker run.</p>
+
+    <p>All three got fixed before any reference addon was built. Then webtop and jupyter inherited the hardened baseline from day one: mount allowlists tied to <code>WEBTOP_ALLOWED_MOUNT_ROOTS</code>, the <code>--mount type=bind</code> KV syntax that cannot be tricked by colons or commas in user input, a <code>--</code> terminator before every image name to block docker flag injection, Unix sockets explicitly chmod'd to 0600 after startup, and label-based uninstall filters so tearing down the addon does not delete unrelated containers on the host.</p>
+
+    <p>The second review surfaced six more items. A CLI routing change did not reach subscribed addons because the CLI process had no live dispatcher. A cross-process web proxy call could not reach a sidecar spawned by a different process. The routing reload watcher only started if routing was enabled at boot, so enabling routing at runtime silently dropped addon hooks. All closed. Upgrade failures now roll the working tree back when the registry write fails so the on-disk binary and the recorded commit stay in sync. Rollback now stops the old sidecar before the git checkout and restarts from the new binary, the same dance Upgrade already did.</p>
+
+    <div class="callout">
+      <strong>Still open:</strong> signing verification is stubbed. The sidecar code for GPG tag checks exists but is never called from install or upgrade. The SBOM now reports <code>verification_status: not_implemented</code> instead of the old misleading field pair, so auditors see uncertainty explicitly. Real signing is a separate design pass that needs a trust model decision first.
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>The Operator Experience</h3>
+
+    <p>From a clean sciClaw install to a running browser desktop for alice is four commands:</p>
+
+    <div class="pipeline">sciclaw addon install https://github.com/sciclaw/sciclaw-addon-webtop --version v0.1.0
+sciclaw addon enable webtop
+sciclaw gateway   (or: sciclaw service gateway start)
+# open http://127.0.0.1:4142 in a browser, click Desktops, click Add user, pick alice</div>
+
+    <p>The gateway reconciler picks up the enabled state and spawns the sidecar within one tick, about two seconds. The React UI polls <code>/api/core/users</code> and populates the dropdown from the same identity list the routing system and <code>/theme</code> profiles already use. Everything stays consistent with the rest of sciClaw.</p>
+
+    <p>Uninstalling is two commands. <code>sciclaw addon disable webtop</code> stops the sidecar gracefully over its HTTP shutdown path. <code>sciclaw addon uninstall webtop</code> removes the directory, runs the addon's own uninstall hook (which label-filters and removes only containers this addon spawned), and clears the registry entry.</p>
+  </div>
+
+  <div class="section">
+    <h3>What Is Next</h3>
+
+    <ul>
+      <li><strong>Signing:</strong> wire the existing Verifier into the install flow. Pick a GPG integration path, document the trust model, add <code>--trust-key</code> and <code>--allow-untrusted</code> CLI flags.</li>
+      <li><strong>Jupyter React UI:</strong> the jupyter addon's admin tab is still a placeholder. Wave B will ship a token rotation panel and a one-shot open URL flow, reusing the identity dropdown webtop already has.</li>
+      <li><strong>Third addon:</strong> the RFC predicted the third addon would be when shared infrastructure (Caddy, cloudflared) should get promoted to a platform addon. Candidates include a persistent R Studio Server, an LSF submitter, or a shared pandoc pipeline.</li>
+      <li><strong>Multi-user concurrency limits:</strong> nothing currently caps how many webtop containers a host can spawn. On a lab server this should be a per-operator quota.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h3>Notable Commits</h3>
+    <div class="commits">
+      <span class="sha">3dc573c8</span> <span class="msg">L5 rollback sidecar restart + H1 honest SBOM signing status</span><br>
+      <span class="sha">55f57397</span> <span class="msg">H2 per-name install flock + H5 upgrade rollback on Store.Set fail</span><br>
+      <span class="sha">29b8ec06</span> <span class="msg">/api/core/users endpoint for addon identity dropdown</span><br>
+      <span class="sha">5abe88de</span> <span class="msg">H-E hook ctx wiring + L-2 reconciler log tag</span><br>
+      <span class="sha">ec21f2ba</span> <span class="msg">Security sweep round 2: proxy scope, payload leak, socket lockdown</span><br>
+      <span class="sha">76fae9cb</span> <span class="msg">Proxy addon UIs across sciclaw web/gateway process boundary</span><br>
+      <span class="sha">4257a2ef</span> <span class="msg">Always start reload watcher, even when routing disabled</span><br>
+      <span class="sha">83ee8a28</span> <span class="msg">Wire CLI routing changes to gateway addon hook dispatch</span><br>
+      <span class="sha">1f791210</span> <span class="msg">Wave 4a: live sidecar registry + lifecycle wiring</span><br>
+      <span class="sha">880c7000</span> <span class="msg">Wave 4d: gateway reconciliation control loop</span><br>
+      <span class="sha">3d37841a</span> <span class="msg">Wave 4b: web backend endpoints for addon UI</span><br>
+      <span class="sha">4e2dfae4</span> <span class="msg">Wave 4c: addon system UI integration (sidebar tabs)</span><br>
+      <span class="sha">b165f97f</span> <span class="msg">Wave 3a: CLI subcommand group</span><br>
+      <span class="sha">d2008e22</span> <span class="msg">Wave 2a runtime: lifecycle, sidecar, hooks</span><br>
+      <span class="sha">0ac4755e</span> <span class="msg">Wave 1: data plane (manifest, registry, integrity, resolver)</span><br>
+      <span class="sha">e117d3d8</span> <span class="msg">RFC: modular addon system with webtop + jupyter references</span><br>
+    </div>
+  </div>
+
+</article>
+
+</main>
+
+<footer>
+  <p>sciClaw is a paired scientist AI for research workspaces. Source at <a href="https://github.com/drpedapati/sciclaw">drpedapati/sciclaw</a>.</p>
+</footer>
+
+</body>
+</html>
