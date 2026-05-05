@@ -225,6 +225,58 @@ func TestFilesystemTool_WriteFile_CreateDir(t *testing.T) {
 	}
 }
 
+func TestFilesystemTool_WriteFile_BlocksLongTermMemoryWrite(t *testing.T) {
+	workspace := t.TempDir()
+	tool := NewWriteFileTool(workspace, false)
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    "memory/MEMORY.md",
+		"content": "## 2026-05-04\n\nScript ran successfully.",
+	})
+
+	if !result.IsError {
+		t.Fatalf("expected generic memory write to be blocked")
+	}
+	if !strings.Contains(result.ForLLM, "remember") {
+		t.Fatalf("expected remember guidance, got: %s", result.ForLLM)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "memory", "MEMORY.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected memory file not to be created, stat err=%v", err)
+	}
+}
+
+func TestFilesystemTool_WriteFile_BlocksLongTermMemorySymlink(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "memory"), 0755); err != nil {
+		t.Fatalf("mkdir memory: %v", err)
+	}
+	memoryPath := filepath.Join(workspace, "memory", "MEMORY.md")
+	if err := os.WriteFile(memoryPath, []byte("keep"), 0644); err != nil {
+		t.Fatalf("write memory: %v", err)
+	}
+	linkPath := filepath.Join(workspace, "memory-link.md")
+	if err := os.Symlink(memoryPath, linkPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	tool := NewWriteFileTool(workspace, false)
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    "memory-link.md",
+		"content": "replace",
+	})
+
+	if !result.IsError {
+		t.Fatalf("expected symlinked memory write to be blocked")
+	}
+	content, err := os.ReadFile(memoryPath)
+	if err != nil {
+		t.Fatalf("read memory: %v", err)
+	}
+	if string(content) != "keep" {
+		t.Fatalf("memory changed through symlink: %q", string(content))
+	}
+}
+
 // TestFilesystemTool_WriteFile_MissingPath verifies error handling for missing path
 func TestFilesystemTool_WriteFile_MissingPath(t *testing.T) {
 	tool := &WriteFileTool{}

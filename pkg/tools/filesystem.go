@@ -368,6 +368,9 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 	if err != nil {
 		return UserErrorResult(err.Error())
 	}
+	if isWorkspaceLongTermMemoryPath(resolvedPath, t.workspace) {
+		return UserErrorResult(longTermMemoryGuardMessage)
+	}
 
 	dir := filepath.Dir(resolvedPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {

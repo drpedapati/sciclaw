@@ -213,6 +213,8 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	appendFileTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)
 	registry.Register(appendFileTool)
 
+	registry.Register(tools.NewRememberTool(workspace, restrict))
+
 	// Shell execution
 	execTool := tools.NewExecTool(workspace, restrict)
 	execTool.SetSharedWorkspacePolicy(sharedWorkspace, sharedReadOnly)

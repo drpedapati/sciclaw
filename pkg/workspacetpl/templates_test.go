@@ -72,13 +72,22 @@ func TestTemplateContentBranding(t *testing.T) {
 	if !strings.Contains(byPath["AGENTS.md"], "`docx-review`") {
 		t.Fatalf("AGENTS.md missing docx-review baseline entry")
 	}
+	if !strings.Contains(byPath["AGENTS.md"], "Use the `remember` tool") {
+		t.Fatalf("AGENTS.md missing remember memory guidance")
+	}
 	if !strings.Contains(byPath["HOOKS.md"], "before_turn") {
 		t.Fatalf("HOOKS.md missing lifecycle sections")
+	}
+	if !strings.Contains(byPath["HOOKS.md"], "Do not copy routine outcomes into `memory/MEMORY.md`") {
+		t.Fatalf("HOOKS.md missing memory anti-ledger guidance")
 	}
 	if !strings.Contains(byPath["SOUL.md"], "I am sciClaw") {
 		t.Fatalf("SOUL.md missing sciClaw identity")
 	}
 	if !strings.Contains(byPath["memory/MEMORY.md"], "Long-term Memory") {
 		t.Fatalf("MEMORY template missing expected heading")
+	}
+	if strings.Contains(byPath["memory/MEMORY.md"], "Runtime State") || strings.Contains(byPath["memory/MEMORY.md"], "Current objective") {
+		t.Fatalf("MEMORY template still contains volatile execution-state headings")
 	}
 }

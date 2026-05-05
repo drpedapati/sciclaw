@@ -161,6 +161,35 @@ func TestEditTool_EditFile_OutsideAllowedDir(t *testing.T) {
 	}
 }
 
+func TestEditTool_EditFile_BlocksLongTermMemoryEdit(t *testing.T) {
+	workspace := t.TempDir()
+	memoryPath := filepath.Join(workspace, "memory", "MEMORY.md")
+	if err := os.MkdirAll(filepath.Dir(memoryPath), 0755); err != nil {
+		t.Fatalf("mkdir memory: %v", err)
+	}
+	if err := os.WriteFile(memoryPath, []byte("keep"), 0644); err != nil {
+		t.Fatalf("write memory: %v", err)
+	}
+
+	tool := NewEditFileTool(workspace, false)
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"path":     "memory/MEMORY.md",
+		"old_text": "keep",
+		"new_text": "replace",
+	})
+
+	if !result.IsError {
+		t.Fatalf("expected generic memory edit to be blocked")
+	}
+	content, err := os.ReadFile(memoryPath)
+	if err != nil {
+		t.Fatalf("read memory: %v", err)
+	}
+	if string(content) != "keep" {
+		t.Fatalf("memory changed: %q", string(content))
+	}
+}
+
 // TestEditTool_EditFile_MissingPath verifies error handling for missing path
 func TestEditTool_EditFile_MissingPath(t *testing.T) {
 	tool := NewEditFileTool("", false)
@@ -253,6 +282,34 @@ func TestEditTool_AppendFile_Success(t *testing.T) {
 	}
 	if !strings.Contains(contentStr, "Appended content") {
 		t.Errorf("Expected appended content, got: %s", contentStr)
+	}
+}
+
+func TestEditTool_AppendFile_BlocksLongTermMemoryAppend(t *testing.T) {
+	workspace := t.TempDir()
+	memoryPath := filepath.Join(workspace, "memory", "MEMORY.md")
+	if err := os.MkdirAll(filepath.Dir(memoryPath), 0755); err != nil {
+		t.Fatalf("mkdir memory: %v", err)
+	}
+	if err := os.WriteFile(memoryPath, []byte("keep"), 0644); err != nil {
+		t.Fatalf("write memory: %v", err)
+	}
+
+	tool := NewAppendFileTool(workspace, false)
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    "memory/MEMORY.md",
+		"content": "\nScript ran successfully.",
+	})
+
+	if !result.IsError {
+		t.Fatalf("expected generic memory append to be blocked")
+	}
+	content, err := os.ReadFile(memoryPath)
+	if err != nil {
+		t.Fatalf("read memory: %v", err)
+	}
+	if string(content) != "keep" {
+		t.Fatalf("memory changed: %q", string(content))
 	}
 }
 

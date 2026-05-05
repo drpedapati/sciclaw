@@ -30,6 +30,12 @@ func TestBuildSystemPromptUsesSciClawIdentity(t *testing.T) {
 	if !strings.Contains(prompt, "start with the dedicated `pubmed_search` and `pubmed_fetch` tools") {
 		t.Fatalf("system prompt missing explicit typed PubMed guidance")
 	}
+	if !strings.Contains(prompt, "Use the remember tool for curated long-term memory") {
+		t.Fatalf("system prompt missing remember guidance")
+	}
+	if strings.Contains(prompt, "write here instead of MEMORY.md") {
+		t.Fatalf("system prompt still redirects execution logs into daily notes")
+	}
 }
 
 func TestLoadBootstrapFilesIncludesTools(t *testing.T) {

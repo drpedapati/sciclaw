@@ -492,6 +492,36 @@ func TestShellTool_UnprefixedRelativeSlashPathsNotBlockedByPathGuard(t *testing.
 	}
 }
 
+func TestShellTool_BlocksLongTermMemoryRedirect(t *testing.T) {
+	workspace := t.TempDir()
+	tool := NewExecTool(workspace, false)
+
+	blocked := tool.guardCommand("printf 'ran successfully' >> memory/MEMORY.md", workspace)
+	if !strings.Contains(blocked, "remember") {
+		t.Fatalf("expected memory redirect to be blocked, got: %q", blocked)
+	}
+}
+
+func TestShellTool_BlocksLongTermMemoryWriteFromMemoryCWD(t *testing.T) {
+	workspace := t.TempDir()
+	memoryDir := filepath.Join(workspace, "memory")
+	tool := NewExecTool(workspace, false)
+
+	blocked := tool.guardCommand("tee -a MEMORY.md", memoryDir)
+	if !strings.Contains(blocked, "remember") {
+		t.Fatalf("expected memory write from memory cwd to be blocked, got: %q", blocked)
+	}
+}
+
+func TestShellTool_AllowsLongTermMemoryRead(t *testing.T) {
+	workspace := t.TempDir()
+	tool := NewExecTool(workspace, false)
+
+	if blocked := tool.guardCommand("cat memory/MEMORY.md", workspace); blocked != "" {
+		t.Fatalf("expected memory read to pass guard, got: %q", blocked)
+	}
+}
+
 func TestShellTool_BlocksPythonSubprocessWrapperForPubMed(t *testing.T) {
 	tool := NewExecTool("", false)
 	cmd := "python3 - <<'PY'\nimport subprocess\nsubprocess.check_output(['pubmed','search','schizophrenia','--json'], text=True)\nPY"

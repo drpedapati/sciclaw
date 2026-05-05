@@ -1,33 +1,41 @@
 # Long-term Memory
 
-This file stores durable operational context across sessions.
+This file stores curated durable context across sessions. It is not an execution log. Routine run confirmations, file sizes, row counts, command transcripts, and temporary outputs belong in session history, hook audit logs, jobs, artifacts, or output files.
 
-## Runtime State
+## Method Decisions
 
-- Active provider/auth state:
-- Active channels and allowlists:
-- Service/runtime notes:
+- Decision:
+- Reason:
+- Source artifacts:
 
-## Active Projects
+## Data Provenance
 
-- Project:
-- Current objective:
-- Next action:
+- Dataset/source:
+- Constraints or exclusions:
+- Canonical location:
 
-## Stable Preferences
+## Project Conventions
 
-- Communication style:
-- Detail level:
-- Risk tolerance:
+- Convention:
+- Scope:
 
-## Known Issues / Workarounds
+## Canonical Artifacts
+
+- Artifact:
+- Why canonical:
+
+## Known Recurring Issues
 
 - Issue:
 - Workaround:
 - Follow-up:
 
-## Optional Domain Notes
+## Open Questions
 
-- Domain:
-- Key terms/entities:
-- Useful references:
+- Question:
+- Needed evidence:
+
+## User Preferences
+
+- Preference:
+- Scope:

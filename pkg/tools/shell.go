@@ -650,6 +650,10 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		return "Command blocked by safety guard (avoid Python subprocess wrappers for pubmed/docx-review/pdf-form-filler; call the CLI or dedicated tool directly)"
 	}
 
+	if shellCommandMayWriteWorkspaceLongTermMemory(cmd, cwd, t.workingDir) {
+		return longTermMemoryGuardMessage
+	}
+
 	if t.restrictToWorkspace {
 		pathGuardInput := stripHeredocSegments(cmd)
 
@@ -734,6 +738,51 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 	}
 
 	return ""
+}
+
+func shellCommandMayWriteWorkspaceLongTermMemory(command, cwd, workspace string) bool {
+	if strings.TrimSpace(workspace) == "" || !looksMutatingCommand(command) {
+		return false
+	}
+
+	absCWD := cwd
+	if strings.TrimSpace(absCWD) == "" {
+		absCWD = workspace
+	}
+	if resolved, err := filepath.Abs(absCWD); err == nil {
+		absCWD = resolved
+	}
+
+	for _, token := range shellCommandPathTokens(stripHeredocSegments(command)) {
+		candidate := token
+		if !filepath.IsAbs(candidate) {
+			candidate = filepath.Join(absCWD, candidate)
+		}
+		if isWorkspaceLongTermMemoryPath(candidate, workspace) {
+			return true
+		}
+	}
+	return false
+}
+
+func shellCommandPathTokens(command string) []string {
+	fields := strings.Fields(command)
+	tokens := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.Trim(field, " \t\r\n\"'`;|&(){}[]<>")
+		field = strings.TrimPrefix(field, "1>")
+		field = strings.TrimPrefix(field, "2>")
+		field = strings.TrimPrefix(field, ">")
+		field = strings.TrimPrefix(field, ">>")
+		field = strings.TrimSuffix(field, ";")
+		if field == "" || strings.HasPrefix(field, "-") {
+			continue
+		}
+		if strings.Contains(field, "/") || strings.EqualFold(field, "MEMORY.md") {
+			tokens = append(tokens, field)
+		}
+	}
+	return tokens
 }
 
 func looksMutatingCommand(command string) bool {

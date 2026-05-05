@@ -78,6 +78,9 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return UserErrorResult(err.Error())
 	}
+	if isWorkspaceLongTermMemoryPath(resolvedPath, t.allowedDir) {
+		return UserErrorResult(longTermMemoryGuardMessage)
+	}
 
 	if _, err := os.Stat(resolvedPath); os.IsNotExist(err) {
 		return ErrorResult(fmt.Sprintf("file not found: %s", path))
@@ -163,6 +166,9 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 	resolvedPath, err := validatePathWithPolicy(path, t.workspace, t.restrict, AccessWrite, t.sharedWorkspace, t.sharedWorkspaceReadOnly)
 	if err != nil {
 		return UserErrorResult(err.Error())
+	}
+	if isWorkspaceLongTermMemoryPath(resolvedPath, t.workspace) {
+		return UserErrorResult(longTermMemoryGuardMessage)
 	}
 
 	f, err := os.OpenFile(resolvedPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

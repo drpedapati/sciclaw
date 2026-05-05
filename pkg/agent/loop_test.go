@@ -115,6 +115,7 @@ func TestNewAgentLoopWithSideLaneProfileRestrictsTools(t *testing.T) {
 		"write_file",
 		"edit_file",
 		"append_file",
+		"remember",
 		"pubmed_export_ris",
 		"pdf_form_fill",
 		"spawn",
