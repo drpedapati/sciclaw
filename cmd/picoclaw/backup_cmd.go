@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/paths"
 )
 
 type backupOptions struct {
@@ -170,7 +171,7 @@ func parseBackupOptions(args []string) (backupOptions, bool, error) {
 
 func defaultBackupPath(homeDir string) string {
 	timestamp := time.Now().UTC().Format("20060102-150405")
-	return filepath.Join(homeDir, ".picoclaw", "backups", fmt.Sprintf("sciclaw-backup-%s.tar.gz", timestamp))
+	return filepath.Join(paths.BackupsDir(), fmt.Sprintf("sciclaw-backup-%s.tar.gz", timestamp))
 }
 
 func expandHomePath(path string, homeDir string) string {
@@ -184,7 +185,7 @@ func expandHomePath(path string, homeDir string) string {
 }
 
 func collectBackupEntries(cfg *config.Config, homeDir string, withSessions bool) []backupEntry {
-	baseDir := filepath.Join(homeDir, ".picoclaw")
+	baseDir := paths.AppHome()
 	workspace := cfg.WorkspacePath()
 
 	candidates := []backupEntry{

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	"github.com/sipeed/picoclaw/pkg/paths"
 )
 
 const defaultGHCRImage = "ghcr.io/drpedapati/sciclaw"
@@ -92,7 +93,7 @@ func dockerCmd() {
 		}
 		home, _ := os.UserHomeDir()
 		workspace := filepath.Join(home, "sciclaw")
-		configHome := filepath.Join(home, ".picoclaw")
+		configHome := paths.AppHome()
 		_ = os.MkdirAll(workspace, 0755)
 		_ = os.MkdirAll(configHome, 0755)
 
