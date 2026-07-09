@@ -250,17 +250,39 @@
           <div class="track">
             <strong>Stable channel</strong>
             <code>brew install sciclaw</code>
-            <div class="meta">Production track. Current public stable: <strong>v0.3.4</strong>.</div>
+            <div class="meta">Production track. Current public stable: <strong>v0.3.5</strong>.</div>
           </div>
           <div class="track">
             <strong>Dev channel</strong>
             <code>brew install sciclaw-dev</code>
-            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.3.2-dev.1</strong>.</div>
+            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.3.5-dev.1</strong>.</div>
           </div>
         </div>
       </section>
 
       <section class="timeline">
+
+        <!-- v0.3.5 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.3.5</span>
+            </div>
+            <span class="date">July 8, 2026</span>
+          </div>
+          <ul>
+            <li><strong>Chat image generation.</strong> On the OpenAI Codex/OAuth Responses path, sciClaw exposes the hosted <code>image_generation</code> tool. Ask in Discord or Telegram to generate an illustration and get a PNG attachment back.</li>
+            <li><strong>Workspace artifacts.</strong> Generated images are saved under <code>workspace/artifacts/generated/</code> and delivered through the existing outbound attachment path.</li>
+            <li><strong>Prompt catalog awareness.</strong> When Codex is the active provider, the system prompt lists the provider-hosted image tool so the model knows it is available alongside local tools and skills.</li>
+            <li><strong>Cron startup hardening.</strong> An empty <code>cron/jobs.json</code> is treated as an empty store instead of failing cron startup with <code>unexpected end of JSON input</code>.</li>
+            <li><strong>Toolchain.</strong> Pinned <code>docx-review</code> 1.5.1 and updated CI actions for Node 24.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.5" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.4...v0.3.5" target="_blank" rel="noopener noreferrer">Compare</a>
+          </div>
+        </article>
 
         <!-- v0.3.4 -->
         <article class="item">

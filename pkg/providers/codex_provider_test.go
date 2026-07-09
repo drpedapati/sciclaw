@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -113,14 +114,84 @@ func TestBuildCodexParams_WithTools(t *testing.T) {
 		},
 	}
 	params := buildCodexParams([]Message{{Role: "user", Content: "Hi"}}, tools, "gpt-4o", map[string]interface{}{})
-	if len(params.Tools) != 1 {
-		t.Fatalf("len(Tools) = %d, want 1", len(params.Tools))
+	if len(params.Tools) != 2 {
+		t.Fatalf("len(Tools) = %d, want 2 (function + image_generation)", len(params.Tools))
 	}
 	if params.Tools[0].OfFunction == nil {
-		t.Fatal("Tool should be a function tool")
+		t.Fatal("first tool should be a function tool")
 	}
 	if params.Tools[0].OfFunction.Name != "get_weather" {
 		t.Errorf("Tool name = %q, want %q", params.Tools[0].OfFunction.Name, "get_weather")
+	}
+	if params.Tools[1].OfImageGeneration == nil {
+		t.Fatal("second tool should be image_generation")
+	}
+}
+
+func TestParseCodexResponse_ImageGenerationCall(t *testing.T) {
+	// 1x1 PNG
+	png := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+		0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x05, 0xfe,
+		0xd4, 0xef, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+		0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+	}
+	b64 := base64.StdEncoding.EncodeToString(png)
+	respJSON := fmt.Sprintf(`{
+		"id": "resp_test",
+		"object": "response",
+		"status": "completed",
+		"output": [
+			{
+				"id": "ig_1",
+				"type": "image_generation_call",
+				"status": "completed",
+				"result": %q
+			},
+			{
+				"id": "msg_1",
+				"type": "message",
+				"role": "assistant",
+				"status": "completed",
+				"content": [
+					{"type": "output_text", "text": "Here is your image."}
+				]
+			}
+		],
+		"usage": {
+			"input_tokens": 10,
+			"output_tokens": 5,
+			"total_tokens": 15,
+			"input_tokens_details": {"cached_tokens": 0},
+			"output_tokens_details": {"reasoning_tokens": 0}
+		}
+	}`, b64)
+
+	var resp responses.Response
+	if err := json.Unmarshal([]byte(respJSON), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	result := parseCodexResponse(&resp)
+	if result.Content != "Here is your image." {
+		t.Errorf("Content = %q, want %q", result.Content, "Here is your image.")
+	}
+	if len(result.Media) != 1 {
+		t.Fatalf("len(Media) = %d, want 1", len(result.Media))
+	}
+	if result.Media[0].MIME != "image/png" {
+		t.Errorf("MIME = %q, want image/png", result.Media[0].MIME)
+	}
+	if len(result.Media[0].Data) != len(png) {
+		t.Fatalf("media bytes = %d, want %d", len(result.Media[0].Data), len(png))
+	}
+	if result.FinishReason != "stop" {
+		t.Errorf("FinishReason = %q, want stop", result.FinishReason)
 	}
 }
 

@@ -1,12 +1,62 @@
 package agent
 
 import (
+	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/session"
 )
+
+func (al *AgentLoop) persistProviderMedia(media []providers.MediaAttachment) []bus.OutboundAttachment {
+	if len(media) == 0 {
+		return nil
+	}
+	outDir := filepath.Join(al.workspace, "artifacts", "generated")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		logger.WarnCF("agent", "Failed to create generated media directory", map[string]interface{}{
+			"dir":   outDir,
+			"error": err.Error(),
+		})
+		return nil
+	}
+
+	attachments := make([]bus.OutboundAttachment, 0, len(media))
+	for i, item := range media {
+		path := strings.TrimSpace(item.Path)
+		filename := strings.TrimSpace(item.Filename)
+		if filename == "" {
+			filename = fmt.Sprintf("generated-%s-%d.png", time.Now().UTC().Format("20060102-150405"), i+1)
+		}
+		filename = filepath.Base(filename)
+
+		if path == "" {
+			if len(item.Data) == 0 {
+				continue
+			}
+			path = filepath.Join(outDir, filename)
+			if err := os.WriteFile(path, item.Data, 0o644); err != nil {
+				logger.WarnCF("agent", "Failed to persist generated media", map[string]interface{}{
+					"path":  path,
+					"error": err.Error(),
+				})
+				continue
+			}
+		}
+
+		attachments = append(attachments, bus.OutboundAttachment{
+			Path:     path,
+			Filename: filename,
+		})
+	}
+	return attachments
+}
 
 func (al *AgentLoop) registerInboundArtifacts(sessionKey string, media []string) {
 	if strings.TrimSpace(sessionKey) == "" || len(media) == 0 {

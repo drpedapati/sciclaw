@@ -2,9 +2,11 @@ package providers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -231,7 +233,7 @@ func resolveToolCallArguments(tc ToolCall) string {
 }
 
 func translateToolsForCodex(tools []ToolDefinition) []responses.ToolUnionParam {
-	result := make([]responses.ToolUnionParam, 0, len(tools))
+	result := make([]responses.ToolUnionParam, 0, len(tools)+1)
 	for _, t := range tools {
 		ft := responses.FunctionToolParam{
 			Name:       t.Function.Name,
@@ -243,12 +245,21 @@ func translateToolsForCodex(tools []ToolDefinition) []responses.ToolUnionParam {
 		}
 		result = append(result, responses.ToolUnionParam{OfFunction: &ft})
 	}
+	// Hosted Responses image tool. Microtested against chatgpt.com Codex backend
+	// with gpt-5.5 OAuth: the model emits image_generation_call items when asked
+	// to generate an image. Keep this ahead of function tools so the model can
+	// choose it without a local generate_image function.
+	result = append(result, responses.ToolUnionParam{
+		OfImageGeneration: &responses.ToolImageGenerationParam{},
+	})
 	return result
 }
 
 func parseCodexResponse(resp *responses.Response) *LLMResponse {
 	var content strings.Builder
 	var toolCalls []ToolCall
+	var media []MediaAttachment
+	imageIndex := 0
 
 	for _, item := range resp.Output {
 		switch item.Type {
@@ -268,6 +279,11 @@ func parseCodexResponse(resp *responses.Response) *LLMResponse {
 				Name:      item.Name,
 				Arguments: args,
 			})
+		case "image_generation_call":
+			if att, ok := mediaFromCodexImageCall(item.Result, imageIndex); ok {
+				media = append(media, att)
+				imageIndex++
+			}
 		}
 	}
 
@@ -291,9 +307,33 @@ func parseCodexResponse(resp *responses.Response) *LLMResponse {
 	return &LLMResponse{
 		Content:      content.String(),
 		ToolCalls:    toolCalls,
+		Media:        media,
 		FinishReason: finishReason,
 		Usage:        usage,
 	}
+}
+
+func mediaFromCodexImageCall(result string, index int) (MediaAttachment, bool) {
+	raw := strings.TrimSpace(result)
+	if raw == "" {
+		return MediaAttachment{}, false
+	}
+	if comma := strings.Index(raw, ","); strings.HasPrefix(raw, "data:") && comma > 0 {
+		raw = raw[comma+1:]
+	}
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		data, err = base64.RawStdEncoding.DecodeString(raw)
+	}
+	if err != nil || len(data) == 0 {
+		return MediaAttachment{}, false
+	}
+	filename := fmt.Sprintf("generated-%s-%d.png", time.Now().UTC().Format("20060102-150405"), index+1)
+	return MediaAttachment{
+		Filename: filename,
+		MIME:     "image/png",
+		Data:     data,
+	}, true
 }
 
 func createCodexTokenSource() func() (string, string, error) {

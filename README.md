@@ -37,6 +37,9 @@ The most natural way to use sciClaw is through **Telegram** or **Discord**. You 
 You:      "Find recent papers on TDP-43 proteinopathy in ALS"
 sciClaw:  [searches PubMed, returns 47 papers with citations, saves to workspace]
 
+You:      "Image, generate a schematic of TDP-43 condensate formation under stress"
+sciClaw:  [generates a figure via OpenAI image gen, saves it, attaches the PNG in chat]
+
 You:      "Draft a methods section using the attached protocol"
 sciClaw:  [produces a Word doc with tracked changes you review in Microsoft Word]
 ```
@@ -198,6 +201,7 @@ Bundled skills include:
 ### Authoring & Visualization
 - **quarto-authoring** — Loop-driven `.qmd` authoring and rendering
 - **pandoc-docx** — Clean `.docx` manuscript generation from Markdown with NIH template auto-apply
+- **Chat image generation** — On OpenAI Codex/OAuth + GPT-5.x, ask “Image, generate …” to create figures via the Responses `image_generation` tool; PNGs are saved under `artifacts/generated/` and attached in Discord/Telegram
 - **imagemagick** — Reproducible image preprocessing (resize, crop, convert, DPI normalization) via `magick`
 - **beautiful-mermaid** — Publication-grade Mermaid diagrams
 - **explainer-site** — Technical, single-page "How X Works" explainer site generation
