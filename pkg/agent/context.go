@@ -22,6 +22,10 @@ type ContextBuilder struct {
 	memory                     *MemoryStore
 	tools                      *tools.ToolRegistry // Direct reference to tool registry
 	includePromptToolSummaries bool
+	// hostedToolNotes are provider-hosted capabilities that are not local Go
+	// tools (for example Codex Responses image_generation). They still need to
+	// appear in the system prompt so the model knows they exist.
+	hostedToolNotes []string
 
 	// Per-turn sender context (set before each BuildMessages call)
 	senderID    string
@@ -138,6 +142,19 @@ func (cb *ContextBuilder) SetToolsRegistry(registry *tools.ToolRegistry) {
 	cb.tools = registry
 }
 
+// SetHostedToolNotes records provider-hosted tools that are not in the local
+// ToolRegistry but are available on the current provider path.
+func (cb *ContextBuilder) SetHostedToolNotes(notes ...string) {
+	cb.hostedToolNotes = nil
+	for _, note := range notes {
+		note = strings.TrimSpace(note)
+		if note == "" {
+			continue
+		}
+		cb.hostedToolNotes = append(cb.hostedToolNotes, note)
+	}
+}
+
 // SetIncludePromptToolSummaries controls whether human-readable tool summaries
 // are embedded into the system prompt. When the provider already receives native
 // tool schemas, duplicating the tool list in prose wastes prompt tokens.
@@ -197,25 +214,34 @@ Your workspace is at: %s
 }
 
 func (cb *ContextBuilder) buildToolsSection() string {
-	if !cb.includePromptToolSummaries {
-		return ""
+	localSummaries := []string(nil)
+	if cb.includePromptToolSummaries && cb.tools != nil {
+		localSummaries = cb.tools.GetSummaries()
 	}
-	if cb.tools == nil {
-		return ""
-	}
-
-	summaries := cb.tools.GetSummaries()
-	if len(summaries) == 0 {
+	if len(localSummaries) == 0 && len(cb.hostedToolNotes) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
 	sb.WriteString("## Available Tools\n\n")
 	sb.WriteString("**CRITICAL**: You MUST use tools to perform actions. Do NOT pretend to execute commands or schedule tasks.\n\n")
-	sb.WriteString("You have access to the following tools:\n\n")
-	for _, s := range summaries {
-		sb.WriteString(s)
-		sb.WriteString("\n")
+	if len(localSummaries) > 0 {
+		sb.WriteString("You have access to the following tools:\n\n")
+		for _, s := range localSummaries {
+			sb.WriteString(s)
+			sb.WriteString("\n")
+		}
+	}
+	if len(cb.hostedToolNotes) > 0 {
+		if len(localSummaries) > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString("### Provider-hosted tools\n\n")
+		for _, note := range cb.hostedToolNotes {
+			sb.WriteString("- ")
+			sb.WriteString(note)
+			sb.WriteString("\n")
+		}
 	}
 
 	return sb.String()

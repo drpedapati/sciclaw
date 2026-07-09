@@ -9,6 +9,24 @@ import (
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
+func TestBuildSystemPromptIncludesHostedToolNotes(t *testing.T) {
+	workspace := t.TempDir()
+	cb := NewContextBuilder(workspace)
+	cb.SetIncludePromptToolSummaries(false)
+	cb.SetHostedToolNotes("`image_generation` (OpenAI Responses) — generate images in chat")
+
+	prompt := cb.BuildSystemPrompt()
+	if !strings.Contains(prompt, "## Available Tools") {
+		t.Fatalf("expected Available Tools section for hosted notes")
+	}
+	if !strings.Contains(prompt, "### Provider-hosted tools") {
+		t.Fatalf("expected Provider-hosted tools subsection")
+	}
+	if !strings.Contains(prompt, "`image_generation` (OpenAI Responses)") {
+		t.Fatalf("expected image_generation hosted note in prompt")
+	}
+}
+
 func TestBuildSystemPromptUsesSciClawIdentity(t *testing.T) {
 	workspace := t.TempDir()
 	cb := NewContextBuilder(workspace)

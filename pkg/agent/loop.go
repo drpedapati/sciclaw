@@ -365,6 +365,13 @@ func NewAgentLoopWithOptions(cfg *config.Config, msgBus *bus.MessageBus, provide
 	contextBuilder := NewContextBuilder(workspace, cfg.SharedWorkspacePath())
 	contextBuilder.SetToolsRegistry(toolsRegistry)
 	contextBuilder.SetIncludePromptToolSummaries(false)
+	// Hosted Responses tools are appended by CodexProvider, not the local
+	// ToolRegistry. Surface them in the prompt catalog so the model knows.
+	if _, ok := provider.(*providers.CodexProvider); ok {
+		contextBuilder.SetHostedToolNotes(
+			"`image_generation` (OpenAI Responses) — when the user asks to generate or illustrate an image, use this hosted tool. Prefer `beautiful-mermaid` for diagrams and ImageMagick for editing existing files. Do not present generated images as real experimental data.",
+		)
+	}
 	contextBuilder.SetVersion(Version)
 
 	var hookDispatcher *hooks.Dispatcher
