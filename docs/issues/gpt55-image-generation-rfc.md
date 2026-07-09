@@ -2,7 +2,17 @@
 
 ## Status
 
-Research / planning. No runtime implementation in this PR.
+Implemented MVP on this branch (Codex/Responses hosted `image_generation` tool).
+
+What shipped:
+- Codex tool translation appends `{type: "image_generation"}` whenever function tools are present
+- `parseCodexResponse` decodes `image_generation_call` base64 into `LLMResponse.Media`
+- Agent persists PNGs under `workspace/artifacts/generated/` and attaches them on outbound chat messages
+
+Remaining gaps:
+- API-key Chat Completions path still has no image generation
+- Multi-turn image edit / inbound photo edit not wired
+- Enable/disable config flag and cost controls still open
 
 ## Goal
 

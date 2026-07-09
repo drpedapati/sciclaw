@@ -147,6 +147,7 @@ func (e *incompleteTurnError) UserMessage() string {
 
 type llmIterationResult struct {
 	FinalContent string
+	Media        []bus.OutboundAttachment
 	Iterations   int
 	Usage        turnUsage
 	TurnErr      error
@@ -524,7 +525,7 @@ func (al *AgentLoop) Stop() {
 // HandleInbound processes one inbound message and publishes any response.
 // It is used both by the default bus consumer loop and routed dispatchers.
 func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) {
-	response, err := al.processMessage(ctx, msg)
+	response, media, err := al.processMessageWithMedia(ctx, msg, nil)
 	if err != nil && strings.TrimSpace(response) == "" {
 		if uerr, ok := err.(userVisibleError); ok && strings.TrimSpace(uerr.UserMessage()) != "" {
 			response = uerr.UserMessage()
@@ -543,11 +544,11 @@ func (al *AgentLoop) HandleInbound(ctx context.Context, msg bus.InboundMessage) 
 			})
 	}
 
-	al.publishFinalResponse(ctx, msg, response)
+	al.publishFinalResponseWithMedia(ctx, msg, response, media)
 }
 
 func (al *AgentLoop) RunJob(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, error) {
-	response, err := al.processMessageWithProgress(ctx, msg, onProgress)
+	response, media, err := al.processMessageWithMedia(ctx, msg, onProgress)
 	if err != nil && strings.TrimSpace(response) == "" {
 		if uerr, ok := err.(userVisibleError); ok && strings.TrimSpace(uerr.UserMessage()) != "" {
 			response = uerr.UserMessage()
@@ -555,12 +556,16 @@ func (al *AgentLoop) RunJob(ctx context.Context, msg bus.InboundMessage, onProgr
 			response = fmt.Sprintf("Error processing message: %v", err)
 		}
 	}
-	al.publishFinalResponse(ctx, msg, response)
+	al.publishFinalResponseWithMedia(ctx, msg, response, media)
 	return response, err
 }
 
 func (al *AgentLoop) publishFinalResponse(ctx context.Context, msg bus.InboundMessage, response string) {
-	if response == "" {
+	al.publishFinalResponseWithMedia(ctx, msg, response, nil)
+}
+
+func (al *AgentLoop) publishFinalResponseWithMedia(ctx context.Context, msg bus.InboundMessage, response string, media []bus.OutboundAttachment) {
+	if response == "" && len(media) == 0 {
 		if msg.Channel != "system" {
 			logger.InfoCF("agent", "No outbound response generated",
 				map[string]interface{}{
@@ -583,10 +588,15 @@ func (al *AgentLoop) publishFinalResponse(ctx context.Context, msg bus.InboundMe
 	}
 
 	if !alreadySent {
+		content := response
+		if strings.TrimSpace(content) == "" && len(media) > 0 {
+			content = "Generated image."
+		}
 		al.bus.PublishOutbound(ctx, bus.OutboundMessage{
-			Channel: msg.Channel,
-			ChatID:  msg.ChatID,
-			Content: response,
+			Channel:     msg.Channel,
+			ChatID:      msg.ChatID,
+			Content:     content,
+			Attachments: media,
 		})
 	} else {
 		logger.InfoCF("agent", "Suppressing outbound response because message tool already sent content",
@@ -596,6 +606,7 @@ func (al *AgentLoop) publishFinalResponse(ctx context.Context, msg bus.InboundMe
 				"sender_id":        msg.SenderID,
 				"session_key":      msg.SessionKey,
 				"response_preview": utils.Truncate(response, 120),
+				"media_count":      len(media),
 			})
 	}
 }
@@ -658,10 +669,16 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 }
 
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
-	return al.processMessageWithProgress(ctx, msg, nil)
+	response, _, err := al.processMessageWithMedia(ctx, msg, nil)
+	return response, err
 }
 
 func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, error) {
+	response, _, err := al.processMessageWithMedia(ctx, msg, onProgress)
+	return response, err
+}
+
+func (al *AgentLoop) processMessageWithMedia(ctx context.Context, msg bus.InboundMessage, onProgress func(phase, detail string)) (string, []bus.OutboundAttachment, error) {
 	// Add message preview to log (show full content for error messages)
 	var logContent string
 	if strings.Contains(msg.Content, "Error:") || strings.Contains(msg.Content, "error") {
@@ -679,7 +696,8 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 
 	// Route system messages to processSystemMessage
 	if msg.Channel == "system" {
-		return al.processSystemMessage(ctx, msg)
+		response, err := al.processSystemMessage(ctx, msg)
+		return response, nil, err
 	}
 
 	if !al.toolProfile.isSideLane() && strings.TrimSpace(msg.SessionKey) != "" && len(msg.Media) > 0 {
@@ -700,7 +718,7 @@ func (al *AgentLoop) processMessageWithProgress(ctx context.Context, msg bus.Inb
 		SenderID:        msg.Channel + ":" + msg.SenderID,
 		SenderName:      msg.Metadata["username"],
 	})
-	return result.FinalContent, err
+	return result.FinalContent, result.Media, err
 }
 
 func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
@@ -970,6 +988,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 	finalContent := iterResult.FinalContent
 	iteration := iterResult.Iterations
 	usage := iterResult.Usage
+	media := iterResult.Media
 	messageToolSent := al.messageToolSentInRound()
 
 	// If last tool had ForUser content and we already sent it, we might not need to send final response
@@ -988,7 +1007,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 					"session_key": opts.SessionKey,
 					"iterations":  iteration,
 				})
-		} else {
+		} else if len(media) == 0 {
 			finalContent = opts.DefaultResponse
 		}
 	}
@@ -1004,6 +1023,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 				"session_key":       opts.SessionKey,
 				"iterations":        iteration,
 				"message_tool_sent": messageToolSent,
+				"media_count":       len(media),
 			})
 	}
 	sessionSaveStartedAt := time.Now()
@@ -1026,13 +1046,18 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 	}
 
 	// 8. Optional: send response via bus
-	if opts.SendResponse && strings.TrimSpace(finalContent) != "" {
+	if opts.SendResponse && (strings.TrimSpace(finalContent) != "" || len(media) > 0) {
 		outboundStartedAt := time.Now()
 		emitProgress(opts.OnProgress, "replying", "Replying")
+		content := finalContent
+		if strings.TrimSpace(content) == "" && len(media) > 0 {
+			content = "Generated image."
+		}
 		al.bus.PublishOutbound(ctx, bus.OutboundMessage{
-			Channel: opts.Channel,
-			ChatID:  opts.ChatID,
-			Content: finalContent,
+			Channel:     opts.Channel,
+			ChatID:      opts.ChatID,
+			Content:     content,
+			Attachments: media,
 		})
 		if localDiag != nil {
 			localDiag.OutboundMS = time.Since(outboundStartedAt).Milliseconds()
@@ -1100,6 +1125,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 
 	return llmIterationResult{
 		FinalContent: finalContent,
+		Media:        media,
 		Iterations:   iteration,
 		Usage:        usage,
 		TurnErr:      iterResult.TurnErr,
@@ -1282,6 +1308,7 @@ func addUsageFields(m map[string]interface{}, u *providers.UsageInfo) {
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, localDiag *localTurnDiagnostics) (llmIterationResult, error) {
 	iteration := 0
 	var finalContent string
+	var collectedMedia []bus.OutboundAttachment
 	var lastMessageToolContent string
 	var usage turnUsage
 	asyncToolUsed := false
@@ -1302,7 +1329,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			if finalContent == "" {
 				if lastMessageToolContent != "" {
 					finalContent = lastMessageToolContent
-				} else {
+				} else if len(collectedMedia) == 0 {
 					finalContent = fmt.Sprintf("Iteration limit reached (%d) before task completion. Increase `agents.defaults.max_tool_iterations` or set it to 0 for no hard cap.", al.maxIterations)
 				}
 			}
@@ -1404,6 +1431,12 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			localDiag.recordLLMResponse(time.Since(llmCallStartedAt), response)
 		}
 		usage.add(response.Usage)
+		if len(response.Media) > 0 {
+			saved := al.persistProviderMedia(response.Media)
+			if len(saved) > 0 {
+				collectedMedia = append(collectedMedia, saved...)
+			}
+		}
 		llmCompleteFields := map[string]interface{}{
 			"turn_id":          opts.TurnID,
 			"iteration":        iteration,
@@ -1411,6 +1444,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"duration_ms":      time.Since(llmCallStartedAt).Milliseconds(),
 			"response_chars":   len(response.Content),
 			"tool_calls_count": len(response.ToolCalls),
+			"media_count":      len(response.Media),
 		}
 		if response.Diagnostics != nil {
 			if source := strings.TrimSpace(response.Diagnostics.ContentSource); source != "" {
@@ -1716,6 +1750,7 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 
 	return llmIterationResult{
 		FinalContent: finalContent,
+		Media:        collectedMedia,
 		Iterations:   iteration,
 		Usage:        usage,
 		TurnErr:      turnErr,

@@ -15,9 +15,21 @@ type FunctionCall struct {
 	Arguments string `json:"arguments"`
 }
 
+// MediaAttachment is binary media produced by a provider turn (for example
+// OpenAI Responses image_generation_call output). Prefer Path when the bytes
+// are already on disk; otherwise Data holds decoded image bytes for the agent
+// to persist under the workspace.
+type MediaAttachment struct {
+	Filename string `json:"filename,omitempty"`
+	MIME     string `json:"mime,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Data     []byte `json:"-"`
+}
+
 type LLMResponse struct {
 	Content      string               `json:"content"`
 	ToolCalls    []ToolCall           `json:"tool_calls,omitempty"`
+	Media        []MediaAttachment    `json:"media,omitempty"`
 	FinishReason string               `json:"finish_reason"`
 	Usage        *UsageInfo           `json:"usage,omitempty"`
 	Diagnostics  *ResponseDiagnostics `json:"diagnostics,omitempty"`
