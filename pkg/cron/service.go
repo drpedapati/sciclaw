@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -324,6 +325,12 @@ func (cs *CronService) loadStore() error {
 			return nil
 		}
 		return err
+	}
+
+	// Treat empty/whitespace files as an empty store. An empty jobs.json is a
+	// common leftover from interrupted writes and should not block gateway start.
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
 	}
 
 	return json.Unmarshal(data, cs.store)
