@@ -60,8 +60,14 @@ magick input.png -crop 1200x900+100+80 +repage output-crop.png
 
 ### 6) Build contact sheet for fast visual QA
 
+Always quote paths with spaces. Prefer an explicit font (or omit `-label` if fonts fail). Do not use `../` — set working directory to the image folder and write the sheet in-place. Prefer `python-pptx` / the `pptx` skill for slide decks; montage is for QA contact sheets only.
+
 ```bash
-magick montage figure-*.png -tile 4x -geometry 600x600+8+8 contact-sheet.png
+magick montage figure-*.png -font DejaVu-Sans -label '%f' -tile 4x -geometry 600x600+8+8 contact-sheet.png
+# Fallback font path on data3/Ubuntu if the name does not resolve:
+# magick montage ... -font /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf ...
+# No-label fallback:
+# magick montage figure-*.png -tile 4x -geometry 600x600+8+8 contact-sheet.png
 ```
 
 ### 7) First page of PDF to PNG for preview/review

@@ -262,6 +262,26 @@
 
       <section class="timeline">
 
+        <!-- Workspace ImageMagick guidance -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">workspace</span>
+            </div>
+            <span class="date">July 11, 2026</span>
+          </div>
+          <ul>
+            <li><strong>ImageMagick / contact-sheet guidance.</strong> Default <code>AGENTS.md</code> now tells agents to quote paths with spaces, never use <code>../</code> in exec (set <code>working_dir</code> and write in-place), prefer a real DejaVu font path or omit labels, and build decks with <code>python-pptx</code> / the <code>pptx</code> skill instead of <code>magick montage</code>.</li>
+            <li><strong>Missing pptx skill.</strong> Template notes that agents must not read a nonexistent <code>skills/pptx/SKILL.md</code> or escape the workspace with path traversal.</li>
+            <li><strong>imagemagick skill.</strong> Contact-sheet recipe updated with explicit font / no-label fallbacks.</li>
+            <li><strong>Public explanation.</strong> <a href="blog.html#entry-2026-07-11-imagemagick">Less Discord thrash on slides and contact sheets</a>.</li>
+          </ul>
+          <div class="links">
+            <a href="blog.html#entry-2026-07-11-imagemagick">Blog</a>
+          </div>
+        </article>
+
         <!-- v0.3.5 -->
         <article class="item">
           <div class="item-head">
@@ -277,10 +297,12 @@
             <li><strong>Prompt catalog awareness.</strong> When Codex is the active provider, the system prompt lists the provider-hosted image tool so the model knows it is available alongside local tools and skills.</li>
             <li><strong>Cron startup hardening.</strong> An empty <code>cron/jobs.json</code> is treated as an empty store instead of failing cron startup with <code>unexpected end of JSON input</code>.</li>
             <li><strong>Toolchain.</strong> Pinned <code>docx-review</code> 1.5.1 and updated CI actions for Node 24.</li>
+            <li><strong>Public explanation.</strong> <a href="blog.html#entry-2026-07-08-image-gen">Chat image generation in Discord and Telegram</a>.</li>
           </ul>
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.5" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.4...v0.3.5" target="_blank" rel="noopener noreferrer">Compare</a>
+            <a href="blog.html#entry-2026-07-08-image-gen">Blog</a>
           </div>
         </article>
 
@@ -676,7 +698,7 @@
       </section>
 
       <p class="foot">
-        Last updated: May 5, 2026. Highlights are curated for user impact from release notes and compare ranges.
+        Last updated: July 11, 2026. Highlights are curated for user impact from release notes and compare ranges.
       </p>
     </div>
   </body>

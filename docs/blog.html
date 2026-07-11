@@ -197,6 +197,63 @@
 <main>
 
 <!-- ============================================================ -->
+<!-- JUL 11: IMAGEMAGICK / EXEC THRASH                            -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-07-11-imagemagick">
+  <div class="entry-header">
+    <span class="entry-date">2026-07-11</span>
+    <span class="entry-title">Less Discord Thrash on Slides and Contact Sheets</span>
+  </div>
+
+  <div class="section">
+    <h3>What we saw</h3>
+    <p>On a busy Discord workspace, most gateway ERRORs were not model failures. They were tool and exec failures while agents built contact sheets and poked at slide folders: path-traversal blocks on <code>../</code>, ImageMagick montage font errors, and unquoted paths with spaces. Retries pushed turns to 15–20 iterations and hundreds of thousands of tokens without fixing the underlying command shape.</p>
+  </div>
+
+  <div class="section">
+    <h3>What we changed</h3>
+    <p>We did not loosen workspace path restrictions. The default <code>AGENTS.md</code> template and the <code>imagemagick</code> skill now spell out the cheap rules that stop the loop: quote paths with spaces, set <code>working_dir</code> and write in-place instead of using <code>../</code>, pass a font that exists (or drop labels), and prefer <code>python-pptx</code> / the <code>pptx</code> skill for decks. If <code>skills/pptx</code> is missing in a workspace, agents are told not to invent or traverse to a nonexistent <code>SKILL.md</code>.</p>
+    <p>On hosts where brew ImageMagick’s named-font map is wrong, the durable fix is a correct DejaVu type map or an absolute <code>.ttf</code> path — still without weakening the safety guard.</p>
+  </div>
+
+  <div class="callout">
+    <strong>For operators:</strong> pull the updated workspace template into existing rooms (or paste the ImageMagick section into local <code>AGENTS.md</code>). New workspaces get the guidance from the template automatically. No gateway restart is required for docs-only changes.
+  </div>
+</article>
+
+<!-- ============================================================ -->
+<!-- JUL 8: CHAT IMAGE GENERATION                                 -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-07-08-image-gen">
+  <div class="entry-header">
+    <span class="entry-date">2026-07-08</span>
+    <span class="entry-title">Chat Image Generation in Discord and Telegram</span>
+  </div>
+
+  <div class="section">
+    <h3>What shipped</h3>
+    <p>sciClaw <code>v0.3.5</code> exposes OpenAI’s hosted <code>image_generation</code> tool on the Codex/OAuth Responses path. Ask for an illustration in Discord or Telegram and get a PNG attachment back. Files land under <code>workspace/artifacts/generated/</code> and reuse the existing outbound media path.</p>
+    <p>The prompt catalog lists the provider-hosted tool when Codex is active, so the model can choose it alongside local skills such as ImageMagick preprocessing and Mermaid diagrams. Empty <code>cron/jobs.json</code> no longer blocks gateway startup.</p>
+  </div>
+
+  <div class="callout">
+    <strong>Upgrade:</strong> <code>brew update && brew upgrade sciclaw</code>, then <code>sciclaw service refresh</code>. Release notes: <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.5">v0.3.5</a>.
+  </div>
+
+  <div class="section">
+    <h3>Commits</h3>
+    <div class="commits">
+      <span class="sha">68960509</span> <span class="msg">feat: enable Codex Responses image_generation in chat</span><br>
+      <span class="sha">f78cce7d</span> <span class="msg">feat: surface Codex image_generation in prompt tool catalog</span><br>
+      <span class="sha">0c5fa191</span> <span class="msg">fix: treat empty cron jobs.json as empty store</span><br>
+      <span class="sha">2d62e34b</span> <span class="msg">docs: announce v0.3.5 chat image generation</span>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================ -->
 <!-- MAY 5: MEMORY BLOAT FIX                                      -->
 <!-- ============================================================ -->
 

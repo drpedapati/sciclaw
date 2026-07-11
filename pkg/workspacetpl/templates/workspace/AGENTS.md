@@ -58,6 +58,19 @@ Treat them as a starting pack, not a fixed identity. Keep, remove, or extend as 
 - `acroform-fill`: inspect/schema/fill workflow for true fillable AcroForm PDFs
 - `xlsx`: spreadsheet creation/editing workflows (Anthropic official office skill)
 
+## ImageMagick / contact sheets on data3
+
+When using `exec` + `magick` (montage, annotate, contact sheets):
+
+1. **Always quote paths with spaces** (e.g. `"FXS Conference 2026/slide.png"`). Unquoted spaces break commands and inflate retries.
+2. **Never use `../` in exec paths.** Path traversal trips the workspace safety guard. Set `working_dir` to the target folder and write outputs in-place under that folder.
+3. **Fonts:** Prefer `-font DejaVu-Sans` or an absolute path that exists (`-font /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf`). If labels fail, omit `-label` / annotate rather than retrying broken font names.
+4. **Decks:** Prefer `python-pptx` / the `pptx` skill over `magick montage` when building slide decks. Montage is for contact-sheet QA of existing images, not deck construction.
+
+### pptx skill
+
+If `skills/pptx/SKILL.md` is missing in this workspace, do **not** read a nonexistent path and do **not** use `../` to reach another workspace. Use `python-pptx` directly, or install/copy the pptx skill into this workspace's `skills/` first.
+
 ## Memory Policy
 
 Use the `remember` tool for curated long-term memory. Do not edit `memory/MEMORY.md` with generic file tools.
