@@ -69,7 +69,7 @@ func TestResolveSmokeTestModelPrefersAnthropicForGptModel(t *testing.T) {
 	exec.setConfigMap(map[string]interface{}{
 		"agents": map[string]interface{}{
 			"defaults": map[string]interface{}{
-				"model": "gpt-5.2",
+				"model": "gpt-5.6-sol",
 			},
 		},
 		"providers": map[string]interface{}{
@@ -95,7 +95,7 @@ func TestResolveSmokeTestModelKeepsOpenAIForOpenAIModel(t *testing.T) {
 	exec.setConfigMap(map[string]interface{}{
 		"agents": map[string]interface{}{
 			"defaults": map[string]interface{}{
-				"model": "gpt-5.2",
+				"model": "gpt-5.6-sol",
 			},
 		},
 		"providers": map[string]interface{}{
@@ -119,7 +119,7 @@ func TestSaveAnthropicKeySetsDefaultModel(t *testing.T) {
 	exec.setConfigMap(map[string]interface{}{
 		"agents": map[string]interface{}{
 			"defaults": map[string]interface{}{
-				"model": "gpt-5.2",
+				"model": "gpt-5.6-sol",
 			},
 		},
 		"providers": map[string]interface{}{},

@@ -11,7 +11,7 @@ import (
 
 func TestSetModelSyncsProvider(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Agents.Defaults.Model = "gpt-5.2"
+	cfg.Agents.Defaults.Model = "gpt-5.6-sol"
 	cfg.Agents.Defaults.Provider = "openai"
 
 	configPath := filepath.Join(t.TempDir(), "config.json")
@@ -94,7 +94,7 @@ func TestDiscoverIncludesSecondaryConfiguredProviders(t *testing.T) {
 		if m == "claude-sonnet-4-6" {
 			hasClaude = true
 		}
-		if m == "gpt-5.4" {
+		if m == "gpt-5.6-sol" {
 			hasGPT = true
 		}
 	}

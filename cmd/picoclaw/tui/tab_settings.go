@@ -553,8 +553,9 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 			cfg = map[string]interface{}{
 				"agents": map[string]interface{}{
 					"defaults": map[string]interface{}{
-						"model":     "gpt-5.2",
-						"workspace": "~/.picoclaw/workspace",
+						"model":            "gpt-5.6-sol",
+						"reasoning_effort": "low",
+						"workspace":        "~/.picoclaw/workspace",
 					},
 				},
 				"channels": map[string]interface{}{

@@ -402,7 +402,7 @@ github.com/open-dingtalk/dingtalk-stream-sdk-go/logger
 github.com/open-dingtalk/dingtalk-stream-sdk-go/payload
 github.com/open-dingtalk/dingtalk-stream-sdk-go/plugin
 github.com/open-dingtalk/dingtalk-stream-sdk-go/utils
-# github.com/openai/openai-go/v3 v3.21.0
+# github.com/openai/openai-go/v3 v3.22.0
 ## explicit; go 1.22
 github.com/openai/openai-go/v3
 github.com/openai/openai-go/v3/conversations
