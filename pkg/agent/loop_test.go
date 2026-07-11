@@ -499,6 +499,15 @@ func TestRunLLMIteration_RejectsNarrativeCompletionForExplicitOutputTask(t *test
 	if !strings.Contains(got, "mock_custom") {
 		t.Fatalf("expected completed tool list in fallback, got %q", got)
 	}
+	if incomplete.Error() != incomplete.reason && !strings.Contains(incomplete.Error(), "saved output files") {
+		t.Fatalf("Error() should expose missing-labels reason, got %q", incomplete.Error())
+	}
+	if incomplete.Error() == incomplete.UserMessage() {
+		t.Fatalf("Error() must not equal the full userMessage reply")
+	}
+	if !IsIncompleteTurn(err) {
+		t.Fatal("IsIncompleteTurn should be true")
+	}
 }
 
 func TestLocalTurnDiagnostics_RecordToolExecutionTracksErrors(t *testing.T) {

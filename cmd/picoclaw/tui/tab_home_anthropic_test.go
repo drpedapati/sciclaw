@@ -163,3 +163,25 @@ func TestSaveAnthropicKeyTreatsGpt54AsStockOpenAIDefault(t *testing.T) {
 		t.Fatalf("defaults.model=%q, want %q", got, anthropicDefaultModel)
 	}
 }
+
+func TestSaveAnthropicKeyTreatsGpt55AsStockOpenAIDefault(t *testing.T) {
+	exec := &testExecForConfig{mode: ModeLocal}
+	exec.setConfigMap(map[string]interface{}{
+		"agents": map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"model": "gpt-5.5",
+			},
+		},
+		"providers": map[string]interface{}{},
+	})
+
+	if err := saveAPIKey(exec, "anthropic", "ops-token"); err != nil {
+		t.Fatalf("saveAPIKey error: %v", err)
+	}
+
+	cfg := exec.readConfigMapForTest(t)
+	defaults := mapValue(mapValue(cfg, "agents"), "defaults")
+	if got := asString(defaults["model"]); got != anthropicDefaultModel {
+		t.Fatalf("defaults.model=%q, want %q", got, anthropicDefaultModel)
+	}
+}

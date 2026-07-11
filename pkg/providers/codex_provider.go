@@ -48,7 +48,10 @@ func NewCodexProviderWithTokenSource(token, accountID string, tokenSource func()
 
 func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
 	accountID := p.accountID
-	resolvedModel, fallbackReason := resolveCodexModel(model)
+	resolvedModel, fallbackReason, err := resolveCodexModel(model)
+	if err != nil {
+		return nil, err
+	}
 	if fallbackReason != "" {
 		logger.WarnCF("provider.codex", "Requested model is not compatible with Codex backend, using fallback", map[string]interface{}{
 			"requested_model": model,
@@ -131,25 +134,34 @@ func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []To
 	}
 
 	parsed := parseCodexResponse(finalResp)
-	if parsed.Content == "" && streamedText.Len() > 0 {
+	if parsed.Content == "" && streamedText.Len() > 0 && finalResp.Status != "incomplete" {
 		parsed.Content = streamedText.String()
+	}
+	if finalResp.Status == "incomplete" {
+		partialChars := len(parsed.Content)
+		if partialChars == 0 {
+			partialChars = streamedText.Len()
+		}
+		return parsed, fmt.Errorf("codex response incomplete (truncated; %d partial chars)", partialChars)
 	}
 	return parsed, nil
 }
 
 // resolveCodexModel maps a requested model onto one the Codex backend accepts.
-// Empty / non-GPT families fall back to GetDefaultModel with a reason for logging.
-func resolveCodexModel(model string) (string, string) {
+// Empty models and known Codex-incompatible GPT ids fall back to GetDefaultModel
+// with a reason for logging. Wrong-family / unrecognized ids return an error
+// instead of silently answering as Sol.
+func resolveCodexModel(model string) (string, string, error) {
 	fallback := (&CodexProvider{}).GetDefaultModel()
 	m := strings.ToLower(strings.TrimSpace(model))
 	if m == "" {
-		return fallback, "empty model"
+		return fallback, "empty model", nil
 	}
 
 	if after, ok := strings.CutPrefix(m, "openai/"); ok {
 		m = after
 	} else if strings.Contains(m, "/") {
-		return fallback, "non-openai model namespace"
+		return "", "", fmt.Errorf("codex backend cannot use non-openai model %q", model)
 	}
 
 	unsupportedPrefixes := []string{
@@ -158,15 +170,30 @@ func resolveCodexModel(model string) (string, string) {
 	}
 	for _, prefix := range unsupportedPrefixes {
 		if strings.HasPrefix(m, prefix) {
-			return fallback, "unsupported model prefix"
+			return "", "", fmt.Errorf("codex backend cannot use model %q", model)
 		}
 	}
 
-	if strings.HasPrefix(m, "gpt-") || strings.HasPrefix(m, "o3") || strings.HasPrefix(m, "o4") {
-		return m, ""
+	// Plain gpt-5.2 (non-codex) 400s on Codex + ChatGPT account; remap to Sol.
+	if isCodexIncompatibleGPT(m) {
+		return fallback, "codex-incompatible model", nil
 	}
 
-	return fallback, "unsupported model family"
+	// Align with models.ResolveProvider OpenAI family: gpt / o1 / o3 / o4 / codex.
+	if strings.HasPrefix(m, "gpt-") || strings.HasPrefix(m, "o1") || strings.HasPrefix(m, "o3") || strings.HasPrefix(m, "o4") || strings.HasPrefix(m, "codex") {
+		return m, "", nil
+	}
+
+	return "", "", fmt.Errorf("codex backend cannot use unrecognized model %q", model)
+}
+
+func isCodexIncompatibleGPT(m string) bool {
+	switch m {
+	case "gpt-5.2", "gpt-5.2-2025-12-11", "gpt-5.2-chat-latest", "gpt-5.2-pro", "gpt-5.2-pro-2025-12-11":
+		return true
+	default:
+		return false
+	}
 }
 
 // codexAPIErrorFields builds structured log fields for stream errors without

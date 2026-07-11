@@ -1303,14 +1303,10 @@ func agentCmd() {
 	if message != "" {
 		ctx := context.Background()
 		response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
-		if strings.TrimSpace(response) != "" {
-			fmt.Printf("\n%s %s\n", logo, response)
+		printAgentDirectResult(logo, response, err)
+		if err != nil {
+			os.Exit(agentDirectExitCode(err))
 		}
-		if err != nil && strings.TrimSpace(response) == "" {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-		// Soft incomplete turns already returned a human reply above — don't scare with Error:
 		return
 	} else {
 		fmt.Printf("%s Interactive mode (Ctrl+C to exit)\n\n", logo)
@@ -1407,15 +1403,27 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 }
 
 // printAgentDirectResult shows the agent reply when present. Soft incomplete
-// turns return a human message plus an error — prefer the message over "Error:".
+// turns already carry a human status in response — print that and skip a scary
+// "Error:" line. Hard failures still print Error: (even alongside partial text).
+// Callers must still non-zero-exit on err for one-shot agent -m.
 func printAgentDirectResult(logo, response string, err error) {
 	if strings.TrimSpace(response) != "" {
 		fmt.Printf("\n%s %s\n\n", logo, response)
+	}
+	if err == nil {
 		return
 	}
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+	if agent.IsIncompleteTurn(err) && strings.TrimSpace(response) != "" {
+		return
 	}
+	fmt.Printf("Error: %v\n", err)
+}
+
+func agentDirectExitCode(err error) int {
+	if err != nil {
+		return 1
+	}
+	return 0
 }
 
 func gatewayCmd() {

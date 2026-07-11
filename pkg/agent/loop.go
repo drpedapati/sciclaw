@@ -135,17 +135,27 @@ type incompleteTurnError struct {
 }
 
 func (e *incompleteTurnError) Error() string {
-	if msg := strings.TrimSpace(e.userMessage); msg != "" {
-		return msg
-	}
 	if strings.TrimSpace(e.reason) != "" {
 		return e.reason
 	}
-	return "I could not finish every requested step yet"
+	return "task ended without verified completion"
 }
 
 func (e *incompleteTurnError) UserMessage() string {
 	return strings.TrimSpace(e.userMessage)
+}
+
+// IsIncompleteTurn reports whether err is a soft incomplete-turn failure that
+// may still carry a user-facing status message via UserMessage().
+func IsIncompleteTurn(err error) bool {
+	var incomplete *incompleteTurnError
+	return errors.As(err, &incomplete)
+}
+
+// NewIncompleteTurnError builds a soft incomplete-turn error for callers/tests
+// that need the UserMessage vs Error split without constructing the private type.
+func NewIncompleteTurnError(userMessage, reason string) error {
+	return &incompleteTurnError{userMessage: userMessage, reason: reason}
 }
 
 type llmIterationResult struct {
@@ -481,7 +491,7 @@ func resolveModel(configured string, provider providers.LLMProvider) string {
 	// If provider default is a Claude model but configured model is GPT (or vice versa),
 	// use the provider default.
 	isClaudeProvider := strings.Contains(provDefault, "claude")
-	isGPTModel := strings.HasPrefix(lower, "gpt") || strings.HasPrefix(lower, "o1") || strings.HasPrefix(lower, "o3") || strings.HasPrefix(lower, "o4")
+	isGPTModel := openAIFamilyModel(configured)
 	isClaudeModel := strings.Contains(lower, "claude")
 
 	if isClaudeProvider && isGPTModel {
@@ -500,6 +510,21 @@ func resolveModel(configured string, provider providers.LLMProvider) string {
 	}
 
 	return configured
+}
+
+// openAIFamilyModel mirrors models.ResolveProvider's OpenAI routing heuristic so
+// reasoning_effort is only attached for GPT/o-series/Codex models.
+func openAIFamilyModel(model string) bool {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "gpt") ||
+		strings.Contains(lower, "o1") ||
+		strings.Contains(lower, "o3") ||
+		strings.Contains(lower, "o4") ||
+		strings.Contains(lower, "codex") ||
+		strings.HasPrefix(lower, "openai/")
 }
 
 func (al *AgentLoop) Run(ctx context.Context) error {
@@ -1404,7 +1429,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"max_tokens":  maxTokens,
 			"temperature": 0.7,
 		}
-		if al.reasoningEffort != "" {
+		if al.reasoningEffort != "" && openAIFamilyModel(al.model) {
 			llmOpts["reasoning_effort"] = al.reasoningEffort
 		}
 		llmCallStartedAt := time.Now()
@@ -2402,7 +2427,7 @@ func (r completionRequirement) MissingLabels(e *completionEffects) []string {
 		missing = append(missing, "repository changes")
 	}
 	if r.Delivery && !e.HasDelivery() {
-		missing = append(missing, "sharing the result with you")
+		missing = append(missing, "user-visible delivery")
 	}
 	return missing
 }
