@@ -197,6 +197,27 @@
 <main>
 
 <!-- ============================================================ -->
+<!-- JUL 11: GPT-5.6 LUNA ON CODEX OAUTH                          -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-07-11-luna">
+  <div class="entry-header">
+    <span class="entry-date">2026-07-11</span>
+    <span class="entry-title">gpt-5.6-luna Works on Codex OAuth</span>
+  </div>
+
+  <div class="section">
+    <h3>What shipped</h3>
+    <p>sciClaw <code>v0.3.8</code> sends Codex CLI identity headers on ChatGPT OAuth Responses calls. Without <code>originator</code> + a new-enough <code>version</code>, the Codex backend advertised Luna in the model catalog but returned <code>404 Model not found</code> on stream. Sol and Terra already worked; Luna now resolves the same way.</p>
+    <p><code>gpt-5.6-luna</code> is in the OpenAI catalog for <code>sciclaw models set</code> / <code>--model</code>. The product default stays <code>gpt-5.6-sol</code> at <code>reasoning_effort: low</code>.</p>
+  </div>
+
+  <div class="callout">
+    <strong>Upgrade:</strong> <code>brew update && brew upgrade sciclaw</code>, then <code>sciclaw service refresh</code>. Optional: <code>sciclaw models set gpt-5.6-luna</code>. Release: <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.8">v0.3.8</a>.
+  </div>
+</article>
+
+<!-- ============================================================ -->
 <!-- JUL 11: GPT-5.6 SOL @ LOW                                    -->
 <!-- ============================================================ -->
 
