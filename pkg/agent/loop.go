@@ -114,6 +114,8 @@ type processOptions struct {
 	ChatID          string // Target chat ID for tool execution
 	TurnID          string // Deterministic turn identifier for audit and hooks
 	UserMessage     string // User message content (may include prefix)
+	Model           string // Optional per-turn model override (same provider family)
+	ReasoningEffort string // Optional per-turn reasoning effort override
 	DefaultResponse string // Response when LLM returns empty
 	EnableSummary   bool   // Whether to trigger summarization
 	SendResponse    bool   // Whether to send response via bus
@@ -739,12 +741,19 @@ func (al *AgentLoop) processMessageWithMedia(ctx context.Context, msg bus.Inboun
 		al.registerInboundArtifacts(msg.SessionKey, msg.Media)
 	}
 
+	userMessage, turnModel, turnEffort, dirErr := al.applyInboundTurnDirectives(msg)
+	if dirErr != nil {
+		return dirErr.Error(), nil, nil
+	}
+
 	// Process as user message
 	result, err := al.runAgentLoop(ctx, processOptions{
 		SessionKey:      msg.SessionKey,
 		Channel:         msg.Channel,
 		ChatID:          msg.ChatID,
-		UserMessage:     msg.Content,
+		UserMessage:     userMessage,
+		Model:           turnModel,
+		ReasoningEffort: turnEffort,
 		DefaultResponse: defaultEmptyAssistantResponse,
 		EnableSummary:   !al.toolProfile.isSideLane(),
 		SendResponse:    false,
@@ -754,6 +763,46 @@ func (al *AgentLoop) processMessageWithMedia(ctx context.Context, msg bus.Inboun
 		SenderName:      msg.Metadata["username"],
 	})
 	return result.FinalContent, result.Media, err
+}
+
+// applyInboundTurnDirectives parses leading model:/effort: lines (and optional
+// metadata) into a same-provider per-turn override. On cross-provider or bad
+// effort, returns a user-visible error and no LLM call.
+func (al *AgentLoop) applyInboundTurnDirectives(msg bus.InboundMessage) (body, model, effort string, err error) {
+	parsed := ParseTurnDirectives(msg.Content)
+	body = parsed.Body
+	if !parsed.HadDirectives {
+		body = msg.Content
+	}
+
+	reqModel := parsed.Model
+	reqEffort := parsed.Effort
+	if reqModel == "" && msg.Metadata != nil {
+		reqModel = strings.TrimSpace(msg.Metadata["model"])
+	}
+	if reqEffort == "" && msg.Metadata != nil {
+		reqEffort = strings.TrimSpace(msg.Metadata["effort"])
+	}
+	if reqModel == "" && reqEffort == "" {
+		return body, "", "", nil
+	}
+
+	model, effort, resolveErr := ResolveTurnOverrides(al.model, reqModel, reqEffort)
+	if resolveErr != nil {
+		return "", "", "", resolveErr
+	}
+	if model == al.model {
+		model = "" // keep unset so runAgentLoop uses workspace default
+	}
+	logger.InfoCF("agent", "Applied per-turn model/effort override", map[string]interface{}{
+		"channel":          msg.Channel,
+		"requested_model":  reqModel,
+		"requested_effort": reqEffort,
+		"turn_model":       model,
+		"turn_effort":      effort,
+		"workspace_model":  al.model,
+	})
+	return body, model, effort, nil
 }
 
 func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
@@ -821,6 +870,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 		localDiag = newLocalTurnDiagnostics()
 	}
 
+	turnModel := al.model
+	if opts.Model != "" {
+		turnModel = opts.Model
+	}
+
 	// 0. Record last channel for heartbeat notifications (skip internal channels)
 	if !opts.Ephemeral && opts.Channel != "" && opts.ChatID != "" {
 		// Don't record internal channels (cli, system, subagent)
@@ -840,7 +894,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 		SessionKey:  opts.SessionKey,
 		Channel:     opts.Channel,
 		ChatID:      opts.ChatID,
-		Model:       al.model,
+		Model:       turnModel,
 		UserMessage: sanitizeHookText(opts.UserMessage),
 	})
 
@@ -998,7 +1052,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 			logFields["session_key"] = opts.SessionKey
 			logFields["channel"] = opts.Channel
 			logFields["chat_id"] = opts.ChatID
-			logFields["model"] = al.model
+			logFields["model"] = turnModel
 			logFields["local_backend"] = al.localBackend
 			logFields["iterations"] = iterResult.Iterations
 			logFields["message_tool_sent"] = messageToolSent
@@ -1011,7 +1065,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 			SessionKey:   opts.SessionKey,
 			Channel:      opts.Channel,
 			ChatID:       opts.ChatID,
-			Model:        al.model,
+			Model:        turnModel,
 			UserMessage:  sanitizeHookText(opts.UserMessage),
 			ErrorMessage: sanitizeHookText(err.Error()),
 			Metadata: map[string]any{
@@ -1139,7 +1193,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 		logFields["session_key"] = opts.SessionKey
 		logFields["channel"] = opts.Channel
 		logFields["chat_id"] = opts.ChatID
-		logFields["model"] = al.model
+		logFields["model"] = turnModel
 		logFields["local_backend"] = al.localBackend
 		logFields["iterations"] = iteration
 		logFields["message_tool_sent"] = messageToolSent
@@ -1152,7 +1206,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (llm
 		SessionKey:         opts.SessionKey,
 		Channel:            opts.Channel,
 		ChatID:             opts.ChatID,
-		Model:              al.model,
+		Model:              turnModel,
 		UserMessage:        sanitizeHookText(opts.UserMessage),
 		LLMResponseSummary: sanitizeHookText(finalContent),
 		Metadata:           turnMeta,
@@ -1341,6 +1395,15 @@ func addUsageFields(m map[string]interface{}, u *providers.UsageInfo) {
 // runLLMIteration executes the LLM call loop with tool handling.
 // Returns the final content, iteration count, accumulated token usage, and any error.
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, localDiag *localTurnDiagnostics) (llmIterationResult, error) {
+	turnModel := al.model
+	if opts.Model != "" {
+		turnModel = opts.Model
+	}
+	turnEffort := al.reasoningEffort
+	if opts.ReasoningEffort != "" {
+		turnEffort = opts.ReasoningEffort
+	}
+
 	iteration := 0
 	var finalContent string
 	var collectedMedia []bus.OutboundAttachment
@@ -1394,7 +1457,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		logger.DebugCF("agent", "LLM request",
 			map[string]interface{}{
 				"iteration":         iteration,
-				"model":             al.model,
+				"model":             turnModel,
 				"messages_count":    len(messages),
 				"tools_count":       len(providerToolDefs),
 				"max_tokens":        maxTokens,
@@ -1415,7 +1478,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			SessionKey:  opts.SessionKey,
 			Channel:     opts.Channel,
 			ChatID:      opts.ChatID,
-			Model:       al.model,
+			Model:       turnModel,
 			UserMessage: sanitizeHookText(opts.UserMessage),
 			Metadata: map[string]any{
 				"iteration":      iteration,
@@ -1429,22 +1492,22 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"max_tokens":  maxTokens,
 			"temperature": 0.7,
 		}
-		if al.reasoningEffort != "" && openAIFamilyModel(al.model) {
-			llmOpts["reasoning_effort"] = al.reasoningEffort
+		if turnEffort != "" && openAIFamilyModel(turnModel) {
+			llmOpts["reasoning_effort"] = turnEffort
 		}
 		llmCallStartedAt := time.Now()
 		logger.InfoCF("agent", "LLM call start",
 			map[string]interface{}{
 				"turn_id":        opts.TurnID,
 				"iteration":      iteration,
-				"model":          al.model,
+				"model":          turnModel,
 				"channel":        opts.Channel,
 				"chat_id":        opts.ChatID,
 				"session_key":    opts.SessionKey,
 				"messages_count": len(messages),
 				"tools_count":    len(providerToolDefs),
 			})
-		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, llmOpts)
+		response, err := al.provider.Chat(ctx, messages, providerToolDefs, turnModel, llmOpts)
 
 		if err != nil {
 			if localDiag != nil {
@@ -1497,7 +1560,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			SessionKey:         opts.SessionKey,
 			Channel:            opts.Channel,
 			ChatID:             opts.ChatID,
-			Model:              al.model,
+			Model:              turnModel,
 			UserMessage:        sanitizeHookText(opts.UserMessage),
 			LLMResponseSummary: sanitizeHookText(response.Content),
 			Metadata: map[string]any{
@@ -1620,7 +1683,7 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 				SessionKey: opts.SessionKey,
 				Channel:    opts.Channel,
 				ChatID:     opts.ChatID,
-				Model:      al.model,
+				Model:      turnModel,
 				ToolName:   tc.Name,
 				ToolArgs:   sanitizeHookArgs(tc.Arguments),
 				Metadata: map[string]any{
@@ -1745,7 +1808,7 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 				SessionKey: opts.SessionKey,
 				Channel:    opts.Channel,
 				ChatID:     opts.ChatID,
-				Model:      al.model,
+				Model:      turnModel,
 				ToolName:   tc.Name,
 				ToolArgs:   sanitizeHookArgs(tc.Arguments),
 				ToolResult: sanitizeHookText(contentForLLM),
@@ -1766,7 +1829,7 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 					SessionKey:   opts.SessionKey,
 					Channel:      opts.Channel,
 					ChatID:       opts.ChatID,
-					Model:        al.model,
+					Model:        turnModel,
 					ToolName:     tc.Name,
 					ToolArgs:     sanitizeHookArgs(tc.Arguments),
 					ErrorMessage: sanitizeHookText(errMsg),

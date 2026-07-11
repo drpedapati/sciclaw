@@ -21,6 +21,87 @@ import (
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
+func TestProcessDirect_TurnDirectivesOverrideModelAndEffort(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				Model:             "gpt-5.6-sol",
+				ReasoningEffort:   "low",
+				MaxTokens:         4096,
+				MaxToolIterations: 5,
+			},
+		},
+	}
+	provider := &recordingProvider{}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	defer al.Stop()
+
+	got, err := al.ProcessDirect(context.Background(), "model: luna\neffort: high\nSay only: ping", "turn-directives")
+	if len(provider.models) == 0 {
+		t.Fatalf("expected provider Chat call (err=%v got=%q)", err, got)
+	}
+	if provider.models[0] != "gpt-5.6-luna" {
+		t.Fatalf("model=%q want gpt-5.6-luna", provider.models[0])
+	}
+	if provider.efforts[0] != "high" {
+		t.Fatalf("effort=%q want high", provider.efforts[0])
+	}
+	// Directive lines must not reach the LLM user message.
+	for _, msg := range provider.lastMessages {
+		if msg.Role == "user" && strings.Contains(msg.Content, "model: luna") {
+			t.Fatalf("directive leaked into user message: %q", msg.Content)
+		}
+	}
+}
+
+func TestProcessDirect_TurnDirectivesRejectCrossProvider(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				Model:             "gpt-5.6-sol",
+				MaxTokens:         4096,
+				MaxToolIterations: 5,
+			},
+		},
+	}
+	provider := &recordingProvider{}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	defer al.Stop()
+
+	got, err := al.ProcessDirect(context.Background(), "model: sonnet\nhello", "turn-directives-xprov")
+	if err != nil {
+		t.Fatalf("ProcessDirect: %v", err)
+	}
+	if !strings.Contains(got, "anthropic") && !strings.Contains(strings.ToLower(got), "same-provider") {
+		t.Fatalf("expected cross-provider rejection message, got %q", got)
+	}
+	if len(provider.models) != 0 {
+		t.Fatalf("expected no LLM call, got models=%v", provider.models)
+	}
+}
+
+type recordingProvider struct {
+	models       []string
+	efforts      []string
+	lastMessages []providers.Message
+}
+
+func (m *recordingProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
+	m.models = append(m.models, model)
+	effort, _ := opts["reasoning_effort"].(string)
+	m.efforts = append(m.efforts, effort)
+	m.lastMessages = messages
+	return &providers.LLMResponse{Content: "ok"}, nil
+}
+
+func (m *recordingProvider) GetDefaultModel() string {
+	return "gpt-5.6-sol"
+}
+
 // mockProvider is a simple mock LLM provider for testing
 type mockProvider struct{}
 
