@@ -1303,11 +1303,15 @@ func agentCmd() {
 	if message != "" {
 		ctx := context.Background()
 		response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
-		if err != nil {
+		if strings.TrimSpace(response) != "" {
+			fmt.Printf("\n%s %s\n", logo, response)
+		}
+		if err != nil && strings.TrimSpace(response) == "" {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("\n%s %s\n", logo, response)
+		// Soft incomplete turns already returned a human reply above — don't scare with Error:
+		return
 	} else {
 		fmt.Printf("%s Interactive mode (Ctrl+C to exit)\n\n", logo)
 		interactiveMode(agentLoop, sessionKey)
@@ -1368,12 +1372,7 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 
 		ctx := context.Background()
 		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-
-		fmt.Printf("\n%s %s\n\n", logo, response)
+		printAgentDirectResult(logo, response, err)
 	}
 }
 
@@ -1403,12 +1402,19 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 
 		ctx := context.Background()
 		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
+		printAgentDirectResult(logo, response, err)
+	}
+}
 
+// printAgentDirectResult shows the agent reply when present. Soft incomplete
+// turns return a human message plus an error — prefer the message over "Error:".
+func printAgentDirectResult(logo, response string, err error) {
+	if strings.TrimSpace(response) != "" {
 		fmt.Printf("\n%s %s\n\n", logo, response)
+		return
+	}
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
 	}
 }
 

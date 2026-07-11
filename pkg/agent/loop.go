@@ -135,10 +135,13 @@ type incompleteTurnError struct {
 }
 
 func (e *incompleteTurnError) Error() string {
+	if msg := strings.TrimSpace(e.userMessage); msg != "" {
+		return msg
+	}
 	if strings.TrimSpace(e.reason) != "" {
 		return e.reason
 	}
-	return "task ended without verified completion"
+	return "I could not finish every requested step yet"
 }
 
 func (e *incompleteTurnError) UserMessage() string {
@@ -1525,7 +1528,7 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 				}
 				turnErr = &incompleteTurnError{
 					userMessage: finalContent,
-					reason:      fmt.Sprintf("task ended without verified completion (%s)", strings.Join(requirement.MissingLabels(effects), ", ")),
+					reason:      fmt.Sprintf("some requested steps were not finished yet (%s)", strings.Join(requirement.MissingLabels(effects), ", ")),
 				}
 			}
 			trimmedFinal := strings.TrimSpace(finalContent)
@@ -2399,7 +2402,7 @@ func (r completionRequirement) MissingLabels(e *completionEffects) []string {
 		missing = append(missing, "repository changes")
 	}
 	if r.Delivery && !e.HasDelivery() {
-		missing = append(missing, "user-visible delivery")
+		missing = append(missing, "sharing the result with you")
 	}
 	return missing
 }
@@ -2570,7 +2573,7 @@ func buildCompletionGuardPrompt(requirement completionRequirement, effects *comp
 		missing = []string{"the requested side effects"}
 	}
 	return fmt.Sprintf(`Your last reply stopped the turn, but the requested work is not yet verified as complete.
-Missing verified outcomes: %s.
+Still needed: %s.
 Do not describe planned work as completed.
 Either use tools now to finish the missing work, or reply honestly that the task is still incomplete and state exactly what is still missing.`, strings.Join(missing, ", "))
 }
@@ -2593,7 +2596,7 @@ func buildIncompleteWorkFallback(requirement completionRequirement, effects *com
 		}
 		completed = strings.Join(ordered, ", ")
 	}
-	return fmt.Sprintf("I have not completed the requested work yet. Missing verified outcomes: %s. So far I only completed these tool steps: %s.", strings.Join(missing, ", "), completed)
+	return fmt.Sprintf("I have not finished everything yet. Still needed: %s. So far I only completed these tool steps: %s.", strings.Join(missing, ", "), completed)
 }
 
 func detectExecOutputPath(command string) string {

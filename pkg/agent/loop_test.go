@@ -490,7 +490,7 @@ func TestRunLLMIteration_RejectsNarrativeCompletionForExplicitOutputTask(t *test
 	if !errors.As(err, &incomplete) {
 		t.Fatalf("expected incompleteTurnError, got %T", err)
 	}
-	if !strings.Contains(got, "I have not completed the requested work yet") {
+	if !strings.Contains(got, "I have not finished everything yet") {
 		t.Fatalf("expected honest incomplete fallback, got %q", got)
 	}
 	if !strings.Contains(got, "saved output files") {
