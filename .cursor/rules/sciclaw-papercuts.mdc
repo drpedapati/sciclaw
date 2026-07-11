@@ -1,0 +1,38 @@
+---
+description: Papercuts from Sol/ImageMagick/release cycles — release, brew, CI, and workspace hygiene for sciClaw agents
+alwaysApply: true
+---
+
+# sciClaw papercuts (keep these)
+
+## Workspace agent loops
+
+- Safety-guard `../` and missing-skill reads are usually Discord ERRORs, not Codex failures. Fix AGENTS/TOOLS guidance; do not loosen `restrict_to_workspace` without a security review.
+- After one exec failure mode (path spaces, fonts, missing `skills/*/SKILL.md`), change approach once — no 15–20 iteration retries.
+- Routed workspaces (e.g. Dropbox `deb-sciclaw`) may lack `AGENTS.md` / `skills/`. Seed them or document the gap; do not assume `~/sciclaw` skills are reachable.
+
+## Releases
+
+- Tag only from the commit you intend to ship. Softening commits after a canary tag need a **new patch** (v0.3.6 → v0.3.7), not rewriting history.
+- `make release-local` requires a clean tree — commit or remove untracked docs first.
+- Update `docs/changelog.html` + `docs/blog.html` (and sitemap if needed) in the same train as the release announce.
+- Prefer `make release-local RELEASE_TAG=vX.Y.Z` over tagging by hand.
+
+## Brew / data3
+
+- Prefer full Cellar/opt path for gateway bind: `$(brew --prefix sciclaw)/bin/sciclaw` (or `sciclaw-dev`). Bare `sciclaw` on PATH may be an older shadow.
+- New hosts: `brew tap drpedapati/tap` then `brew trust drpedapati/tap` before install/upgrade.
+- After upgrade: `sciclaw service refresh` and verify `sciclaw models status` still matches intent.
+
+## Codex / defaults
+
+- Do not full-merge upstream `pkg/providers/oauth` reorg without a dedicated design — risk of dropping sciClaw `image_generation` / effort wiring.
+- Silent model remaps are a footgun; wrong-family models should error, not quietly answer as Sol.
+- Soft incomplete CLI UX must keep non-zero exit on one-shot `agent -m`; `Error()` stays the short ops reason, not the full reply.
+
+## CI friction seen this cycle
+
+- Identity tests: match stable substrings (`paired-scientist`), not brittle full phrases that drift with copy edits.
+- Anthropic catalog ids may be `claude-sonnet-4.6` or `claude-sonnet-4-6` — accept both in discovery tests.
+- Go `httptest` may return 301 where docs expect 307 for cleaned paths — allow both.
+- Do not `cfgCopy := *cfg` when `Config` embeds `sync.RWMutex`; mutate mode with restore or avoid the copy.

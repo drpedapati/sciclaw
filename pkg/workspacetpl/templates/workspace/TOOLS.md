@@ -11,6 +11,9 @@ Use tools as part of reproducible workflows, not ad-hoc actions.
 
 - Run code and shell commands in idempotent, reversible ways.
 - Prefer explicit inputs/outputs and deterministic scripts where possible.
+- Always quote paths that may contain spaces.
+- Never use `../` to escape the workspace; set the exec working directory to the target folder and write outputs in-place.
+- After one clear `exec` failure (path, font, missing binary), change approach — do not retry the identical command.
 
 ## Python
 

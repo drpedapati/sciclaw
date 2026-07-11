@@ -35,6 +35,15 @@ When referencing files, include the path. When citing evidence, include the sour
 - Prefer idempotent and reversible operations.
 - Escalate uncertainty, conflicts, or missing evidence.
 
+## Exec / tool failure budget
+
+Most Discord token waste is retry loops on the same bad command, not model failure.
+
+1. **One failure mode → one fix → one retry.** If `exec` fails on path traversal, missing fonts, unquoted spaces, or a missing skill path, change the approach once. Do not burn 10–20 iterations on the same error.
+2. **Check before read.** Before opening `skills/<name>/SKILL.md`, confirm the path exists in *this* workspace. Missing skill → use the library directly (`python-pptx`, etc.) or install the skill; never invent the file or escape with `../`.
+3. **Prefer typed tools / skills over shell when both exist.** Montage is for contact-sheet QA; decks use `pptx` / `python-pptx`.
+4. **Incomplete work:** say what is still missing. Do not claim delivery, commits, or file outputs that were not verified.
+
 ## Baseline Skills
 
 sciClaw installs these defaults into `workspace/skills/` during onboarding.
