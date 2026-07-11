@@ -125,10 +125,10 @@ func runPhiEval(cfg *config.Config, timeout time.Duration) ([]phiEvalResult, str
 		return nil, backend, model, preset, fmt.Errorf("local model %q is not ready", model)
 	}
 
-	cfgCopy := *cfg
-	cfgCopy.Agents = cfg.Agents
-	cfgCopy.Agents.Defaults.Mode = config.ModePhi
-	client, err := providers.CreateProvider(&cfgCopy)
+	prevMode := cfg.Agents.Defaults.Mode
+	cfg.Agents.Defaults.Mode = config.ModePhi
+	client, err := providers.CreateProvider(cfg)
+	cfg.Agents.Defaults.Mode = prevMode
 	if err != nil {
 		return nil, backend, model, preset, err
 	}

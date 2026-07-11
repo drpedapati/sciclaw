@@ -231,7 +231,14 @@ func asString(v interface{}) string {
 func isStockOpenAIModel(model string) bool {
 	model = strings.TrimSpace(model)
 	switch strings.ToLower(model) {
-	case "gpt-5.2", "openai/gpt-5.2", "gpt-5.4", "openai/gpt-5.4":
+	case "gpt-5.6-sol", "openai/gpt-5.6-sol",
+		"gpt-5.6-terra", "openai/gpt-5.6-terra",
+		"gpt-5.5", "openai/gpt-5.5",
+		"gpt-5.4", "openai/gpt-5.4",
+		"gpt-5.3-codex", "openai/gpt-5.3-codex",
+		"gpt-5.3-codex-spark", "openai/gpt-5.3-codex-spark",
+		"gpt-5.2-codex", "openai/gpt-5.2-codex",
+		"gpt-5.2", "openai/gpt-5.2":
 		return true
 	default:
 		return false

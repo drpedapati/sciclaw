@@ -145,6 +145,19 @@ func (e *incompleteTurnError) UserMessage() string {
 	return strings.TrimSpace(e.userMessage)
 }
 
+// IsIncompleteTurn reports whether err is a soft incomplete-turn failure that
+// may still carry a user-facing status message via UserMessage().
+func IsIncompleteTurn(err error) bool {
+	var incomplete *incompleteTurnError
+	return errors.As(err, &incomplete)
+}
+
+// NewIncompleteTurnError builds a soft incomplete-turn error for callers/tests
+// that need the UserMessage vs Error split without constructing the private type.
+func NewIncompleteTurnError(userMessage, reason string) error {
+	return &incompleteTurnError{userMessage: userMessage, reason: reason}
+}
+
 type llmIterationResult struct {
 	FinalContent string
 	Media        []bus.OutboundAttachment
@@ -478,7 +491,7 @@ func resolveModel(configured string, provider providers.LLMProvider) string {
 	// If provider default is a Claude model but configured model is GPT (or vice versa),
 	// use the provider default.
 	isClaudeProvider := strings.Contains(provDefault, "claude")
-	isGPTModel := strings.HasPrefix(lower, "gpt") || strings.HasPrefix(lower, "o1") || strings.HasPrefix(lower, "o3") || strings.HasPrefix(lower, "o4")
+	isGPTModel := openAIFamilyModel(configured)
 	isClaudeModel := strings.Contains(lower, "claude")
 
 	if isClaudeProvider && isGPTModel {
@@ -497,6 +510,21 @@ func resolveModel(configured string, provider providers.LLMProvider) string {
 	}
 
 	return configured
+}
+
+// openAIFamilyModel mirrors models.ResolveProvider's OpenAI routing heuristic so
+// reasoning_effort is only attached for GPT/o-series/Codex models.
+func openAIFamilyModel(model string) bool {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "gpt") ||
+		strings.Contains(lower, "o1") ||
+		strings.Contains(lower, "o3") ||
+		strings.Contains(lower, "o4") ||
+		strings.Contains(lower, "codex") ||
+		strings.HasPrefix(lower, "openai/")
 }
 
 func (al *AgentLoop) Run(ctx context.Context) error {
@@ -1401,7 +1429,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"max_tokens":  maxTokens,
 			"temperature": 0.7,
 		}
-		if al.reasoningEffort != "" {
+		if al.reasoningEffort != "" && openAIFamilyModel(al.model) {
 			llmOpts["reasoning_effort"] = al.reasoningEffort
 		}
 		llmCallStartedAt := time.Now()
@@ -1525,7 +1553,7 @@ Either call the appropriate tool now, or give an honest present-tense status of 
 				}
 				turnErr = &incompleteTurnError{
 					userMessage: finalContent,
-					reason:      fmt.Sprintf("task ended without verified completion (%s)", strings.Join(requirement.MissingLabels(effects), ", ")),
+					reason:      fmt.Sprintf("some requested steps were not finished yet (%s)", strings.Join(requirement.MissingLabels(effects), ", ")),
 				}
 			}
 			trimmedFinal := strings.TrimSpace(finalContent)
@@ -2570,7 +2598,7 @@ func buildCompletionGuardPrompt(requirement completionRequirement, effects *comp
 		missing = []string{"the requested side effects"}
 	}
 	return fmt.Sprintf(`Your last reply stopped the turn, but the requested work is not yet verified as complete.
-Missing verified outcomes: %s.
+Still needed: %s.
 Do not describe planned work as completed.
 Either use tools now to finish the missing work, or reply honestly that the task is still incomplete and state exactly what is still missing.`, strings.Join(missing, ", "))
 }
@@ -2593,7 +2621,7 @@ func buildIncompleteWorkFallback(requirement completionRequirement, effects *com
 		}
 		completed = strings.Join(ordered, ", ")
 	}
-	return fmt.Sprintf("I have not completed the requested work yet. Missing verified outcomes: %s. So far I only completed these tool steps: %s.", strings.Join(missing, ", "), completed)
+	return fmt.Sprintf("I have not finished everything yet. Still needed: %s. So far I only completed these tool steps: %s.", strings.Join(missing, ", "), completed)
 }
 
 func detectExecOutputPath(command string) string {

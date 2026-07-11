@@ -490,7 +490,7 @@ func TestRunLLMIteration_RejectsNarrativeCompletionForExplicitOutputTask(t *test
 	if !errors.As(err, &incomplete) {
 		t.Fatalf("expected incompleteTurnError, got %T", err)
 	}
-	if !strings.Contains(got, "I have not completed the requested work yet") {
+	if !strings.Contains(got, "I have not finished everything yet") {
 		t.Fatalf("expected honest incomplete fallback, got %q", got)
 	}
 	if !strings.Contains(got, "saved output files") {
@@ -498,6 +498,15 @@ func TestRunLLMIteration_RejectsNarrativeCompletionForExplicitOutputTask(t *test
 	}
 	if !strings.Contains(got, "mock_custom") {
 		t.Fatalf("expected completed tool list in fallback, got %q", got)
+	}
+	if incomplete.Error() != incomplete.reason && !strings.Contains(incomplete.Error(), "saved output files") {
+		t.Fatalf("Error() should expose missing-labels reason, got %q", incomplete.Error())
+	}
+	if incomplete.Error() == incomplete.UserMessage() {
+		t.Fatalf("Error() must not equal the full userMessage reply")
+	}
+	if !IsIncompleteTurn(err) {
+		t.Fatal("IsIncompleteTurn should be true")
 	}
 }
 

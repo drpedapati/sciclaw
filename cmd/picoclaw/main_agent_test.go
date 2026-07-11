@@ -199,3 +199,40 @@ func TestListDiscordSlashSkills_DeniedSenderGetsNoChoices(t *testing.T) {
 		t.Fatalf("expected no choices for denied sender, got %#v", choices)
 	}
 }
+
+func TestPrintAgentDirectResult_IncompleteSkipsScaryError(t *testing.T) {
+	out := captureStdout(t, func() {
+		printAgentDirectResult(">", "still working on files", agent.NewIncompleteTurnError(
+			"still working on files",
+			"some requested steps were not finished yet (saved output files)",
+		))
+	})
+	if !strings.Contains(out, "still working on files") {
+		t.Fatalf("expected user reply in output, got %q", out)
+	}
+	if strings.Contains(out, "Error:") {
+		t.Fatalf("incomplete turn should not print Error: line, got %q", out)
+	}
+}
+
+func TestPrintAgentDirectResult_HardErrorWithPartialStillPrintsError(t *testing.T) {
+	out := captureStdout(t, func() {
+		printAgentDirectResult(">", "partial text", context.Canceled)
+	})
+	if !strings.Contains(out, "partial text") {
+		t.Fatalf("expected partial reply, got %q", out)
+	}
+	if !strings.Contains(out, "Error:") {
+		t.Fatalf("hard error should still print Error:, got %q", out)
+	}
+}
+
+func TestAgentOneShotExitCode_NonZeroOnIncomplete(t *testing.T) {
+	err := agent.NewIncompleteTurnError("status", "some requested steps were not finished yet (saved output files)")
+	if agentDirectExitCode(err) != 1 {
+		t.Fatalf("incomplete turn must keep non-zero exit")
+	}
+	if agentDirectExitCode(nil) != 0 {
+		t.Fatalf("success must exit 0")
+	}
+}

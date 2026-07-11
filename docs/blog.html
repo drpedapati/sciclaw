@@ -197,6 +197,27 @@
 <main>
 
 <!-- ============================================================ -->
+<!-- JUL 11: GPT-5.6 SOL @ LOW                                    -->
+<!-- ============================================================ -->
+
+<article class="entry" id="entry-2026-07-11-sol">
+  <div class="entry-header">
+    <span class="entry-date">2026-07-11</span>
+    <span class="entry-title">gpt-5.6-sol @ low Is the Default</span>
+  </div>
+
+  <div class="section">
+    <h3>What shipped</h3>
+    <p>sciClaw <code>v0.3.7</code> makes <code>gpt-5.6-sol</code> with <code>reasoning_effort: low</code> the product default across config, catalog, TUI, and docs. Codex streaming got a delta-text fallback for empty completed payloads, clearer API error fields, and stricter model resolution so typos and non-OpenAI families fail loudly instead of silently answering as Sol.</p>
+    <p>Soft incomplete turns still show a human status reply in the CLI, but one-shot <code>sciclaw agent -m</code> keeps a non-zero exit when work is unfinished. Operator <code>Error()</code> strings stay short so Discord job cards and cron results do not balloon with the full assistant reply.</p>
+  </div>
+
+  <div class="callout">
+    <strong>Upgrade:</strong> <code>brew update && brew upgrade sciclaw</code>, then <code>sciclaw service refresh</code>. Existing installs can also run <code>sciclaw models set gpt-5.6-sol</code> and <code>sciclaw models effort low</code>. Release: <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.7">v0.3.7</a>.
+  </div>
+</article>
+
+<!-- ============================================================ -->
 <!-- JUL 11: IMAGEMAGICK / EXEC THRASH                            -->
 <!-- ============================================================ -->
 

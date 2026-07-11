@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>sciClaw correspondence: GPT-5.6 Sol + Codex harness remediation</title>
+  <style>
+
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+  <style type="text/css">:root {
+--bg: #0f1419;
+--panel: #1a2332;
+--ink: #e7ecf3;
+--muted: #9aa8b8;
+--line: #2a3a4d;
+--accent: #3d9cf0;
+--accent-dim: #1e4a7a;
+--ok: #3dd68c;
+--warn: #f5a524;
+--bad: #f31260;
+--p0: #f31260;
+--p1: #f5a524;
+--p2: #f5d742;
+--code-bg: #0b1016;
+--link: #6cb6ff;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+margin: 0;
+font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+background: var(--bg);
+color: var(--ink);
+line-height: 1.55;
+font-size: 15px;
+}
+.wrap {
+max-width: 980px;
+margin: 0 auto;
+padding: 2rem 1.25rem 4rem;
+}
+header.hero {
+border: 1px solid var(--line);
+background: linear-gradient(145deg, #152033 0%, #1a2332 50%, #121a26 100%);
+border-radius: 14px;
+padding: 1.5rem 1.75rem;
+margin-bottom: 1.75rem;
+}
+header.hero h1 {
+margin: 0 0 0.5rem;
+font-size: 1.55rem;
+letter-spacing: -0.02em;
+font-weight: 650;
+}
+header.hero .meta {
+color: var(--muted);
+font-size: 0.9rem;
+display: grid;
+gap: 0.25rem;
+}
+header.hero .badge-row {
+display: flex;
+flex-wrap: wrap;
+gap: 0.4rem;
+margin-top: 0.9rem;
+}
+.badge {
+display: inline-block;
+font-size: 0.72rem;
+font-weight: 600;
+letter-spacing: 0.04em;
+text-transform: uppercase;
+padding: 0.28rem 0.55rem;
+border-radius: 999px;
+border: 1px solid var(--line);
+background: var(--panel);
+color: var(--muted);
+}
+.badge.p0 { color: #ffb4c8; border-color: #7a1f3a; background: #2a1018; }
+.badge.ok { color: #9ef0c5; border-color: #1f6a45; background: #10261b; }
+.badge.accent { color: #b3d9ff; border-color: var(--accent-dim); background: #13253a; }
+nav.toc {
+position: sticky;
+top: 0;
+z-index: 5;
+background: rgba(15,20,25,0.92);
+backdrop-filter: blur(10px);
+border-bottom: 1px solid var(--line);
+margin: 0 -1.25rem 1.5rem;
+padding: 0.65rem 1.25rem;
+display: flex;
+flex-wrap: wrap;
+gap: 0.45rem 0.85rem;
+font-size: 0.8rem;
+}
+nav.toc a { color: var(--muted); text-decoration: none; }
+nav.toc a:hover { color: var(--link); }
+h1, h2, h3, h4 {
+line-height: 1.25;
+letter-spacing: -0.015em;
+font-weight: 650;
+}
+h2 {
+margin-top: 2.2rem;
+padding-top: 0.75rem;
+border-top: 1px solid var(--line);
+font-size: 1.25rem;
+}
+h3 { margin-top: 1.4rem; font-size: 1.05rem; color: #d5e0ec; }
+h4 { margin-top: 1.1rem; font-size: 0.95rem; color: #c5d0dc; }
+p { margin: 0.7rem 0; }
+a { color: var(--link); }
+strong { color: #fff; font-weight: 650; }
+hr { border: none; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+table {
+width: 100%;
+border-collapse: collapse;
+margin: 1rem 0 1.25rem;
+font-size: 0.88rem;
+background: var(--panel);
+border: 1px solid var(--line);
+border-radius: 10px;
+overflow: hidden;
+display: block;
+overflow-x: auto;
+}
+thead { background: #121c2a; }
+th, td {
+text-align: left;
+padding: 0.55rem 0.7rem;
+border-bottom: 1px solid var(--line);
+vertical-align: top;
+}
+th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(61,156,240,0.04); }
+code {
+font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+font-size: 0.86em;
+background: var(--code-bg);
+border: 1px solid var(--line);
+border-radius: 5px;
+padding: 0.1em 0.35em;
+color: #d7e7ff;
+}
+pre {
+background: var(--code-bg);
+border: 1px solid var(--line);
+border-radius: 10px;
+padding: 0.9rem 1rem;
+overflow-x: auto;
+line-height: 1.45;
+margin: 0.85rem 0 1.1rem;
+position: relative;
+}
+pre code {
+border: none;
+background: transparent;
+padding: 0;
+font-size: 0.8rem;
+color: #cfe0f5;
+white-space: pre;
+}
+ul, ol { padding-left: 1.3rem; }
+li { margin: 0.3rem 0; }
+blockquote {
+margin: 1rem 0;
+padding: 0.6rem 1rem;
+border-left: 3px solid var(--accent);
+background: #152033;
+color: var(--muted);
+}
+.prompt-block {
+border: 1px solid var(--accent-dim);
+border-radius: 10px;
+overflow: hidden;
+margin: 0.85rem 0 1.1rem;
+}
+.prompt-block .label {
+font-size: 0.72rem;
+text-transform: uppercase;
+letter-spacing: 0.06em;
+color: var(--muted);
+background: #13253a;
+padding: 0.35rem 0.75rem;
+border-bottom: 1px solid var(--line);
+}
+.prompt-block pre {
+margin: 0;
+border: none;
+border-radius: 0;
+}
+footer {
+margin-top: 3rem;
+padding-top: 1rem;
+border-top: 1px solid var(--line);
+color: var(--muted);
+font-size: 0.85rem;
+}
+del { color: #6b7785; }
+@media (max-width: 640px) {
+body { font-size: 14px; }
+header.hero h1 { font-size: 1.25rem; }
+}
+</style>
+</head>
+<body><div class="wrap">
+<nav class="toc" aria-label="Sections">
+  <a href="#value-order-do-this-sequence">P0–P9 order</a>
+  <a href="#data3-production-status-log-ranking-2026-07-11">data3 logs</a>
+  <a href="#manual-prompts-copy-paste">Manual prompts</a>
+  <a href="#p1-reduce-exec-thrash-workspace-agents-skill-guidance">P1 AGENTS</a>
+  <a href="#p2-data3-imagemagick-fonts-host-ops">P2 fonts</a>
+  <a href="#manual-operator-prompts-human-not-agent">Operator cmds</a>
+  <a href="#acceptance-matrix">Acceptance</a>
+  <a href="#suggested-session-sequence-human-dispatcher-value-order">Dispatcher</a>
+</nav>
+
+<header id="title-block-header">
+<h1 class="title">sciClaw correspondence: GPT-5.6 Sol + Codex harness
+remediation</h1>
+</header>
+<h1 id="correspondence-gpt-56-sol--codex-harness-remediation">Correspondence:
+GPT-5.6 Sol + Codex harness remediation</h1>
+<p><strong>ID:</strong> sciclaw-corr-gpt56-sol-harness-2026-07-11<br />
+<strong>Date:</strong> 2026-07-11<br />
+<strong>Repo:</strong> <code>drpedapati/sciclaw</code> (fork of
+<code>sipeed/picoclaw</code>; go module still
+<code>github.com/sipeed/picoclaw</code>)<br />
+<strong>Worktree / branch:</strong>
+<code>.worktrees/gpt56-sol-low-switchover</code> ·
+<code>plan/gpt56-sol-low-switchover</code><br />
+<strong>Related:</strong>
+<code>docs/ops/gpt56-sol-prod-switchover.md</code>, handoff
+<code>.agent/handoffs/2026-07-08-image-gen-v0.3.5.md</code>, ClinVision
+<code>fix-escalation-sol-low</code> (<code>gpt-5.6-sol</code> @
+<code>low</code>)<br />
+<strong>Status:</strong> <strong>PARTIAL</strong> — 2026-07-11 (Phases 0–5 done; P1/P2 deferred). PR <a href="https://github.com/drpedapati/sciclaw/pull/125">#125</a>; release <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.6">v0.3.6</a>. Authoritative closeout: see the <code>.md</code> Amendment.<br />
+<strong>Priority order:</strong> §4 re-ranked by data3 error/usage
+evidence (see §2.3)</p>
+<hr />
+<h2 id="1-problem-statement">1. Problem statement</h2>
+<p>OpenAI released the GPT-5.6 family (Sol / Terra / Luna, GA
+~2026-07-09). ClinVision already routes advisory Sol consults to
+<strong><code>gpt-5.6-sol</code></strong> with
+<strong><code>reasoning_effort: low</code></strong>. sciClaw production
+(data3 Discord gateway on Codex/OAuth) still runs product defaults
+centered on <strong><code>gpt-5.2</code></strong>, and the Codex harness
+is a long-lived fork of an older picoclaw provider layout.</p>
+<p>Two separate remediation tracks get conflated:</p>
+<table>
+<thead>
+<tr>
+<th>Track</th>
+<th>Question</th>
+<th>Answer (2026-07-11)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A. Model switch</strong></td>
+<td>Can prod use Sol @ low without a rewrite?</td>
+<td><strong>Yes</strong> — config-only is sufficient; preflight
+green</td>
+</tr>
+<tr>
+<td><strong>B. Harness hygiene</strong></td>
+<td>Is our Codex stack “behind” picoclaw?</td>
+<td><strong>Structurally yes, product-features no</strong> — see §3</td>
+</tr>
+</tbody>
+</table>
+<p>This correspondence is the single remediation plan with
+<strong>manual prompts</strong> you can paste into Claude Code / Grok /
+Codex sessions (or run yourself) phase by phase.</p>
+<hr />
+<h2 id="2-evidence-already-collected">2. Evidence already collected</h2>
+<h3 id="21-live-codex-chatgpt-oauth-preflight-macbookm5-2026-07-11">2.1
+Live Codex ChatGPT OAuth preflight (macbookm5, 2026-07-11)</h3>
+<p>Streamed
+<code>POST https://chatgpt.com/backend-api/codex/responses</code> with
+<code>stream: true</code>, <code>reasoning.effort: low</code>, prompt
+“Reply with exactly: ok”.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>gpt-5.6-sol</code></strong></td>
+<td>HTTP 200, completed, text <code>ok</code></td>
+</tr>
+<tr>
+<td><code>gpt-5.6-terra</code></td>
+<td>HTTP 200, completed</td>
+</tr>
+<tr>
+<td><code>gpt-5.6-luna</code></td>
+<td>HTTP 404 Model not found (this account/backend)</td>
+</tr>
+<tr>
+<td><code>gpt-5.5</code> / <code>gpt-5.4</code></td>
+<td>still OK</td>
+</tr>
+<tr>
+<td><code>gpt-5.2</code> (repo default)</td>
+<td><strong>400 not supported</strong> for Codex + ChatGPT account</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-upstream-picoclaw-upstreammain--85dcfcca-fetched-2026-07-11">2.2
+Upstream picoclaw (<code>upstream/main</code> @ <code>85dcfcca</code>,
+fetched 2026-07-11)</h3>
+<ul>
+<li><strong>No GPT-5.6 Sol/Terra/Luna productization</strong> (defaults
+still <strong>gpt-5.4</strong> / Codex
+<strong><code>gpt-5.3-codex</code></strong>).</li>
+<li>Codex moved to <code>pkg/providers/oauth/codex_provider.go</code> +
+<code>openai_responses_common</code>.</li>
+<li>Upstream <strong>ahead:</strong> stream text-delta recovery, richer
+API errors, <code>originator</code> / beta headers, prompt_cache_key,
+native web_search, package factory.</li>
+<li>Upstream <strong>behind sciClaw:</strong> no Responses
+<code>reasoning_effort</code> on Codex OAuth, no hosted
+<code>image_generation</code>.</li>
+<li>Merge-base with our <code>main</code>: old (<code>2df60b2f</code>).
+Full provider-tree merge is a port, not a bump.</li>
+</ul>
+<h3 id="23-local-harness-current-main--this-worktree-base">2.3 Local
+harness (current <code>main</code> / this worktree base)</h3>
+<ul>
+<li>Runtime accepts any <code>gpt-*</code> string; routes via substring
+to OpenAI; Codex when OAuth/token present.</li>
+<li><strong>Has</strong> <code>reasoning_effort</code> on Codex
+Responses.</li>
+<li><strong>Has</strong> <code>image_generation</code> (v0.3.5).</li>
+<li>Defaults/catalog still advertise <strong>gpt-5.2</strong> / stop at
+5.5.</li>
+<li>Stream: merges <code>output_item.done</code> into empty completed
+payload; <strong>no</strong> text-delta fallback (upstream has it).</li>
+</ul>
+<h3 id="23b-data3-production-status--log-ranking-2026-07-11">2.3b data3
+production status + log ranking (2026-07-11)</h3>
+<p><strong>Live status</strong></p>
+<table>
+<thead>
+<tr>
+<th>Fact</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Binary</td>
+<td>brew stable <strong>v0.3.5</strong>
+(<code>/home/linuxbrew/.linuxbrew/opt/sciclaw/bin/sciclaw</code>)</td>
+</tr>
+<tr>
+<td>Service</td>
+<td><code>sciclaw-gateway.service</code> active ~2 days</td>
+</tr>
+<tr>
+<td>Auth</td>
+<td>OpenAI <strong>oauth</strong> (no API key)</td>
+</tr>
+<tr>
+<td><strong>Configured model</strong></td>
+<td><strong><code>gpt-5.5</code></strong> (not Sol yet)</td>
+</tr>
+<tr>
+<td><strong>Configured effort</strong></td>
+<td><strong><code>medium</code></strong> (not low yet)</td>
+</tr>
+<tr>
+<td>Channel</td>
+<td>Discord enabled; workspace Dropbox <code>deb-sciclaw</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Journal sample</strong>
+(<code>journalctl --user -u sciclaw-gateway</code>, last ~2000 lines /
+~14 scored turns):</p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Value</th>
+<th>Value implication</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ERROR / WARN / INFO</td>
+<td><strong>30 / 14 / 1024</strong></td>
+<td>Failures are real but minority of log volume</td>
+</tr>
+<tr>
+<td>ERROR clusters</td>
+<td>tool fail <strong>19</strong>, exec fail <strong>9</strong>, LLM
+fail <strong>1</strong>, Discord send <strong>1</strong></td>
+<td>Almost all pain is <strong>tool/exec</strong>, not Codex
+protocol</td>
+</tr>
+<tr>
+<td>WARN clusters</td>
+<td>safety-guard block <strong>8</strong>, slow exec
+<strong>6</strong></td>
+<td>Guard friction drives retry loops</td>
+</tr>
+<tr>
+<td>Model in calls</td>
+<td><strong><code>gpt-5.5</code> only</strong></td>
+<td>Sol switch still pending; preflight already green for Sol</td>
+</tr>
+<tr>
+<td>Avg / max tokens per turn</td>
+<td><strong>~194k / 567k</strong></td>
+<td>Cost fire under medium effort + long loops</td>
+</tr>
+<tr>
+<td>Avg / max turn_ms</td>
+<td><strong>~155s / 846s</strong></td>
+<td>Latency fire (14 min worst turn)</td>
+</tr>
+<tr>
+<td>Avg / max iterations</td>
+<td><strong>~8.6 / 20</strong></td>
+<td>Tool thrash multiplies LLM cost</td>
+</tr>
+<tr>
+<td>Codex/model unsupported</td>
+<td><strong>0</strong> in sample</td>
+<td>No evidence Sol is required to <em>fix</em> correctness today</td>
+</tr>
+<tr>
+<td>LLM ERROR</td>
+<td>1× <code>context canceled</code> (during restart window Jul 9)</td>
+<td>Not systemic</td>
+</tr>
+<tr>
+<td>ImageMagick</td>
+<td>repeated <code>unable to read font</code> / montage fail</td>
+<td>Host font + agent retry waste</td>
+</tr>
+<tr>
+<td>Discord</td>
+<td>1× <code>send message timeout</code></td>
+<td>Likely large media / long turn tail</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Ranking rule used:</strong> (user-visible failure frequency ×
+token/time waste × blast radius on Discord prod) − (already closed
+work).</p>
+<hr />
+<h2 id="3-goals-and-non-goals">3. Goals and non-goals</h2>
+<h3 id="goals">Goals</h3>
+<ol type="1">
+<li>Production sciClaw (data3) runs
+<strong><code>gpt-5.6-sol</code></strong> with
+<strong><code>reasoning_effort: low</code></strong>.</li>
+<li>Repo defaults, catalog, docs, and TUI stock-model hints match that
+policy for new installs / next brew cut.</li>
+<li>Preserve sciClaw-only wins: image gen, effort plumbing, Cloudflare
+transport, brew-only deploy contract.</li>
+<li>Optionally cherry-pick <strong>small</strong> upstream Codex
+robustness fixes without absorbing their full provider reorg.</li>
+<li>Leave a clear “do not merge upstream wholesale” decision for the
+Codex path.</li>
+</ol>
+<h3 id="non-goals">Non-goals</h3>
+<ul>
+<li>Full rebase onto sipeed/picoclaw provider packages.</li>
+<li>Luna on Codex until preflight is green.</li>
+<li>API-key Chat Completions image gen (separate image-gen
+backlog).</li>
+<li>Raising global Sol effort above <strong>low</strong> without a cost
+review (Discord multi-turn).</li>
+<li>Waiting for upstream to “do 5.6 first” (they have not).</li>
+</ul>
+<hr />
+<h2 id="4-value-order-do-this-sequence">4. Value order (do this
+sequence)</h2>
+<p>Re-ranked 2026-07-11 from data3 logs + status. <strong>Higher = do
+sooner.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Rank</th>
+<th>Work item</th>
+<th>Why (evidence)</th>
+<th>Effort</th>
+<th>Binary?</th>
+<th>Prompt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P0</strong></td>
+<td><strong>data3: <code>gpt-5.6-sol</code> + effort
+<code>low</code></strong> (config cutover + smoke)</td>
+<td>Prod is <strong>gpt-5.5 @ medium</strong>; turns avg <strong>~194k
+tokens / ~155s</strong>, peaks <strong>567k / 14min</strong>, up to
+<strong>20 iterations</strong>. Largest lever on cost/latency with zero
+code. Sol preflight already green.</td>
+<td>Minutes</td>
+<td>No</td>
+<td>§5.0 → §5.1 → §5.2</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td><strong>Stop exec thrash: AGENTS / skill guidance for ImageMagick +
+path-safe montage</strong></td>
+<td><strong>19</strong> tool ERRORs + <strong>8</strong> safety-guard
+WARNs in sample; agent retries <code>../</code>, unquoted paths with
+spaces (<code>FXS…</code>), missing fonts → burns LLM iterations (the
+15–20 iter turns).</td>
+<td>Small docs/workspace fix; optional skill patch</td>
+<td>No (docs) / optional brew later</td>
+<td>§5.7 (new)</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td><strong>Host ops: fonts for ImageMagick on data3</strong></td>
+<td>Repeated <code>montage: unable to read font</code> / DejaVu missing
+— pure infra; unblocks contact sheets without model cost.</td>
+<td>Minutes (apt/fonts)</td>
+<td>No</td>
+<td>§5.8 (new)</td>
+</tr>
+<tr>
+<td><strong>P3</strong></td>
+<td><strong>Repo defaults + catalog → Sol @ low</strong> (this
+worktree)</td>
+<td>Prevents next reinstall/dev host shipping gpt-5.2/5.5@medium; docs
+honesty. Not fixing live errors today.</td>
+<td>Small PR</td>
+<td>Next release</td>
+<td>§5.3</td>
+</tr>
+<tr>
+<td><strong>P4</strong></td>
+<td><strong>Discord send timeout / large-attachment path</strong></td>
+<td><strong>1</strong> ERROR (<code>send message timeout</code>); low
+frequency but user-visible when it hits (image-heavy decks). Investigate
+size limits / chunking after P0–P2 reduce payload thrash.</td>
+<td>Med</td>
+<td>Maybe</td>
+<td>ad hoc after smokes</td>
+</tr>
+<tr>
+<td><strong>P5</strong></td>
+<td><strong>Codex harness micro-hardening</strong> (stream text-delta,
+better errors)</td>
+<td>Logs show <strong>almost no Codex protocol failures</strong> (1
+cancel). Nice-to-have, not value-ranked by errors.</td>
+<td>Med</td>
+<td>Yes</td>
+<td>§5.4</td>
+</tr>
+<tr>
+<td><strong>P6</strong></td>
+<td><strong>Image gen cost/enable flag</strong></td>
+<td>Image path works (v0.3.5); risk is spam/cost under Sol, not hard
+failures in log.</td>
+<td>Med</td>
+<td>Yes</td>
+<td>image-gen backlog</td>
+</tr>
+<tr>
+<td><strong>P7</strong></td>
+<td>Multi-turn edit / inbound photo → <code>action: edit</code></td>
+<td>Not in ERROR clusters; product depth, not remediation.</td>
+<td>Large</td>
+<td>Yes</td>
+<td>backlog</td>
+</tr>
+<tr>
+<td><strong>P8</strong></td>
+<td>API-key Chat Completions image gen</td>
+<td>data3 is <strong>oauth</strong>; not the failing path.</td>
+<td>Large</td>
+<td>Yes</td>
+<td>backlog</td>
+</tr>
+<tr>
+<td><strong>P9</strong></td>
+<td><code>openai-go</code> enum / gpt-image-2 vendor</td>
+<td>No log pressure; string model IDs already work.</td>
+<td>Small</td>
+<td>Yes</td>
+<td>backlog</td>
+</tr>
+<tr>
+<td><strong>—</strong></td>
+<td><del>PR #124 / worktree prune</del></td>
+<td><strong>Done</strong> (merged <code>ec0ffdac</code>; worktree pruned
+macbookm5)</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>—</strong></td>
+<td>Full upstream picoclaw provider reorg</td>
+<td><strong>Reject this train</strong> — no log evidence; would risk
+image gen + effort</td>
+<td>Huge</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="suggested-execution-trains">Suggested execution trains</h3>
+<ol type="1">
+<li><strong>Today (ops only):</strong> P0 → P1 (workspace/AGENTS notes)
+→ P2 (fonts)</li>
+<li><strong>This branch (code/docs):</strong> P3</li>
+<li><strong>Later / if still burning:</strong> P4 → P5 → product backlog
+P6–P9</li>
+</ol>
+<p><strong>Minimum viable:</strong> P0 alone.<br />
+<strong>Best ROI before next conference-style Discord session:</strong>
+P0 + P1 + P2.</p>
+<hr />
+<h2 id="5-manual-prompts-copy-paste">5. Manual prompts (copy-paste)</h2>
+<p>Each block is a <strong>standalone session prompt</strong>. Fill
+bracketed fields. Do not combine Phase 1 with Phase 4 in one unattended
+agent without human approval on data3.</p>
+<hr />
+<h3 id="50--phase-0-context-freeze-and-prod-snapshot">5.0 — Phase 0:
+Context freeze and prod snapshot</h3>
+<pre class="text"><code>You are working in the sciClaw repo at ~/Developer/sciclaw.
+
+Read and do not re-litigate:
+- docs/ops/gpt56-sol-prod-switchover.md (if on branch plan/gpt56-sol-low-switchover, use the worktree path)
+- docs/ops/correspondence-gpt56-sol-codex-harness-remediation.md (this file)
+- docs/ops/brew-only-deployment-contract.md
+
+Tasks:
+1. Confirm current branch/worktree list: main clean; worktree plan/gpt56-sol-low-switchover exists.
+2. SSH to data3 (Host data3) and snapshot ONLY non-secret fields from ~/.picoclaw/config.json:
+   - agents.defaults.model
+   - agents.defaults.reasoning_effort
+   - agents.defaults.provider (if set)
+   - whether OpenAI auth_method is oauth/token vs api_key (do not print tokens/keys)
+3. Record sciclaw --version and which -a sciclaw, and systemd/launchd ExecStart if Linux/macOS respectively.
+4. Write a short SNAPSHOT.md under the worktree docs/ops/ (or print to chat) with timestamp + those fields + version.
+
+Do not change config or restart services.</code></pre>
+<p><strong>Exit criteria:</strong> Snapshot of current prod
+model/effort/binary path exists before any mutation.</p>
+<hr />
+<h3 id="51--phase-1-data3-config-cutover-no-binary">5.1 — Phase 1: data3
+config cutover (no binary)</h3>
+<pre class="text"><code>You are performing a production config-only cutover for sciClaw on data3.
+
+Target:
+  agents.defaults.model = &quot;gpt-5.6-sol&quot;
+  agents.defaults.reasoning_effort = &quot;low&quot;
+
+Rules:
+- Prefer: sciclaw models set gpt-5.6-sol &amp;&amp; sciclaw models effort low
+- Fallback: edit ~/.picoclaw/config.json those two fields only; preserve everything else.
+- After change: sciclaw service restart (or install+restart if that is the host’s brew contract).
+- Verify: sciclaw models status shows model gpt-5.6-sol and effort low.
+- Verify brew binding: command -v sciclaw and service ExecStart still match Cellar/opt — no hot-copied binary.
+- Do NOT upgrade packages or rebuild unless asked.
+- Do NOT print secrets from config.
+
+If models set fails or status does not stick, stop and report; do not force unrelated config edits.
+
+Rollback plan (document in chat after success):
+  restore previous model/effort from Phase 0 snapshot; service restart.</code></pre>
+<p><strong>Exit criteria:</strong> <code>models status</code> on data3
+shows Sol + low; service healthy; previous values recorded for
+rollback.</p>
+<hr />
+<h3 id="52--phase-2-smoke-discord--optional-image">5.2 — Phase 2: Smoke
+(Discord + optional image)</h3>
+<pre class="text"><code>You are validating sciClaw after a gpt-5.6-sol / low cutover on data3.
+
+Run these smokes in order. Prefer real Discord against the production bot if operator is present; otherwise use:
+  sciclaw agent --model gpt-5.6-sol --effort low -m &quot;Reply with exactly: ok&quot;
+from a host that uses the same OAuth credentials class as data3 (document which host).
+
+Smokes:
+1) Text: &quot;Reply with exactly: ok&quot; — expect fast completion, no &quot;model not found&quot; / Codex unsupported errors.
+2) Tool turn: ask the agent to list files in its workspace root or run a harmless status command — expect a tool call + final answer.
+3) Image gen (Codex path only): &quot;Image, generate a red cube on a white background&quot; — expect PNG attachment and/or workspace artifacts/generated/*.png. If org lacks GPT Image access, mark SKIP with log evidence, not FAIL.
+4) Scan last ~200 gateway log lines for: model not found, not supported when using Codex, 401/403 auth, empty stream.
+
+Report a table: smoke | pass/fail/skip | notes | timestamps.
+
+Do not change code or config during this phase.</code></pre>
+<p><strong>Exit criteria:</strong> Text + tool pass; image pass or
+documented skip; no auth/model errors in logs.</p>
+<hr />
+<h3 id="53--phase-3-repo-defaults--catalog--docs-implementation-worktree">5.3
+— Phase 3: Repo defaults + catalog + docs (implementation worktree)</h3>
+<pre class="text"><code>Work only in:
+  ~/Developer/sciclaw/.worktrees/gpt56-sol-low-switchover
+Branch: plan/gpt56-sol-low-switchover
+
+Goal: product defaults match production policy without a provider rewrite.
+
+Implement:
+1. pkg/config/config.go DefaultConfig:
+   - Model: &quot;gpt-5.6-sol&quot;
+   - ReasoningEffort: &quot;low&quot;
+2. pkg/providers/codex_provider.go GetDefaultModel → &quot;gpt-5.6-sol&quot;
+3. config/config.example.json: model + reasoning_effort low
+4. pkg/models/models.go OpenAI catalog list: prepend &quot;gpt-5.6-sol&quot;, &quot;gpt-5.6-terra&quot;
+   (do NOT add gpt-5.6-luna until Codex preflight is green)
+5. cmd/picoclaw/tui/tab_login.go isStockOpenAIModel: include gpt-5.6-sol and openai/gpt-5.6-sol (and terra variants)
+6. TUI placeholders / settings sample maps that hardcode gpt-5.2 → update where they represent &quot;current default&quot;
+7. README.md OpenAI model table: primary gpt-5.6-sol @ low; note Terra as cheaper peer; leave 5.5/5.4 as still supported
+8. docs/docs.html model examples: same policy (if this file is the public docs source of truth)
+9. Update unit tests that assert default model strings (GetDefaultModel, config defaults, TUI fixtures as needed)
+
+Constraints:
+- Do not restructure pkg/providers into oauth/ packages.
+- Do not remove image_generation support.
+- Do not change Anthropic/PHI/local defaults.
+- Keep reasoning effort plumbing intact.
+
+Verify:
+  go test ./pkg/config ./pkg/providers ./pkg/models ./cmd/picoclaw/...
+  gofmt on touched Go files.
+
+When done, summarize file list + test results. Do not push unless asked. Do not cut a release tag.</code></pre>
+<p><strong>Exit criteria:</strong> Tests green; defaults and catalog
+show Sol @ low; image gen code paths untouched.</p>
+<hr />
+<h3 id="54--phase-4-codex-harness-micro-hardening-optional-cherry-picks">5.4
+— Phase 4: Codex harness micro-hardening (optional cherry-picks)</h3>
+<pre class="text"><code>Work only in:
+  ~/Developer/sciclaw/.worktrees/gpt56-sol-low-switchover
+
+Context: upstream picoclaw Codex lives at pkg/providers/oauth/codex_provider.go and is NOT a drop-in.
+We only cherry-pick robustness into our flat pkg/providers/codex_provider.go.
+
+Allowed changes (each must be justified with a microtest or unit test):
+A) If stream completes with empty message content but text deltas were seen, recover content from deltas
+   (mirror upstream behavior from 2026-05-30 &quot;preserve streamed Codex output text deltas&quot;).
+B) Richer error logging on stream.Err() when *openai.Error (status, code, param) — no secret leakage.
+C) Optional request headers microtest: originator=codex_cli_rs and/or OpenAI-Beta=responses=experimental
+   ONLY if a live microtest shows current path failing without them (do not add cargo-cult headers).
+D) resolveCodexModel-style guard: empty/non-gpt model falls back to GetDefaultModel with a warn log.
+E) openai-go bump 3.21.0 → 3.22.0 if go test stays green (vendor update if repo vendors).
+
+Forbidden:
+- Full import of pkg/providers/oauth or openai_responses_common package tree.
+- Removing image_generation translation/parse.
+- Removing reasoning_effort on Codex Responses.
+- Removing Cloudflare HTTP client without a replacement proof.
+
+Preflight after changes (laptop Codex OAuth, never print tokens):
+  stream gpt-5.6-sol @ low → &quot;ok&quot;
+  stream tool or short agent turn if available
+  if image gen tests exist, run them
+
+Deliver: short DESIGN note in the PR description listing what was/wasn&#39;t taken from upstream.</code></pre>
+<p><strong>Exit criteria:</strong> Hardening tests pass; Sol preflight
+still green; image gen + effort still present.</p>
+<hr />
+<h3 id="55--phase-5-release--brew-canary-only-if-phase-3-or-4-ships">5.5
+— Phase 5: Release / brew canary (only if Phase 3 or 4 ships)</h3>
+<pre class="text"><code>Follow docs/ops/brew-only-deployment-contract.md strictly.
+
+On a clean git tree of plan/gpt56-sol-low-switchover (or main after merge):
+1. Decide channel: sciclaw-dev canary first, then stable sciclaw.
+2. make release-dev-local RELEASE_DEV_TAG=vX.Y.Z-dev.N   # or project’s current release recipe
+3. On data3:
+   brew update &amp;&amp; brew upgrade sciclaw-dev
+   Bind service to FULL $(brew --prefix sciclaw-dev)/bin/sciclaw  (avoid PATH shadowing by stable)
+   service install &amp;&amp; service restart
+4. Re-check models status still gpt-5.6-sol / low (config must survive upgrade).
+5. Re-run Phase 2 smokes.
+6. Only then: make release-local RELEASE_TAG=vX.Y.Z for stable if canary good.
+
+Do not cp binaries into brew paths. Do not leave service pointing at a laptop-built path.</code></pre>
+<p><strong>Exit criteria:</strong> Canary binary brew-bound; config
+preserved; smokes pass; rollback = previous Cellar/opt or stable
+formula.</p>
+<hr />
+<h3 id="56--closeout-correspondence">5.6 — Closeout correspondence</h3>
+<pre class="text"><code>Close out sciclaw-corr-gpt56-sol-harness-2026-07-11.
+
+Update:
+1. docs/ops/gpt56-sol-prod-switchover.md — mark acceptance criteria checkboxes with dates.
+2. This correspondence — Status: DONE / PARTIAL with date; link PR + release tag if any.
+3. .agent/handoffs/ — new short handoff noting:
+   - prod model/effort
+   - what harness changes shipped vs deferred
+   - explicit: do not full-merge sipeed provider reorg for Codex without a dedicated design
+4. Image-gen handoff PR #124 line already corrected if still stale.
+
+Print a one-page operator card:
+  Model: gpt-5.6-sol
+  Effort: low
+  Rollback: …
+  Smoke: …</code></pre>
+<p><strong>Exit criteria:</strong> Ops docs match reality; next agent
+can resume without rediscovering §2.</p>
+<hr />
+<h3 id="57--p1-reduce-exec-thrash-workspace--agents--skill-guidance">5.7
+— P1: Reduce exec thrash (workspace / AGENTS / skill guidance)</h3>
+<pre class="text"><code>Context: data3 gateway logs show most ERRORs are tool/exec failures during Discord
+slide/imagegen work, not Codex failures. Clusters:
+- safety guard: path traversal (../), dangerous patterns
+- ImageMagick montage: missing/empty font, unquoted paths with spaces (FXS Conference 2026/...)
+- retries inflate iterations to 15–20 and tokens to 300k–500k+
+
+Workspace (on data3): /home/ernie/Dropbox/sciclaw/deb-sciclaw
+Also update repo templates if present: pkg/workspacetpl/templates/workspace/AGENTS.md
+
+Tasks (prefer docs/skill guidance over weakening the safety guard):
+1. Add a short AGENTS.md section &quot;ImageMagick / contact sheets on data3&quot;:
+   - Always quote paths with spaces
+   - Never use ../ in exec; set working_dir to the target folder and write outputs in-place
+   - Prefer -font with a path that exists (or no labels if fonts broken) after P2 fonts install
+   - Prefer python-pptx / existing pptx skill over magick montage when building decks
+2. If skills/pptx is missing on that workspace, note install path or stop agents from reading
+   nonexistent skills/pptx/SKILL.md
+3. Do NOT disable restrict_to_workspace or broadly loosen dangerous-pattern detection without
+   an explicit security review.
+
+Deliver: diff or pasted AGENTS.md section; no service restart required unless config changes.</code></pre>
+<p><strong>Exit criteria:</strong> Written guidance exists in the live
+workspace AGENTS; next agent session less likely to loop on
+<code>../</code> and font montage.</p>
+<hr />
+<h3 id="58--p2-data3-imagemagick-fonts-host-ops">5.8 — P2: data3
+ImageMagick fonts (host ops)</h3>
+<pre class="text"><code>On data3, fix ImageMagick font errors seen in gateway logs:
+  montage: unable to read font `&#39; @ error/annotate.c/RenderFreetype/...
+  montage: unable to read font `DejaVu-Sans&#39; ...
+
+Tasks:
+1. Identify ImageMagick / magick package and font config:
+   magick -list font | head
+   dpkg -l | grep -iE &#39;font|imagemagick&#39; | head
+2. Install a sane sans font pack (e.g. fonts-dejavu-core) via the host package manager if missing.
+3. Re-test offline (no Discord):
+   magick -size 100x40 xc:white -font DejaVu-Sans -pointsize 12 -annotate +5+20 &#39;ok&#39; /tmp/fonttest.png
+   Or a 2-image montage with -label.
+4. Do not change sciclaw config. Report package names installed.
+
+If fonts cannot be installed, document a no-label montage recipe for AGENTS.md (P1).</code></pre>
+<p><strong>Exit criteria:</strong> Offline magick annotate/montage with
+labels succeeds, or documented no-label workaround.</p>
+<hr />
+<h2 id="6-adversarial-review-prompt-optional-gate-before-release">6.
+Adversarial review prompt (optional gate before release)</h2>
+<p>Use after Phase 3 (and 4 if done), before any stable release:</p>
+<pre class="text"><code>You are reviewing a sciClaw PR that switches defaults to gpt-5.6-sol @ low and optionally hardens Codex streaming.
+
+Challenge PLAN against:
+- Does config-only prod path still work if someone never upgrades the binary?
+- Did we accidentally drop image_generation or reasoning_effort?
+- Are tests asserting the new default, or only renaming strings in unrelated fixtures?
+- Is Luna advertised despite Codex 404 preflight?
+- Any secret leakage in new error logs?
+- Does brew upgrade wipe or ignore agents.defaults.model?
+- Is there a silent fallback to gpt-5.2 / gpt-5.3-codex that undoes Sol?
+
+Write REVIEW.md with severity tags: blocker / major / nit.
+Do not implement fixes unless asked.</code></pre>
+<hr />
+<h2 id="7-manual-operator-prompts-human-not-agent">7. Manual operator
+prompts (human, not agent)</h2>
+<h3 id="71-one-minute-prod-switch-data3">7.1 One-minute prod switch
+(data3)</h3>
+<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># snapshot</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> models status</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="co"># cutover</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> models set gpt-5.6-sol</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> models effort low</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> service restart</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> models status</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> doctor</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Discord: &quot;Reply with exactly: ok&quot;</span></span></code></pre></div>
+<h3 id="72-rollback">7.2 Rollback</h3>
+<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> models set <span class="op">&lt;</span>PREVIOUS_MODEL_FROM_SNAPSHOT<span class="op">&gt;</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> models effort <span class="op">&lt;</span>PREVIOUS_EFFORT_OR_EMPTY<span class="op">&gt;</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> service restart</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> models status</span></code></pre></div>
+<h3 id="73-confirm-not-on-hot-binary">7.3 Confirm not on hot binary</h3>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">which</span> <span class="at">-a</span> sciclaw</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co"># ExecStart / launchd program must be Homebrew Cellar or opt path</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ex">sciclaw</span> service status</span></code></pre></div>
+<hr />
+<h2 id="8-decision-log-locked-unless-amended">8. Decision log (locked
+unless amended)</h2>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Choice</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primary model</td>
+<td><code>gpt-5.6-sol</code></td>
+<td>Matches product intent + ClinVision Sol; preflight green</td>
+</tr>
+<tr>
+<td>Effort</td>
+<td><code>low</code></td>
+<td>Cost/latency for Discord; ClinVision Sol consult policy</td>
+</tr>
+<tr>
+<td>Luna</td>
+<td>Deferred</td>
+<td>Codex 404 preflight</td>
+</tr>
+<tr>
+<td>Upstream merge of provider tree</td>
+<td><strong>Reject for this train</strong></td>
+<td>Would drop image gen / effort without a large port</td>
+</tr>
+<tr>
+<td>Min ship</td>
+<td>Config cutover Phases 0–2</td>
+<td>Unblocks prod without release</td>
+</tr>
+<tr>
+<td>Default ship</td>
+<td>+ Phase 3</td>
+<td>New installs match prod</td>
+</tr>
+<tr>
+<td>Hardening</td>
+<td>Phase 4 optional</td>
+<td>Nice-to-have; not Sol-critical</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="9-acceptance-matrix">9. Acceptance matrix</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Criterion</th>
+<th>Phase</th>
+<th>Done?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A1</td>
+<td>data3 models status = gpt-5.6-sol / low</td>
+<td>1</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>Discord text smoke pass</td>
+<td>2</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A3</td>
+<td>Tool smoke pass</td>
+<td>2</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A4</td>
+<td>Image smoke pass or skip documented</td>
+<td>2</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A5</td>
+<td>Repo DefaultConfig + GetDefaultModel = Sol</td>
+<td>3</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A6</td>
+<td>Catalog lists Sol (+ Terra), not Luna</td>
+<td>3</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A7</td>
+<td>Tests green for new defaults</td>
+<td>3</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A8</td>
+<td>Image gen + effort still in codex_provider</td>
+<td>3–4</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A9</td>
+<td>Optional: stream text-delta recovery</td>
+<td>4</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>A10</td>
+<td>Handoffs/docs closed</td>
+<td>6</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="10-risk-register">10. Risk register</h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Likelihood</th>
+<th>Impact</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>data3 account lacks Sol during gradual rollout</td>
+<td>Low (laptop OK)</td>
+<td>High</td>
+<td>Fall back to gpt-5.5 or gpt-5.6-terra from snapshot</td>
+</tr>
+<tr>
+<td>Cost spike on Discord</td>
+<td>Med</td>
+<td>Med</td>
+<td>Effort fixed <strong>low</strong>; optional later flag to disable
+image gen spam</td>
+</tr>
+<tr>
+<td>Operator upgrades brew and resets mental model but not config</td>
+<td>Low</td>
+<td>Low</td>
+<td>Config survives; docs state config-only path</td>
+</tr>
+<tr>
+<td>Agent rewrites entire providers tree “to match upstream”</td>
+<td>Med if unconstrained</td>
+<td>High</td>
+<td>Phase 4 forbidden list; this correspondence</td>
+</tr>
+<tr>
+<td>Luna marketed then 404s in prod</td>
+<td>Med if catalog careless</td>
+<td>Med</td>
+<td>Explicit Luna ban until preflight</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="11-suggested-session-sequence-human-dispatcher--value-order">11.
+Suggested session sequence (human dispatcher) — value order</h2>
+<ol type="1">
+<li><strong>P0:</strong> §5.0 snapshot → §5.1 Sol@low cutover → §5.2
+smoke (or §7.1).</li>
+<li><strong>P1:</strong> §5.7 AGENTS / path-safe ImageMagick
+guidance.</li>
+<li><strong>P2:</strong> §5.8 data3 fonts.</li>
+<li><strong>P3:</strong> §5.3 repo defaults (worktree) when ready for a
+PR.</li>
+<li>Only if still hurting: P4 Discord timeout, then §5.4 harness, then
+product backlog.</li>
+<li><strong>§5.6</strong> closeout when the train stops.</li>
+</ol>
+<hr />
+<h2 id="12-references">12. References</h2>
+<ul>
+<li>OpenAI GPT-5.6 launch (Sol / Terra / Luna), 2026-07-09</li>
+<li>ClinVision: <code>EscalationReviewModelId = gpt-5.6-sol</code>,
+<code>EscalationReviewReasoningEffort = low</code></li>
+<li>sciClaw v0.3.5 image gen: PR #124 merged
+(<code>ec0ffdac</code>)</li>
+<li>Upstream Codex: <code>pkg/providers/oauth/codex_provider.go</code>
+(not present on our tree layout)</li>
+<li>Local Codex: <code>pkg/providers/codex_provider.go</code></li>
+</ul>
+<hr />
+<p><em>End of correspondence. Amend by appending a dated “Amendment”
+section; do not silently rewrite decision log.</em></p>
+</div>
+<script>
+document.querySelectorAll("pre").forEach((pre, i) => {
+  const btn = document.createElement("button");
+  btn.textContent = "Copy";
+  btn.type = "button";
+  Object.assign(btn.style, {
+    position: "absolute", top: "8px", right: "8px",
+    fontSize: "11px", padding: "4px 8px", cursor: "pointer",
+    borderRadius: "6px", border: "1px solid #2a3a4d",
+    background: "#1a2332", color: "#9aa8b8"
+  });
+  pre.style.position = "relative";
+  btn.addEventListener("click", async () => {
+    const t = pre.innerText;
+    try {
+      await navigator.clipboard.writeText(t);
+      btn.textContent = "Copied";
+      setTimeout(() => btn.textContent = "Copy", 1200);
+    } catch (e) {
+      btn.textContent = "Select+copy";
+    }
+  });
+  pre.appendChild(btn);
+});
+</script>
+</body>
+</html>

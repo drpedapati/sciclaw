@@ -92,15 +92,15 @@ func (e *phiTestExec) InteractiveProcess(_ ...string) *exec.Cmd { return exec.Co
 func TestParseModesStatusOutput_Cloud(t *testing.T) {
 	msg := phiDataMsg{}
 	parseModesStatusOutput(`Mode:     Cloud
-Model:    gpt-5.2
+Model:    gpt-5.6-sol
 Provider: openai
 `, &msg)
 
 	if msg.mode != "cloud" {
 		t.Fatalf("mode=%q want cloud", msg.mode)
 	}
-	if msg.cloudModel != "gpt-5.2" {
-		t.Fatalf("cloudModel=%q want gpt-5.2", msg.cloudModel)
+	if msg.cloudModel != "gpt-5.6-sol" {
+		t.Fatalf("cloudModel=%q want gpt-5.6-sol", msg.cloudModel)
 	}
 	if msg.cloudProvider != "openai" {
 		t.Fatalf("cloudProvider=%q want openai", msg.cloudProvider)
@@ -171,7 +171,7 @@ func TestPhiSetLocalDefaultsCmd_WritesConfigAndReloads(t *testing.T) {
   "agents": {
     "defaults": {
       "mode": "",
-      "model": "gpt-5.2"
+      "model": "gpt-5.6-sol"
     }
   }
 }`,
@@ -207,7 +207,7 @@ func TestPhiSetLocalDefaultsCmd_WritesConfigAndReloads(t *testing.T) {
 
 func TestPhiSetLocalDefaultsCmd_RejectsUnsupportedBackend(t *testing.T) {
 	execStub := &phiTestExec{
-		configRaw: `{"agents":{"defaults":{"mode":"","model":"gpt-5.2"}}}`,
+		configRaw: `{"agents":{"defaults":{"mode":"","model":"gpt-5.6-sol"}}}`,
 	}
 	backend := "mlx"
 	msg := phiSetLocalDefaultsCmd(execStub, &backend, nil, nil)().(phiActionMsg)

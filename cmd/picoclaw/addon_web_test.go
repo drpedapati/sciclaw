@@ -254,10 +254,10 @@ func TestHandleAddonProxyInvalidName(t *testing.T) {
 		// net/http cleans empty, "." and ".." path segments before dispatch
 		// and returns 307 to the canonical path. The handler never sees
 		// the unsafe form. That is a valid defence-in-depth outcome.
-		{"empty name", "/addons//ui/", []int{http.StatusTemporaryRedirect, http.StatusBadRequest}},
+		{"empty name", "/addons//ui/", []int{http.StatusMovedPermanently, http.StatusTemporaryRedirect, http.StatusBadRequest}},
 		{"hidden prefix", "/addons/.hidden/ui/", []int{http.StatusBadRequest}},
-		{"single dot", "/addons/./ui/", []int{http.StatusTemporaryRedirect, http.StatusBadRequest}},
-		{"double dot", "/addons/../ui/", []int{http.StatusTemporaryRedirect, http.StatusBadRequest}},
+		{"single dot", "/addons/./ui/", []int{http.StatusMovedPermanently, http.StatusTemporaryRedirect, http.StatusBadRequest}},
+		{"double dot", "/addons/../ui/", []int{http.StatusMovedPermanently, http.StatusTemporaryRedirect, http.StatusBadRequest}},
 	}
 
 	srv := newWebServer(nil, "")

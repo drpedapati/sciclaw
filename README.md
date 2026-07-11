@@ -179,7 +179,7 @@ sciClaw auto-detects the provider from the model name. Set credentials via the o
 
 | Provider | Models | Auth |
 |----------|--------|------|
-| **OpenAI** | gpt-5.5, gpt-5.2 (primary), gpt-5.2-chat-latest, gpt-5.2-pro | API key or device-code OAuth |
+| **OpenAI** | gpt-5.6-sol (primary @ low), gpt-5.6-terra (cheaper peer), gpt-5.5, gpt-5.4, gpt-5.2 | API key or device-code OAuth |
 | **Anthropic** | claude-sonnet-4.6, claude-opus-4-6, claude-haiku-4-5-20251001 | API key, token paste, or Claude.ai oat-token bridge |
 | **Gemini** | gemini-2.5-pro, gemini-2.5-flash | API key |
 | **OpenRouter** | All models via `openrouter/` prefix | API key |

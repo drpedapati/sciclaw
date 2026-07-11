@@ -1230,8 +1230,8 @@ http://localhost:4142</code></pre>
   <span class="hl-key">"agents"</span>: {
     <span class="hl-key">"defaults"</span>: {
       <span class="hl-key">"workspace"</span>: <span class="hl-string">"~/sciclaw"</span>,
-      <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.2"</span>,
-      <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"high"</span>,
+      <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.6-sol"</span>,
+      <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"low"</span>,
       <span class="hl-key">"max_tokens"</span>: 8192,
       <span class="hl-key">"temperature"</span>: 0.7,
       <span class="hl-key">"max_tool_iterations"</span>: 0
@@ -1275,7 +1275,7 @@ http://localhost:4142</code></pre>
           <tbody>
             <tr><td><code>openrouter</code></td><td>LLM &mdash; access to all models</td><td>API key</td></tr>
             <tr><td><code>anthropic</code></td><td>Claude direct</td><td>API key or <code>sciclaw auth login</code></td></tr>
-            <tr><td><code>openai</code></td><td>GPT direct (<code>gpt-5.5</code>, <code>gpt-5.2</code>)</td><td>API key or device-code OAuth</td></tr>
+            <tr><td><code>openai</code></td><td>GPT direct (<code>gpt-5.6-sol</code> primary @ <code>low</code>; <code>gpt-5.6-terra</code> cheaper peer; <code>gpt-5.5</code>/<code>gpt-5.4</code> still supported)</td><td>API key or device-code OAuth</td></tr>
             <tr><td><code>azure</code></td><td>Azure OpenAI Service</td><td>API key (<code>api-key</code> header)</td></tr>
             <tr><td><code>gemini</code></td><td>Gemini direct</td><td>API key</td></tr>
             <tr><td><code>zhipu</code></td><td>GLM models, best for Chinese users</td><td>API key</td></tr>
@@ -1432,13 +1432,13 @@ http://localhost:4142</code></pre>
 <span class="hl-cmd">sciclaw</span> agent
 
 <span class="hl-comment"># Override model for one invocation (config unchanged)</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2 <span class="hl-flag">-m</span> <span class="hl-string">"Quick question"</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.6-sol <span class="hl-flag">-m</span> <span class="hl-string">"Quick question"</span>
 
-<span class="hl-comment"># Set reasoning effort for GPT-5.2 (quality/latency/cost control)</span>
+<span class="hl-comment"># Set reasoning effort for GPT-5.6 Sol (quality/latency/cost control)</span>
 <span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--effort</span> high <span class="hl-flag">-m</span> <span class="hl-string">"Analyze this complex dataset"</span>
 
 <span class="hl-comment"># Combine both overrides</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2 <span class="hl-flag">--effort</span> xhigh <span class="hl-flag">-m</span> <span class="hl-string">"Deep analysis"</span></code></pre>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.6-sol <span class="hl-flag">--effort</span> xhigh <span class="hl-flag">-m</span> <span class="hl-string">"Deep analysis"</span></code></pre>
 
         <p>In interactive mode the agent maintains session context, uses tools (filesystem, shell, web search, spawn), and follows the paired-scientist loop defined in <code>AGENTS.md</code>.</p>
       </div>
@@ -1446,18 +1446,18 @@ http://localhost:4142</code></pre>
       <!-- ─── Model Switching ─── -->
       <div class="section" id="model-switching">
         <h3>Model Switching</h3>
-        <p>Previously, switching models required editing <code>~/.picoclaw/config.json</code> by hand and restarting. sciClaw now supports three ways to change models &mdash; a one-shot CLI flag, a persistent subcommand, and the config file. In practice, use <code>gpt-5.2</code> as the primary path and tune reasoning effort per task.</p>
+        <p>Previously, switching models required editing <code>~/.picoclaw/config.json</code> by hand and restarting. sciClaw now supports three ways to change models &mdash; a one-shot CLI flag, a persistent subcommand, and the config file. In practice, use <code>gpt-5.6-sol</code> at <code>low</code> reasoning effort as the primary path; <code>gpt-5.6-terra</code> is a cheaper peer, and <code>gpt-5.5</code>/<code>gpt-5.4</code> remain supported.</p>
 
         <h4>1. Per-invocation override (<code>--model</code>)</h4>
         <p>The <code>--model</code> flag overrides the model for a single command. Your config file is <strong>not changed</strong>, so the next invocation returns to your default. Use this when testing a model, when your primary provider is down, or when a specific task needs a different model.</p>
-        <pre><code><span class="hl-comment"># Quick task with GPT-5.2 (config unchanged)</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2 <span class="hl-flag">-m</span> <span class="hl-string">"Summarize this CSV"</span>
+        <pre><code><span class="hl-comment"># Quick task with GPT-5.6 Sol (config unchanged)</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.6-sol <span class="hl-flag">-m</span> <span class="hl-string">"Summarize this CSV"</span>
 
-<span class="hl-comment"># Deep analysis with maximum GPT-5.2 effort</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2 <span class="hl-flag">--effort</span> xhigh <span class="hl-flag">-m</span> <span class="hl-string">"Review this manuscript draft"</span>
+<span class="hl-comment"># Deep analysis with higher Sol effort</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.6-sol <span class="hl-flag">--effort</span> xhigh <span class="hl-flag">-m</span> <span class="hl-string">"Review this manuscript draft"</span>
 
 <span class="hl-comment"># Interactive session with a specific model</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2</code></pre>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.6-sol</code></pre>
 
         <h4>2. Persistent change (<code>sciclaw models</code>)</h4>
         <p>The <code>models</code> subcommand lets you inspect and change your default model without opening a text editor.</p>
@@ -1469,8 +1469,8 @@ http://localhost:4142</code></pre>
 <span class="hl-cmd">sciclaw</span> models list
 
 <span class="hl-comment"># Switch default model (writes to config.json)</span>
-<span class="hl-cmd">sciclaw</span> models set gpt-5.2
-<span class="hl-comment"># Output: Model changed: &lt;previous&gt; → gpt-5.2</span>
+<span class="hl-cmd">sciclaw</span> models set gpt-5.6-sol
+<span class="hl-comment"># Output: Model changed: &lt;previous&gt; → gpt-5.6-sol</span>
 <span class="hl-comment">#         Provider: openai</span></code></pre>
 
         <h4>3. Config file</h4>
@@ -1478,8 +1478,8 @@ http://localhost:4142</code></pre>
         <pre><code>{
   <span class="hl-key">"agents"</span>: {
     <span class="hl-key">"defaults"</span>: {
-      <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.2"</span>,
-      <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"high"</span>
+      <span class="hl-key">"model"</span>: <span class="hl-string">"gpt-5.6-sol"</span>,
+      <span class="hl-key">"reasoning_effort"</span>: <span class="hl-string">"low"</span>
     }
   }
 }</code></pre>
@@ -1504,14 +1504,14 @@ http://localhost:4142</code></pre>
         <p>If the provider has an API key or OAuth credential configured, the model is routed to it automatically. If you use OpenRouter, any <code>openrouter/</code>-prefixed model works without additional setup.</p>
 
         <h4>Reasoning effort</h4>
-        <p>Reasoning effort controls how deeply <code>gpt-5.2</code> thinks before answering. This is <strong>critical</strong> because effort directly controls quality, latency, and cost. Without setting it, the provider default is used.</p>
+        <p>Reasoning effort controls how deeply <code>gpt-5.6-sol</code> (and other GPT-5.x models) thinks before answering. This is <strong>critical</strong> because effort directly controls quality, latency, and cost. Product default is <code>low</code>; raise it per task when you need deeper analysis.</p>
 
         <table>
           <thead>
             <tr><th>Provider</th><th>Valid levels</th><th>Default when unset</th></tr>
           </thead>
           <tbody>
-            <tr><td>OpenAI (<code>gpt-5.2</code>)</td><td><code>none</code> &middot; <code>minimal</code> &middot; <code>low</code> &middot; <code>medium</code> &middot; <code>high</code> &middot; <code>xhigh</code></td><td>provider default (use <code>medium</code> as practical baseline)</td></tr>
+            <tr><td>OpenAI (<code>gpt-5.6-sol</code>)</td><td><code>none</code> &middot; <code>minimal</code> &middot; <code>low</code> &middot; <code>medium</code> &middot; <code>high</code> &middot; <code>xhigh</code></td><td><code>low</code> (product default)</td></tr>
           </tbody>
         </table>
 
@@ -1520,25 +1520,25 @@ http://localhost:4142</code></pre>
 <span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--effort</span> high <span class="hl-flag">-m</span> <span class="hl-string">"Analyze the statistical methods in this paper"</span>
 
 <span class="hl-comment"># Maximum reasoning for hardest tasks</span>
-<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.2 <span class="hl-flag">--effort</span> xhigh <span class="hl-flag">-m</span> <span class="hl-string">"Prove this theorem"</span>
+<span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--model</span> gpt-5.6-sol <span class="hl-flag">--effort</span> xhigh <span class="hl-flag">-m</span> <span class="hl-string">"Prove this theorem"</span>
 
 <span class="hl-comment"># Minimal reasoning for fast, cheap responses</span>
 <span class="hl-cmd">sciclaw</span> agent <span class="hl-flag">--effort</span> low <span class="hl-flag">-m</span> <span class="hl-string">"What day is it?"</span></code></pre>
 
         <p><strong>Persistent:</strong> save a default effort level so you don't have to pass <code>--effort</code> every time.</p>
         <pre><code><span class="hl-comment"># Save effort to config.json</span>
-<span class="hl-cmd">sciclaw</span> models effort high
+<span class="hl-cmd">sciclaw</span> models effort low
 
 <span class="hl-comment"># Check current setting</span>
 <span class="hl-cmd">sciclaw</span> models status
-<span class="hl-comment"># Output: Model:            gpt-5.2</span>
+<span class="hl-comment"># Output: Model:            gpt-5.6-sol</span>
 <span class="hl-comment">#         Provider:         openai</span>
 <span class="hl-comment">#         Auth:             oauth</span>
-<span class="hl-comment">#         Reasoning Effort: high</span></code></pre>
+<span class="hl-comment">#         Reasoning Effort: low</span></code></pre>
 
         <div class="callout">
           <div class="callout-title">How effort maps to provider APIs</div>
-          <p><strong>OpenAI:</strong> Sets the <code>reasoning.effort</code> field in the Responses API for <code>gpt-5.2</code>.</p>
+          <p><strong>OpenAI:</strong> Sets the <code>reasoning.effort</code> field in the Responses API for <code>gpt-5.6-sol</code> (and other GPT-5.x models).</p>
         </div>
 
         <div class="callout callout-warn">
