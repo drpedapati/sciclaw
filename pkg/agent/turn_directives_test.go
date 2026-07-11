@@ -47,6 +47,22 @@ func TestParseTurnDirectives(t *testing.T) {
 			wantHad:    true,
 		},
 		{
+			name:       "discord leftover @name before model",
+			in:         "@sciClaw model: luna\neffort: high\nSay only: PING_LUNA_HIGH",
+			wantModel:  "luna",
+			wantEffort: "high",
+			wantBody:   "Say only: PING_LUNA_HIGH",
+			wantHad:    true,
+		},
+		{
+			name:       "discord mention id then model",
+			in:         "<@1476615906376548544> model: sol\neffort: low\nping",
+			wantModel:  "sol",
+			wantEffort: "low",
+			wantBody:   "ping",
+			wantHad:    true,
+		},
+		{
 			name:     "model mentioned mid-message ignored",
 			in:       "please use model: luna for this",
 			wantBody: "please use model: luna for this",

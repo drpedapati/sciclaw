@@ -36,6 +36,10 @@ var allowedEfforts = map[string]bool{
 
 // ParseTurnDirectives extracts leading model:/effort: lines (or a combined
 // first line) from content. The remainder is returned as Body.
+//
+// Leading Discord leftovers like "@sciClaw model: luna" (typed name after a
+// real <@bot> mention was stripped) are accepted — @tokens before the
+// directive are ignored.
 func ParseTurnDirectives(content string) TurnDirectives {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
@@ -53,6 +57,14 @@ func ParseTurnDirectives(content string) TurnDirectives {
 				continue
 			}
 			break
+		}
+
+		// Drop leading @mention tokens (@sciClaw, <@id>, <@!id>) so Discord
+		// paste patterns still parse.
+		line = stripLeadingMentionTokens(line)
+		if line == "" {
+			i++
+			continue
 		}
 
 		lower := strings.ToLower(line)
@@ -105,6 +117,33 @@ func ParseTurnDirectives(content string) TurnDirectives {
 		Effort:        strings.TrimSpace(effort),
 		Body:          body,
 		HadDirectives: true,
+	}
+}
+
+func stripLeadingMentionTokens(line string) string {
+	s := strings.TrimSpace(line)
+	for {
+		switch {
+		case strings.HasPrefix(s, "<@"):
+			end := strings.IndexByte(s, '>')
+			if end < 0 {
+				return s
+			}
+			s = strings.TrimSpace(s[end+1:])
+		case strings.HasPrefix(s, "@"):
+			// @sciClaw or @name — consume one token
+			rest := strings.TrimSpace(s[1:])
+			if rest == "" {
+				return ""
+			}
+			parts := strings.Fields(rest)
+			if len(parts) == 0 {
+				return ""
+			}
+			s = strings.TrimSpace(strings.TrimPrefix(rest, parts[0]))
+		default:
+			return s
+		}
 	}
 }
 
