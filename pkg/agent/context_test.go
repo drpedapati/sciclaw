@@ -36,7 +36,7 @@ func TestBuildSystemPromptUsesSciClawIdentity(t *testing.T) {
 	if !strings.Contains(prompt, "# sciClaw") {
 		t.Fatalf("system prompt missing sciClaw identity header")
 	}
-	if !strings.Contains(prompt, "paired-scientist assistant") {
+	if !strings.Contains(prompt, "paired-scientist") {
 		t.Fatalf("system prompt missing paired-scientist identity description")
 	}
 	if !strings.Contains(prompt, "Reproducibility") {

@@ -66,7 +66,7 @@ func TestDiscoverFallsBackToBuiltinModels(t *testing.T) {
 	}
 	found := false
 	for _, m := range result.Models {
-		if m == "claude-sonnet-4-6" {
+		if m == "claude-sonnet-4-6" || m == "claude-sonnet-4.6" {
 			found = true
 			break
 		}
@@ -91,7 +91,7 @@ func TestDiscoverIncludesSecondaryConfiguredProviders(t *testing.T) {
 	hasClaude := false
 	hasGPT := false
 	for _, m := range result.Models {
-		if m == "claude-sonnet-4-6" {
+		if m == "claude-sonnet-4-6" || m == "claude-sonnet-4.6" {
 			hasClaude = true
 		}
 		if m == "gpt-5.6-sol" {

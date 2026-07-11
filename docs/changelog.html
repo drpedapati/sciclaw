@@ -250,17 +250,39 @@
           <div class="track">
             <strong>Stable channel</strong>
             <code>brew install sciclaw</code>
-            <div class="meta">Production track. Current public stable: <strong>v0.3.5</strong>.</div>
+            <div class="meta">Production track. Current public stable: <strong>v0.3.7</strong>.</div>
           </div>
           <div class="track">
             <strong>Dev channel</strong>
             <code>brew install sciclaw-dev</code>
-            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.3.5-dev.1</strong>.</div>
+            <div class="meta">Preview track for upcoming features and fixes. Current preview: <strong>v0.3.7</strong> (stable).</div>
           </div>
         </div>
       </section>
 
       <section class="timeline">
+
+        <!-- v0.3.7 -->
+        <article class="item">
+          <div class="item-head">
+            <div class="tagline">
+              <span class="tag stable">stable</span>
+              <span class="rel">v0.3.7</span>
+            </div>
+            <span class="date">July 11, 2026</span>
+          </div>
+          <ul>
+            <li><strong>Default model:</strong> product default is now <code>gpt-5.6-sol</code> at <code>reasoning_effort: low</code> (catalog, config, TUI, docs). Terra remains the cheaper peer; 5.5/5.4 still supported.</li>
+            <li><strong>Codex robustness:</strong> output_text delta fallback for empty completed payloads, structured <code>*openai.Error</code> logging, openai-go 3.22.0, and safer <code>resolveCodexModel</code> (remap known-bad <code>gpt-5.2</code>; reject wrong-family typos instead of silent Sol swap; skip delta fallback on truncated incomplete streams).</li>
+            <li><strong>Incomplete-turn UX:</strong> CLI shows the human status reply without a scary <code>Error:</code> line for soft incomplete turns, but one-shot <code>agent -m</code> still exits non-zero. <code>Error()</code> keeps the short ops reason.</li>
+            <li><strong>Workspace guidance:</strong> AGENTS / imagemagick skill contact-sheet rules (quote paths, no <code>../</code>, fonts, prefer pptx) from the Jul 11 docs cut.</li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.7" target="_blank" rel="noopener noreferrer">Release</a>
+            <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.5...v0.3.7" target="_blank" rel="noopener noreferrer">Compare</a>
+            <a href="blog.html#entry-2026-07-11-sol">Blog</a>
+          </div>
+        </article>
 
         <!-- Workspace ImageMagick guidance -->
         <article class="item">
