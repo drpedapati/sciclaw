@@ -24,12 +24,29 @@ type CodexProvider struct {
 	tokenSource func() (string, string, error)
 }
 
+// Codex ChatGPT OAuth routes GPT-5.6 models (esp. Luna) by client identity.
+// Catalog metadata sets minimal_client_version=0.144.0; without originator+version
+// Luna returns HTTP 404 "Model not found". Match current Codex CLI identity.
+const (
+	codexCLIOriginator = "codex_cli_rs"
+	codexCLIVersion    = "0.144.1"
+)
+
+func appendCodexIdentityHeaders(opts []option.RequestOption) []option.RequestOption {
+	return append(opts,
+		option.WithHeader("originator", codexCLIOriginator),
+		option.WithHeader("version", codexCLIVersion),
+		option.WithHeader("User-Agent", codexCLIOriginator+"/"+codexCLIVersion),
+	)
+}
+
 func NewCodexProvider(token, accountID string) *CodexProvider {
 	opts := []option.RequestOption{
 		option.WithBaseURL("https://chatgpt.com/backend-api/codex"),
 		option.WithAPIKey(token),
 		option.WithHTTPClient(transport.NewCloudflareClient()),
 	}
+	opts = appendCodexIdentityHeaders(opts)
 	if accountID != "" {
 		opts = append(opts, option.WithHeader("Chatgpt-Account-Id", accountID))
 	}
@@ -61,6 +78,7 @@ func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []To
 	}
 
 	var opts []option.RequestOption
+	opts = appendCodexIdentityHeaders(opts)
 	if p.tokenSource != nil {
 		tok, accID, err := p.tokenSource()
 		if err != nil {

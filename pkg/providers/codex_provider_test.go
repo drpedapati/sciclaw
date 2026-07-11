@@ -307,6 +307,18 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 			http.Error(w, "missing account id", http.StatusBadRequest)
 			return
 		}
+		if r.Header.Get("originator") != codexCLIOriginator {
+			http.Error(w, "missing originator", http.StatusBadRequest)
+			return
+		}
+		if r.Header.Get("version") != codexCLIVersion {
+			http.Error(w, "missing version", http.StatusBadRequest)
+			return
+		}
+		if r.Header.Get("User-Agent") != codexCLIOriginator+"/"+codexCLIVersion {
+			http.Error(w, "missing user-agent", http.StatusBadRequest)
+			return
+		}
 
 		var body map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -469,6 +481,7 @@ func TestResolveCodexModel(t *testing.T) {
 	}{
 		{"empty", "", fallback, true, false},
 		{"sol", "gpt-5.6-sol", "gpt-5.6-sol", false, false},
+		{"luna", "gpt-5.6-luna", "gpt-5.6-luna", false, false},
 		{"prefixed", "openai/gpt-5.6-terra", "gpt-5.6-terra", false, false},
 		{"gpt52 remapped", "gpt-5.2", fallback, true, false},
 		{"gpt52 codex kept", "gpt-5.2-codex", "gpt-5.2-codex", false, false},
