@@ -39,7 +39,7 @@ Streamed `POST https://chatgpt.com/backend-api/codex/responses` with `stream: tr
 |-------|--------|
 | **`gpt-5.6-sol`** | HTTP 200, completed, text `ok` |
 | `gpt-5.6-terra` | HTTP 200, completed |
-| `gpt-5.6-luna` | HTTP 404 Model not found (this account/backend) |
+| `gpt-5.6-luna` | HTTP 200 with Codex CLI identity headers (`originator`+`version>=0.144.0`); bare OAuth → 404 |
 | `gpt-5.5` / `gpt-5.4` | still OK |
 | `gpt-5.2` (repo default) | **400 not supported** for Codex + ChatGPT account |
 
@@ -105,7 +105,7 @@ Streamed `POST https://chatgpt.com/backend-api/codex/responses` with `stream: tr
 ### Non-goals
 
 - Full rebase onto sipeed/picoclaw provider packages.
-- Luna on Codex until preflight is green.
+- Luna needs Codex identity headers (`originator` + `version>=0.144.0`); bare OAuth 404s.
 - API-key Chat Completions image gen (separate image-gen backlog).
 - Raising global Sol effort above **low** without a cost review (Discord multi-turn).
 - Waiting for upstream to “do 5.6 first” (they have not).
@@ -243,7 +243,7 @@ Implement:
 2. pkg/providers/codex_provider.go GetDefaultModel → "gpt-5.6-sol"
 3. config/config.example.json: model + reasoning_effort low
 4. pkg/models/models.go OpenAI catalog list: prepend "gpt-5.6-sol", "gpt-5.6-terra"
-   (do NOT add gpt-5.6-luna until Codex preflight is green)
+   (Luna is available when Codex identity headers are sent; catalog includes gpt-5.6-luna)
 5. cmd/picoclaw/tui/tab_login.go isStockOpenAIModel: include gpt-5.6-sol and openai/gpt-5.6-sol (and terra variants)
 6. TUI placeholders / settings sample maps that hardcode gpt-5.2 → update where they represent "current default"
 7. README.md OpenAI model table: primary gpt-5.6-sol @ low; note Terra as cheaper peer; leave 5.5/5.4 as still supported
@@ -468,7 +468,7 @@ sciclaw service status
 |----------|--------|-----------|
 | Primary model | `gpt-5.6-sol` | Matches product intent + ClinVision Sol; preflight green |
 | Effort | `low` | Cost/latency for Discord; ClinVision Sol consult policy |
-| Luna | Deferred | Codex 404 preflight |
+| Luna | Available | Needs Codex identity headers (`version>=0.144.0`) |
 | Upstream merge of provider tree | **Reject for this train** | Would drop image gen / effort without a large port |
 | Min ship | Config cutover Phases 0–2 | Unblocks prod without release |
 | Default ship | + Phase 3 | New installs match prod |

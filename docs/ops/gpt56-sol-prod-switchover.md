@@ -42,7 +42,7 @@ Streamed Responses calls to `https://chatgpt.com/backend-api/codex/responses` wi
 |----------|------|--------|
 | **`gpt-5.6-sol`** | 200 | `status=completed`, text `ok`, model echoed `gpt-5.6-sol` |
 | **`gpt-5.6-terra`** | 200 | same shape |
-| `gpt-5.6-luna` | 404 | `Model not found gpt-5.6-luna` on this Codex/ChatGPT account |
+| `gpt-5.6-luna` | 200 with Codex identity | Needs `originator=codex_cli_rs` + `version>=0.144.0`; bare requests 404 `Model not found` |
 | `gpt-5.5` | 200 | still works |
 | `gpt-5.4` | 200 | still works |
 | `gpt-5.2` | 400 | **not supported** for Codex + ChatGPT account |
@@ -51,7 +51,7 @@ Streamed Responses calls to `https://chatgpt.com/backend-api/codex/responses` wi
 **Implications:**
 
 - **Target ID `gpt-5.6-sol` is correct** for the production Codex/OAuth path.
-- **Do not plan Luna** for data3 until the Codex backend lists it (API/platform may differ).
+- **Luna works** on this Pro account when Codex CLI identity headers are present (`originator=codex_cli_rs`, `version>=0.144.0`).
 - Repo default `gpt-5.2` is a **bad Codex/ChatGPT default** today — Sol is both the product target and a better Codex-compatible default.
 - Preflight used **low** effort successfully; matches ClinVision’s Sol policy for bounded work.
 
@@ -165,4 +165,4 @@ go run ./cmd/picoclaw agent --model gpt-5.6-sol --effort low -m "Reply with exac
 - **Model:** `gpt-5.6-sol` (not Terra) — matches “use gpt sol” and ClinVision’s Sol choice for strong general work.  
 - **Effort:** `low` — matches ClinVision Sol consult policy and cost/latency for a Discord gateway.  
 - **Protocol:** stay on existing Codex Responses path; no gateway rewrite.  
-- **Luna:** deferred (404 on Codex preflight).  
+- **Luna:** available with Codex identity headers (`originator`/`version`); catalog includes `gpt-5.6-luna`. Product default stays Sol.  
