@@ -52,6 +52,22 @@ func (m *diagnosticMockProvider) GetDefaultModel() string {
 	return "mock-model"
 }
 
+func TestNewAgentLoopWithCodexProviderAssemblesImageGenerationRouting(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	provider := providers.NewCodexProvider("test-token", "test-account")
+
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	prompt := al.contextBuilder.BuildSystemPrompt()
+
+	if !strings.Contains(prompt, "read and follow the `image-generation` skill") {
+		t.Fatal("assembled Codex prompt missing canonical image-generation skill routing")
+	}
+	if strings.Contains(strings.ToLower(prompt), "real experimental data") {
+		t.Fatal("assembled Codex prompt contains the removed provenance warning")
+	}
+}
+
 func TestLocalTurnDiagnostics_RecordLLMResponseTracksFallbacks(t *testing.T) {
 	diag := newLocalTurnDiagnostics()
 	diag.recordLLMResponse(1500*time.Millisecond, &providers.LLMResponse{
