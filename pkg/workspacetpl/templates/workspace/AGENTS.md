@@ -55,7 +55,8 @@ Treat them as a starting pack, not a fixed identity. Keep, remove, or extend as 
 - `quarto-authoring`: reproducible manuscript rendering
 - `pandoc-docx`: clean first-draft Word generation from Markdown (bundled NIH template auto-applied)
 - `imagemagick`: reproducible image preprocessing (resize/crop/convert/DPI normalization)
-- OpenAI image generation (Codex/Responses `image_generation` tool): use when the user asks to generate or illustrate an image in chat. Do not present generated images as real experimental data. Prefer `beautiful-mermaid` for diagrams and `imagemagick` for editing existing files.
+- OpenAI image generation (Codex/Responses `image_generation` tool): read and follow the `image-generation` skill before choosing the output so generated media preserves the user's requested final artifact.
+- `image-generation`: final-artifact routing for standalone images, visual assets, editable presentations, and complete image-generated slides
 - `beautiful-mermaid`: diagram quality and export consistency
 - `explainer-site`: deep-dive, educational single-page explainer site creation
 - `experiment-provenance`: claim-to-artifact traceability

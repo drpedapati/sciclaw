@@ -75,7 +75,11 @@ auth.json
 
 # Local agent scratch
 .agent/
-.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/ship-job/
+!.agents/skills/ship-job/**
 .cache/
 .claude/
 .factory/

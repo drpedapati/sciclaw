@@ -27,6 +27,61 @@ func TestBuildSystemPromptIncludesHostedToolNotes(t *testing.T) {
 	}
 }
 
+func TestCodexImageGenerationToolNotePreservesFinalArtifactContract(t *testing.T) {
+	for _, required := range []string{
+		"read and follow the `image-generation` skill",
+		"preserves the user's requested final artifact",
+	} {
+		if !strings.Contains(codexImageGenerationToolNote, required) {
+			t.Fatalf("image generation note missing %q", required)
+		}
+	}
+	if strings.Contains(strings.ToLower(codexImageGenerationToolNote), "real experimental data") {
+		t.Fatal("image generation note still contains the removed provenance warning")
+	}
+}
+
+func TestWorkspaceTemplateOmitsRemovedImageGenerationWarning(t *testing.T) {
+	templatePath := filepath.Join("..", "workspacetpl", "templates", "workspace", "AGENTS.md")
+	data, err := os.ReadFile(templatePath)
+	if err != nil {
+		t.Fatalf("read workspace AGENTS template: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(strings.ToLower(text), "real experimental data") {
+		t.Fatal("workspace template still contains the removed provenance warning")
+	}
+	if !strings.Contains(text, "`image-generation`") {
+		t.Fatal("workspace template missing canonical image-generation skill routing")
+	}
+}
+
+func TestImageGenerationSkillProtectsArtifactRoutes(t *testing.T) {
+	skillPath := filepath.Join("..", "..", "skills", "image-generation", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read image-generation skill: %v", err)
+	}
+	text := string(data)
+	for _, required := range []string{
+		"### Standalone image",
+		"### Visual asset inside another artifact",
+		"### Editable presentation",
+		"### Complete image-generated slide",
+		"finished 16:9 slide as one image",
+		"read and follow the installed presentation and academic-presentation skills",
+		"action title stating the takeaway",
+		"successful stress-capacity pattern",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("image-generation skill missing %q", required)
+		}
+	}
+	if strings.Contains(strings.ToLower(text), "real experimental data") {
+		t.Fatal("image-generation skill contains the removed provenance warning")
+	}
+}
+
 func TestBuildSystemPromptUsesSciClawIdentity(t *testing.T) {
 	workspace := t.TempDir()
 	cb := NewContextBuilder(workspace)
