@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ship Job"
+  short_description: "Ship reviewed changes through a draft PR"
+  default_prompt: "Use $ship-job to deliver this change through a verified draft pull request."

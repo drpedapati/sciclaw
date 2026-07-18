@@ -166,6 +166,8 @@ type llmIterationResult struct {
 	TurnErr      error
 }
 
+const codexImageGenerationToolNote = "`image_generation` (OpenAI Responses) — generate images when requested. Before choosing the output, read and follow the `image-generation` skill so the generated media preserves the user's requested final artifact."
+
 const defaultEmptyAssistantResponse = "I completed the turn but did not produce a user-facing reply. Ask me for a summary of what was done."
 
 var errDiscordAutoArchiveTimedOut = errors.New("discord auto-archive timed out")
@@ -381,9 +383,7 @@ func NewAgentLoopWithOptions(cfg *config.Config, msgBus *bus.MessageBus, provide
 	// Hosted Responses tools are appended by CodexProvider, not the local
 	// ToolRegistry. Surface them in the prompt catalog so the model knows.
 	if _, ok := provider.(*providers.CodexProvider); ok {
-		contextBuilder.SetHostedToolNotes(
-			"`image_generation` (OpenAI Responses) — when the user asks to generate or illustrate an image, use this hosted tool. Prefer `beautiful-mermaid` for diagrams and ImageMagick for editing existing files. Do not present generated images as real experimental data.",
-		)
+		contextBuilder.SetHostedToolNotes(codexImageGenerationToolNote)
 	}
 	contextBuilder.SetVersion(Version)
 

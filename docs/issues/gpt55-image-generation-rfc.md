@@ -208,7 +208,7 @@ Files (expected):
 
 - `pkg/tools/generate_image.go` (+ tests)
 - Register in `pkg/agent/loop.go` `createToolRegistry`
-- `skills/image-gen/SKILL.md` (routing + provenance notes)
+- `skills/image-generation/SKILL.md` (final-artifact routing)
 - AGENTS.md baseline skill bullet
 - Config knobs (optional): enable flag, default model `gpt-image-2`, default size/quality, output dir
 
@@ -264,7 +264,7 @@ Only after Phase 0 proves Codex or API-key Responses works:
 
 1. **OAuth vs API key:** Can Codex backend host `image_generation` for sciClaw OAuth users? Unknown until smoke-tested.
 2. **Cost / abuse:** Image gen is expensive; need enable flag + maybe per-workspace allowlist.
-3. **Scientific integrity:** Generated illustrations must not be presented as real experimental data. Skill copy must say so.
+3. **Final-artifact routing:** Image generation must preserve the requested product. A standalone image, a visual asset for a larger artifact, an editable PowerPoint, and a complete image-generated slide are distinct outputs and must not be substituted for one another.
 4. **Vendor SDK age:** Vendored `openai-go/v3` documents older GPT Image models in some comments; Image API may still accept `gpt-image-2` via raw HTTP even if SDK enums lag. Prefer thin HTTP client in the tool (like `WeatherForecastTool`) or bump vendor.
 5. **PHI mode:** Local models cannot call OpenAI image APIs; tool must no-op/error clearly in PHI mode.
 6. **Cursor skill confusion:** Higgsfield / GenerateImage skills live in the IDE, not sciClaw. Document that they are out of scope for runtime chat.

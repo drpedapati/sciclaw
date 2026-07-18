@@ -82,6 +82,7 @@ var baselineScienceSkillNames = []string{
 	"quarto-authoring",
 	"pandoc-docx",
 	"imagemagick",
+	"image-generation",
 	"beautiful-mermaid",
 	"explainer-site",
 	"experiment-provenance",
