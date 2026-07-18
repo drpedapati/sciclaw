@@ -69,8 +69,15 @@ func TestImageGenerationSkillProtectsArtifactRoutes(t *testing.T) {
 		"### Editable presentation",
 		"### Complete image-generated slide",
 		"finished 16:9 slide as one image",
-		"read and follow the installed presentation and academic-presentation skills",
+		"read and follow the installed `pptx` skill",
 		"action title stating the takeaway",
+		"concise audience-facing wording",
+		"integrated exhibit or visual analogy that carries meaning",
+		"clear implication, intervention, or “so what”",
+		"readable presentation-scale hierarchy and spacing",
+		"Use source PowerPoint content when supplied",
+		"Do not return a wordless conceptual illustration",
+		"do not reconstruct an editable PowerPoint unless asked",
 		"successful stress-capacity pattern",
 	} {
 		if !strings.Contains(text, required) {

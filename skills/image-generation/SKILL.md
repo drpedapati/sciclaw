@@ -25,7 +25,7 @@ Read and follow the presentation skills. Build or modify the PowerPoint and keep
 
 Generate the finished 16:9 slide as one image. Use source PowerPoint content when supplied, but do not reconstruct an editable PowerPoint unless asked.
 
-Before generation, read and follow the installed presentation and academic-presentation skills. Their communication hierarchy governs the slide: argument and audience-facing content come before layout, and layout comes before aesthetics. Image generation is the rendering method, not a replacement for presentation reasoning.
+Before generation, read and follow the installed `pptx` skill. Its presentation communication hierarchy governs the slide: argument and audience-facing content come before layout, and layout comes before aesthetics. Image generation is the rendering method, not a replacement for presentation reasoning.
 
 The generated slide must contain:
 
