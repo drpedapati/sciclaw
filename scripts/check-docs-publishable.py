@@ -61,15 +61,65 @@ def main() -> int:
                 f"docs/{rel} — filename suggests an internal document; confirm it should be public."
             )
 
+    problems += check_seo_contract()
+
     if problems:
-        print("docs/ is published to sciclaw.dev. These files should not be there:\n")
+        print("docs/ is published to sciclaw.dev. Problems found:\n")
         for p in problems:
             print(f"  - {p}")
         print(f"\n{len(problems)} problem(s).")
         return 1
 
-    print("ok  docs/ contains only publishable files")
+    print("ok  docs/ contains only publishable files and meets the SEO contract")
     return 0
+
+
+def check_seo_contract() -> list[str]:
+    """Every indexable page needs a head and exactly one <h1>, and the sitemap
+    must match the filesystem. These are the defects an external audit had to
+    find by hand: section-install.html sat at the top sitemap priority with no
+    description, no canonical and zero <h1>."""
+    problems: list[str] = []
+
+    sitemap = (DOCS / "sitemap.xml").read_text()
+    listed = {
+        m.rstrip("/").rsplit("/", 1)[-1] or "index"
+        for m in re.findall(r"<loc>https://sciclaw\.dev/([^<]*)</loc>", sitemap)
+    }
+
+    for path in sorted(DOCS.glob("*.html")):
+        slug = "index" if path.stem == "index" else path.stem
+        html = path.read_text()
+        noindex = 'name="robots" content="noindex' in html
+        is404 = path.name == "404.html"
+
+        if noindex or is404:
+            if slug in listed:
+                problems.append(f"docs/{path.name} — noindex but listed in sitemap.xml")
+            continue
+
+        h1s = len(re.findall(r"<h1[\s>]", html))
+        if h1s != 1:
+            problems.append(f"docs/{path.name} — has {h1s} <h1>, expected exactly 1")
+        if 'name="description"' not in html:
+            problems.append(f"docs/{path.name} — no meta description")
+        if 'rel="canonical"' not in html:
+            problems.append(f"docs/{path.name} — no canonical")
+        elif f'href="https://sciclaw.dev/{"" if slug == "index" else slug}"' not in html:
+            problems.append(f"docs/{path.name} — canonical is not self-referencing")
+        if ".html" in " ".join(re.findall(r'href="([^"]*)"', html)):
+            problems.append(f"docs/{path.name} — .html link (Pages 308-redirects these)")
+        if slug not in listed:
+            problems.append(f"docs/{path.name} — indexable but missing from sitemap.xml")
+
+    for slug in sorted(listed):
+        if slug.endswith(".pdf"):
+            continue
+        name = "index.html" if slug == "index" else f"{slug}.html"
+        if not (DOCS / name).exists():
+            problems.append(f"sitemap.xml lists /{slug} but docs/{name} does not exist")
+
+    return problems
 
 
 if __name__ == "__main__":
