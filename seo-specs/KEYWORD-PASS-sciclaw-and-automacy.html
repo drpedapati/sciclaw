@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyword Pass — sciClaw + Automacy</title>
+<style>
+  :root{--ink:#141c2b;--muted:#5b6577;--line:#e3e7ee;--accent:#2f5bd6;--bg:#f4f6fa;--paper:#fff;
+    --good:#1c7a3e;--good-s:#e7f6ec;--warn:#8a5a00;--warn-s:#fff6e6;--bad:#b3261e;--bad-s:#fdecea;
+    --p1:#1c7a3e;--p1s:#e7f6ec;--p2:#2f5bd6;--p2s:#eef2fc;--p3:#8a5a00;--p3s:#fff6e6;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:960px;margin:28px auto;padding:0 22px}
+  header{background:linear-gradient(135deg,#1e2a4a,#2f5bd6);color:#fff;border-radius:16px;padding:26px 30px;margin-bottom:18px;
+    box-shadow:0 8px 28px rgba(30,50,110,.16)}
+  .brand{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:#bcd0ff;font-weight:700}
+  h1{margin:.35em 0 .3em;font-size:24px}
+  .sub{font-size:15px;line-height:1.5;color:#eaf0ff;max-width:76ch}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin-bottom:18px;
+    box-shadow:0 6px 24px rgba(20,30,60,.05)}
+  h2{font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;
+    padding-bottom:9px;border-bottom:1px solid var(--line)}
+  h2 .n{color:var(--accent)}
+  .lead{font-size:15px;margin:14px 0 4px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px;border-bottom:2px solid var(--line)}
+  td{padding:8px;border-bottom:1px solid var(--line);color:#39445a;vertical-align:top}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:none}
+  .d{display:inline-block;min-width:26px;text-align:center;border-radius:20px;padding:1px 7px;font-weight:700;font-size:12px}
+  .d0{background:var(--good-s);color:var(--good)} .dm{background:var(--warn-s);color:var(--warn)} .dh{background:var(--bad-s);color:var(--bad)}
+  .pill{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .buy{background:var(--good-s);color:var(--good)} .info{background:var(--p2s);color:var(--p2)} .nav{background:#efe7fb;color:#6b3fa0}
+  .prio{display:grid;grid-template-columns:70px 1fr;gap:16px;padding:15px 0;border-bottom:1px solid var(--line)}
+  .prio:last-child{border-bottom:none}
+  .ptag{font-size:11px;font-weight:800;text-transform:uppercase;padding:7px 4px;border-radius:8px;text-align:center;height:fit-content}
+  .pt1{background:var(--p1s);color:var(--p1)} .pt2{background:var(--p2s);color:var(--p2)} .pt3{background:var(--p3s);color:var(--p3)}
+  .prio h3{margin:0 0 4px;font-size:15.5px}
+  .prio p{margin:0 0 7px;font-size:13.5px;color:#44506a}
+  .kw{font-size:12.5px;color:var(--muted)}
+  .kw code{background:#f0f2f7;border-radius:4px;padding:1px 6px;font-size:11.5px;color:#2a3550;margin:0 2px}
+  .callout{border-radius:10px;padding:13px 16px;font-size:13.5px;margin-top:13px}
+  .good{background:var(--good-s);border:1px solid #bfe6ca;color:#15532b}
+  .warn{background:var(--warn-s);border:1px solid #f0dcae;color:#7a5600}
+  .bad{background:var(--bad-s);border:1px solid #f2c4c0;color:#8c2018}
+  .note{color:var(--muted);font-size:12px;margin-top:14px}
+  code{background:#f0f2f7;border-radius:4px;padding:1px 5px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">OpenSEO keyword pass · 2026-07-25 · US</div>
+    <h1>sciClaw + Automacy — where the winnable demand actually is</h1>
+    <div class="sub">Both sites' obvious keywords turned out to be the wrong targets. The real opportunities sit one seed over — and in both cases they're <b>competitor-brand and comparison terms at difficulty 0–15</b>, the same pattern that worked for MedicalFigs.</div>
+  </header>
+
+  <div class="card">
+    <h2>⚠ The two surprises</h2>
+    <div class="callout bad"><b>1. "AI research agent" is a dead end for sciClaw.</b> Only <b>18 keywords total</b>; the head term is just <b>170/mo</b>. It's an emerging phrase with high CPC ($13–14) but almost no search volume. Do <b>not</b> build the site around it.</div>
+    <div class="callout bad" style="margin-top:8px"><b>2. "Raycast hyper key" is a dead end for Automacy.</b> <code>raycast hyper key</code> = <b>30/mo</b>, <code>hyper key mac</code> = 30, most related terms 10–20. Splitting the guide into pages targeting <i>these</i> would earn almost nothing.</div>
+    <div class="callout good" style="margin-top:8px"><b>But both sites have a strong adjacent niche</b> — found by testing the neighbouring seed. Details below. <b>The guide split is still right for Automacy — just aimed at different keywords.</b></div>
+  </div>
+
+  <div class="card">
+    <h2>sciClaw &mdash; <span class="n">the real niche: literature-review tools</span></h2>
+    <p class="lead" style="margin-top:12px">Seed <code>literature review ai</code> opens a rich, commercially active space. Critically, the <b>competitor brand terms are wide open</b> — Elicit, SciSpace and Research Rabbit all have significant volume at <b>difficulty 1–15</b>. That's the BioRender play again: capture people already shopping for these tools.</p>
+    <table>
+      <tr><th>Keyword</th><th class="n">Volume</th><th>Difficulty</th><th>Type</th></tr>
+      <tr><td>literature review example</td><td class="n">14,800</td><td><span class="d dm">24</span></td><td><span class="pill info">Content</span></td></tr>
+      <tr><td><b>scispace</b></td><td class="n">12,100</td><td><span class="d dm">30</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td><b>elicit ai</b></td><td class="n">6,600</td><td><span class="d d0">15</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>scispace ai</td><td class="n">1,600</td><td><span class="d d0">15</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>ai research tool</td><td class="n">1,600</td><td><span class="d dh">42</span></td><td><span class="pill info">Head</span></td></tr>
+      <tr><td>literature review writer</td><td class="n">590</td><td><span class="d d0">16</span></td><td><span class="pill info">Content</span></td></tr>
+      <tr><td><b>elicit ai research assistant</b></td><td class="n">590</td><td><span class="d d0">6</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>elicit ai tool</td><td class="n">320</td><td><span class="d d0">6</span></td><td><span class="pill buy">Buyer</span></td></tr>
+      <tr><td><b>best ai for literature review</b></td><td class="n">210</td><td><span class="d dm">21</span></td><td><span class="pill buy">Buyer</span></td></tr>
+      <tr><td>free ai for research paper writing</td><td class="n">170</td><td><span class="d dm">30</span></td><td><span class="pill buy">Buyer</span></td></tr>
+      <tr><td>elicit literature review</td><td class="n">140</td><td><span class="d d0">5</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>research rabbit app</td><td class="n">110</td><td><span class="d d0">9</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>is research rabbit free</td><td class="n">90</td><td><span class="d d0">12</span></td><td><span class="pill buy">Buyer</span></td></tr>
+      <tr><td>how to use research rabbit</td><td class="n">70</td><td><span class="d d0">2</span></td><td><span class="pill info">Content</span></td></tr>
+    </table>
+    <div class="callout good">✔ sciClaw's genuine differentiators map perfectly onto buyer questions here: <b>free &amp; open source</b> (vs Elicit/SciSpace paywalls), <b>runs locally / data never leaves</b> (a real concern for clinical researchers), and <b>PHI mode</b> — which almost nothing else in this space offers.</div>
+  </div>
+
+  <div class="card">
+    <h2>sciClaw &mdash; <span class="n">page plan</span></h2>
+    <div class="prio">
+      <div class="ptag pt1">P1<br>Weeks</div>
+      <div>
+        <h3>Competitor alternative pages</h3>
+        <p>One page each: <b>Elicit alternative</b>, <b>SciSpace alternative</b>, <b>Research Rabbit alternative</b>. Angle: free + open source + local/private + PHI mode. These are difficulty 5–15 with real volume and buyer intent.</p>
+        <div class="kw">Targets: <code>elicit ai</code> <code>elicit ai tool</code> <code>elicit literature review</code> <code>scispace ai</code> <code>research rabbit app</code> <code>is research rabbit free</code></div>
+      </div>
+    </div>
+    <div class="prio">
+      <div class="ptag pt2">P2<br>1–2 mo</div>
+      <div>
+        <h3>"Best AI for literature review" comparison hub</h3>
+        <p>An honest multi-tool comparison table (sciClaw vs Elicit vs SciSpace vs Research Rabbit vs Consensus). Ranks for the buyer terms and earns links. Same even-handed format as the MedicalFigs vs BioRender page — <b>verify all competitor pricing/features at publish time.</b></p>
+        <div class="kw">Targets: <code>best ai for literature review</code> <code>literature review ai tools</code> <code>free ai for research paper writing</code></div>
+      </div>
+    </div>
+    <div class="prio">
+      <div class="ptag pt3">P3<br>Ongoing</div>
+      <div>
+        <h3>Authority content — the how-to layer</h3>
+        <p><code>literature review example</code> is <b>14,800/mo at difficulty 24</b> — the biggest single prize here. Write the definitive guide + templates, ending in "generate one with sciClaw." Add PubMed-query and tracked-changes tutorials (sciClaw's built-in tools).</p>
+        <div class="kw">Targets: <code>literature review example</code> <code>literature review writer</code> <code>how to use research rabbit</code></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Automacy &mdash; <span class="n">the real niche: window managers &amp; shortcuts</span></h2>
+    <p class="lead" style="margin-top:12px">Seed <code>mac window manager</code> returns <b>111 keywords</b> with genuine volume at <b>very low difficulty</b> — a far better fit than the Raycast/Hyper-Key angle. The big one: <b>keyboard shortcuts mac, 9,900/mo at difficulty 10.</b> And every rival tool name (yabai, Rectangle, Magnet, Amethyst, Moom, Aerospace) is difficulty 0–12.</p>
+    <table>
+      <tr><th>Keyword</th><th class="n">Volume</th><th>Difficulty</th><th>Type</th></tr>
+      <tr><td><b>keyboard shortcuts mac</b></td><td class="n">9,900</td><td><span class="d d0">10</span></td><td><span class="pill info">Head — the prize</span></td></tr>
+      <tr><td><b>yabai</b></td><td class="n">5,400</td><td><span class="d d0">11</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td><b>rectangle mac</b></td><td class="n">3,600</td><td><span class="d d0">9</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>swish app</td><td class="n">1,900</td><td><span class="d dm">28</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>mac window manager</td><td class="n">1,600</td><td><span class="d d0">17</span></td><td><span class="pill buy">Head</span></td></tr>
+      <tr><td>macos window manager</td><td class="n">1,600</td><td><span class="d d0">15</span></td><td><span class="pill buy">Head</span></td></tr>
+      <tr><td>magnet mac</td><td class="n">1,000</td><td><span class="d d0">10</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>rectangle pro</td><td class="n">880</td><td><span class="d d0">7</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>mac window snapping</td><td class="n">720</td><td><span class="d d0">11</span></td><td><span class="pill info">Content</span></td></tr>
+      <tr><td>macbook shortcuts pdf</td><td class="n">390</td><td><span class="d d0">9</span></td><td><span class="pill info">Content — cheatsheet!</span></td></tr>
+      <tr><td>macos tiling window manager</td><td class="n">320</td><td><span class="d d0">4</span></td><td><span class="pill info">Content</span></td></tr>
+      <tr><td>aerospace tiling window manager</td><td class="n">260</td><td><span class="d d0">2</span></td><td><span class="pill nav">Competitor</span></td></tr>
+      <tr><td>best mac window manager</td><td class="n">210</td><td><span class="d d0">4</span></td><td><span class="pill buy">Buyer</span></td></tr>
+      <tr><td>mac amethyst</td><td class="n">210</td><td><span class="d d0">0</span></td><td><span class="pill nav">Competitor</span></td></tr>
+    </table>
+    <div class="callout good">✔ <b>You already have the asset for the biggest term.</b> <code>macbook shortcuts pdf</code> (390/mo, diff 9) and <code>keyboard shortcuts mac</code> (9,900/mo, diff 10) are exactly what your <b>Cheat Sheet Builder</b> produces — but it's currently <code>noindex</code>. That's the single fastest win on the site.</div>
+  </div>
+
+  <div class="card">
+    <h2>Automacy &mdash; <span class="n">revised page plan</span></h2>
+    <div class="prio">
+      <div class="ptag pt1">P1<br>Weeks</div>
+      <div>
+        <h3>A real "Mac keyboard shortcuts" page + un-hide the cheatsheet</h3>
+        <p>Build a genuine shortcuts reference page (the biggest term in the niche, 9,900/mo at diff 10), and give the <b>Cheat Sheet Builder</b> an indexable marketing/landing page targeting <code>macbook shortcuts pdf</code>. Keep the interactive tool itself noindex if you prefer — but the landing page must be indexable.</p>
+        <div class="kw">Targets: <code>keyboard shortcuts mac</code> <code>macbook shortcuts pdf</code> <code>mac shortcuts list</code></div>
+      </div>
+    </div>
+    <div class="prio">
+      <div class="ptag pt2">P2<br>1–2 mo</div>
+      <div>
+        <h3>Window-manager comparison pages</h3>
+        <p>Automacy is an <i>opinionated setup</i>, so it competes with the tools people already search for. Pages: "Automacy vs Rectangle", "vs Magnet", "vs yabai", "Best Mac window manager (2026)". All difficulty 0–11 with real volume.</p>
+        <div class="kw">Targets: <code>yabai</code> <code>rectangle mac</code> <code>magnet mac</code> <code>best mac window manager</code> <code>mac amethyst</code></div>
+      </div>
+    </div>
+    <div class="prio">
+      <div class="ptag pt3">P3<br>Then</div>
+      <div>
+        <h3>Split the 15-section guide — but only where demand exists</h3>
+        <p>Now the split is justified: give each section its own <code>/guide/*</code> URL, prioritising sections that map to real terms (window focus/borders, tiling, screen capture, dictation, terminal). Skip standalone pages for sections with no demand — keep those on the hub.</p>
+        <div class="kw">Targets: <code>macos tiling window manager</code> <code>mac window snapping</code> + per-section long-tail</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Verdict — where to spend effort</h2>
+    <table>
+      <tr><th>Site</th><th>Best single target</th><th class="n">Volume</th><th>Diff</th><th>Verdict</th></tr>
+      <tr><td><b>Automacy</b></td><td>keyboard shortcuts mac</td><td class="n">9,900</td><td><span class="d d0">10</span></td><td><b>Best raw opportunity</b> — big volume, tiny difficulty, and you already have the asset</td></tr>
+      <tr><td><b>sciClaw</b></td><td>literature review example</td><td class="n">14,800</td><td><span class="d dm">24</span></td><td>Bigger prize but harder; the <b>Elicit/SciSpace alternative pages (diff 5–15)</b> convert sooner</td></tr>
+      <tr><td>MedicalFigs <span style="color:var(--muted)">(in progress)</span></td><td>biorender alternative</td><td class="n">~500+</td><td><span class="d d0">0–6</span></td><td>Still priority #1 for revenue intent</td></tr>
+    </table>
+    <div class="callout warn">⚠ Reality check: sciClaw and Automacy are <b>free/open-source</b> projects — traffic here buys adoption, contributors and citations, not revenue. If the goal is signups/income, MedicalFigs still deserves the effort first. If the goal is reach for the open-source work, Automacy's <code>keyboard shortcuts mac</code> is the cheapest big win available across the whole portfolio.</div>
+    <div class="note">Source: OpenSEO (self-hosted) + DataForSEO Labs, US, 2026-07-25. Difficulty = 0–100 (higher = harder). Volumes are third-party estimates. Competitor claims on any published page must be verified at publish time. Backlink data still deferred ($100/mo tier).</div>
+  </div>
+</div>
+</body>
+</html>

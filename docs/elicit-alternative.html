@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Free Elicit Alternative — Local, Open-Source | sciClaw</title>
+    <script defer data-domain="sciclaw.dev" src="https://analytics.cincineuro.com/js/script.file-downloads.outbound-links.tagged-events.js"></script>
+    <meta name="description" content="Looking for an Elicit alternative? sciClaw is a free, open-source research agent on your machine — literature search, drafting, and audit trail. No cloud." />
+    <link rel="canonical" href="https://sciclaw.dev/elicit-alternative" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://sciclaw.dev/elicit-alternative" />
+    <meta property="og:title" content="Free Elicit Alternative — Local, Open-Source | sciClaw" />
+    <meta property="og:description" content="Looking for an Elicit alternative? sciClaw is a free, open-source research agent on your machine — literature search, drafting, and audit trail. No cloud." />
+    <meta property="og:site_name" content="sciClaw" />
+    <meta property="og:image" content="https://sciclaw.dev/og-image.jpg" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@cbrainlab" />
+    <meta name="twitter:title" content="Free Elicit Alternative — Local, Open-Source | sciClaw" />
+    <meta name="twitter:description" content="Looking for an Elicit alternative? sciClaw is a free, open-source research agent on your machine — literature search, drafting, and audit trail. No cloud." />
+    <meta name="twitter:image" content="https://sciclaw.dev/og-image.jpg" />
+
+    <meta name="author" content="Ernest Pedapati, MD" />
+    <meta name="robots" content="index, follow" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "sciClaw",
+      "operatingSystem": "macOS, Linux",
+      "applicationCategory": "Research",
+      "url": "https://sciclaw.dev/",
+      "license": "https://opensource.org/licenses/MIT",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "description": "sciClaw is a free, open-source paired-scientist research agent for literature search, manuscript drafting, and document review. It runs locally on your machine with your own API key."
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is sciClaw really free?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes — MIT licensed, no account, no telemetry. You pay your AI provider directly (most researchers spend a few dollars/month)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does my data go to the cloud?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Your files stay on your machine. Only your prompt/conversation goes to whichever model provider you choose, using your own key."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can it do systematic reviews?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "It can run multi-step, logged protocols and PubMed queries. For very large-scale screening with a dedicated managed workflow, Elicit Pro is purpose-built."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use it with PHI?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "sciClaw has a PHI mode — see sciclaw.dev/phi-mode. You remain responsible for your institution's compliance requirements."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What do I need?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Mac or Linux (Windows via WSL), one Homebrew command, and an AI provider account."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+      :root {
+        --bg: #f8fafc;
+        --paper: #ffffff;
+        --ink: #0f172a;
+        --muted: #475569;
+        --border: #dbe3ee;
+        --accent: #0f766e;
+        --accent-soft: #ccfbf1;
+        --accent-hover: #0d655b;
+        --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+        --serif: "Fraunces", "Times New Roman", serif;
+        --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background:
+          radial-gradient(circle at 10% 10%, #d9f8f2 0%, transparent 35%),
+          radial-gradient(circle at 95% 0%, #dbeafe 0%, transparent 30%),
+          var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        line-height: 1.7;
+      }
+
+      a { color: var(--accent); }
+      a:hover { color: var(--accent-hover); }
+
+      .wrap {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      /* ── Header ── */
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 24px;
+        max-width: 880px;
+        margin: 0 auto;
+      }
+
+      .brand {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 18px;
+        color: var(--ink);
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .brand-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        display: inline-block;
+      }
+
+      .nav-links { display: flex; align-items: center; gap: 18px; }
+
+      .util {
+        text-decoration: none;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .util:hover { color: var(--accent); }
+
+      /* ── Article ── */
+      article {
+        padding: 40px 0 60px;
+      }
+
+      article h1 {
+        font-family: var(--serif);
+        font-size: 32px;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+
+      article .subtitle {
+        font-size: 17px;
+        color: var(--muted);
+        margin: 0 0 24px;
+        line-height: 1.5;
+      }
+
+      article h2 {
+        font-family: var(--serif);
+        font-size: 20px;
+        margin: 32px 0 10px;
+        color: var(--ink);
+      }
+
+      article h3 {
+        font-family: var(--sans);
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0 0 6px;
+        color: var(--ink);
+      }
+
+      article p {
+        font-size: 15px;
+        color: var(--ink);
+        margin: 0 0 16px;
+        line-height: 1.75;
+      }
+
+      article ul {
+        margin: 0 0 16px;
+        padding-left: 22px;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      article ul li { margin-bottom: 6px; }
+
+      article code {
+        font-family: var(--mono);
+        font-size: 13px;
+        background: var(--accent-soft);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .trust-line {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        margin: 10px 0 0;
+      }
+
+      .install-box {
+        margin: 18px 0 8px;
+        background: #0f172a;
+        border-radius: 10px;
+        padding: 12px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        overflow-x: auto;
+      }
+
+      .install-box code {
+        color: #e2e8f0;
+        font-size: 14px;
+        background: none;
+        padding: 0;
+        white-space: nowrap;
+      }
+
+      .copy-btn {
+        background: none;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 4px 8px;
+        cursor: pointer;
+        color: #94a3b8;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin: 16px 0 8px;
+      }
+
+      .card {
+        background: var(--paper);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+      }
+
+      .card p {
+        font-size: 14px;
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .table-scroll { overflow-x: auto; margin: 16px 0; }
+
+      table.compare {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+        background: var(--paper);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      table.compare th,
+      table.compare td {
+        border: 1px solid var(--border);
+        padding: 9px 12px;
+        text-align: left;
+        vertical-align: top;
+        line-height: 1.55;
+      }
+
+      table.compare thead th {
+        background: var(--accent-soft);
+        font-family: var(--sans);
+        font-weight: 600;
+      }
+
+      table.compare td:first-child,
+      table.compare th:first-child {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .verified-note {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        margin: 6px 0 20px;
+      }
+
+      .honest {
+        background: var(--paper);
+        border-left: 3px solid var(--accent);
+        border-radius: 0 10px 10px 0;
+        padding: 14px 18px;
+        margin: 20px 0;
+      }
+      .honest p { margin: 0; font-style: italic; color: var(--muted); }
+
+      .faq-q { margin-top: 20px; }
+
+      .cta-final {
+        background: var(--paper);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 22px;
+        margin: 28px 0 0;
+        text-align: center;
+      }
+
+      /* ── Footer ── */
+      footer {
+        margin-top: 24px;
+        padding: 16px 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+        border-top: 1px solid var(--border);
+      }
+
+      footer a { color: var(--muted); text-decoration: underline; }
+      footer a:hover { color: var(--accent); }
+
+      @media (max-width: 760px) {
+        article h1 { font-size: 26px; }
+        article { padding: 28px 0 40px; }
+        .cards { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/">
+        <span class="brand-dot" aria-hidden="true"></span>
+        sciClaw
+      </a>
+      <nav class="nav-links">
+        <a class="util" href="/docs">Docs</a>
+        <a class="util" href="/philosophy">Philosophy</a>
+        <a class="util" href="/security">Security</a>
+        <a class="util" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a class="util" href="/section-install">Install</a>
+      </nav>
+    </header>
+
+    <main class="wrap">
+      <article>
+        <h1>The free, open-source Elicit alternative that runs on your machine</h1>
+        <p class="subtitle">sciClaw is a paired-scientist agent for literature search, manuscript drafting, and document review — MIT licensed, running locally with your own API key. Your papers, notes, and data never leave your machine, and every step lands in a folder you can open, version, and audit.</p>
+
+        <div class="install-box">
+          <code id="install-cmd">brew tap drpedapati/tap &amp;&amp; brew install sciclaw</code>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('brew tap drpedapati/tap && brew install sciclaw').then(function(){this.textContent='Copied';setTimeout(function(){this.textContent='Copy'}.bind(this),1500)}.bind(this))" title="Copy to clipboard">Copy</button>
+        </div>
+        <p><a href="/docs">Read the docs</a> &middot; <a href="/section-install">Step-by-step install guide</a></p>
+        <p class="trust-line">Free &amp; open source (MIT) &middot; Runs locally &middot; Bring your own model</p>
+
+        <h2>Why researchers look for an Elicit alternative</h2>
+        <div class="cards">
+          <div class="card">
+            <h3>Cost at scale</h3>
+            <p>Elicit's free Basic tier gives unlimited search/summaries/chat but only <em>limited</em> usage of Research Agent and Research Reports, and export (RIS/CSV/BIB/PDF/DOCX) is a paid feature. sciClaw is free at every tier; you pay only your own model provider (typically a few dollars a month).</p>
+          </div>
+          <div class="card">
+            <h3>Where your data lives</h3>
+            <p>Elicit is a hosted cloud service; &ldquo;no training on your data by default&rdquo; is listed as an Enterprise-tier feature. sciClaw runs on your machine: files stay local, there's no sciClaw account, no telemetry.</p>
+          </div>
+          <div class="card">
+            <h3>Beyond search</h3>
+            <p>Elicit is built around screening and extracting from papers. sciClaw also writes and runs code, produces .docx with real tracked changes, and logs a full audit trail for reproducibility.</p>
+          </div>
+        </div>
+
+        <h2>sciClaw vs. Elicit</h2>
+        <div class="table-scroll">
+          <table class="compare">
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col">sciClaw</th>
+                <th scope="col">Elicit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Price</td>
+                <td><strong>Free, MIT open source</strong> (you pay your own model API)</td>
+                <td>Free Basic tier; paid from <strong>$11/user/mo academic</strong> (billed $132/yr) or <strong>$49/user/mo Pro (industry)</strong>; Scale $89&ndash;$169/mo</td>
+              </tr>
+              <tr>
+                <td>Where it runs</td>
+                <td><strong>Your machine</strong> &mdash; local files, no vendor account</td>
+                <td>Hosted cloud</td>
+              </tr>
+              <tr>
+                <td>Data handling</td>
+                <td>Files never leave your device</td>
+                <td>Cloud-processed; <em>&ldquo;no training on your data by default&rdquo;</em> is an <strong>Enterprise</strong> feature</td>
+              </tr>
+              <tr>
+                <td>Paper corpus</td>
+                <td>PubMed / NCBI E-Utilities (+ your own PDFs)</td>
+                <td>138M+ papers, 500k+ clinical trials</td>
+              </tr>
+              <tr>
+                <td>Export</td>
+                <td>Local files by default (.docx, .csv, RIS)</td>
+                <td>RIS/CSV/BIB/PDF/DOCX <strong>on paid plans</strong></td>
+              </tr>
+              <tr>
+                <td>Systematic review</td>
+                <td>Scriptable via protocols/skills</td>
+                <td>Dedicated workflow; screens 5,000 papers (Pro)</td>
+              </tr>
+              <tr>
+                <td>Writing &amp; review</td>
+                <td><strong>Tracked changes in Word, margin comments, semantic diff</strong></td>
+                <td>Not a manuscript-revision tool</td>
+              </tr>
+              <tr>
+                <td>Runs code / stats</td>
+                <td><strong>Yes &mdash; R, Python, Quarto with provenance</strong></td>
+                <td>No</td>
+              </tr>
+              <tr>
+                <td>PHI / clinical use</td>
+                <td><strong><a href="/phi-mode">PHI mode</a></strong></td>
+                <td>Enterprise security controls</td>
+              </tr>
+              <tr>
+                <td>Interface</td>
+                <td>Discord / Telegram / CLI</td>
+                <td>Web app</td>
+              </tr>
+              <tr>
+                <td>Best for</td>
+                <td>Researchers who want local control, reproducibility, and drafting</td>
+                <td>Teams doing large-scale screening in the cloud</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="verified-note">Competitor pricing verified 2026-07-26 at elicit.com/pricing. Re-verify before each publish.</p>
+
+        <div class="honest">
+          <p>Elicit is excellent at what it does &mdash; large-scale paper screening and structured extraction across a huge corpus. If that's your core need and cloud is fine, it's a strong tool. sciClaw is for researchers who want the work to happen on their own machine, with an auditable trail and the ability to draft and run analyses, for free.</p>
+        </div>
+
+        <h2>Choose sciClaw if / Choose Elicit if</h2>
+        <ul>
+          <li><strong>Choose sciClaw if:</strong> you handle sensitive or clinical data, you want reproducibility and provenance, you want manuscript drafting + tracked changes, you'd rather not pay per seat, or you want to fork and extend the tooling.</li>
+          <li><strong>Choose Elicit if:</strong> your main job is screening thousands of papers with a polished web UI and a managed 138M-paper index, and you want it to just work without local setup.</li>
+        </ul>
+        <p>Curious how we think about local-first research tooling? Read our <a href="/philosophy">philosophy</a> and <a href="/security">security model</a>.</p>
+
+        <h2>Frequently asked questions</h2>
+
+        <h3 class="faq-q">Is sciClaw really free?</h3>
+        <p>Yes &mdash; MIT licensed, no account, no telemetry. You pay your AI provider directly (most researchers spend a few dollars/month).</p>
+
+        <h3 class="faq-q">Does my data go to the cloud?</h3>
+        <p>Your files stay on your machine. Only your prompt/conversation goes to whichever model provider you choose, using your own key.</p>
+
+        <h3 class="faq-q">Can it do systematic reviews?</h3>
+        <p>It can run multi-step, logged protocols and PubMed queries. For very large-scale screening with a dedicated managed workflow, Elicit Pro is purpose-built.</p>
+
+        <h3 class="faq-q">Can I use it with PHI?</h3>
+        <p>sciClaw has a PHI mode &mdash; see <a href="/phi-mode">/phi-mode.html</a>. You remain responsible for your institution's compliance requirements.</p>
+
+        <h3 class="faq-q">What do I need?</h3>
+        <p>Mac or Linux (Windows via WSL), one Homebrew command, and an AI provider account. See the <a href="/section-install">install guide</a>.</p>
+
+        <div class="cta-final">
+          <h2 style="margin-top:0;">Install in one line. Keep your data.</h2>
+          <div class="install-box" style="max-width:520px;margin-left:auto;margin-right:auto;">
+            <code>brew tap drpedapati/tap &amp;&amp; brew install sciclaw</code>
+            <button class="copy-btn" onclick="navigator.clipboard.writeText('brew tap drpedapati/tap && brew install sciclaw').then(function(){this.textContent='Copied';setTimeout(function(){this.textContent='Copy'}.bind(this),1500)}.bind(this))" title="Copy to clipboard">Copy</button>
+          </div>
+          <p style="margin:12px 0 0;"><a href="/section-install">Full install guide</a> &middot; <a href="/docs">Documentation</a> &middot; <a href="/">Back to sciClaw home</a></p>
+        </div>
+      </article>
+
+      <footer>
+        <a href="/">sciClaw</a> is open source (MIT). Built on <a href="https://github.com/sipeed/picoclaw">PicoClaw</a> by Sipeed.
+      </footer>
+    </main>
+  </body>
+</html>
