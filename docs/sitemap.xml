@@ -6,32 +6,32 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/docs.html</loc>
+    <loc>https://sciclaw.dev/docs</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/phi-mode.html</loc>
+    <loc>https://sciclaw.dev/phi-mode</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/changelog.html</loc>
+    <loc>https://sciclaw.dev/changelog</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/blog.html</loc>
+    <loc>https://sciclaw.dev/blog</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/philosophy.html</loc>
+    <loc>https://sciclaw.dev/philosophy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/security.html</loc>
+    <loc>https://sciclaw.dev/security</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -41,17 +41,17 @@
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/elicit-alternative.html</loc>
+    <loc>https://sciclaw.dev/elicit-alternative</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/section-install.html</loc>
+    <loc>https://sciclaw.dev/section-install</loc>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://sciclaw.dev/biography.html</loc>
+    <loc>https://sciclaw.dev/biography</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
