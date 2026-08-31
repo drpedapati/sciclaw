@@ -21,4 +21,3 @@ func TestLookPathWithFallbackReturnsErrorForMissingBinary(t *testing.T) {
 		t.Fatalf("expected error for missing binary")
 	}
 }
-

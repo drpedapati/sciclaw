@@ -50,22 +50,22 @@ const (
 )
 
 type EmailModel struct {
-	exec          Executor
-	mode          emailMode
-	loaded        bool
-	selectedRow   int
-	enabled       bool
-	provider      string
-	address       string
-	displayName   string
-	baseURL       string
-	keyPresent    bool
-	allowFrom     []string
+	exec           Executor
+	mode           emailMode
+	loaded         bool
+	selectedRow    int
+	enabled        bool
+	provider       string
+	address        string
+	displayName    string
+	baseURL        string
+	keyPresent     bool
+	allowFrom      []string
 	receiveEnabled bool
-	testRecipient string
-	lastOut       string
-	flashMsg      string
-	flashUntil    time.Time
+	testRecipient  string
+	lastOut        string
+	flashMsg       string
+	flashUntil     time.Time
 
 	input   textinput.Model
 	editKey emailField
@@ -375,14 +375,14 @@ func fetchEmailData(exec Executor) tea.Cmd {
 		var parsed struct {
 			Channels struct {
 				Email struct {
-					Enabled        bool           `json:"enabled"`
-					Provider       string         `json:"provider"`
-					APIKey         string         `json:"api_key"`
-					Address        string         `json:"address"`
-					DisplayName    string         `json:"display_name"`
-					BaseURL        string         `json:"base_url"`
+					Enabled        bool            `json:"enabled"`
+					Provider       string          `json:"provider"`
+					APIKey         string          `json:"api_key"`
+					Address        string          `json:"address"`
+					DisplayName    string          `json:"display_name"`
+					BaseURL        string          `json:"base_url"`
 					AllowFrom      flexStringSlice `json:"allow_from"`
-					ReceiveEnabled bool           `json:"receive_enabled"`
+					ReceiveEnabled bool            `json:"receive_enabled"`
 				} `json:"email"`
 			} `json:"channels"`
 		}
