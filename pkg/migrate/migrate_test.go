@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -612,6 +613,98 @@ func TestRewriteWorkspacePath(t *testing.T) {
 				t.Errorf("rewriteWorkspacePath(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRunUnifyMigratesWorkspace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	oldDir := filepath.Join(home, ".picoclaw")
+	newDir := filepath.Join(home, "sciclaw")
+	if err := os.MkdirAll(filepath.Join(oldDir, "workspace"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(oldDir, "config.json"), []byte(`{"agents":{"defaults":{"workspace":"~/.picoclaw/workspace"}}}`), 0644)
+	os.WriteFile(filepath.Join(oldDir, "workspace", "SOUL.md"), []byte("# Soul"), 0644)
+	os.WriteFile(filepath.Join(newDir, "config.json"), []byte("{}"), 0644)
+
+	if _, err := runUnify(Options{Force: true}); err != nil {
+		t.Fatalf("runUnify: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(newDir, "SOUL.md")); err != nil || string(data) != "# Soul" {
+		t.Errorf("workspace file = %q, %v", data, err)
+	}
+	if info, err := os.Lstat(oldDir); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("legacy directory should be a symlink: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(newDir, "config.json")); err != nil || !strings.Contains(string(data), "~/sciclaw") {
+		t.Errorf("rewritten config = %q, %v", data, err)
+	}
+}
+
+func TestRunUnifyPreservesLegacyDirAfterMigrationError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	oldDir := filepath.Join(home, ".picoclaw")
+	newDir := filepath.Join(home, "sciclaw")
+	if err := os.MkdirAll(filepath.Join(newDir, "auth.json"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(oldDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(oldDir, "config.json"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(oldDir, "auth.json"), []byte("credentials"), 0644)
+
+	result, err := runUnify(Options{Force: true})
+	if err != nil {
+		t.Fatalf("runUnify: %v", err)
+	}
+	if len(result.Errors) == 0 {
+		t.Fatal("expected migration error")
+	}
+	if info, err := os.Lstat(oldDir); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("legacy directory should remain intact: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(oldDir, "auth.json")); err != nil || string(data) != "credentials" {
+		t.Errorf("legacy auth file = %q, %v", data, err)
+	}
+}
+
+func TestRunUnifyPreservesLegacyDirAfterRewriteError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	oldDir := filepath.Join(home, ".picoclaw")
+	newDir := filepath.Join(home, "sciclaw")
+	if err := os.MkdirAll(oldDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	const invalidConfig = "{"
+	if err := os.WriteFile(filepath.Join(oldDir, "config.json"), []byte(invalidConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newDir, "config.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := runUnify(Options{Force: true})
+	if err != nil {
+		t.Fatalf("runUnify: %v", err)
+	}
+	if len(result.Errors) == 0 {
+		t.Fatal("expected config rewrite error")
+	}
+	if info, err := os.Lstat(oldDir); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("legacy directory should remain intact: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(oldDir, "config.json")); err != nil || string(data) != invalidConfig {
+		t.Errorf("legacy config = %q, %v", data, err)
 	}
 }
 

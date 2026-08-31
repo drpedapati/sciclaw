@@ -140,6 +140,7 @@ func runUnify(opts Options) (*Result, error) {
 		{"backups", "backups"},
 		{"templates", "templates"},
 		{"skills", "global-skills"},
+		{"workspace", "."},
 	}
 	actions := make([]Action, 0, len(files)+len(dirs)+3)
 	for _, f := range files {
@@ -184,21 +185,22 @@ func runUnify(opts Options) (*Result, error) {
 		case ActionMoveFile:
 			if err := os.MkdirAll(filepath.Dir(action.Destination), 0o755); err != nil {
 				result.Errors = append(result.Errors, err)
-				continue
+				return result, nil
 			}
 			if err := copyFile(action.Source, action.Destination); err != nil {
 				result.Errors = append(result.Errors, err)
-				continue
+				return result, nil
 			}
 			result.FilesCopied++
 		case ActionMoveDir:
 			if err := copyDir(action.Source, action.Destination); err != nil {
 				result.Errors = append(result.Errors, err)
-				continue
+				return result, nil
 			}
 		case ActionRewriteConfig:
 			if err := rewriteUnifiedConfigPath(action.Source); err != nil {
 				result.Errors = append(result.Errors, err)
+				return result, nil
 			}
 		case ActionRemoveDir:
 			if err := os.RemoveAll(action.Source); err != nil {
