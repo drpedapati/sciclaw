@@ -140,6 +140,7 @@ func runUnify(opts Options) (*Result, error) {
 		{"backups", "backups"},
 		{"templates", "templates"},
 		{"skills", "global-skills"},
+		{"workspace", "."},
 	}
 	actions := make([]Action, 0, len(files)+len(dirs)+3)
 	for _, f := range files {
@@ -156,6 +157,9 @@ func runUnify(opts Options) (*Result, error) {
 	}
 	if _, err := os.Stat(newCfg); err == nil {
 		actions = append(actions, Action{Type: ActionRewriteConfig, Source: newCfg, Destination: newCfg})
+	}
+	if err := validateUnifyWorkspaceDestinations(actions, filepath.Join(oldDir, "workspace")); err != nil {
+		return &Result{Errors: []error{err}}, nil
 	}
 	actions = append(actions,
 		Action{Type: ActionRemoveDir, Source: oldDir, Destination: oldDir},
@@ -184,21 +188,22 @@ func runUnify(opts Options) (*Result, error) {
 		case ActionMoveFile:
 			if err := os.MkdirAll(filepath.Dir(action.Destination), 0o755); err != nil {
 				result.Errors = append(result.Errors, err)
-				continue
+				return result, nil
 			}
 			if err := copyFile(action.Source, action.Destination); err != nil {
 				result.Errors = append(result.Errors, err)
-				continue
+				return result, nil
 			}
 			result.FilesCopied++
 		case ActionMoveDir:
 			if err := copyDir(action.Source, action.Destination); err != nil {
 				result.Errors = append(result.Errors, err)
-				continue
+				return result, nil
 			}
 		case ActionRewriteConfig:
 			if err := rewriteUnifiedConfigPath(action.Source); err != nil {
 				result.Errors = append(result.Errors, err)
+				return result, nil
 			}
 		case ActionRemoveDir:
 			if err := os.RemoveAll(action.Source); err != nil {
@@ -211,6 +216,44 @@ func runUnify(opts Options) (*Result, error) {
 		}
 	}
 	return result, nil
+}
+
+func validateUnifyWorkspaceDestinations(actions []Action, workspaceDir string) error {
+	planned := map[string]string{}
+	for _, action := range actions {
+		if action.Type == ActionMoveFile {
+			planned[action.Destination] = action.Source
+		}
+	}
+
+	for _, action := range actions {
+		if action.Type != ActionMoveDir || action.Source != workspaceDir {
+			continue
+		}
+		return filepath.Walk(action.Source, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(action.Source, path)
+			if err != nil {
+				return err
+			}
+			destination := filepath.Join(action.Destination, rel)
+			if source, ok := planned[destination]; ok {
+				return fmt.Errorf("unify workspace collision: %s and %s both target %s", path, source, destination)
+			}
+			if _, err := os.Lstat(destination); err == nil {
+				return fmt.Errorf("unify workspace collision: %s would overwrite %s", path, destination)
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+			return nil
+		})
+	}
+	return nil
 }
 
 func Plan(opts Options, openclawHome, picoClawHome string) ([]Action, []string, error) {
