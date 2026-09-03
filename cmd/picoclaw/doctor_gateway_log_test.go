@@ -49,3 +49,4 @@ func TestCheckGatewayLogFlagsConflictWhenTelegramEnabled(t *testing.T) {
 		t.Fatalf("name = %q, want gateway.telegram", got.Name)
 	}
 }
+

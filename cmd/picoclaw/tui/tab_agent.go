@@ -24,15 +24,15 @@ type serviceActionMsg struct {
 
 // AgentModel handles the Agent Service tab.
 type AgentModel struct {
-	exec          Executor
-	logsViewport  viewport.Model
-	logsContent   string
-	logsLoaded    bool
-	actionBusy    bool
-	actionName    string
-	actionStart   time.Time
-	lastAction    serviceActionMsg
-	lastActionAt  time.Time
+	exec         Executor
+	logsViewport viewport.Model
+	logsContent  string
+	logsLoaded   bool
+	actionBusy   bool
+	actionName   string
+	actionStart  time.Time
+	lastAction   serviceActionMsg
+	lastActionAt time.Time
 	successStreak int
 }
 

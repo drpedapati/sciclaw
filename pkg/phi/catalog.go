@@ -18,9 +18,9 @@ type Catalog struct {
 	SchemaVersion    int                        `json:"schema_version"`
 	Name             string                     `json:"name"`
 	SelectionPolicy  SelectionPolicy            `json:"selection_policy"`
-	CommandTemplates map[string]CommandTemplate `json:"command_templates"`
-	Models           map[string]ModelSpec       `json:"models"`
-	Profiles         []HardwareProfileSpec      `json:"profiles"`
+	CommandTemplates map[string]CommandTemplate  `json:"command_templates"`
+	Models           map[string]ModelSpec        `json:"models"`
+	Profiles         []HardwareProfileSpec       `json:"profiles"`
 }
 
 type SelectionPolicy struct {

@@ -55,9 +55,9 @@ var (
 // Status indicator styles.
 var (
 	styleRowNumber = lipgloss.NewStyle().
-			Foreground(colorMuted).
-			Align(lipgloss.Right).
-			Width(4)
+		Foreground(colorMuted).
+		Align(lipgloss.Right).
+		Width(4)
 
 	styleOK   = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
 	styleWarn = lipgloss.NewStyle().Foreground(colorWarning).Bold(true)

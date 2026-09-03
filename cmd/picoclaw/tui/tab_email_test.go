@@ -9,16 +9,16 @@ import (
 )
 
 type emailTestExec struct {
-	configRaw   string
-	readErr     error
-	writtenRaw  string
-	writeErr    error
-	commandOut  string
-	commandErr  error
-	commandArgs []string
+	configRaw     string
+	readErr       error
+	writtenRaw    string
+	writeErr      error
+	commandOut    string
+	commandErr    error
+	commandArgs   []string
 }
 
-func (e *emailTestExec) Mode() Mode                                          { return ModeLocal }
+func (e *emailTestExec) Mode() Mode { return ModeLocal }
 func (e *emailTestExec) ExecShell(_ time.Duration, _ string) (string, error) { return "", nil }
 func (e *emailTestExec) ExecCommand(_ time.Duration, args ...string) (string, error) {
 	e.commandArgs = append([]string(nil), args...)
@@ -45,13 +45,13 @@ func (e *emailTestExec) WriteFile(path string, data []byte, _ os.FileMode) error
 	}
 	return nil
 }
-func (e *emailTestExec) ConfigPath() string                       { return "/tmp/config.json" }
-func (e *emailTestExec) AuthPath() string                         { return "/tmp/auth.json" }
-func (e *emailTestExec) HomePath() string                         { return "/tmp" }
-func (e *emailTestExec) BinaryPath() string                       { return "sciclaw" }
-func (e *emailTestExec) AgentVersion() string                     { return "vtest" }
-func (e *emailTestExec) ServiceInstalled() bool                   { return true }
-func (e *emailTestExec) ServiceActive() bool                      { return true }
+func (e *emailTestExec) ConfigPath() string { return "/tmp/config.json" }
+func (e *emailTestExec) AuthPath() string   { return "/tmp/auth.json" }
+func (e *emailTestExec) HomePath() string   { return "/tmp" }
+func (e *emailTestExec) BinaryPath() string { return "sciclaw" }
+func (e *emailTestExec) AgentVersion() string { return "vtest" }
+func (e *emailTestExec) ServiceInstalled() bool { return true }
+func (e *emailTestExec) ServiceActive() bool { return true }
 func (e *emailTestExec) InteractiveProcess(_ ...string) *exec.Cmd { return exec.Command("true") }
 
 func TestFetchEmailDataParsesConfig(t *testing.T) {

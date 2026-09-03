@@ -31,3 +31,4 @@ func TestResolveBundledSkillsDirForExecutableFindsDevFormulaShareDir(t *testing.
 		t.Fatalf("resolveBundledSkillsDirForExecutable() = %q, want %q", got, want)
 	}
 }
+

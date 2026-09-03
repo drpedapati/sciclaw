@@ -30,7 +30,7 @@ type TelegramChannel struct {
 	config       config.TelegramConfig
 	chatIDs      map[string]int64
 	transcriber  *voice.GroqTranscriber
-	botUsername  string
+	botUsername   string
 	placeholders sync.Map // chatID -> messageID
 	stopThinking sync.Map // chatID -> thinkingCancel
 	sendFileFn   func(ctx context.Context, chatID int64, attachment bus.OutboundAttachment) error
