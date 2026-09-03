@@ -645,6 +645,51 @@ func TestRunUnifyMigratesWorkspace(t *testing.T) {
 	}
 }
 
+func TestRunUnifyRejectsWorkspaceAppRootCollision(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	oldDir := filepath.Join(home, ".picoclaw")
+	newDir := filepath.Join(home, "sciclaw")
+	if err := os.MkdirAll(filepath.Join(oldDir, "workspace"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	oldConfig := filepath.Join(oldDir, "config.json")
+	workspaceConfig := filepath.Join(oldDir, "workspace", "config.json")
+	newConfig := filepath.Join(newDir, "config.json")
+	if err := os.WriteFile(oldConfig, []byte("legacy config"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workspaceConfig, []byte("workspace config"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newConfig, []byte("target config"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := runUnify(Options{Force: true})
+	if err != nil {
+		t.Fatalf("runUnify: %v", err)
+	}
+	if len(result.Errors) == 0 {
+		t.Fatal("expected workspace collision error")
+	}
+	if data, err := os.ReadFile(oldConfig); err != nil || string(data) != "legacy config" {
+		t.Errorf("legacy config = %q, %v", data, err)
+	}
+	if data, err := os.ReadFile(workspaceConfig); err != nil || string(data) != "workspace config" {
+		t.Errorf("workspace config = %q, %v", data, err)
+	}
+	if data, err := os.ReadFile(newConfig); err != nil || string(data) != "target config" {
+		t.Errorf("target config = %q, %v", data, err)
+	}
+	if info, err := os.Lstat(oldDir); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("legacy directory should remain a real directory: %v", err)
+	}
+}
+
 func TestRunUnifyPreservesLegacyDirAfterMigrationError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
