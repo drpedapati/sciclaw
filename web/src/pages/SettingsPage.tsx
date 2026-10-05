@@ -4,7 +4,7 @@ import TopBar from '../components/TopBar';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { getSettings, updateSetting, type Settings } from '../lib/api';
+import { getSettings, updateSetting, getModelCatalog, reasoningLevels, type ModelCatalogEntry, type Settings } from '../lib/api';
 
 interface SettingRow {
   section: string;
@@ -23,7 +23,7 @@ const settingRows: SettingRow[] = [
   { section: 'Routing', key: 'routing.enabled', label: 'Routing Enabled', path: 'routing.enabled', type: 'toggle', restartRequired: true },
   { section: 'Routing', key: 'routing.unmappedBehavior', label: 'Unmapped Behavior', path: 'routing.unmappedBehavior', type: 'enum', options: ['block', 'mention_only', 'default'], restartRequired: true },
   { section: 'Agent', key: 'agent.defaultModel', label: 'Default Model', path: 'agent.defaultModel', type: 'text' },
-  { section: 'Agent', key: 'agent.reasoningEffort', label: 'Reasoning Effort', path: 'agent.reasoningEffort', type: 'enum', options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] },
+  { section: 'Agent', key: 'agent.reasoningEffort', label: 'Reasoning Effort', path: 'agent.reasoningEffort', type: 'enum' },
   { section: 'Integrations', key: 'integrations.pubmedApiKey', label: 'PubMed API Key', path: 'integrations.pubmedApiKey', type: 'password' },
   { section: 'Service', key: 'service.autoStart', label: 'Auto-Start on Boot', path: 'service.autoStart', type: 'toggle' },
   { section: 'Service', key: 'service.installed', label: 'Installed', path: 'service.installed', type: 'readonly' },
@@ -44,6 +44,7 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const [editField, setEditField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [confirm, setConfirm] = useState<SettingRow | null>(null);
@@ -52,7 +53,8 @@ export default function SettingsPage() {
 
   const fetchData = async () => {
     try {
-      const data = await getSettings();
+      const [data, discovered] = await Promise.all([getSettings(),getModelCatalog().catch(()=>null)]);
+      if (discovered) setCatalog(discovered.models);
       setSettings(data);
     } catch { /* */ }
   };
@@ -91,6 +93,9 @@ export default function SettingsPage() {
   const renderValue = (row: SettingRow) => {
     if (!settings) return '—';
     const val = getNestedValue(settings as unknown as Record<string, unknown>, row.path);
+    if (row.path === 'agent.reasoningEffort' && reasoningLevels(settings.agent.defaultModel, catalog).length === 0) {
+      return <span className="text-zinc-500 text-sm">Not supported</span>;
+    }
 
     if (row.type === 'readonly') {
       if (typeof val === 'boolean') {
@@ -124,7 +129,7 @@ export default function SettingsPage() {
       if (row.type === 'enum') {
         return (
           <div className="flex gap-1">
-            {row.options?.map((opt) => (
+            {(row.path === "agent.reasoningEffort" ? reasoningLevels(settings.agent.defaultModel,catalog) : row.options)?.map((opt) => (
               <button
                 key={opt}
                 onClick={() => handleSave(row, opt)}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -17,10 +18,11 @@ const anthropicOAuthBetaHeader = "oauth-2025-04-20"
 
 // DiscoverResult is returned by model discovery.
 type DiscoverResult struct {
-	Provider string   `json:"provider"`
-	Source   string   `json:"source"`
-	Models   []string `json:"models"`
-	Warning  string   `json:"warning,omitempty"`
+	Provider string                   `json:"provider"`
+	Source   string                   `json:"source"`
+	Models   []string                 `json:"models"`
+	Warning  string                   `json:"warning,omitempty"`
+	Metadata map[string]ModelMetadata `json:"metadata,omitempty"`
 }
 
 // ProviderInfo describes a configured provider and its auth status.
@@ -96,9 +98,7 @@ func ListProviders(cfg *config.Config) []ProviderInfo {
 	add("anthropic", cfg.Providers.Anthropic, []string{
 		"claude-sonnet-4.6", "claude-opus-4-6", "claude-haiku-4-5-20251001",
 	})
-	add("openai", cfg.Providers.OpenAI, []string{
-		"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2",
-	})
+	add("openai", cfg.Providers.OpenAI, knownModelsForProvider("openai"))
 	add("openrouter", cfg.Providers.OpenRouter, []string{
 		"openrouter/<model>",
 	})
@@ -174,6 +174,9 @@ func SetModel(cfg *config.Config, configPath string, newModel string) error {
 		fmt.Printf("The model will be set but may fail at runtime if no matching provider is configured.\n\n")
 	}
 
+	if err := validateEffortForModel(cfg, newModel, cfg.Agents.Defaults.ReasoningEffort); err != nil {
+		return err
+	}
 	cfg.Agents.Defaults.Model = newModel
 	if provider != "unknown" {
 		cfg.Agents.Defaults.Provider = provider
@@ -197,6 +200,9 @@ func SetModel(cfg *config.Config, configPath string, newModel string) error {
 
 // SetEffort validates and persists a new default reasoning effort.
 func SetEffort(cfg *config.Config, configPath string, effort string) error {
+	if err := ValidateEffort(cfg, effort); err != nil {
+		return err
+	}
 	old := cfg.Agents.Defaults.ReasoningEffort
 	if old == "" {
 		old = "(none)"
@@ -294,48 +300,61 @@ func resolveAuthMethod(provider string, cfg *config.Config) string {
 // Discover returns selectable model IDs for the active provider.
 // It attempts provider endpoint discovery first, then falls back to known built-ins.
 func Discover(cfg *config.Config) DiscoverResult {
+	return discoverWith(cfg, discoverCodexModels)
+}
+
+func discoverWith(cfg *config.Config, codex func() ([]string, map[string]ModelMetadata, error)) DiscoverResult {
 	provider := resolveDiscoveryProvider(cfg)
-	result := DiscoverResult{
-		Provider: provider,
-		Source:   "builtin",
-		Models:   knownModelsForProvider(provider),
-	}
-
-	if provider == "anthropic" {
-		models, err := discoverAnthropicModels(cfg)
-		if err == nil && len(models) > 0 {
-			result.Source = "endpoint"
-			result.Models = models
+	result := DiscoverResult{Provider: provider, Source: "builtin", Metadata: map[string]ModelMetadata{}}
+	names := append([]string{provider}, discoverSecondaryProviders(cfg, provider)...)
+	endpoint, builtin := false, false
+	for _, name := range names {
+		ids := knownModelsForProvider(name)
+		source := "builtin"
+		metadata := map[string]ModelMetadata{}
+		if name == "openai" && usesCodexCatalog(cfg) {
+			fetched, info, err := codex()
+			if err == nil && len(fetched) > 0 {
+				ids, metadata, source = fetched, info, "endpoint"
+			} else if err != nil {
+				result.Warning = strings.TrimSpace(result.Warning + " " + err.Error())
+			}
+		} else if name == "anthropic" {
+			fetched, err := discoverAnthropicModels(cfg)
+			if err == nil && len(fetched) > 0 {
+				ids, source = fetched, "endpoint"
+			} else if err != nil {
+				result.Warning = strings.TrimSpace(result.Warning + " " + err.Error())
+			}
 		}
-		if err != nil {
-			result.Warning = err.Error()
+		if source == "endpoint" {
+			endpoint = true
+		} else {
+			builtin = true
+		}
+		for _, id := range ids {
+			if _, exists := result.Metadata[id]; exists {
+				continue
+			}
+			info, ok := metadata[id]
+			if !ok {
+				info = ModelMetadata{Name: id, Provider: name, Source: source}
+				if name == "openai" {
+					info.ReasoningLevels = ReasoningLevels(id)
+				}
+			}
+			result.Models = append(result.Models, id)
+			result.Metadata[id] = info
 		}
 	}
-
-	// Also include models from other configured providers so users can switch
-	// providers from a single selector without having to manually type IDs.
-	secondary := discoverSecondaryProviders(cfg, provider)
-	for _, name := range secondary {
-		result.Models = append(result.Models, knownModelsForProvider(name)...)
-	}
-	result.Models = dedupeNonEmpty(result.Models)
-	if len(secondary) > 0 && result.Source == "endpoint" {
-		result.Source = "endpoint+builtin"
-	}
-
-	// If provider-specific builtins are empty, include known models from configured providers.
-	if len(result.Models) == 0 {
-		for _, p := range ListProviders(cfg) {
-			result.Models = append(result.Models, p.Models...)
+	if endpoint {
+		result.Source = "endpoint"
+		if builtin {
+			result.Source = "endpoint+builtin"
 		}
-		result.Models = dedupeNonEmpty(result.Models)
 	}
-
-	if len(result.Models) == 0 {
-		current := strings.TrimSpace(cfg.Agents.Defaults.Model)
-		if current != "" {
-			result.Models = []string{current}
-		}
+	if len(result.Models) == 0 && cfg.Agents.Defaults.Model != "" {
+		result.Models = []string{cfg.Agents.Defaults.Model}
 	}
 	return result
 }
@@ -400,7 +419,7 @@ func knownModelsForProvider(provider string) []string {
 	case "anthropic":
 		return []string{"claude-sonnet-4.6", "claude-opus-4-6", "claude-haiku-4-5-20251001"}
 	case "openai":
-		return []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2"}
+		return []string{"gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2-codex", "gpt-5.2"}
 	case "gemini":
 		return []string{"gemini-2.5-pro", "gemini-2.5-flash"}
 	case "openrouter":
@@ -455,7 +474,9 @@ func discoverAnthropicModels(cfg *config.Config) ([]string, error) {
 		}
 	}
 
-	pager := client.Models.ListAutoPaging(context.Background(), params)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	pager := client.Models.ListAutoPaging(ctx, params)
 	var models []string
 	for pager.Next() {
 		modelID := strings.TrimSpace(pager.Current().ID)

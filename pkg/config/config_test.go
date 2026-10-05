@@ -46,11 +46,11 @@ func TestDefaultConfig_SharedWorkspacePath(t *testing.T) {
 func TestDefaultConfig_Model(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Agents.Defaults.Model != "gpt-5.6-sol" {
-		t.Errorf("Model = %q, want %q", cfg.Agents.Defaults.Model, "gpt-5.6-sol")
+	if cfg.Agents.Defaults.Model != "gpt-6.1-sol" {
+		t.Errorf("Model = %q, want %q", cfg.Agents.Defaults.Model, "gpt-6.1-sol")
 	}
-	if cfg.Agents.Defaults.ReasoningEffort != "low" {
-		t.Errorf("ReasoningEffort = %q, want %q", cfg.Agents.Defaults.ReasoningEffort, "low")
+	if cfg.Agents.Defaults.ReasoningEffort != "medium" {
+		t.Errorf("ReasoningEffort = %q, want %q", cfg.Agents.Defaults.ReasoningEffort, "medium")
 	}
 }
 

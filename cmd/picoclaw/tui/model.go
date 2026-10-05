@@ -391,7 +391,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastActionAt = time.Now()
 		}
 		m.loading = true
-		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec), fetchSettingsData(m.exec))
+		return m, tea.Batch(m.spinner.Tick, fetchSnapshotCmd(m.exec), fetchSettingsData(m.exec), fetchModelsStatus(m.exec))
 
 	case chatResponseMsg:
 		m.chat.HandleResponse(msg)
@@ -417,6 +417,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case modelsCatalogMsg:
 		m.models.HandleCatalog(msg)
+		m.settings.modelMetadata = msg.metadata
 		return m, nil
 
 	case phiDataMsg:

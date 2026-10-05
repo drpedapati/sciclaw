@@ -3,8 +3,8 @@
     "defaults": {
       "workspace": "~/sciclaw",
       "restrict_to_workspace": true,
-      "model": "gpt-5.6-sol",
-      "reasoning_effort": "low",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "medium",
       "max_tokens": 8192,
       "temperature": 0.7,
       "max_tool_iterations": 0
