@@ -325,6 +325,13 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 			http.Error(w, "bad json body", http.StatusBadRequest)
 			return
 		}
+		if body["model"] != "gpt-6.1-sol" {
+			t.Errorf("wrong model: %v", body["model"])
+		}
+		reasoning, _ := body["reasoning"].(map[string]interface{})
+		if reasoning["effort"] != "medium" {
+			t.Errorf("wrong reasoning: %v", reasoning)
+		}
 		if stream, ok := body["stream"].(bool); !ok || !stream {
 			http.Error(w, "stream must be true", http.StatusBadRequest)
 			return
@@ -373,7 +380,7 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 	provider.client = createOpenAITestClient(server.URL, "test-token", "acc-123")
 
 	messages := []Message{{Role: "user", Content: "Hello"}}
-	resp, err := provider.Chat(t.Context(), messages, nil, "gpt-4o", map[string]interface{}{"max_tokens": 1024})
+	resp, err := provider.Chat(t.Context(), messages, nil, "gpt-6.1-sol", map[string]interface{}{"max_tokens": 1024, "reasoning_effort": "medium"})
 	if err != nil {
 		t.Fatalf("Chat() error: %v", err)
 	}
@@ -390,8 +397,8 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 
 func TestCodexProvider_GetDefaultModel(t *testing.T) {
 	p := NewCodexProvider("test-token", "")
-	if got := p.GetDefaultModel(); got != "gpt-5.6-sol" {
-		t.Errorf("GetDefaultModel() = %q, want %q", got, "gpt-5.6-sol")
+	if got := p.GetDefaultModel(); got != "gpt-6.1-sol" {
+		t.Errorf("GetDefaultModel() = %q, want %q", got, "gpt-6.1-sol")
 	}
 }
 
@@ -424,7 +431,7 @@ func TestCodexProvider_ChatRoundTrip_OutputTextDeltaFallback(t *testing.T) {
 	provider := NewCodexProvider("test-token", "acc-123")
 	provider.client = createOpenAITestClient(server.URL, "test-token", "acc-123")
 
-	resp, err := provider.Chat(t.Context(), []Message{{Role: "user", Content: "Hello"}}, nil, "gpt-5.6-sol", map[string]interface{}{})
+	resp, err := provider.Chat(t.Context(), []Message{{Role: "user", Content: "Hello"}}, nil, "gpt-6.1-sol", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("Chat() error: %v", err)
 	}
@@ -452,7 +459,7 @@ func TestCodexProvider_Chat_IncompleteDoesNotTreatDeltaAsComplete(t *testing.T) 
 	provider := NewCodexProvider("test-token", "acc-123")
 	provider.client = createOpenAITestClient(server.URL, "test-token", "acc-123")
 
-	resp, err := provider.Chat(t.Context(), []Message{{Role: "user", Content: "Hello"}}, nil, "gpt-5.6-sol", map[string]interface{}{})
+	resp, err := provider.Chat(t.Context(), []Message{{Role: "user", Content: "Hello"}}, nil, "gpt-6.1-sol", map[string]interface{}{})
 	if err == nil {
 		t.Fatal("expected incomplete stream to return an error")
 	}
@@ -480,7 +487,7 @@ func TestResolveCodexModel(t *testing.T) {
 		wantErr      bool
 	}{
 		{"empty", "", fallback, true, false},
-		{"sol", "gpt-5.6-sol", "gpt-5.6-sol", false, false},
+		{"sol", "gpt-6.1-sol", "gpt-6.1-sol", false, false},
 		{"luna", "gpt-5.6-luna", "gpt-5.6-luna", false, false},
 		{"prefixed", "openai/gpt-5.6-terra", "gpt-5.6-terra", false, false},
 		{"gpt52 remapped", "gpt-5.2", fallback, true, false},
@@ -531,7 +538,7 @@ func TestCodexAPIErrorFields_NoSecretLeakage(t *testing.T) {
 			Header:     http.Header{"X-Request-Id": []string{"req_abc"}},
 		},
 	}
-	fields := codexAPIErrorFields(apiErr, "claude-sonnet-4.6", "gpt-5.6-sol", 2, 1, true)
+	fields := codexAPIErrorFields(apiErr, "claude-sonnet-4.6", "gpt-6.1-sol", 2, 1, true)
 	if fields["status_code"] != 400 {
 		t.Fatalf("status_code = %v, want 400", fields["status_code"])
 	}

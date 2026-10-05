@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/sipeed/picoclaw/pkg/models"
 )
 
 type settingsMode int
@@ -68,6 +69,7 @@ type SettingsModel struct {
 	pubmedAPIKey       string
 	modelNeedsRestart  bool
 	effortNeedsRestart bool
+	modelMetadata      map[string]models.ModelMetadata
 
 	vp     viewport.Model
 	width  int
@@ -104,7 +106,7 @@ func NewSettingsModel(exec Executor) SettingsModel {
 
 func (m *SettingsModel) AutoRun() tea.Cmd {
 	if !m.loaded {
-		return fetchSettingsData(m.exec)
+		return tea.Batch(fetchSettingsData(m.exec), fetchModelsCatalog(m.exec))
 	}
 	return nil
 }
@@ -160,7 +162,7 @@ func (m SettingsModel) buildDisplayRows(snap *VMSnapshot) []settingRow {
 		{key: "routing_enabled", label: "Routing", value: boolYesNo(m.routingEnabled), kind: settingBool, section: "Routing"},
 		{key: "unmapped_behavior", label: "Unmapped behavior", value: m.unmappedBehavior, kind: settingEnum, options: []string{"block", "mention_only", "default"}},
 		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent", restartRequired: modelRestartRequired},
-		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: []string{"", "low", "medium", "high"}, restartRequired: effortRestartRequired},
+		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: append([]string{""}, m.availableEfforts()...), restartRequired: effortRestartRequired},
 		{key: "pubmed_api_key", label: "PubMed API key", value: m.pubmedAPIKey, kind: settingText, section: "Integrations"},
 	}
 	if snap != nil {
@@ -360,7 +362,7 @@ func (m *SettingsModel) cycleEnum(key, current string, options []string) tea.Cmd
 		}
 		m.flashMsg = styleOK.Render("✓") + " Reasoning effort: " + display
 		m.flashUntil = time.Now().Add(3 * time.Second)
-		return settingsSetConfig(m.exec, []string{"agents", "defaults", "reasoning_effort"}, next)
+		return setEffortCmd(m.exec, next)
 	}
 	return nil
 }
@@ -375,7 +377,7 @@ func (m *SettingsModel) applyTextEdit(value string) tea.Cmd {
 		m.modelNeedsRestart = true
 		m.flashMsg = styleOK.Render("✓") + " Model: " + value
 		m.flashUntil = time.Now().Add(3 * time.Second)
-		return settingsSetConfig(m.exec, []string{"agents", "defaults", "model"}, value)
+		return setModelCmd(m.exec, value)
 	case "pubmed_api_key":
 		if value == m.pubmedAPIKey {
 			return nil
@@ -553,8 +555,8 @@ func fetchSettingsData(exec Executor) tea.Cmd {
 			cfg = map[string]interface{}{
 				"agents": map[string]interface{}{
 					"defaults": map[string]interface{}{
-						"model":            "gpt-5.6-sol",
-						"reasoning_effort": "low",
+						"model":            "gpt-6.1-sol",
+						"reasoning_effort": "medium",
 						"workspace":        "~/.picoclaw/workspace",
 					},
 				},
@@ -663,4 +665,11 @@ func settingsSetConfig(exec Executor, path []string, value interface{}) tea.Cmd 
 		}
 		return actionDoneMsg{output: "Updated " + path[len(path)-1]}
 	}
+}
+
+func (m SettingsModel) availableEfforts() []string {
+	if info, ok := m.modelMetadata[strings.TrimPrefix(m.defaultModel, "openai/")]; ok && len(info.ReasoningLevels) > 0 {
+		return info.ReasoningLevels
+	}
+	return models.ReasoningLevels(m.defaultModel)
 }

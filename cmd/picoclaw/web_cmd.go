@@ -1008,11 +1008,7 @@ func (s *webServer) handleModels(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		provider := models.ResolveProvider(body.Model, cfg)
-		cfg.Agents.Defaults.Model = body.Model
-		if provider != "" && provider != "unknown" {
-			cfg.Agents.Defaults.Provider = provider
-		}
-		err = config.SaveConfig(getConfigPath(), cfg)
+		err = models.SetModel(cfg, getConfigPath(), body.Model)
 		if err != nil {
 			jsonErr(w, err.Error(), 500)
 			return
@@ -1035,16 +1031,18 @@ func (s *webServer) handleModelsAction(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "catalog":
 		type discoverPayload struct {
-			Provider string   `json:"provider"`
-			Source   string   `json:"source"`
-			Models   []string `json:"models"`
-			Warning  string   `json:"warning,omitempty"`
+			Provider string                          `json:"provider"`
+			Source   string                          `json:"source"`
+			Models   []string                        `json:"models"`
+			Warning  string                          `json:"warning,omitempty"`
+			Metadata map[string]models.ModelMetadata `json:"metadata,omitempty"`
 		}
 		type catalogEntry struct {
-			ID       string `json:"id"`
-			Name     string `json:"name"`
-			Provider string `json:"provider"`
-			Source   string `json:"source"`
+			ID              string   `json:"id"`
+			Name            string   `json:"name"`
+			Provider        string   `json:"provider"`
+			Source          string   `json:"source"`
+			ReasoningLevels []string `json:"reasoning_levels,omitempty"`
 		}
 		type catalogResponse struct {
 			Provider string         `json:"provider"`
@@ -1078,12 +1076,14 @@ func (s *webServer) handleModelsAction(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			seen[model] = struct{}{}
-			entries = append(entries, catalogEntry{
-				ID:       model,
-				Name:     model,
-				Provider: payload.Provider,
-				Source:   payload.Source,
-			})
+			info, ok := payload.Metadata[model]
+			if !ok {
+				info = models.ModelMetadata{Name: model, Provider: models.ResolveProvider(model, config.DefaultConfig()), Source: payload.Source, ReasoningLevels: models.ReasoningLevels(model)}
+			}
+			if info.Name == "" {
+				info.Name = model
+			}
+			entries = append(entries, catalogEntry{ID: model, Name: info.Name, Provider: info.Provider, Source: info.Source, ReasoningLevels: info.ReasoningLevels})
 		}
 
 		jsonResp(w, catalogResponse{
@@ -1101,15 +1101,12 @@ func (s *webServer) handleModelsAction(w http.ResponseWriter, r *http.Request) {
 			Effort string `json:"effort"`
 		}
 		readBody(r, &body)
-		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
-			defaults := tui.EnsureMapNested(cfg, "agents", "defaults")
-			defaults["reasoning_effort"] = body.Effort
-			return nil
-		})
+		out, err := s.runCLI(15*time.Second, "models", "effort", shellQuote(body.Effort))
 		if err != nil {
-			jsonErr(w, err.Error(), 500)
+			jsonErr(w, firstNonEmptyLine(out), http.StatusBadRequest)
 			return
 		}
+		s.invalidateSnapshot()
 		jsonResp(w, map[string]bool{"ok": true})
 	default:
 		jsonErr(w, "unknown models action", 400)
@@ -1705,6 +1702,25 @@ func (s *webServer) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Map dotted paths to config structure
+		if body.Path == "agent.reasoningEffort" || body.Path == "agent.defaultModel" {
+			value, ok := body.Value.(string)
+			if !ok {
+				jsonErr(w, "value must be a string", 400)
+				return
+			}
+			action := "effort"
+			if body.Path == "agent.defaultModel" {
+				action = "set"
+			}
+			out, err := s.runCLI(15*time.Second, "models", action, shellQuote(value))
+			if err != nil {
+				jsonErr(w, firstNonEmptyLine(out), 400)
+				return
+			}
+			s.invalidateSnapshot()
+			jsonResp(w, map[string]bool{"ok": true})
+			return
+		}
 		err := tui.UpdateConfigMap(s.exec, func(cfg map[string]interface{}) error {
 			switch body.Path {
 			case "discord.enabled":
@@ -1719,12 +1735,6 @@ func (s *webServer) handleSettings(w http.ResponseWriter, r *http.Request) {
 			case "routing.unmappedBehavior":
 				r := tui.EnsureMapNested(cfg, "routing")
 				r["unmapped_behavior"] = body.Value
-			case "agent.defaultModel":
-				a := tui.EnsureMapNested(cfg, "agents", "defaults")
-				a["model"] = body.Value
-			case "agent.reasoningEffort":
-				a := tui.EnsureMapNested(cfg, "agents", "defaults")
-				a["reasoning_effort"] = body.Value
 			case "integrations.pubmedApiKey":
 				i := tui.EnsureMapNested(cfg, "integrations")
 				i["pubmed_api_key"] = body.Value

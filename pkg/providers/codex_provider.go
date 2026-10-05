@@ -14,6 +14,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/sipeed/picoclaw/pkg/auth"
+	"github.com/sipeed/picoclaw/pkg/codexidentity"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/transport"
 )
@@ -24,12 +25,10 @@ type CodexProvider struct {
 	tokenSource func() (string, string, error)
 }
 
-// Codex ChatGPT OAuth routes GPT-5.6 models (esp. Luna) by client identity.
-// Catalog metadata sets minimal_client_version=0.144.0; without originator+version
-// Luna returns HTTP 404 "Model not found". Match current Codex CLI identity.
+// Keep inference identity aligned with account model discovery.
 const (
-	codexCLIOriginator = "codex_cli_rs"
-	codexCLIVersion    = "0.144.1"
+	codexCLIOriginator = codexidentity.Originator
+	codexCLIVersion    = codexidentity.Version
 )
 
 func appendCodexIdentityHeaders(opts []option.RequestOption) []option.RequestOption {
@@ -243,7 +242,7 @@ func codexAPIErrorFields(err error, requestedModel, resolvedModel string, messag
 }
 
 func (p *CodexProvider) GetDefaultModel() string {
-	return "gpt-5.6-sol"
+	return "gpt-6.1-sol"
 }
 
 func buildCodexParams(messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) responses.ResponseNewParams {
@@ -468,26 +467,12 @@ func mediaFromCodexImageCall(result string, index int) (MediaAttachment, bool) {
 
 func createCodexTokenSource() func() (string, string, error) {
 	return func() (string, string, error) {
-		cred, err := auth.GetCredential("openai")
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		cred, err := auth.ValidOpenAICredential(ctx)
 		if err != nil {
-			return "", "", fmt.Errorf("loading auth credentials: %w", err)
+			return "", "", err
 		}
-		if cred == nil {
-			return "", "", fmt.Errorf("no credentials for openai. Run: picoclaw auth login --provider openai")
-		}
-
-		if cred.AuthMethod == "oauth" && cred.NeedsRefresh() && cred.RefreshToken != "" {
-			oauthCfg := auth.OpenAIOAuthConfig()
-			refreshed, err := auth.RefreshAccessToken(cred, oauthCfg)
-			if err != nil {
-				return "", "", fmt.Errorf("refreshing token: %w", err)
-			}
-			if err := auth.SetCredential("openai", refreshed); err != nil {
-				return "", "", fmt.Errorf("saving refreshed token: %w", err)
-			}
-			return refreshed.AccessToken, refreshed.AccountID, nil
-		}
-
 		return cred.AccessToken, cred.AccountID, nil
 	}
 }

@@ -7,13 +7,12 @@ import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import {
-  getModelInfo, getModelCatalog, setModel, setEffort,
+  getModelInfo, getModelCatalog, setModel, setEffort, reasoningLevels,
   type ModelInfo, type ModelCatalogEntry,
 } from '../lib/api';
 import { serviceAction } from '../lib/api';
 import { useSnapshot } from '../hooks/useSnapshot';
 
-const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 type ApplyStepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 type ApplyStep = { key: string; label: string; status: ApplyStepStatus; detail?: string };
 
@@ -21,6 +20,7 @@ export default function ModelsPage() {
   const { snapshot, refresh } = useSnapshot();
   const [info, setInfo] = useState<ModelInfo | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
+  const effortLevels = reasoningLevels(info?.current || "", catalog);
   const [mode, setMode] = useState<'view' | 'select' | 'manual' | 'effort'>('view');
   const [manualInput, setManualInput] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);

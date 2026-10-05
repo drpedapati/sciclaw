@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/sipeed/picoclaw/pkg/models"
 )
 
 type modelsMode int
@@ -26,9 +27,8 @@ type modelsCatalogMsg struct {
 	models   []string
 	warning  string
 	err      string
+	metadata map[string]models.ModelMetadata
 }
-
-var effortLevels = []string{"none", "minimal", "low", "medium", "high", "xhigh"}
 
 // ModelsModel handles the Models tab.
 type ModelsModel struct {
@@ -46,6 +46,7 @@ type ModelsModel struct {
 	input textinput.Model
 
 	// Discovered model options
+	metadata        map[string]models.ModelMetadata
 	modelOptions    []string
 	modelOptionsIdx int
 	modelsProvider  string
@@ -62,7 +63,7 @@ func NewModelsModel(exec Executor) ModelsModel {
 	ti := textinput.New()
 	ti.CharLimit = 64
 	ti.Width = 40
-	ti.Placeholder = "e.g. gpt-5.6-sol or claude-sonnet-4.6"
+	ti.Placeholder = "e.g. gpt-6.1-sol or claude-sonnet-4.6"
 	return ModelsModel{exec: exec, input: ti}
 }
 
@@ -84,6 +85,7 @@ func (m *ModelsModel) HandleCatalog(msg modelsCatalogMsg) {
 	m.modelsSource = msg.source
 	m.modelsWarning = msg.warning
 	m.modelsErr = msg.err
+	m.metadata = msg.metadata
 	m.modelOptions = append([]string(nil), msg.models...)
 	if m.modelOptionsIdx >= len(m.modelOptions) {
 		m.modelOptionsIdx = 0
@@ -180,11 +182,11 @@ func (m ModelsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ModelsModel, tea.
 				m.effortIdx--
 			}
 		case "right", "l":
-			if m.effortIdx < len(effortLevels)-1 {
+			if m.effortIdx < len(m.availableEfforts())-1 {
 				m.effortIdx++
 			}
 		case "enter":
-			level := effortLevels[m.effortIdx]
+			level := m.availableEfforts()[m.effortIdx]
 			m.mode = modelsNormal
 			return m, setEffortCmd(m.exec, level)
 		}
@@ -207,7 +209,8 @@ func (m ModelsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ModelsModel, tea.
 		return m, nil
 	case "e":
 		m.mode = modelsSetEffort
-		for i, lvl := range effortLevels {
+		m.effortIdx = 0
+		for i, lvl := range m.availableEfforts() {
 			if lvl == m.reasoningEffort {
 				m.effortIdx = i
 				break
@@ -306,7 +309,7 @@ func (m ModelsModel) View(snap *VMSnapshot, width int) string {
 	if m.mode == modelsSetEffort {
 		lines = append(lines, "")
 		var opts []string
-		for i, lvl := range effortLevels {
+		for i, lvl := range m.availableEfforts() {
 			if i == m.effortIdx {
 				opts = append(opts, styleBold.Render("▸ "+lvl))
 			} else {
@@ -333,10 +336,11 @@ func fetchModelsStatus(exec Executor) tea.Cmd {
 
 func fetchModelsCatalog(exec Executor) tea.Cmd {
 	type discoverPayload struct {
-		Provider string   `json:"provider"`
-		Source   string   `json:"source"`
-		Models   []string `json:"models"`
-		Warning  string   `json:"warning"`
+		Provider string                          `json:"provider"`
+		Source   string                          `json:"source"`
+		Models   []string                        `json:"models"`
+		Warning  string                          `json:"warning"`
+		Metadata map[string]models.ModelMetadata `json:"metadata"`
 	}
 
 	return func() tea.Msg {
@@ -351,6 +355,7 @@ func fetchModelsCatalog(exec Executor) tea.Cmd {
 				source:   payload.Source,
 				models:   dedupeModelIDs(payload.Models),
 				warning:  payload.Warning,
+				metadata: payload.Metadata,
 			}
 		}
 
@@ -377,15 +382,21 @@ func fetchModelsCatalog(exec Executor) tea.Cmd {
 func setModelCmd(exec Executor, model string) tea.Cmd {
 	return func() tea.Msg {
 		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " models set " + shellEscape(model) + " 2>&1"
-		_, _ = exec.ExecShell(10*time.Second, cmd)
+		out, err := exec.ExecShell(15*time.Second, cmd)
+		if err != nil {
+			return actionDoneMsg{output: "Model change failed: " + out}
+		}
 		return actionDoneMsg{output: "Model set to " + model}
 	}
 }
 
 func setEffortCmd(exec Executor, level string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " models effort " + level + " 2>&1"
-		_, _ = exec.ExecShell(10*time.Second, cmd)
+		cmd := "HOME=" + exec.HomePath() + " " + shellEscape(exec.BinaryPath()) + " models effort " + shellEscape(level) + " 2>&1"
+		out, err := exec.ExecShell(15*time.Second, cmd)
+		if err != nil {
+			return actionDoneMsg{output: "Effort change failed: " + out}
+		}
 		return actionDoneMsg{output: "Reasoning effort set to " + level}
 	}
 }
@@ -426,4 +437,11 @@ func firstNonEmptyLine(s string) string {
 		}
 	}
 	return ""
+}
+
+func (m ModelsModel) availableEfforts() []string {
+	if info, ok := m.metadata[strings.TrimPrefix(m.modelName, "openai/")]; ok && len(info.ReasoningLevels) > 0 {
+		return info.ReasoningLevels
+	}
+	return models.ReasoningLevels(m.modelName)
 }
