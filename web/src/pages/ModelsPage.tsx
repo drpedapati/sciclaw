@@ -248,6 +248,7 @@ export default function ModelsPage() {
           </button>
           <button
             onClick={() => { setMode(mode === 'effort' ? 'view' : 'effort'); }}
+            disabled={effortLevels.length === 0}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
               mode === 'effort' ? 'bg-brand text-surface-500' : 'border border-border text-zinc-400 hover:text-zinc-200 hover:bg-surface-50'
             }`}
@@ -362,7 +363,7 @@ export default function ModelsPage() {
         )}
 
         {/* Effort selector */}
-        {mode === 'effort' && (
+        {mode === 'effort' && effortLevels.length > 0 && (
           <Card title="Reasoning Effort">
             <div className="space-y-3">
               <p className="text-xs text-zinc-500">
@@ -385,7 +386,7 @@ export default function ModelsPage() {
               </div>
               <button
                 onClick={() => handleSetEffort(selectedEffort)}
-                disabled={loading || selectedEffort === info?.effort}
+                disabled={loading || !effortLevels.includes(selectedEffort) || selectedEffort === info?.effort}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-brand text-surface-500 hover:bg-brand-500 disabled:opacity-50 transition-colors font-medium"
               >
                 {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}

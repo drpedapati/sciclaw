@@ -130,3 +130,35 @@ func TestSolRejectsUnsupportedEffort(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEmptyAdvertisedEffortsSurviveJSONAndRejectNonemptySelection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"models":[{"slug":"gpt-no-reasoning","visibility":"list","supported_reasoning_levels":[]}]}`)
+	}))
+	defer srv.Close()
+	ids, metadata, err := fetchCodexCatalog(t.Context(), srv.Client(), srv.URL, "synthetic", "", codexidentity.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(DiscoverResult{Models: ids, Metadata: metadata})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded DiscoverResult
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	levels := decoded.Metadata[ids[0]].ReasoningLevels
+	if levels == nil || len(levels) != 0 {
+		t.Fatalf("empty advertised levels lost: %s", raw)
+	}
+	if err := validateEffortWithCatalog(ids[0], "medium", decoded.Metadata); err == nil {
+		t.Fatal("invented effort accepted")
+	}
+	if err := validateEffortWithCatalog(ids[0], "", decoded.Metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateEffortWithCatalog("gpt-6.1-sol", "medium", nil); err != nil {
+		t.Fatal("missing discovery should retain fallback", err)
+	}
+}

@@ -93,6 +93,9 @@ export default function SettingsPage() {
   const renderValue = (row: SettingRow) => {
     if (!settings) return '—';
     const val = getNestedValue(settings as unknown as Record<string, unknown>, row.path);
+    if (row.path === 'agent.reasoningEffort' && reasoningLevels(settings.agent.defaultModel, catalog).length === 0) {
+      return <span className="text-zinc-500 text-sm">Not supported</span>;
+    }
 
     if (row.type === 'readonly') {
       if (typeof val === 'boolean') {

@@ -204,7 +204,7 @@ export interface ModelInfo {
   authMethod: string;
 }
 export interface ModelCatalogEntry {
-  reasoning_levels?: string[];
+  reasoning_levels?: string[] | null;
   id: string;
   name: string;
   provider: string;
@@ -399,7 +399,7 @@ export const updateSetting = (path: string, value: unknown) =>
 
 export function reasoningLevels(model: string, catalog: ModelCatalogEntry[]): string[] {
  const advertised=catalog.find(entry=>entry.id===model.replace(/^openai\//,''))?.reasoning_levels;
- if (advertised?.length) return advertised;
+ if (Array.isArray(advertised)) return advertised;
  return /^(openai\/)?gpt-(6|5\.6)/.test(model)
   ? ['low','medium','high','xhigh','max']
   : ['none','minimal','low','medium','high','xhigh'];

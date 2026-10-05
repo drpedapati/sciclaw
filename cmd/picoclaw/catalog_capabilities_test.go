@@ -26,3 +26,21 @@ func TestWebCatalogPreservesCapabilitiesAndProvider(t *testing.T) {
 		t.Fatalf("capabilities lost: %s", rec.Body.String())
 	}
 }
+
+func TestWebCatalogPreservesExplicitlyEmptyEfforts(t *testing.T) {
+	execStub := &webTestExec{output: `{"provider":"openai","source":"endpoint","models":["gpt-no-reasoning"],"metadata":{"gpt-no-reasoning":{"provider":"openai","source":"endpoint","reasoning_levels":[]}}}`}
+	srv := newWebServer(execStub, "")
+	rec := httptest.NewRecorder()
+	srv.handleModelsAction(rec, httptest.NewRequest(http.MethodGet, "/api/models/catalog", nil))
+	var body struct {
+		Models []struct {
+			Levels []string `json:"reasoning_levels"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Models) != 1 || body.Models[0].Levels == nil || len(body.Models[0].Levels) != 0 {
+		t.Fatalf("explicit empty capabilities lost: %s", rec.Body.String())
+	}
+}

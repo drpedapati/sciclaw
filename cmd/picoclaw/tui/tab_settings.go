@@ -144,7 +144,12 @@ func (m *SettingsModel) HandleResize(width, height int) {
 }
 
 func (m SettingsModel) buildDisplayRows(snap *VMSnapshot) []settingRow {
+	effortKind := settingEnum
 	effortDisplay := m.reasoningEffort
+	if len(m.availableEfforts()) == 0 {
+		effortKind = settingReadonly
+		effortDisplay = "not supported"
+	}
 	if effortDisplay == "" {
 		effortDisplay = "default"
 	}
@@ -162,7 +167,7 @@ func (m SettingsModel) buildDisplayRows(snap *VMSnapshot) []settingRow {
 		{key: "routing_enabled", label: "Routing", value: boolYesNo(m.routingEnabled), kind: settingBool, section: "Routing"},
 		{key: "unmapped_behavior", label: "Unmapped behavior", value: m.unmappedBehavior, kind: settingEnum, options: []string{"block", "mention_only", "default"}},
 		{key: "default_model", label: "Default model", value: m.defaultModel, kind: settingText, section: "Agent", restartRequired: modelRestartRequired},
-		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: settingEnum, options: append([]string{""}, m.availableEfforts()...), restartRequired: effortRestartRequired},
+		{key: "reasoning_effort", label: "Reasoning effort", value: effortDisplay, kind: effortKind, options: append([]string{""}, m.availableEfforts()...), restartRequired: effortRestartRequired},
 		{key: "pubmed_api_key", label: "PubMed API key", value: m.pubmedAPIKey, kind: settingText, section: "Integrations"},
 	}
 	if snap != nil {
@@ -668,7 +673,7 @@ func settingsSetConfig(exec Executor, path []string, value interface{}) tea.Cmd 
 }
 
 func (m SettingsModel) availableEfforts() []string {
-	if info, ok := m.modelMetadata[strings.TrimPrefix(m.defaultModel, "openai/")]; ok && len(info.ReasoningLevels) > 0 {
+	if info, ok := m.modelMetadata[strings.TrimPrefix(m.defaultModel, "openai/")]; ok && info.ReasoningLevels != nil {
 		return info.ReasoningLevels
 	}
 	return models.ReasoningLevels(m.defaultModel)

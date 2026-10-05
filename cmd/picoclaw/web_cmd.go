@@ -1042,7 +1042,7 @@ func (s *webServer) handleModelsAction(w http.ResponseWriter, r *http.Request) {
 			Name            string   `json:"name"`
 			Provider        string   `json:"provider"`
 			Source          string   `json:"source"`
-			ReasoningLevels []string `json:"reasoning_levels,omitempty"`
+			ReasoningLevels []string `json:"reasoning_levels"`
 		}
 		type catalogResponse struct {
 			Provider string         `json:"provider"`

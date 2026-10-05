@@ -21,7 +21,7 @@ type ModelMetadata struct {
 	Name            string   `json:"name,omitempty"`
 	Provider        string   `json:"provider"`
 	Source          string   `json:"source"`
-	ReasoningLevels []string `json:"reasoning_levels,omitempty"`
+	ReasoningLevels []string `json:"reasoning_levels"`
 }
 
 func usesCodexCatalog(cfg *config.Config) bool {
@@ -145,12 +145,23 @@ func validateEffortForModel(cfg *config.Config, model, effort string) error {
 	if effort == "" {
 		return nil
 	}
-	levels := ReasoningLevels(model)
+	var metadata map[string]ModelMetadata
 	if ResolveProvider(model, cfg) == "openai" && usesCodexCatalog(cfg) {
-		_, metadata, _ := discoverCodexModels()
-		if info, ok := metadata[strings.TrimPrefix(model, "openai/")]; ok && len(info.ReasoningLevels) > 0 {
-			levels = info.ReasoningLevels
-		}
+		_, metadata, _ = discoverCodexModels()
+	}
+	return validateEffortWithCatalog(model, effort, metadata)
+}
+
+func validateEffortWithCatalog(model, effort string, metadata map[string]ModelMetadata) error {
+	if effort == "" {
+		return nil
+	}
+	levels := ReasoningLevels(model)
+	if info, ok := metadata[strings.TrimPrefix(model, "openai/")]; ok && info.ReasoningLevels != nil {
+		levels = info.ReasoningLevels
+	}
+	if len(levels) == 0 {
+		return fmt.Errorf("model %s does not support reasoning effort; use provider default", model)
 	}
 	for _, level := range levels {
 		if effort == level {

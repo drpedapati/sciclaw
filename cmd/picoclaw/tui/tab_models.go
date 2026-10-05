@@ -77,15 +77,21 @@ func (m *ModelsModel) AutoRun() tea.Cmd {
 func (m *ModelsModel) HandleStatus(msg modelsStatusMsg) {
 	m.loaded = true
 	m.parseStatus(msg.output)
+	m.syncEffortSelection(m.reasoningEffort)
 }
 
 func (m *ModelsModel) HandleCatalog(msg modelsCatalogMsg) {
+	preferred := m.reasoningEffort
+	if levels := m.availableEfforts(); m.mode == modelsSetEffort && m.effortIdx >= 0 && m.effortIdx < len(levels) {
+		preferred = levels[m.effortIdx]
+	}
 	m.modelsLoading = false
 	m.modelsProvider = msg.provider
 	m.modelsSource = msg.source
 	m.modelsWarning = msg.warning
 	m.modelsErr = msg.err
 	m.metadata = msg.metadata
+	m.syncEffortSelection(preferred)
 	m.modelOptions = append([]string(nil), msg.models...)
 	if m.modelOptionsIdx >= len(m.modelOptions) {
 		m.modelOptionsIdx = 0
@@ -173,6 +179,14 @@ func (m ModelsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ModelsModel, tea.
 	}
 
 	if m.mode == modelsSetEffort {
+		levels := m.availableEfforts()
+		if len(levels) == 0 {
+			m.mode = modelsNormal
+			return m, func() tea.Msg { return actionDoneMsg{output: "This model does not support reasoning effort"} }
+		}
+		if m.effortIdx < 0 || m.effortIdx >= len(levels) {
+			m.effortIdx = 0
+		}
 		switch key {
 		case "esc":
 			m.mode = modelsNormal
@@ -208,6 +222,9 @@ func (m ModelsModel) Update(msg tea.KeyMsg, snap *VMSnapshot) (ModelsModel, tea.
 		m.input.Focus()
 		return m, nil
 	case "e":
+		if len(m.availableEfforts()) == 0 {
+			return m, func() tea.Msg { return actionDoneMsg{output: "This model does not support reasoning effort"} }
+		}
 		m.mode = modelsSetEffort
 		m.effortIdx = 0
 		for i, lvl := range m.availableEfforts() {
@@ -440,8 +457,18 @@ func firstNonEmptyLine(s string) string {
 }
 
 func (m ModelsModel) availableEfforts() []string {
-	if info, ok := m.metadata[strings.TrimPrefix(m.modelName, "openai/")]; ok && len(info.ReasoningLevels) > 0 {
+	if info, ok := m.metadata[strings.TrimPrefix(m.modelName, "openai/")]; ok && info.ReasoningLevels != nil {
 		return info.ReasoningLevels
 	}
 	return models.ReasoningLevels(m.modelName)
+}
+
+func (m *ModelsModel) syncEffortSelection(preferred string) {
+	m.effortIdx = 0
+	for i, level := range m.availableEfforts() {
+		if level == preferred {
+			m.effortIdx = i
+			return
+		}
+	}
 }
