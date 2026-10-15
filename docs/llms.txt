@@ -9,7 +9,7 @@ sciClaw is a free, open-source AI research agent that integrates literature sear
 - License: MIT
 - Author: Ernest Pedapati, MD, Cincinnati Children's Hospital Medical Center
 - Repository: https://github.com/drpedapati/sciclaw
-- Documentation: https://sciclaw.dev/docs.html
+- Documentation: https://sciclaw.dev/docs
 - Install: `brew tap drpedapati/tap && brew install sciclaw`
 - Install surfaces:
   - `sciclaw.dev` = website and docs
@@ -79,7 +79,7 @@ Pedapati, E. (2025). sciClaw: A Lightweight Paired-Scientist Agent for Reproduci
 ## Links
 
 - Landing page: https://sciclaw.dev
-- Documentation: https://sciclaw.dev/docs.html
+- Documentation: https://sciclaw.dev/docs
 - Source code: https://github.com/drpedapati/sciclaw
 - Releases: https://github.com/drpedapati/sciclaw/releases
 - Manuscript PDF: https://sciclaw.dev/sciclaw-open.pdf

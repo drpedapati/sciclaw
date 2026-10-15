@@ -9,10 +9,10 @@
       name="description"
       content="sciClaw changelog: high-value release highlights across stable and dev Homebrew tracks."
     />
-    <link rel="canonical" href="https://sciclaw.dev/changelog.html" />
+    <link rel="canonical" href="https://sciclaw.dev/changelog" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://sciclaw.dev/changelog.html" />
+    <meta property="og:url" content="https://sciclaw.dev/changelog" />
     <meta property="og:title" content="sciClaw Changelog" />
     <meta property="og:description" content="High-value release highlights for stable and dev channels." />
     <meta property="og:image" content="https://sciclaw.dev/og-image.jpg" />
@@ -234,10 +234,10 @@
   <body>
     <div class="wrap">
       <nav class="topnav">
-        <a href="index.html">Home</a>
-        <a href="docs.html">Docs</a>
-        <a href="philosophy.html">Philosophy</a>
-        <a href="biography.html">Creator</a>
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="/philosophy">Philosophy</a>
+        <a href="/biography">Creator</a>
         <a href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">GitHub</a>
       </nav>
 
@@ -279,7 +279,7 @@
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.9" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.8...v0.3.9" target="_blank" rel="noopener noreferrer">Compare</a>
-            <a href="blog.html#entry-2026-07-17-image-routing">Blog</a>
+            <a href="/blog#entry-2026-07-17-image-routing">Blog</a>
           </div>
         </article>
 
@@ -299,7 +299,7 @@
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.8" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.7...v0.3.8" target="_blank" rel="noopener noreferrer">Compare</a>
-            <a href="blog.html#entry-2026-07-11-luna">Blog</a>
+            <a href="/blog#entry-2026-07-11-luna">Blog</a>
           </div>
         </article>
 
@@ -321,7 +321,7 @@
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.7" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.5...v0.3.7" target="_blank" rel="noopener noreferrer">Compare</a>
-            <a href="blog.html#entry-2026-07-11-sol">Blog</a>
+            <a href="/blog#entry-2026-07-11-sol">Blog</a>
           </div>
         </article>
 
@@ -338,10 +338,10 @@
             <li><strong>ImageMagick / contact-sheet guidance.</strong> Default <code>AGENTS.md</code> now tells agents to quote paths with spaces, never use <code>../</code> in exec (set <code>working_dir</code> and write in-place), prefer a real DejaVu font path or omit labels, and build decks with <code>python-pptx</code> / the <code>pptx</code> skill instead of <code>magick montage</code>.</li>
             <li><strong>Missing pptx skill.</strong> Template notes that agents must not read a nonexistent <code>skills/pptx/SKILL.md</code> or escape the workspace with path traversal.</li>
             <li><strong>imagemagick skill.</strong> Contact-sheet recipe updated with explicit font / no-label fallbacks.</li>
-            <li><strong>Public explanation.</strong> <a href="blog.html#entry-2026-07-11-imagemagick">Less Discord thrash on slides and contact sheets</a>.</li>
+            <li><strong>Public explanation.</strong> <a href="/blog#entry-2026-07-11-imagemagick">Less Discord thrash on slides and contact sheets</a>.</li>
           </ul>
           <div class="links">
-            <a href="blog.html#entry-2026-07-11-imagemagick">Blog</a>
+            <a href="/blog#entry-2026-07-11-imagemagick">Blog</a>
           </div>
         </article>
 
@@ -360,12 +360,12 @@
             <li><strong>Prompt catalog awareness.</strong> When Codex is the active provider, the system prompt lists the provider-hosted image tool so the model knows it is available alongside local tools and skills.</li>
             <li><strong>Cron startup hardening.</strong> An empty <code>cron/jobs.json</code> is treated as an empty store instead of failing cron startup with <code>unexpected end of JSON input</code>.</li>
             <li><strong>Toolchain.</strong> Pinned <code>docx-review</code> 1.5.1 and updated CI actions for Node 24.</li>
-            <li><strong>Public explanation.</strong> <a href="blog.html#entry-2026-07-08-image-gen">Chat image generation in Discord and Telegram</a>.</li>
+            <li><strong>Public explanation.</strong> <a href="/blog#entry-2026-07-08-image-gen">Chat image generation in Discord and Telegram</a>.</li>
           </ul>
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.5" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.4...v0.3.5" target="_blank" rel="noopener noreferrer">Compare</a>
-            <a href="blog.html#entry-2026-07-08-image-gen">Blog</a>
+            <a href="/blog#entry-2026-07-08-image-gen">Blog</a>
           </div>
         </article>
 
@@ -383,13 +383,13 @@
             <li><strong>MEMORY.md guardrails.</strong> Generic <code>write_file</code>, <code>edit_file</code>, and <code>append_file</code> calls now refuse direct writes to <code>memory/MEMORY.md</code>. Obvious shell bypasses such as <code>&gt;&gt; memory/MEMORY.md</code> and <code>tee -a MEMORY.md</code> are blocked too.</li>
             <li><strong>No more execution-log memory.</strong> Routine successful runs, validation summaries, row counts, file sizes, and command transcripts stay in session history, jobs, hooks, artifacts, or output files instead of being injected as long-term memory on every turn.</li>
             <li><strong>Cleaner workspace templates.</strong> <code>AGENTS.md</code>, <code>HOOKS.md</code>, and the starter <code>MEMORY.md</code> template now describe memory as curated durable context, not runtime state or an activity ledger.</li>
-            <li><strong>Public explanation.</strong> Added the <a href="blog.html#entry-2026-05-05-memory">Memory Is Not a Log File</a> blog post and the curated workspace memory RFC.</li>
+            <li><strong>Public explanation.</strong> Added the <a href="/blog#entry-2026-05-05-memory">Memory Is Not a Log File</a> blog post and the curated workspace memory RFC.</li>
             <li><strong>Release hygiene.</strong> Re-ran Go formatting so GitHub build checks pass from the tagged release commit.</li>
           </ul>
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.4" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.3.2...v0.3.4" target="_blank" rel="noopener noreferrer">Compare</a>
-            <a href="blog.html#entry-2026-05-05-memory" target="_blank" rel="noopener noreferrer">Blog</a>
+            <a href="/blog#entry-2026-05-05-memory" target="_blank" rel="noopener noreferrer">Blog</a>
           </div>
         </article>
 
@@ -496,7 +496,7 @@
           <div class="links">
             <a href="https://github.com/drpedapati/sciclaw/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Release</a>
             <a href="https://github.com/drpedapati/sciclaw/compare/v0.2.8...v0.3.0" target="_blank" rel="noopener noreferrer">Compare</a>
-            <a href="devlog.html" target="_blank" rel="noopener noreferrer">Dev log</a>
+            <a href="/devlog" target="_blank" rel="noopener noreferrer">Dev log</a>
           </div>
         </article>
 
