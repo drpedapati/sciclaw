@@ -10,23 +10,16 @@ import (
 	"github.com/slack-go/slack"
 )
 
-// eventsMap checks both slack.EventsMapping and
-// and slackevents.EventsAPIInnerEventMapping. If the event
-// exists, returns the unmarshalled struct instance of
-// target for the matching event type.
-// TODO: Consider moving all events into its own package?
-func eventsMap(t string) (interface{}, bool) {
-	// Must parse EventsAPI FIRST as both RTM and EventsAPI
-	// have a type: "Message" event.
-	// TODO: Handle these cases more explicitly.
+// eventsMap checks both slackevents.EventsAPIInnerEventMapping and slack.EventMapping
+// (RTM). EventsAPI mapping is checked first because both define a "message" type, and
+// EventsAPI's MessageEvent is the correct choice for Events API payloads.
+func eventsMap(t string) (any, bool) {
+	// EventsAPI mapping takes precedence over RTM mapping.
 	v, exists := EventsAPIInnerEventMapping[EventsAPIType(t)]
 	if exists {
 		return v, exists
 	}
 	v, exists = slack.EventMapping[t]
-	if exists {
-		return v, exists
-	}
 	return v, exists
 }
 
@@ -40,6 +33,7 @@ func parseOuterEvent(rawE json.RawMessage) (EventsAPIEvent, error) {
 			"unmarshalling_error",
 			"",
 			"",
+			false,
 			&slack.UnmarshallingErrorEvent{ErrorObj: err},
 			EventsAPIInnerEvent{},
 		}, err
@@ -54,6 +48,7 @@ func parseOuterEvent(rawE json.RawMessage) (EventsAPIEvent, error) {
 				"unmarshalling_error",
 				"",
 				"",
+				false,
 				&slack.UnmarshallingErrorEvent{ErrorObj: err},
 				EventsAPIInnerEvent{},
 			}, err
@@ -64,6 +59,7 @@ func parseOuterEvent(rawE json.RawMessage) (EventsAPIEvent, error) {
 			e.Type,
 			e.APIAppID,
 			e.EnterpriseID,
+			e.IsExtSharedChannel,
 			cbEvent,
 			EventsAPIInnerEvent{},
 		}, nil
@@ -77,6 +73,7 @@ func parseOuterEvent(rawE json.RawMessage) (EventsAPIEvent, error) {
 			"unmarshalling_error",
 			"",
 			"",
+			false,
 			&slack.UnmarshallingErrorEvent{ErrorObj: err},
 			EventsAPIInnerEvent{},
 		}, err
@@ -87,6 +84,7 @@ func parseOuterEvent(rawE json.RawMessage) (EventsAPIEvent, error) {
 		e.Type,
 		e.APIAppID,
 		e.EnterpriseID,
+		e.IsExtSharedChannel,
 		urlVE,
 		EventsAPIInnerEvent{},
 	}, nil
@@ -103,6 +101,7 @@ func parseInnerEvent(e *EventsAPICallbackEvent) (EventsAPIEvent, error) {
 			"unmarshalling_error",
 			e.APIAppID,
 			e.EnterpriseID,
+			false,
 			&slack.UnmarshallingErrorEvent{ErrorObj: err},
 			EventsAPIInnerEvent{},
 		}, err
@@ -115,6 +114,7 @@ func parseInnerEvent(e *EventsAPICallbackEvent) (EventsAPIEvent, error) {
 			iE.Type,
 			e.APIAppID,
 			e.EnterpriseID,
+			false,
 			nil,
 			EventsAPIInnerEvent{},
 		}, fmt.Errorf("inner Event does not exist! %s", iE.Type)
@@ -129,6 +129,7 @@ func parseInnerEvent(e *EventsAPICallbackEvent) (EventsAPIEvent, error) {
 			"unmarshalling_error",
 			e.APIAppID,
 			e.EnterpriseID,
+			false,
 			&slack.UnmarshallingErrorEvent{ErrorObj: err},
 			EventsAPIInnerEvent{},
 		}, err
@@ -139,6 +140,7 @@ func parseInnerEvent(e *EventsAPICallbackEvent) (EventsAPIEvent, error) {
 		e.Type,
 		e.APIAppID,
 		e.EnterpriseID,
+		e.IsExtSharedChannel,
 		e,
 		EventsAPIInnerEvent{iE.Type, recvEvent},
 	}, nil
@@ -206,6 +208,7 @@ func ParseEvent(rawEvent json.RawMessage, opts ...Option) (EventsAPIEvent, error
 				"unmarshalling_error",
 				"",
 				"",
+				false,
 				&slack.UnmarshallingErrorEvent{ErrorObj: err},
 				EventsAPIInnerEvent{},
 			}, err
@@ -223,6 +226,7 @@ func ParseEvent(rawEvent json.RawMessage, opts ...Option) (EventsAPIEvent, error
 				"unmarshalling_error",
 				"",
 				"",
+				false,
 				&slack.UnmarshallingErrorEvent{ErrorObj: err},
 				EventsAPIInnerEvent{},
 			}, err
@@ -233,6 +237,7 @@ func ParseEvent(rawEvent json.RawMessage, opts ...Option) (EventsAPIEvent, error
 			e.Type,
 			e.APIAppID,
 			e.EnterpriseID,
+			e.IsExtSharedChannel,
 			appRateLimitedEvent,
 			EventsAPIInnerEvent{},
 		}, nil
@@ -247,6 +252,7 @@ func ParseEvent(rawEvent json.RawMessage, opts ...Option) (EventsAPIEvent, error
 			"unmarshalling_error",
 			"",
 			"",
+			false,
 			&slack.UnmarshallingErrorEvent{ErrorObj: err},
 			EventsAPIInnerEvent{},
 		}, err
@@ -257,11 +263,28 @@ func ParseEvent(rawEvent json.RawMessage, opts ...Option) (EventsAPIEvent, error
 		e.Type,
 		e.APIAppID,
 		e.EnterpriseID,
+		e.IsExtSharedChannel,
 		urlVerificationEvent,
 		EventsAPIInnerEvent{},
 	}, nil
 }
 
+// Deprecated: ParseActionEvent cannot parse block_actions payloads and will return an
+// unmarshalling error for them. Use [slack.InteractionCallback] with [json.Unmarshal]
+// instead, or [slack.InteractionCallbackParse] to parse directly from an HTTP request.
+// InteractionCallback handles all interaction types (block_actions, interactive_message,
+// view_submission, etc.).
+//
+// Migration example:
+//
+//	// Before (broken for block_actions):
+//	action, err := slackevents.ParseActionEvent(payload, slackevents.OptionNoVerifyToken())
+//
+//	// After (handles all interaction types):
+//	var ic slack.InteractionCallback
+//	err := json.Unmarshal([]byte(payload), &ic)
+//	// Use ic.ActionCallback.BlockActions for block actions
+//	// Use ic.ActionCallback.AttachmentActions for legacy attachment actions
 func ParseActionEvent(payloadString string, opts ...Option) (MessageAction, error) {
 	byteString := []byte(payloadString)
 	action := MessageAction{}

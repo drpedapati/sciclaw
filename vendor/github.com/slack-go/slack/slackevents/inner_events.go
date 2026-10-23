@@ -11,7 +11,7 @@ import (
 // EventsAPIInnerEvent the inner event of a EventsAPI event_callback Event.
 type EventsAPIInnerEvent struct {
 	Type string `json:"type"`
-	Data interface{}
+	Data any
 }
 
 // AssistantThreadMessageEvent is an (inner) EventsAPI subscribable event.
@@ -36,11 +36,147 @@ type AssistantThread struct {
 	ThreadTimeStamp string                 `json:"thread_ts"`
 }
 
+// AssistantThreadActionToken contains the action token for Data Access API queries
+type AssistantThreadActionToken struct {
+	ActionToken string `json:"action_token"`
+}
+
 // AssistantThreadContext is an object that represents the context of an assistant thread.
 type AssistantThreadContext struct {
 	ChannelID    string `json:"channel_id"`
 	TeamID       string `json:"team_id"`
 	EnterpriseID string `json:"enterprise_id"`
+}
+
+// AppContext describes what the user currently has open in Slack. Entities are
+// ordered by relevance. Slack sends an empty object when nothing is being viewed.
+type AppContext struct {
+	Entities []AppContextEntity `json:"entities,omitempty"`
+}
+
+// Entity types in an AppContext.
+const (
+	AppContextEntityChannel        = "slack#/types/channel_id"
+	AppContextEntityCanvas         = "slack#/types/canvas_id"
+	AppContextEntityList           = "slack#/types/list_id"
+	AppContextEntityMessageContext = "slack#/types/message_context"
+)
+
+// AppContextEntity is one item the user has open. Value holds the ID for channel, canvas
+// and list entities, and Message is set instead for message_context entities. The value of
+// an entity type this package doesn't model is kept only so it survives re-encoding.
+type AppContextEntity struct {
+	Type         string
+	Value        string
+	Message      *AppContextMessage
+	TeamID       string
+	EnterpriseID string
+	raw          json.RawMessage
+}
+
+// appContextEntityJSON is the wire shape of an AppContextEntity.
+type appContextEntityJSON struct {
+	Type         string          `json:"type"`
+	Value        json.RawMessage `json:"value,omitempty"`
+	TeamID       string          `json:"team_id,omitempty"`
+	EnterpriseID string          `json:"enterprise_id,omitempty"`
+}
+
+// AppContextMessage is the value of a message_context entity.
+type AppContextMessage struct {
+	ChannelID        string `json:"channel_id"`
+	MessageTimestamp string `json:"message_ts"`
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for AppContextEntity. Slack
+// sends value as a string for most entity types and as an object for message_context.
+func (e *AppContextEntity) UnmarshalJSON(data []byte) error {
+	var wire appContextEntityJSON
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*e = AppContextEntity{
+		Type:         wire.Type,
+		TeamID:       wire.TeamID,
+		EnterpriseID: wire.EnterpriseID,
+		raw:          wire.Value,
+	}
+
+	if len(wire.Value) == 0 {
+		return nil
+	}
+	switch wire.Value[0] {
+	case '"':
+		return json.Unmarshal(wire.Value, &e.Value)
+	case '{':
+		if e.Type == AppContextEntityMessageContext {
+			e.Message = &AppContextMessage{}
+			return json.Unmarshal(wire.Value, e.Message)
+		}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for AppContextEntity.
+func (e AppContextEntity) MarshalJSON() ([]byte, error) {
+	wire := appContextEntityJSON{
+		Type:         e.Type,
+		TeamID:       e.TeamID,
+		EnterpriseID: e.EnterpriseID,
+		Value:        e.raw,
+	}
+
+	var err error
+	switch {
+	case e.Message != nil:
+		wire.Value, err = json.Marshal(e.Message)
+	case e.Value != "":
+		wire.Value, err = json.Marshal(e.Value)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(wire)
+}
+
+// AppContextChangedEvent is an (inner) EventsAPI subscribable event, sent when the
+// user's active context changes while the app is open. Channel is the app's DM with
+// the user.
+type AppContextChangedEvent struct {
+	Type           string     `json:"type"`
+	Context        AppContext `json:"context"`
+	Channel        string     `json:"channel"`
+	User           string     `json:"user"`
+	EventTimestamp string     `json:"event_ts"`
+}
+
+// AgentSessionStoppedEvent is an (inner) EventsAPI subscribable event, sent when a
+// user stops an agent session. StreamingMessageTimestamps lists the in-progress
+// streams that Slack halted.
+type AgentSessionStoppedEvent struct {
+	Type                       string   `json:"type"`
+	Channel                    string   `json:"channel"`
+	ThreadTimestamp            string   `json:"thread_ts"`
+	User                       string   `json:"user"`
+	StreamingMessageTimestamps []string `json:"streaming_message_ts,omitempty"`
+	EventTimestamp             string   `json:"event_ts"`
+}
+
+// AgentSessionTitleChangedEvent is an (inner) EventsAPI subscribable event, sent when
+// a user renames an agent session. PreviousTitle is omitted when the session had no
+// title before.
+type AgentSessionTitleChangedEvent struct {
+	Type            string `json:"type"`
+	Channel         string `json:"channel"`
+	ThreadTimestamp string `json:"thread_ts"`
+	User            string `json:"user"`
+	TeamID          string `json:"team_id"`
+	EnterpriseID    string `json:"enterprise_id,omitempty"`
+	Title           string `json:"title"`
+	PreviousTitle   string `json:"previous_title,omitempty"`
+	EventTimestamp  string `json:"event_ts"`
 }
 
 // AppMentionEvent is an (inner) EventsAPI subscribable event.
@@ -60,8 +196,19 @@ type AppMentionEvent struct {
 	// BotID is filled out when a bot triggers the app_mention event
 	BotID string `json:"bot_id,omitempty"`
 
+	// Fields shared with message events
+	Blocks      slack.Blocks       `json:"blocks,omitempty"`
+	Attachments []slack.Attachment `json:"attachments,omitempty"`
+	Files       []slack.File       `json:"files,omitempty"`
+	Upload      bool               `json:"upload,omitempty"`
+
 	// When the app is mentioned in the edited message
 	Edited *Edited `json:"edited,omitempty"`
+
+	// AssistantThread contains action token for Data Access API queries when app is mentioned
+	AssistantThread *AssistantThreadActionToken `json:"assistant_thread,omitempty"`
+	// ActionToken contains the top-level action token for Data Access API queries.
+	ActionToken string `json:"action_token,omitempty"`
 }
 
 // AppHomeOpenedEvent Your Slack app home was opened.
@@ -72,6 +219,8 @@ type AppHomeOpenedEvent struct {
 	EventTimeStamp string      `json:"event_ts"`
 	Tab            string      `json:"tab"`
 	View           *slack.View `json:"view,omitempty"`
+	// Context is only sent when the app subscribes to app_context_changed.
+	Context *AppContext `json:"context,omitempty"`
 }
 
 // AppUninstalledEvent Your Slack app was uninstalled.
@@ -271,24 +420,31 @@ type SharedLinks struct {
 	URL    string `json:"url"`
 }
 
+const (
+	ChannelTypeChannel = "channel" // Public channel message
+	ChannelTypeGroup   = "group"   // Private channel message
+	ChannelTypeIM      = "im"      // Direct message
+	ChannelTypeMPIM    = "mpim"    // Multiparty direct message
+)
+
 // MessageEvent occurs when a variety of types of messages has been posted.
 // Parse ChannelType to see which
 // if ChannelType = "group", this is a private channel message
 // if ChannelType = "channel", this message was sent to a channel
 // if ChannelType = "im", this is a private message
-// if ChannelType = "mim", A message was posted in a multiparty direct message channel
-// TODO: Improve this so that it is not required to manually parse ChannelType
+// if ChannelType = "mpim", A message was posted in a multiparty direct message channel
 type MessageEvent struct {
 	// Basic Message Event - https://api.slack.com/events/message
-	ClientMsgID     string `json:"client_msg_id"`
-	Type            string `json:"type"`
-	User            string `json:"user"`
-	Text            string `json:"text"`
-	ThreadTimeStamp string `json:"thread_ts"`
-	TimeStamp       string `json:"ts"`
-	Channel         string `json:"channel"`
-	ChannelType     string `json:"channel_type"`
-	EventTimeStamp  string `json:"event_ts"`
+	ClientMsgID     string       `json:"client_msg_id"`
+	Type            string       `json:"type"`
+	User            string       `json:"user"`
+	Text            string       `json:"text"`
+	Blocks          slack.Blocks `json:"blocks,omitempty"`
+	ThreadTimeStamp string       `json:"thread_ts"`
+	TimeStamp       string       `json:"ts"`
+	Channel         string       `json:"channel"`
+	ChannelType     string       `json:"channel_type"`
+	EventTimeStamp  string       `json:"event_ts"`
 
 	// When Message comes from a channel that is shared between workspaces
 	UserTeam   string `json:"user_team,omitempty"`
@@ -312,10 +468,28 @@ type MessageEvent struct {
 	SubType string `json:"subtype,omitempty"`
 
 	// bot_message (https://api.slack.com/events/message/bot_message)
-	BotID    string `json:"bot_id,omitempty"`
-	Username string `json:"username,omitempty"`
-	Icons    *Icon  `json:"icons,omitempty"`
+	BotID      string `json:"bot_id,omitempty"`
+	Username   string `json:"username,omitempty"`
+	Icons      *Icon  `json:"icons,omitempty"`
+	WorkflowID string `json:"workflow_id,omitempty"`
+
+	// AssistantThread contains action token for Data Access API queries in message events
+	AssistantThread *AssistantThreadActionToken `json:"assistant_thread,omitempty"`
+	// ActionToken contains the top-level action token for Data Access API queries.
+	ActionToken string `json:"action_token,omitempty"`
+	// AppContext is only sent on message.im when the app subscribes to app_context_changed.
+	AppContext *AppContext `json:"app_context,omitempty"`
+
+	// Huddle-related fields (subtype "huddle_thread")
+	Room            *slack.HuddleRoom `json:"room,omitempty"`
+	NoNotifications bool              `json:"no_notifications,omitempty"`
+	Permalink       string            `json:"permalink,omitempty"`
 }
+
+func (e *MessageEvent) IsIM() bool      { return e.ChannelType == ChannelTypeIM }
+func (e *MessageEvent) IsChannel() bool { return e.ChannelType == ChannelTypeChannel }
+func (e *MessageEvent) IsGroup() bool   { return e.ChannelType == ChannelTypeGroup }
+func (e *MessageEvent) IsMpIM() bool    { return e.ChannelType == ChannelTypeMPIM }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for MessageEvent.
 // This custom unmarshaler handles both regular messages and message_changed events
@@ -919,7 +1093,7 @@ type AppRequestedEvent struct {
 			Name   string `json:"name"`
 			Domain string `json:"domain"`
 		} `json:"team"`
-		Enterprise interface{} `json:"enterprise"`
+		Enterprise any `json:"enterprise"`
 		Scopes     []struct {
 			Name        string `json:"name"`
 			Description string `json:"description"`
@@ -1007,11 +1181,11 @@ type FunctionExecutedEvent struct {
 		DateUpdated int64  `json:"date_updated"`
 		DateDeleted int64  `json:"date_deleted"`
 	} `json:"function"`
-	Inputs              map[string]interface{} `json:"inputs"`
-	FunctionExecutionID string                 `json:"function_execution_id"`
-	WorkflowExecutionID string                 `json:"workflow_execution_id"`
-	EventTs             string                 `json:"event_ts"`
-	BotAccessToken      string                 `json:"bot_access_token"`
+	Inputs              map[string]any `json:"inputs"`
+	FunctionExecutionID string         `json:"function_execution_id"`
+	WorkflowExecutionID string         `json:"workflow_execution_id"`
+	EventTs             string         `json:"event_ts"`
+	BotAccessToken      string         `json:"bot_access_token"`
 }
 
 type InviteRequestedEvent struct {
@@ -1082,29 +1256,29 @@ type User struct {
 }
 
 type Profile struct {
-	Title                  string                 `json:"title"`
-	Phone                  string                 `json:"phone"`
-	Skype                  string                 `json:"skype"`
-	RealName               string                 `json:"real_name"`
-	RealNameNormalized     string                 `json:"real_name_normalized"`
-	DisplayName            string                 `json:"display_name"`
-	DisplayNameNormalized  string                 `json:"display_name_normalized"`
-	Fields                 map[string]interface{} `json:"fields"`
-	StatusText             string                 `json:"status_text"`
-	StatusEmoji            string                 `json:"status_emoji"`
-	StatusEmojiDisplayInfo []interface{}          `json:"status_emoji_display_info"`
-	StatusExpiration       int                    `json:"status_expiration"`
-	AvatarHash             string                 `json:"avatar_hash"`
-	FirstName              string                 `json:"first_name"`
-	LastName               string                 `json:"last_name"`
-	Image24                string                 `json:"image_24"`
-	Image32                string                 `json:"image_32"`
-	Image48                string                 `json:"image_48"`
-	Image72                string                 `json:"image_72"`
-	Image192               string                 `json:"image_192"`
-	Image512               string                 `json:"image_512"`
-	StatusTextCanonical    string                 `json:"status_text_canonical"`
-	Team                   string                 `json:"team"`
+	Title                  string         `json:"title"`
+	Phone                  string         `json:"phone"`
+	Skype                  string         `json:"skype"`
+	RealName               string         `json:"real_name"`
+	RealNameNormalized     string         `json:"real_name_normalized"`
+	DisplayName            string         `json:"display_name"`
+	DisplayNameNormalized  string         `json:"display_name_normalized"`
+	Fields                 map[string]any `json:"fields"`
+	StatusText             string         `json:"status_text"`
+	StatusEmoji            string         `json:"status_emoji"`
+	StatusEmojiDisplayInfo []any          `json:"status_emoji_display_info"`
+	StatusExpiration       int            `json:"status_expiration"`
+	AvatarHash             string         `json:"avatar_hash"`
+	FirstName              string         `json:"first_name"`
+	LastName               string         `json:"last_name"`
+	Image24                string         `json:"image_24"`
+	Image32                string         `json:"image_32"`
+	Image48                string         `json:"image_48"`
+	Image72                string         `json:"image_72"`
+	Image192               string         `json:"image_192"`
+	Image512               string         `json:"image_512"`
+	StatusTextCanonical    string         `json:"status_text_canonical"`
+	Team                   string         `json:"team"`
 }
 
 type UserStatusChangedEvent struct {
@@ -1112,6 +1286,36 @@ type UserStatusChangedEvent struct {
 	User    User   `json:"user"`
 	CacheTS int64  `json:"cache_ts"`
 	EventTS string `json:"event_ts"`
+}
+
+// EntityDetailsRequestedEvent is sent when entity details are requested
+// This event is fired when a user clicks on a Work Object link and Slack requests
+// details about the entity from your app.
+type EntityDetailsRequestedEvent struct {
+	Type         string                            `json:"type"`
+	User         string                            `json:"user"`
+	ExternalRef  EntityDetailsRequestedExternalRef `json:"external_ref"`
+	EntityURL    string                            `json:"entity_url"`
+	Link         EntityDetailsRequestedLink        `json:"link"`
+	AppUnfurlURL string                            `json:"app_unfurl_url"`
+	EventTS      string                            `json:"event_ts"`
+	TriggerID    string                            `json:"trigger_id"`
+	UserLocale   string                            `json:"user_locale"`
+	Channel      string                            `json:"channel,omitempty"`
+	MessageTs    string                            `json:"message_ts,omitempty"`
+	ThreadTs     string                            `json:"thread_ts,omitempty"`
+}
+
+// EntityDetailsRequestedExternalRef represents the external reference in entity_details_requested event
+type EntityDetailsRequestedExternalRef struct {
+	ID   string `json:"id"`
+	Type string `json:"type,omitempty"`
+}
+
+// EntityDetailsRequestedLink represents the link information in entity_details_requested event
+type EntityDetailsRequestedLink struct {
+	URL    string `json:"url"`
+	Domain string `json:"domain"`
 }
 
 type Actor struct {
@@ -1161,6 +1365,12 @@ type SharedChannelInviteRequestedEvent struct {
 type EventsAPIType string
 
 const (
+	// AgentSessionStopped is sent when a user stops an agent session
+	AgentSessionStopped = EventsAPIType("agent_session_stopped")
+	// AgentSessionTitleChanged is sent when a user renames an agent session
+	AgentSessionTitleChanged = EventsAPIType("agent_session_title_changed")
+	// AppContextChanged is sent when the user's active context changes while the app is open
+	AppContextChanged = EventsAPIType("app_context_changed")
 	// AppDeleted is an event when an app is deleted from a workspace
 	AppDeleted = EventsAPIType("app_deleted")
 	// AppHomeOpened Your Slack app home was opened
@@ -1323,12 +1533,17 @@ const (
 	UserStatusChanged = EventsAPIType("user_status_changed")
 	// WorkflowStepExecute Happens, if a workflow step of your app is invoked
 	WorkflowStepExecute = EventsAPIType("workflow_step_execute")
+	// EntityDetailsRequested is sent when entity details are requested
+	EntityDetailsRequested = EventsAPIType("entity_details_requested")
 )
 
 // EventsAPIInnerEventMapping maps INNER Event API events to their corresponding struct
 // implementations. The structs should be instances of the unmarshalling
 // target for the matching event type.
-var EventsAPIInnerEventMapping = map[EventsAPIType]interface{}{
+var EventsAPIInnerEventMapping = map[EventsAPIType]any{
+	AgentSessionStopped:           AgentSessionStoppedEvent{},
+	AgentSessionTitleChanged:      AgentSessionTitleChangedEvent{},
+	AppContextChanged:             AppContextChangedEvent{},
 	AppDeleted:                    AppDeletedEvent{},
 	AppHomeOpened:                 AppHomeOpenedEvent{},
 	AppInstalled:                  AppInstalledEvent{},
@@ -1409,4 +1624,5 @@ var EventsAPIInnerEventMapping = map[EventsAPIType]interface{}{
 	UserHuddleChanged:             UserHuddleChangedEvent{},
 	UserProfileChanged:            UserProfileChangedEvent{},
 	UserStatusChanged:             UserStatusChangedEvent{},
+	EntityDetailsRequested:        EntityDetailsRequestedEvent{},
 }

@@ -7,19 +7,25 @@ import (
 	"html"
 	"io"
 	"io/fs"
+	"maps"
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 	"github.com/valyala/bytebufferpool"
+
+	brotli "github.com/molecule-man/go-brrr"
 )
 
 // ServeFileBytesUncompressed returns HTTP response containing file contents
@@ -70,7 +76,7 @@ func ServeFileUncompressed(ctx *RequestCtx, path string) {
 // Use ServeFileBytesUncompressed is you don't need serving compressed
 // file contents.
 //
-// See also RequestCtx.SendFileBytes.
+// See also RequestCtx.SendFileBytes, ServeFileLiteral.
 //
 // WARNING: do not pass any user supplied paths to this function!
 // WARNING: if path is based on user input users will be able to request
@@ -91,7 +97,11 @@ func ServeFileBytes(ctx *RequestCtx, path []byte) {
 //
 // Use ServeFileUncompressed is you don't need serving compressed file contents.
 //
-// See also RequestCtx.SendFile.
+// ServeFile interprets path as a URI path internally. Percent-encoded
+// sequences may be decoded, and '?' or '#' may be treated as URI delimiters.
+// Use ServeFileLiteral if you need literal path semantics.
+//
+// See also RequestCtx.SendFile, ServeFileLiteral.
 //
 // WARNING: do not pass any user supplied paths to this function!
 // WARNING: if path is based on user input users will be able to request
@@ -101,27 +111,44 @@ func ServeFile(ctx *RequestCtx, path string) {
 		rootFSHandler = rootFS.NewRequestHandler()
 	})
 
-	if path == "" || !filepath.IsAbs(path) {
-		// extend relative path to absolute path
-		hasTrailingSlash := path != "" && (path[len(path)-1] == '/' || path[len(path)-1] == '\\')
-
-		var err error
-		path = filepath.FromSlash(path)
-		if path, err = filepath.Abs(path); err != nil {
-			ctx.Logger().Printf("cannot resolve path %q to absolute file path: %v", path, err)
-			ctx.Error("Internal Server Error", StatusInternalServerError)
-			return
-		}
-		if hasTrailingSlash {
-			path += "/"
-		}
+	path, ok := normalizeServeFilePath(ctx, path)
+	if !ok {
+		return
 	}
-
-	// convert the path to forward slashes regardless the OS in order to set the URI properly
-	// the handler will convert back to OS path separator before opening the file
-	path = filepath.ToSlash(path)
-
 	ctx.Request.SetRequestURI(path)
+	rootFSHandler(ctx)
+}
+
+// ServeFileLiteral returns HTTP response containing compressed file contents
+// from the given path using literal path semantics.
+//
+// Reserved URI characters in path such as '%', '?' and '#' are preserved
+// instead of being interpreted during internal request URI processing.
+//
+// HTTP response may contain uncompressed file contents in the following cases:
+//
+//   - Missing 'Accept-Encoding: gzip' request header.
+//   - No write access to directory containing the file.
+//
+// Directory contents is returned if path points to directory.
+//
+// Use ServeFileUncompressed if you don't need serving compressed file contents.
+//
+// See also RequestCtx.SendFileLiteral, ServeFile.
+//
+// WARNING: do not pass any user supplied paths to this function!
+// WARNING: if path is based on user input users will be able to request
+// any file on your filesystem! Use fasthttp.FS with a sane Root instead.
+func ServeFileLiteral(ctx *RequestCtx, path string) {
+	rootFSOnce.Do(func() {
+		rootFSHandler = rootFS.NewRequestHandler()
+	})
+
+	path, ok := normalizeServeFilePath(ctx, path)
+	if !ok {
+		return
+	}
+	ctx.Request.SetRequestURIBytes(appendQuotedPath(nil, s2b(path)))
 	rootFSHandler(ctx)
 }
 
@@ -148,8 +175,34 @@ var (
 //
 // Directory contents is returned if path points to directory.
 //
-// See also ServeFile.
+// ServeFS interprets path as a URI path internally. Percent-encoded
+// sequences may be decoded, and '?' or '#' may be treated as URI delimiters.
+// Use ServeFSLiteral if you need literal path semantics.
+//
+// See also ServeFile, ServeFSLiteral.
 func ServeFS(ctx *RequestCtx, filesystem fs.FS, path string) {
+	serveFS(ctx, filesystem, path, false)
+}
+
+// ServeFSLiteral returns HTTP response containing compressed file contents
+// from the given fs.FS's path using literal path semantics.
+//
+// Reserved URI characters in path such as '%', '?' and '#' are preserved
+// instead of being interpreted during internal request URI processing.
+//
+// HTTP response may contain uncompressed file contents in the following cases:
+//
+//   - Missing 'Accept-Encoding: gzip' request header.
+//   - No write access to directory containing the file.
+//
+// Directory contents is returned if path points to directory.
+//
+// See also ServeFS, ServeFileLiteral.
+func ServeFSLiteral(ctx *RequestCtx, filesystem fs.FS, path string) {
+	serveFS(ctx, filesystem, path, true)
+}
+
+func serveFS(ctx *RequestCtx, filesystem fs.FS, path string, literal bool) {
 	f := &FS{
 		FS:                 filesystem,
 		Root:               "",
@@ -159,11 +212,41 @@ func ServeFS(ctx *RequestCtx, filesystem fs.FS, path string) {
 		CompressBrotli:     true,
 		CompressZstd:       true,
 		AcceptByteRange:    true,
+		// This FS serves exactly one request, so its cache can never be hit
+		// again. Skipping it drops a cleaner goroutine per call and releases the
+		// file when the response body closes instead of at GC time.
+		SkipCache: true,
 	}
 	handler := f.NewRequestHandler()
 
-	ctx.Request.SetRequestURI(path)
+	if literal {
+		ctx.Request.SetRequestURIBytes(appendQuotedPath(nil, s2b(path)))
+	} else {
+		ctx.Request.SetRequestURI(path)
+	}
 	handler(ctx)
+}
+
+func normalizeServeFilePath(ctx *RequestCtx, path string) (string, bool) {
+	if path == "" || !filepath.IsAbs(path) {
+		// extend relative path to absolute path
+		hasTrailingSlash := path != "" && (path[len(path)-1] == '/' || path[len(path)-1] == '\\')
+
+		var err error
+		path = filepath.FromSlash(path)
+		if path, err = filepath.Abs(path); err != nil {
+			ctx.Logger().Printf("cannot resolve path %q to absolute file path: %v", path, err)
+			ctx.Error("Internal Server Error", StatusInternalServerError)
+			return "", false
+		}
+		if hasTrailingSlash {
+			path += "/"
+		}
+	}
+
+	// convert the path to forward slashes regardless the OS in order to set the URI properly
+	// the handler will convert back to OS path separator before opening the file
+	return filepath.ToSlash(path), true
 }
 
 // PathRewriteFunc must return new request path based on arbitrary ctx
@@ -172,7 +255,7 @@ func ServeFS(ctx *RequestCtx, filesystem fs.FS, path string) {
 // Path rewriter is used in FS for translating the current request
 // to the local filesystem path relative to FS.Root.
 //
-// The returned path must not contain '/../' substrings due to security reasons,
+// The returned path must not contain '..' path segments due to security reasons,
 // since such paths may refer files outside FS.Root.
 //
 // The returned path may refer to ctx members. For example, ctx.Path().
@@ -192,17 +275,23 @@ type PathRewriteFunc func(ctx *RequestCtx) []byte
 func NewVHostPathRewriter(slashesCount int) PathRewriteFunc {
 	return func(ctx *RequestCtx) []byte {
 		path := stripLeadingSlashes(ctx.Path(), slashesCount)
+		// On Windows ctx.Path() may keep a '..' segment, e.g. from `/a/..\../`.
+		// Return it unchanged so FS rejects it instead of letting the second
+		// normalization below remove the host segment.
+		if hasDotDotPathSegment(path) {
+			return path
+		}
 		host := ctx.Host()
-		if n := bytes.IndexByte(host, '/'); n >= 0 {
+		if n := bytes.IndexAny(host, `/\`); n >= 0 {
 			host = nil
 		}
-		if len(host) == 0 {
+		if len(host) == 0 || len(bytes.Trim(host, ".")) == 0 {
 			host = strInvalidHost
 		}
 		b := bytebufferpool.Get()
 		b.B = append(b.B, '/')
-		b.B = append(b.B, host...)
-		b.B = append(b.B, path...)
+		b.B = appendQuotedPath(b.B, host)
+		b.B = appendQuotedPath(b.B, path)
 		ctx.URI().SetPathBytes(b.B)
 		bytebufferpool.Put(b)
 
@@ -312,6 +401,10 @@ type FS struct {
 
 	// Expiration duration for inactive file handlers.
 	//
+	// Up to 4096 files of up to 8 KiB each are cached in memory rather than
+	// as open file handles, so changes to them are served only after their
+	// cache entries expire.
+	//
 	// FSHandlerCacheDuration is used by default.
 	CacheDuration time.Duration
 
@@ -364,6 +457,17 @@ type FS struct {
 	// Byte range requests are disabled by default.
 	AcceptByteRange bool
 
+	// Sends a weak ETag header derived from the modification time and size
+	// of the served file if set to true. GET and HEAD requests with a matching
+	// If-None-Match header get '304 Not Modified' responses, other methods
+	// get '412 Precondition Failed'.
+	//
+	// Files with an unknown modification time, such as files from embed.FS,
+	// get no ETag, since a size-only tag cannot reliably detect changes.
+	//
+	// ETag generation is disabled by default.
+	GenerateETag bool
+
 	// SkipCache if true, will cache no file handler.
 	//
 	// By default is false.
@@ -378,6 +482,11 @@ const FSCompressedFileSuffix = ".fasthttp.gz"
 // FSCompressedFileSuffixes is the suffixes FS adds to the original file names depending on encoding
 // when trying to store compressed file under the new file name.
 // See FS.Compress for details.
+//
+// This map is read during FSHandler initialization (which runs in a sync.Once).
+// It is not safe for concurrent modification. Set any custom suffixes in an
+// init() function or before the first call to FS.NewRequestHandler, and do not
+// modify the map afterwards.
 var FSCompressedFileSuffixes = map[string]string{
 	"gzip": ".fasthttp.gz",
 	"br":   ".fasthttp.br",
@@ -451,6 +560,22 @@ func (fs *FS) normalizeRoot(root string) string {
 
 		// convert the root directory slashes to the native format
 		root = filepath.FromSlash(root)
+	} else {
+		if root == "" {
+			return root
+		}
+
+		// Normalize fs.FS roots to slash-separated relative paths.
+		root = strings.ReplaceAll(root, "\\", "/")
+		root = strings.TrimLeft(root, "/")
+		if root == "" {
+			return root
+		}
+		root = path.Clean(root)
+		if root == "." {
+			return "."
+		}
+		return root
 	}
 
 	// strip trailing slashes from the root path
@@ -477,9 +602,7 @@ func (fs *FS) initRequestHandler() {
 		compressedFileSuffixes["gzip"] == compressedFileSuffixes["zstd"] {
 		// Copy global map
 		compressedFileSuffixes = make(map[string]string, len(FSCompressedFileSuffixes))
-		for k, v := range FSCompressedFileSuffixes {
-			compressedFileSuffixes[k] = v
-		}
+		maps.Copy(compressedFileSuffixes, FSCompressedFileSuffixes)
 	}
 
 	if fs.CompressedFileSuffix != "" {
@@ -500,6 +623,8 @@ func (fs *FS) initRequestHandler() {
 		compressRoot:           compressRoot,
 		pathNotFound:           fs.PathNotFound,
 		acceptByteRange:        fs.AcceptByteRange,
+		generateETag:           fs.GenerateETag,
+		skipCache:              fs.SkipCache,
 		compressedFileSuffixes: compressedFileSuffixes,
 	}
 
@@ -509,7 +634,22 @@ func (fs *FS) initRequestHandler() {
 		h.filesystem = &osFS{} // It provides os.Open and os.Stat
 	}
 
-	fs.h = h.handleRequest
+	if fs.SkipCache {
+		// noopCacheManager.Close is a no-op, so there is nothing to stop.
+		fs.h = h.handleRequest
+		return
+	}
+
+	// Use a >16-byte backing array so the cleanup owner doesn't fall under
+	// runtime's tiny pointer-free allocation batching.
+	cacheCleaner := make([]byte, 32)
+	runtime.AddCleanup(&cacheCleaner[0], cacheManager.Close, h.cacheManager)
+	fs.h = func(ctx *RequestCtx) {
+		h.handleRequest(ctx)
+		// Keep the cleanup owner captured by fs.h and alive until
+		// h.handleRequest returns, since its cleanup stops the cache cleaner.
+		runtime.KeepAlive(cacheCleaner)
+	}
 }
 
 type fsHandler struct {
@@ -517,6 +657,10 @@ type fsHandler struct {
 	filesystem          fs.FS
 
 	cacheManager cacheManager
+
+	// smallFilesInMemory counts the cached files held in memory, which
+	// maxSmallFilesInMemory bounds.
+	smallFilesInMemory atomic.Int64
 
 	pathRewrite            PathRewriteFunc
 	pathNotFound           RequestHandler
@@ -530,6 +674,8 @@ type fsHandler struct {
 	compressBrotli     bool
 	compressZstd       bool
 	acceptByteRange    bool
+	generateETag       bool
+	skipCache          bool
 }
 
 type fsFile struct {
@@ -540,8 +686,9 @@ type fsFile struct {
 	h               *fsHandler
 	filename        string // fs.FileInfo.Name() return filename, isn't filepath.
 	contentType     string
-	dirIndex        []byte
+	dirIndex        []byte // contents of a file served from memory, f is nil then
 	lastModifiedStr []byte
+	etag            []byte
 
 	bigFiles      []*bigFileReader
 	contentLength int
@@ -549,6 +696,10 @@ type fsFile struct {
 
 	bigFilesLock sync.Mutex
 	compressed   bool
+
+	// countedInMemory is set while the file counts toward its handler's
+	// smallFilesInMemory.
+	countedInMemory bool
 }
 
 func (ff *fsFile) NewReader() (io.Reader, error) {
@@ -563,7 +714,7 @@ func (ff *fsFile) smallFileReader() io.Reader {
 	if v == nil {
 		v = &fsSmallFileReader{}
 	}
-	r := v.(*fsSmallFileReader)
+	r := v.(*fsSmallFileReader) //nolint:forcetypeassert
 	r.ff = ff
 	r.endPos = ff.contentLength
 	if r.startPos > 0 {
@@ -575,6 +726,13 @@ func (ff *fsFile) smallFileReader() io.Reader {
 // Files bigger than this size are sent with sendfile.
 const maxSmallFileSize = 2 * 4096
 
+// maxSmallFilesInMemory bounds how many small files one FS keeps in memory,
+// and with that the file contents it holds to 32 MiB. Past it, small files
+// are cached as open files and read on every request, so paths an attacker
+// can vary, such as letter case on a case-insensitive filesystem, can't make
+// it hold file contents without limit.
+const maxSmallFilesInMemory = 4096
+
 func (ff *fsFile) isBig() bool {
 	if _, ok := ff.h.filesystem.(*osFS); !ok { // fs.FS only uses bigFileReader, memory cache uses fsSmallFileReader
 		return ff.f != nil
@@ -584,10 +742,10 @@ func (ff *fsFile) isBig() bool {
 
 func (ff *fsFile) bigFileReader() (io.Reader, error) {
 	if ff.f == nil {
-		return nil, errors.New("bug: ff.f must be non-nil in bigFileReader")
+		return nil, errors.New("bug: ff.f must be non-nil in big file reader")
 	}
 
-	var r io.Reader
+	var r *bigFileReader
 
 	ff.bigFilesLock.Lock()
 	n := len(ff.bigFiles)
@@ -597,22 +755,34 @@ func (ff *fsFile) bigFileReader() (io.Reader, error) {
 	}
 	ff.bigFilesLock.Unlock()
 
-	if r != nil {
-		return r, nil
+	if r == nil {
+		f, err := ff.h.filesystem.Open(ff.filename)
+		if err != nil {
+			return nil, fmt.Errorf("cannot open already opened file: %w", err)
+		}
+		r = &bigFileReader{
+			f:  f,
+			ff: ff,
+		}
 	}
 
-	f, err := ff.h.filesystem.Open(ff.filename)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open already opened file: %w", err)
+	// The file may have grown since its size was cached. Stop at the cached
+	// size, so nothing follows the body the Content-Length announces. A file
+	// with a negative size is streamed until EOF.
+	r.r = r.f
+	if ff.contentLength >= 0 {
+		r.lr.R = r.f
+		r.lr.N = int64(ff.contentLength)
+		r.r = &r.lr
 	}
-	return &bigFileReader{
-		f:  f,
-		ff: ff,
-		r:  f,
-	}, nil
+	return r, nil
 }
 
 func (ff *fsFile) Release() {
+	if ff.countedInMemory {
+		ff.countedInMemory = false
+		ff.h.smallFilesInMemory.Add(-1)
+	}
 	if ff.f != nil {
 		_ = ff.f.Close()
 
@@ -627,12 +797,7 @@ func (ff *fsFile) Release() {
 }
 
 func (ff *fsFile) decReadersCount() {
-	ff.h.cacheManager.Lock()
-	ff.readersCount--
-	if ff.readersCount < 0 {
-		panic("bug: fsFile.readersCount < 0")
-	}
-	ff.h.cacheManager.Unlock()
+	ff.h.cacheManager.DecReadersCount(ff)
 }
 
 // bigFileReader attempts to trigger sendfile
@@ -647,7 +812,7 @@ type bigFileReader struct {
 func (r *bigFileReader) UpdateByteRange(startPos, endPos int) error {
 	seeker, ok := r.f.(io.Seeker)
 	if !ok {
-		return errors.New("must implement io.Seeker")
+		return errors.New("must implement seek")
 	}
 	if _, err := seeker.Seek(int64(startPos), io.SeekStart); err != nil {
 		return err
@@ -677,7 +842,7 @@ func (r *bigFileReader) Close() error {
 	seeker, ok := r.f.(io.Seeker)
 	if !ok {
 		_ = r.f.Close()
-		return errors.New("must implement io.Seeker")
+		return errors.New("must implement seek")
 	}
 	n, err := seeker.Seek(0, io.SeekStart)
 	if err == nil {
@@ -688,7 +853,7 @@ func (r *bigFileReader) Close() error {
 			ff.bigFilesLock.Unlock()
 		} else {
 			_ = r.f.Close()
-			err = errors.New("bug: File.Seek(0, io.SeekStart) returned (non-zero, nil)")
+			err = errors.New("bug: seek to start returned (non-zero, nil)")
 		}
 	} else {
 		_ = r.f.Close()
@@ -732,7 +897,7 @@ func (r *fsSmallFileReader) Read(p []byte) (int, error) {
 	if ff.f != nil {
 		ra, ok := ff.f.(io.ReaderAt)
 		if !ok {
-			return 0, errors.New("must implement io.ReaderAt")
+			return 0, errors.New("must implement readat")
 		}
 		n, err := ra.ReadAt(p, int64(r.startPos))
 		r.startPos += n
@@ -751,6 +916,7 @@ func (r *fsSmallFileReader) WriteTo(w io.Writer) (int64, error) {
 	var err error
 	if ff.f == nil {
 		n, err = w.Write(ff.dirIndex[r.startPos:r.endPos])
+		r.startPos += n
 		return int64(n), err
 	}
 
@@ -760,7 +926,7 @@ func (r *fsSmallFileReader) WriteTo(w io.Writer) (int64, error) {
 
 	curPos := r.startPos
 	bufv := copyBufPool.Get()
-	buf := bufv.([]byte)
+	buf := bufv.([]byte) //nolint:forcetypeassert
 	for err == nil {
 		tailLen := r.endPos - curPos
 		if tailLen <= 0 {
@@ -771,13 +937,13 @@ func (r *fsSmallFileReader) WriteTo(w io.Writer) (int64, error) {
 		}
 		ra, ok := ff.f.(io.ReaderAt)
 		if !ok {
-			return 0, errors.New("must implement io.ReaderAt")
+			return 0, errors.New("must implement readat")
 		}
 		n, err = ra.ReadAt(buf, int64(curPos))
 		nw, errw := w.Write(buf[:n])
 		curPos += nw
 		if errw == nil && nw != n {
-			errw = errors.New("bug: Write(p) returned (n, nil), where n != len(p)")
+			errw = errors.New("bug: write returned (n, nil), where n != len(p)")
 		}
 		if err == nil {
 			err = errw
@@ -788,12 +954,16 @@ func (r *fsSmallFileReader) WriteTo(w io.Writer) (int64, error) {
 	if err == io.EOF {
 		err = nil
 	}
-	return int64(curPos - r.startPos), err
+	written := curPos - r.startPos
+	r.startPos = curPos
+	return int64(written), err
 }
 
 type cacheManager interface {
 	Lock()
 	Unlock()
+	Close()
+	DecReadersCount(ff *fsFile)
 	GetFileFromCache(cacheKind CacheKind, path []byte) (*fsFile, bool)
 	SetFileToCache(cacheKind CacheKind, path []byte, ff *fsFile) *fsFile
 }
@@ -828,6 +998,7 @@ func newCacheManager(fs *FS) cacheManager {
 		cacheBrotli:   make(map[string]*fsFile),
 		cacheGzip:     make(map[string]*fsFile),
 		cacheZstd:     make(map[string]*fsFile),
+		cleanStop:     make(chan struct{}),
 	}
 
 	go instance.handleCleanCache(fs.CleanStop)
@@ -847,6 +1018,27 @@ func (n *noopCacheManager) Unlock() {
 	n.cacheLock.Unlock()
 }
 
+func (*noopCacheManager) Close() {}
+
+func (n *noopCacheManager) DecReadersCount(ff *fsFile) {
+	release := false
+
+	n.cacheLock.Lock()
+	ff.readersCount--
+	if ff.readersCount < 0 {
+		n.cacheLock.Unlock()
+		panic("bug: fsFile.readersCount < 0")
+	}
+	if ff.readersCount == 0 {
+		release = true
+	}
+	n.cacheLock.Unlock()
+
+	if release {
+		ff.Release()
+	}
+}
+
 func (*noopCacheManager) GetFileFromCache(cacheKind CacheKind, path []byte) (*fsFile, bool) {
 	return nil, false
 }
@@ -864,6 +1056,10 @@ type inMemoryCacheManager struct {
 	cacheGzip     map[string]*fsFile
 	cacheZstd     map[string]*fsFile
 	cacheDuration time.Duration
+	cleanStop     chan struct{}
+	cleanStopOnce sync.Once
+	pendingFiles  []*fsFile
+	closed        bool
 	cacheLock     sync.Mutex
 }
 
@@ -873,6 +1069,51 @@ func (cm *inMemoryCacheManager) Lock() {
 
 func (cm *inMemoryCacheManager) Unlock() {
 	cm.cacheLock.Unlock()
+}
+
+func (cm *inMemoryCacheManager) Close() {
+	filesToRelease := cm.close()
+	for _, ff := range filesToRelease {
+		ff.Release()
+	}
+}
+
+func (cm *inMemoryCacheManager) close() []*fsFile {
+	closedNow := false
+	cm.cleanStopOnce.Do(func() {
+		close(cm.cleanStop)
+		closedNow = true
+	})
+	if !closedNow {
+		return nil
+	}
+
+	cm.cacheLock.Lock()
+	cm.closed = true
+	filesToRelease := cm.collectAllFilesToReleaseNolock(nil)
+	cm.cacheLock.Unlock()
+
+	return filesToRelease
+}
+
+func (cm *inMemoryCacheManager) DecReadersCount(ff *fsFile) {
+	release := false
+
+	cm.cacheLock.Lock()
+	ff.readersCount--
+	if ff.readersCount < 0 {
+		cm.cacheLock.Unlock()
+		panic("bug: fsFile.readersCount < 0")
+	}
+	if cm.closed && ff.readersCount == 0 {
+		release = true
+		cm.removePendingFileNolock(ff)
+	}
+	cm.cacheLock.Unlock()
+
+	if release {
+		ff.Release()
+	}
 }
 
 func (cm *inMemoryCacheManager) getFsCache(cacheKind CacheKind) map[string]*fsFile {
@@ -890,10 +1131,13 @@ func (cm *inMemoryCacheManager) getFsCache(cacheKind CacheKind) map[string]*fsFi
 }
 
 func (cm *inMemoryCacheManager) GetFileFromCache(cacheKind CacheKind, path []byte) (*fsFile, bool) {
-	fileCache := cm.getFsCache(cacheKind)
-
 	cm.cacheLock.Lock()
-	ff, ok := fileCache[string(path)]
+	var ff *fsFile
+	var ok bool
+	if !cm.closed {
+		fileCache := cm.getFsCache(cacheKind)
+		ff, ok = fileCache[string(path)]
+	}
 	if ok {
 		ff.readersCount++
 	}
@@ -903,9 +1147,14 @@ func (cm *inMemoryCacheManager) GetFileFromCache(cacheKind CacheKind, path []byt
 }
 
 func (cm *inMemoryCacheManager) SetFileToCache(cacheKind CacheKind, path []byte, ff *fsFile) *fsFile {
-	fileCache := cm.getFsCache(cacheKind)
-
 	cm.cacheLock.Lock()
+	if cm.closed {
+		ff.readersCount++
+		cm.cacheLock.Unlock()
+		return ff
+	}
+
+	fileCache := cm.getFsCache(cacheKind)
 	ff1, ok := fileCache[string(path)]
 	if !ok {
 		fileCache[string(path)] = ff
@@ -927,95 +1176,158 @@ func (cm *inMemoryCacheManager) SetFileToCache(cacheKind CacheKind, path []byte,
 }
 
 func (cm *inMemoryCacheManager) handleCleanCache(cleanStop chan struct{}) {
-	var pendingFiles []*fsFile
-
 	clean := func() {
-		pendingFiles = cm.cleanCache(pendingFiles)
+		filesToRelease := cm.cleanCache()
+		for _, ff := range filesToRelease {
+			ff.Release()
+		}
 	}
 
-	if cleanStop != nil {
-		t := time.NewTicker(cm.cacheDuration / 2)
-		for {
-			select {
-			case <-t.C:
-				clean()
-			case _, stillOpen := <-cleanStop:
-				// Ignore values send on the channel, only stop when it is closed.
-				if !stillOpen {
-					t.Stop()
-					return
+	t := time.NewTicker(cm.cacheDuration / 2)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-t.C:
+			clean()
+		case <-cm.cleanStop:
+			return
+		case _, stillOpen := <-cleanStop:
+			// Ignore values send on the channel, only stop when it is closed.
+			if !stillOpen {
+				filesToRelease := cm.close()
+				for _, ff := range filesToRelease {
+					ff.Release()
 				}
+				return
 			}
 		}
 	}
-	for {
-		time.Sleep(cm.cacheDuration / 2)
-		clean()
-	}
 }
 
-func (cm *inMemoryCacheManager) cleanCache(pendingFiles []*fsFile) []*fsFile {
+func (cm *inMemoryCacheManager) cleanCache() []*fsFile {
 	var filesToRelease []*fsFile
 
 	cm.cacheLock.Lock()
+	if cm.closed {
+		cm.cacheLock.Unlock()
+		return nil
+	}
 
 	// Close files which couldn't be closed before due to non-zero
 	// readers count on the previous run.
 	var remainingFiles []*fsFile
-	for _, ff := range pendingFiles {
+	for _, ff := range cm.pendingFiles {
 		if ff.readersCount > 0 {
 			remainingFiles = append(remainingFiles, ff)
 		} else {
 			filesToRelease = append(filesToRelease, ff)
 		}
 	}
-	pendingFiles = remainingFiles
+	cm.pendingFiles = remainingFiles
 
-	pendingFiles, filesToRelease = cleanCacheNolock(cm.cache, pendingFiles, filesToRelease, cm.cacheDuration)
-	pendingFiles, filesToRelease = cleanCacheNolock(cm.cacheBrotli, pendingFiles, filesToRelease, cm.cacheDuration)
-	pendingFiles, filesToRelease = cleanCacheNolock(cm.cacheGzip, pendingFiles, filesToRelease, cm.cacheDuration)
-	pendingFiles, filesToRelease = cleanCacheNolock(cm.cacheZstd, pendingFiles, filesToRelease, cm.cacheDuration)
+	filesToRelease = cm.cleanCacheNolock(cm.cache, filesToRelease)
+	filesToRelease = cm.cleanCacheNolock(cm.cacheBrotli, filesToRelease)
+	filesToRelease = cm.cleanCacheNolock(cm.cacheGzip, filesToRelease)
+	filesToRelease = cm.cleanCacheNolock(cm.cacheZstd, filesToRelease)
 
 	cm.cacheLock.Unlock()
 
-	for _, ff := range filesToRelease {
-		ff.Release()
-	}
-
-	return pendingFiles
+	return filesToRelease
 }
 
-func cleanCacheNolock(
-	cache map[string]*fsFile, pendingFiles, filesToRelease []*fsFile, cacheDuration time.Duration,
-) ([]*fsFile, []*fsFile) {
+func (cm *inMemoryCacheManager) cleanCacheNolock(cache map[string]*fsFile, filesToRelease []*fsFile) []*fsFile {
 	t := time.Now()
 	for k, ff := range cache {
-		if t.Sub(ff.t) > cacheDuration {
-			if ff.readersCount > 0 {
-				// There are pending readers on stale file handle,
-				// so we cannot close it. Put it into pendingFiles
-				// so it will be closed later.
-				pendingFiles = append(pendingFiles, ff)
-			} else {
-				filesToRelease = append(filesToRelease, ff)
-			}
+		if t.Sub(ff.t) > cm.cacheDuration {
+			filesToRelease = cm.addFileToReleaseNolock(filesToRelease, ff)
 			delete(cache, k)
 		}
 	}
-	return pendingFiles, filesToRelease
+	return filesToRelease
+}
+
+func (cm *inMemoryCacheManager) collectAllFilesToReleaseNolock(filesToRelease []*fsFile) []*fsFile {
+	filesToRelease = cm.collectCacheFilesToReleaseNolock(cm.cache, filesToRelease)
+	filesToRelease = cm.collectCacheFilesToReleaseNolock(cm.cacheBrotli, filesToRelease)
+	filesToRelease = cm.collectCacheFilesToReleaseNolock(cm.cacheGzip, filesToRelease)
+	filesToRelease = cm.collectCacheFilesToReleaseNolock(cm.cacheZstd, filesToRelease)
+
+	pendingFiles := cm.pendingFiles
+	cm.pendingFiles = nil
+	for _, ff := range pendingFiles {
+		filesToRelease = cm.addFileToReleaseNolock(filesToRelease, ff)
+	}
+	return filesToRelease
+}
+
+func (cm *inMemoryCacheManager) collectCacheFilesToReleaseNolock(cache map[string]*fsFile, filesToRelease []*fsFile) []*fsFile {
+	for k, ff := range cache {
+		filesToRelease = cm.addFileToReleaseNolock(filesToRelease, ff)
+		delete(cache, k)
+	}
+	return filesToRelease
+}
+
+func (cm *inMemoryCacheManager) addFileToReleaseNolock(filesToRelease []*fsFile, ff *fsFile) []*fsFile {
+	if ff.readersCount > 0 {
+		// There are pending readers on the file handle, so we cannot close it.
+		// Put it into pendingFiles so it will be closed later.
+		cm.pendingFiles = append(cm.pendingFiles, ff)
+		return filesToRelease
+	}
+	return append(filesToRelease, ff)
+}
+
+func (cm *inMemoryCacheManager) removePendingFileNolock(ff *fsFile) {
+	for i, pendingFile := range cm.pendingFiles {
+		if pendingFile == ff {
+			copy(cm.pendingFiles[i:], cm.pendingFiles[i+1:])
+			cm.pendingFiles[len(cm.pendingFiles)-1] = nil
+			cm.pendingFiles = cm.pendingFiles[:len(cm.pendingFiles)-1]
+			return
+		}
+	}
 }
 
 func (h *fsHandler) pathToFilePath(path []byte, hasTrailingSlash bool) string {
+	if hasTrailingSlash {
+		path = path[:len(path)-1]
+	}
+	hasLeadingSlash := len(path) > 0 && path[0] == '/'
+
 	if _, ok := h.filesystem.(*osFS); !ok {
-		if len(path) < 1 {
-			return ""
-		} else if len(path) == 1 && path[0] == '/' {
-			return ""
+		root := h.root
+		if root == "." {
+			root = ""
 		}
-		if hasTrailingSlash {
-			return string(path[1 : len(path)-1])
+		if len(path) < 1 || (hasLeadingSlash && len(path) == 1) {
+			if h.root == "." {
+				return "."
+			}
+			return root
 		}
-		return string(path[1:])
+
+		if root == "" {
+			if hasLeadingSlash {
+				return string(path[1:])
+			}
+			return string(path)
+		}
+
+		// Use byte buffer pool to avoid string concatenation allocations.
+		b := bytebufferpool.Get()
+		defer bytebufferpool.Put(b)
+
+		b.B = append(b.B, root...)
+		b.B = append(b.B, '/')
+		if hasLeadingSlash {
+			b.B = append(b.B, path[1:]...)
+		} else {
+			b.B = append(b.B, path...)
+		}
+
+		return string(b.B)
 	}
 
 	// Use byte buffer pool to avoid string concatenation allocations
@@ -1023,9 +1335,12 @@ func (h *fsHandler) pathToFilePath(path []byte, hasTrailingSlash bool) string {
 	defer bytebufferpool.Put(b)
 
 	b.B = append(b.B, h.root...)
-	if hasTrailingSlash {
-		b.B = append(b.B, path[:len(path)-1]...)
+	if hasLeadingSlash {
+		b.B = append(b.B, path...)
 	} else {
+		if h.root != "" && len(path) > 0 {
+			b.B = append(b.B, '/')
+		}
 		b.B = append(b.B, path...)
 	}
 
@@ -1056,12 +1371,23 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 		ctx.Error("Are you a hacker?", StatusBadRequest)
 		return
 	}
-	if h.pathRewrite != nil {
-		// There is no need to check for '/../' if path = ctx.Path(),
-		// since ctx.Path must normalize and sanitize the path.
+	// Prevent request paths from reaching NTFS alternate data streams through
+	// the default osFS. Custom filesystems may define their own colon syntax.
+	if _, ok := h.filesystem.(*osFS); ok && hasWindowsReservedPathColon(path, h.root == "") {
+		ctx.Logger().Printf("cannot serve path with a Windows-reserved ':' character: %q", path)
+		ctx.Error("Forbidden", StatusForbidden)
+		return
+	}
 
-		if n := bytes.Index(path, strSlashDotDotSlash); n >= 0 {
-			ctx.Logger().Printf("cannot serve path with '/../' at position %d due to security reasons: %q", n, path)
+	// Rewritten paths bypass ctx.Path()'s normalization, so they must be
+	// checked for '..' segments here. On Windows every path is checked
+	// regardless: ctx.Path() normalization only treats '/' as a separator,
+	// so backslash traversal such as `\..\` and `\../` survives it and
+	// filepath.FromSlash later turns it into a real parent-directory jump
+	// (https://github.com/valyala/fasthttp/issues/1691).
+	if h.pathRewrite != nil || filepath.Separator == '\\' {
+		if hasDotDotPathSegment(path) {
+			ctx.Logger().Printf("cannot serve path with '..' path segment due to security reasons: %q", path)
 			ctx.Error("Internal Server Error", StatusInternalServerError)
 			return
 		}
@@ -1070,7 +1396,12 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 	mustCompress := false
 	fileCacheKind := defaultCacheKind
 	fileEncoding := ""
-	byteRange := ctx.Request.Header.peek(strRange)
+	var byteRange []byte
+	if ctx.IsGet() || ctx.IsHead() {
+		// Range handling is only defined for GET, and HEAD gets the same
+		// headers as GET. See https://www.rfc-editor.org/rfc/rfc9110#section-14.2
+		byteRange = ctx.Request.Header.peek(strRange)
+	}
 	if len(byteRange) == 0 && h.compress {
 		switch {
 		case h.compressBrotli && ctx.Request.Header.HasAcceptEncodingBytes(strBr):
@@ -1123,12 +1454,45 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 			return
 		}
 
+		if h.generateETag {
+			ff.etag = appendFSETag(nil, ff.lastModified, ff.contentLength)
+		}
+
 		ff = h.cacheManager.SetFileToCache(fileCacheKind, path, ff)
 	}
 
-	if !ctx.IfModifiedSince(ff.lastModified) {
-		ff.decReadersCount()
+	var notModified bool
+	if ifNoneMatch := ctx.Request.Header.peekAll(strIfNoneMatch); h.generateETag && len(ifNoneMatch) > 0 {
+		// If-Modified-Since is ignored when If-None-Match is present.
+		// See https://www.rfc-editor.org/rfc/rfc9110#section-13.1.3
+		if fsETagMatch(ifNoneMatch, ff.etag) {
+			// Only GET and HEAD get 304, other methods get 412.
+			// See https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2
+			if !ctx.IsGet() && !ctx.IsHead() {
+				ff.decReadersCount()
+				ctx.Response.Reset()
+				ctx.SetStatusCode(StatusPreconditionFailed)
+				return
+			}
+			notModified = true
+		}
+	} else if ctx.IsGet() || ctx.IsHead() {
+		// If-Modified-Since only applies to GET and HEAD.
+		// See https://www.rfc-editor.org/rfc/rfc9110#section-13.1.3
+		notModified = !ctx.IfModifiedSince(ff.lastModified)
+	}
+	if notModified {
 		ctx.NotModified()
+		// NotModified resets the response, so add back the Vary header
+		// the 200 response would include.
+		// See https://www.rfc-editor.org/rfc/rfc9110#section-15.4.5
+		if ff.compressed {
+			ctx.Response.Header.addVaryBytes(strAcceptEncoding)
+		}
+		if len(ff.etag) > 0 {
+			ctx.Response.Header.SetBytesV(HeaderETag, ff.etag)
+		}
+		ff.decReadersCount()
 		return
 	}
 
@@ -1159,17 +1523,17 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 	contentLength := ff.contentLength
 	if h.acceptByteRange {
 		hdr.setNonSpecial(strAcceptRanges, strBytes)
-		if len(byteRange) > 0 {
+		if isSingleByteRange(byteRange) && fsIfRangeMatch(ctx.Request.Header.peek(strIfRange), ff.lastModified) {
 			startPos, endPos, err := ParseByteRange(byteRange, contentLength)
 			if err != nil {
-				_ = r.(io.Closer).Close()
+				_ = r.(io.Closer).Close() //nolint:forcetypeassert
 				ctx.Logger().Printf("cannot parse byte range %q for path=%q: %v", byteRange, path, err)
 				ctx.Error("Range Not Satisfiable", StatusRequestedRangeNotSatisfiable)
 				return
 			}
 
-			if err = r.(byteRangeUpdater).UpdateByteRange(startPos, endPos); err != nil {
-				_ = r.(io.Closer).Close()
+			if err = r.(byteRangeUpdater).UpdateByteRange(startPos, endPos); err != nil { //nolint:forcetypeassert
+				_ = r.(io.Closer).Close() //nolint:forcetypeassert
 				ctx.Logger().Printf("cannot seek byte range %q for path=%q: %v", byteRange, path, err)
 				ctx.Error("Internal Server Error", StatusInternalServerError)
 				return
@@ -1182,6 +1546,9 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 	}
 
 	hdr.setNonSpecial(strLastModified, ff.lastModifiedStr)
+	if len(ff.etag) > 0 {
+		hdr.SetBytesV(HeaderETag, ff.etag)
+	}
 	if !ctx.IsHead() {
 		ctx.SetBodyStream(r, contentLength)
 	} else {
@@ -1203,8 +1570,131 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 	ctx.SetStatusCode(statusCode)
 }
 
+// fsIfRangeMatch reports whether the Range header may be served given
+// the If-Range header value. If-Range uses the strong comparison and FS
+// only generates weak entity tags, so only a date equal to Last-Modified
+// matches. See https://www.rfc-editor.org/rfc/rfc9110#section-13.1.5
+func fsIfRangeMatch(ifRange []byte, lastModified time.Time) bool {
+	if len(ifRange) == 0 {
+		return true
+	}
+	t, err := ParseHTTPDate(ifRange)
+	return err == nil && t.Equal(lastModified.Truncate(time.Second))
+}
+
+// appendFSETag appends a weak entity tag built from the hex-encoded
+// modification time and size of the served file to dst.
+//
+// The tag is weak, since the modification time has one second resolution
+// and compressed variants of the same file may have equal sizes, so it cannot
+// guarantee byte-for-byte equality. It is not appended if the modification
+// time is unknown.
+func appendFSETag(dst []byte, lastModified time.Time, size int) []byte {
+	mtime := lastModified.Unix()
+	if mtime <= 0 {
+		return dst
+	}
+	dst = append(dst, `W/"`...)
+	dst = strconv.AppendInt(dst, mtime, 16)
+	dst = append(dst, '-')
+	dst = strconv.AppendInt(dst, int64(size), 16)
+	return append(dst, '"')
+}
+
+// fsETagMatch reports whether the given If-None-Match header values match
+// etag using the weak comparison. Multiple header lines are treated the same
+// as a single comma-separated list. The combined field value must be either
+// a lone "*" or a comma-separated list of entity tags. Any malformed value
+// counts as no match.
+//
+// See https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2
+func fsETagMatch(ifNoneMatch [][]byte, etag []byte) bool {
+	etag = trimWeakETagPrefix(etag)
+	matched, star := false, false
+	elements := 0
+	for _, v := range ifNoneMatch {
+		for {
+			// Empty list elements are allowed.
+			// See https://www.rfc-editor.org/rfc/rfc9110#section-5.6.1.2
+			v = bytes.TrimLeft(v, " \t,")
+			if len(v) == 0 {
+				break
+			}
+			elements++
+			if v[0] == '*' {
+				star = true
+				v = v[1:]
+			} else {
+				tag, rest, ok := nextETag(v)
+				if !ok {
+					return false
+				}
+				if len(etag) > 0 && bytes.Equal(tag, etag) {
+					matched = true
+				}
+				v = rest
+			}
+			// Elements must be separated by a comma.
+			v = bytes.TrimLeft(v, " \t")
+			if len(v) > 0 && v[0] != ',' {
+				return false
+			}
+		}
+	}
+	if star {
+		// "*" is only valid as the whole field value.
+		return elements == 1
+	}
+	return matched
+}
+
+// nextETag parses the entity tag at the start of b. It returns the tag
+// without the weak prefix and the rest of b. ok is false if b does not start
+// with a valid entity tag.
+func nextETag(b []byte) (tag, rest []byte, ok bool) {
+	b = trimWeakETagPrefix(b)
+	if len(b) < 2 || b[0] != '"' {
+		return nil, nil, false
+	}
+	n := bytes.IndexByte(b[1:], '"')
+	if n < 0 || !validETagChars(b[1:n+1]) {
+		return nil, nil, false
+	}
+	return b[:n+2], b[n+2:], true
+}
+
+// validETagChars reports whether b holds only characters allowed inside
+// the quotes of an entity tag.
+//
+// See https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3
+func validETagChars(b []byte) bool {
+	for _, c := range b {
+		// etagc = "!" / %x23-7E / obs-text
+		if c != '!' && (c < 0x23 || c > 0x7e) && c < 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+func trimWeakETagPrefix(etag []byte) []byte {
+	if len(etag) >= 2 && etag[0] == 'W' && etag[1] == '/' {
+		return etag[2:]
+	}
+	return etag
+}
+
 type byteRangeUpdater interface {
 	UpdateByteRange(startPos, endPos int) error
+}
+
+// isSingleByteRange reports whether byteRange asks for a single range in
+// bytes, the only kind of Range the FS handler serves. Any other Range is
+// ignored and the whole file is sent: RFC 9110, section 14.2 allows a server
+// to ignore Range and requires it for a range unit it does not understand.
+func isSingleByteRange(byteRange []byte) bool {
+	return len(byteRange) > len(strBytes) && byteRange[len(strBytes)] == '=' &&
+		bytes.HasPrefix(byteRange, strBytes) && bytes.IndexByte(byteRange, ',') < 0
 }
 
 // ParseByteRange parses 'Range: bytes=...' header value.
@@ -1213,7 +1703,7 @@ type byteRangeUpdater interface {
 func ParseByteRange(byteRange []byte, contentLength int) (startPos, endPos int, err error) {
 	b := byteRange
 	if !bytes.HasPrefix(b, strBytes) {
-		return 0, 0, fmt.Errorf("unsupported range units: %q. Expecting %q", byteRange, strBytes)
+		return 0, 0, fmt.Errorf("unsupported range units: %q: expecting %q", byteRange, strBytes)
 	}
 
 	b = b[len(strBytes):]
@@ -1232,10 +1722,15 @@ func ParseByteRange(byteRange []byte, contentLength int) (startPos, endPos int, 
 		if err != nil {
 			return 0, 0, err
 		}
-		startPos := contentLength - v
-		if startPos < 0 {
-			startPos = 0
+		if contentLength <= 0 {
+			return 0, 0, fmt.Errorf("byte range %q is invalid for empty content", byteRange)
 		}
+		if v == 0 {
+			// A suffix range with a zero suffix-length selects no bytes
+			// and is unsatisfiable (RFC 9110, section 14.1.1).
+			return 0, 0, fmt.Errorf("suffix length in byte range %q must be greater than zero", byteRange)
+		}
+		startPos := max(contentLength-v, 0)
 		return startPos, contentLength - 1, nil
 	}
 
@@ -1286,7 +1781,7 @@ func (h *fsHandler) openIndexFile(ctx *RequestCtx, dirPath string, mustCompress 
 	}
 
 	if !h.generateIndexPages {
-		return nil, fmt.Errorf("cannot access directory without index page. Directory %q", dirPath)
+		return nil, fmt.Errorf("cannot access directory without index page: directory %q", dirPath)
 	}
 
 	return h.createDirIndex(ctx, dirPath, mustCompress, fileEncoding)
@@ -1444,12 +1939,13 @@ func (h *fsHandler) compressAndOpenFSFile(filePath, fileEncoding string) (*fsFil
 		return nil, fmt.Errorf("cannot determine absolute path for %q: %v", compressedFilePath, err)
 	}
 
-	flock := getFileLock(absPath)
-	flock.Lock()
-	ff, err := h.compressFileNolock(f, fileInfo, filePath, compressedFilePath, fileEncoding)
-	flock.Unlock()
-
-	return ff, err
+	flock := acquireFileLock(absPath)
+	flock.mu.Lock()
+	defer func() {
+		flock.mu.Unlock()
+		releaseFileLock(absPath, flock)
+	}()
+	return h.compressFileNolock(f, fileInfo, filePath, compressedFilePath, fileEncoding)
 }
 
 func (h *fsHandler) compressFileNolock(
@@ -1466,15 +1962,20 @@ func (h *fsHandler) compressFileNolock(
 
 	// Create temporary file, so concurrent goroutines don't use
 	// it until it is created.
-	tmpFilePath := compressedFilePath + ".tmp"
-	zf, err := os.Create(tmpFilePath)
+	//
+	// os.CreateTemp gives the file a random name and opens it with O_EXCL and
+	// 0600, so a symlink pre-planted at the otherwise predictable temp path
+	// can't be followed to truncate an arbitrary file, and the cache file
+	// isn't left group/world-readable.
+	zf, err := os.CreateTemp(filepath.Dir(compressedFilePath), filepath.Base(compressedFilePath)+".tmp-*")
 	if err != nil {
 		_ = f.Close()
 		if !errors.Is(err, fs.ErrPermission) {
-			return nil, fmt.Errorf("cannot create temporary file %q: %w", tmpFilePath, err)
+			return nil, fmt.Errorf("cannot create temporary file for %q: %w", compressedFilePath, err)
 		}
 		return nil, errNoCreatePermission
 	}
+	tmpFilePath := zf.Name()
 	switch fileEncoding {
 	case "br":
 		zw := acquireStacklessBrotliWriter(zf, CompressDefaultCompression)
@@ -1501,13 +2002,16 @@ func (h *fsHandler) compressFileNolock(
 	_ = zf.Close()
 	_ = f.Close()
 	if err != nil {
+		_ = os.Remove(tmpFilePath)
 		return nil, fmt.Errorf("error when compressing file %q to %q: %w", filePath, tmpFilePath, err)
 	}
 	if err = os.Chtimes(tmpFilePath, time.Now(), fileInfo.ModTime()); err != nil {
+		_ = os.Remove(tmpFilePath)
 		return nil, fmt.Errorf("cannot change modification time to %v for tmp file %q: %v",
 			fileInfo.ModTime(), tmpFilePath, err)
 	}
 	if err = os.Rename(tmpFilePath, compressedFilePath); err != nil {
+		_ = os.Remove(tmpFilePath)
 		return nil, fmt.Errorf("cannot move compressed file from %q to %q: %w", tmpFilePath, compressedFilePath, err)
 	}
 	return h.newCompressedFSFile(compressedFilePath, fileEncoding)
@@ -1551,7 +2055,7 @@ func (h *fsHandler) newCompressedFSFileCache(f fs.File, fileInfo fs.FileInfo, fi
 
 	seeker, ok := f.(io.Seeker)
 	if !ok {
-		return nil, errors.New("not implemented io.Seeker")
+		return nil, errors.New("seek is not implemented")
 	}
 	if _, err = seeker.Seek(0, io.SeekStart); err != nil {
 		return nil, err
@@ -1625,7 +2129,7 @@ func (h *fsHandler) openFSFile(filePath string, mustCompress bool, fileEncoding 
 	if fileInfo.IsDir() {
 		_ = f.Close()
 		if mustCompress {
-			return nil, fmt.Errorf("directory with unexpected suffix found: %q. Suffix: %q",
+			return nil, fmt.Errorf("directory with unexpected suffix found: %q: suffix: %q",
 				filePath, h.compressedFileSuffixes[fileEncoding])
 		}
 		return nil, errDirIndexRequired
@@ -1684,7 +2188,42 @@ func (h *fsHandler) newFSFile(f fs.File, fileInfo fs.FileInfo, compressed bool, 
 
 		t: time.Now(),
 	}
+
+	// A small file going into the cache is read into memory once, so the
+	// requests it serves don't read the file again and its descriptor isn't
+	// held open while cached. ReadAt doesn't depend on the file offset, which
+	// content type and compressibility checks may have moved. A negative size,
+	// which a non-regular file may report, keeps the file streamed.
+	if ra, ok := f.(io.ReaderAt); ok && !h.skipCache &&
+		contentLength >= 0 && contentLength <= maxSmallFileSize && h.reserveSmallFileInMemory() {
+		data := make([]byte, contentLength)
+		n, err := ra.ReadAt(data, 0)
+		_ = f.Close()
+		if err != nil && err != io.EOF {
+			h.smallFilesInMemory.Add(-1)
+			return nil, fmt.Errorf("cannot read file %q: %w", filePath, err)
+		}
+		// A file that shrank since Stat is served as read.
+		ff.f = nil
+		ff.dirIndex = data[:n]
+		ff.contentLength = n
+		ff.countedInMemory = true
+	}
 	return ff, nil
+}
+
+// reserveSmallFileInMemory counts one more small file held in memory and
+// reports whether it stays within maxSmallFilesInMemory.
+func (h *fsHandler) reserveSmallFileInMemory() bool {
+	for {
+		n := h.smallFilesInMemory.Load()
+		if n >= maxSmallFilesInMemory {
+			return false
+		}
+		if h.smallFilesInMemory.CompareAndSwap(n, n+1) {
+			return true
+		}
+	}
 }
 
 func readFileHeader(f io.Reader, compressed bool, fileEncoding string) ([]byte, error) {
@@ -1698,9 +2237,7 @@ func readFileHeader(f io.Reader, compressed bool, fileEncoding string) ([]byte, 
 		var err error
 		switch fileEncoding {
 		case "br":
-			if br, err = acquireBrotliReader(f); err != nil {
-				return nil, err
-			}
+			br = acquireBrotliReader(f)
 			r = br
 		case "gzip":
 			if zr, err = acquireGzipReader(f); err != nil {
@@ -1722,7 +2259,7 @@ func readFileHeader(f io.Reader, compressed bool, fileEncoding string) ([]byte, 
 	data, err := io.ReadAll(lr)
 	seeker, ok := f.(io.Seeker)
 	if !ok {
-		return nil, errors.New("must implement io.Seeker")
+		return nil, errors.New("must implement seek")
 	}
 	if _, err := seeker.Seek(0, io.SeekStart); err != nil {
 		return nil, err
@@ -1760,11 +2297,20 @@ func stripLeadingSlashes(path []byte, stripSlashes int) []byte {
 	return path
 }
 
-func stripTrailingSlashes(path []byte) []byte {
-	for len(path) > 0 && path[len(path)-1] == '/' {
-		path = path[:len(path)-1]
+func hasDotDotPathSegment(path []byte) bool {
+	segmentStart := 0
+	for i, c := range path {
+		if c != '/' && (filepath.Separator != '\\' || c != '\\') {
+			continue
+		}
+		if i-segmentStart == 2 && path[segmentStart] == '.' && path[segmentStart+1] == '.' {
+			return true
+		}
+		segmentStart = i + 1
 	}
-	return path
+	return len(path)-segmentStart == 2 &&
+		path[segmentStart] == '.' &&
+		path[segmentStart+1] == '.'
 }
 
 func fileExtension(path string, compressed bool, compressedFileSuffix string) string {
@@ -1796,12 +2342,36 @@ func fsModTime(t time.Time) time.Time {
 	return t.In(time.UTC).Truncate(time.Second)
 }
 
-var filesLockMap sync.Map
+var (
+	filesLockMu  sync.Mutex
+	filesLockMap = make(map[string]*fileLock)
+)
 
-func getFileLock(absPath string) *sync.Mutex {
-	v, _ := filesLockMap.LoadOrStore(absPath, &sync.Mutex{})
-	filelock := v.(*sync.Mutex)
-	return filelock
+type fileLock struct {
+	mu sync.Mutex
+	// refs counts goroutines that hold or are waiting on mu.
+	refs int
+}
+
+func acquireFileLock(absPath string) *fileLock {
+	filesLockMu.Lock()
+	flock := filesLockMap[absPath]
+	if flock == nil {
+		flock = &fileLock{}
+		filesLockMap[absPath] = flock
+	}
+	flock.refs++
+	filesLockMu.Unlock()
+	return flock
+}
+
+func releaseFileLock(absPath string, flock *fileLock) {
+	filesLockMu.Lock()
+	flock.refs--
+	if flock.refs == 0 && filesLockMap[absPath] == flock {
+		delete(filesLockMap, absPath)
+	}
+	filesLockMu.Unlock()
 }
 
 var _ fs.FS = (*osFS)(nil)

@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1: Build the sciclaw binary
 # ============================================================
-FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS builder
 
 ARG TARGETOS
 ARG TARGETARCH

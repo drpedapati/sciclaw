@@ -4,14 +4,8 @@
 // challenge. This package centralises the fix so all HTTP clients in the
 // codebase (auth, LLM providers, etc.) can share it.
 //
-// Two transport variants are provided:
-//   - NewTransport (HTTP/1.1) — for auth endpoints and API providers that
-//     accept HTTP/1.1. Uses Chrome 120 fingerprint with ALPN restricted to
-//     http/1.1 to force HTTP/1.1 negotiation.
-//   - NewH2Client (HTTP/2) — for endpoints like chatgpt.com that require
-//     HTTP/2. Uses tls-client with Chrome 120 profile which provides matching
-//     TLS + HTTP/2 SETTINGS fingerprints (header table size, initial window
-//     size, pseudo-header order, connection flow).
+// NewTransport uses a Chrome 120 fingerprint with ALPN restricted to HTTP/1.1.
+// NewCloudflareClient additionally adapts SDK headers and request compression.
 package transport
 
 import (
@@ -26,9 +20,6 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	fhttp "github.com/bogdanfinn/fhttp"
-	tlsclient "github.com/bogdanfinn/tls-client"
-	"github.com/bogdanfinn/tls-client/profiles"
 	utls "github.com/refraction-networking/utls"
 )
 
@@ -161,74 +152,4 @@ func (rt *cloudflareRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	return rt.inner.RoundTrip(req)
-}
-
-// chromeRoundTripper adapts tls-client (which uses bogdanfinn/fhttp types)
-// to Go's standard http.RoundTripper interface. It converts http.Request to
-// fhttp.Request, delegates to the tls-client, then converts the response back.
-type chromeRoundTripper struct {
-	client tlsclient.HttpClient
-}
-
-func (rt *chromeRoundTripper) RoundTrip(hReq *http.Request) (*http.Response, error) {
-	var body io.Reader
-	if hReq.Body != nil {
-		body = hReq.Body
-	}
-	fReq, err := fhttp.NewRequest(hReq.Method, hReq.URL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-	// Copy headers individually so fhttp's internal defaults are preserved.
-	// Replacing the whole map (fReq.Header = ...) breaks tls-client's
-	// Cloudflare bypass on chatgpt.com (returns 403).
-	for k, vv := range hReq.Header {
-		for _, v := range vv {
-			fReq.Header.Add(k, v)
-		}
-	}
-	if hReq.ContentLength > 0 {
-		fReq.ContentLength = hReq.ContentLength
-	}
-
-	fResp, err := rt.client.Do(fReq)
-	if err != nil {
-		return nil, err
-	}
-	return &http.Response{
-		Status:           fResp.Status,
-		StatusCode:       fResp.StatusCode,
-		Proto:            fResp.Proto,
-		ProtoMajor:       fResp.ProtoMajor,
-		ProtoMinor:       fResp.ProtoMinor,
-		Header:           http.Header(fResp.Header),
-		Body:             fResp.Body,
-		ContentLength:    fResp.ContentLength,
-		TransferEncoding: fResp.TransferEncoding,
-		Close:            fResp.Close,
-		Uncompressed:     fResp.Uncompressed,
-		Trailer:          http.Header(fResp.Trailer),
-		Request:          hReq,
-	}, nil
-}
-
-// NewH2Client returns an *http.Client that speaks HTTP/2 using a full Chrome
-// browser fingerprint. Required for Cloudflare-fronted endpoints like
-// chatgpt.com that inspect both TLS ClientHello (JA3) and HTTP/2 SETTINGS
-// frame fingerprints (Akamai h2 fingerprint). Uses tls-client with Chrome 120
-// profile to match Chrome's TLS extensions, cipher suites, HTTP/2 SETTINGS
-// values/order, pseudo-header order, and connection flow.
-func NewH2Client() *http.Client {
-	client, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(),
-		tlsclient.WithClientProfile(profiles.Chrome_120),
-		tlsclient.WithRandomTLSExtensionOrder(),
-		tlsclient.WithNotFollowRedirects(),
-	)
-	if err != nil {
-		panic("transport: creating Chrome h2 client: " + err.Error())
-	}
-	return &http.Client{
-		Timeout:   0,
-		Transport: &chromeRoundTripper{client: client},
-	}
 }

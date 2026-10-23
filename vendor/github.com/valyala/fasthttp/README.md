@@ -379,6 +379,7 @@ Important points:
   - [r.FormValue()](https://pkg.go.dev/net/http#Request.FormValue) **➜** [ctx.FormValue()](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx.FormValue)
   - [r.FormFile()](https://pkg.go.dev/net/http#Request.FormFile) **➜** [ctx.FormFile()](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx.FormFile)
   - [r.MultipartForm](https://pkg.go.dev/net/http#Request) **➜** [ctx.MultipartForm()](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx.MultipartForm)
+    For untrusted multipart input, use [ctx.MultipartFormWithLimit()](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx.MultipartFormWithLimit) (or a custom [Server.FormValueFunc](https://pkg.go.dev/github.com/valyala/fasthttp#Server)) to enforce a parsing size limit.
   - [r.RemoteAddr](https://pkg.go.dev/net/http#Request) **➜** [ctx.RemoteAddr()](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx.RemoteAddr)
   - [r.RequestURI](https://pkg.go.dev/net/http#Request) **➜** [ctx.RequestURI()](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx.RequestURI)
   - [r.TLS](https://pkg.go.dev/net/http#Request) **➜** [ctx.IsTLS()](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx.IsTLS)
@@ -460,6 +461,21 @@ before returning from [RequestHandler](https://pkg.go.dev/github.com/valyala/fas
   [race detector](https://go.dev/doc/articles/race_detector.html) on a regular basis.
 - Prefer [quicktemplate](https://github.com/valyala/quicktemplate) instead of
   [html/template](https://pkg.go.dev/html/template) in your webserver.
+- Set [Client.MaxResponseBodySize](https://pkg.go.dev/github.com/valyala/fasthttp#Client.MaxResponseBodySize)
+  or [HostClient.MaxResponseBodySize](https://pkg.go.dev/github.com/valyala/fasthttp#HostClient.MaxResponseBodySize)
+  to a positive limit when requesting untrusted servers. A non-positive value
+  disables the response body limit and buffered responses may consume unbounded
+  memory. PipelineClient does not provide a response body size limit.
+
+### Writing zero-allocation request handlers
+
+- Avoid `fmt.Fprintf`/`fmt.Sprintf` in handlers - `fmt` boxes every argument into
+  `any`, which allocates. Use `Response.AppendBody`/`AppendBodyString` together with
+  the `Append*` helpers (`AppendUint`, `AppendIPv4`, `AppendHTTPDate`, ...) instead.
+- Use `Acquire*`/`Release*` (e.g. `AcquireCookie`) rather than declaring a
+  zero-value struct, which allocates its own buffers.
+- See the [helloworld server example](examples/helloworldserver) for a full
+  handler written this way, with a test asserting 0 allocs/op.
 
 ## Unsafe Zero-Allocation Conversions
 
@@ -607,6 +623,7 @@ This is an **unsafe** way, the result string and `[]byte` buffer share the same 
 - [Gearbox](https://github.com/gogearbox/gearbox) - :gear: gearbox is a web framework written in Go with a focus on high performance and memory optimization.
 - [http2curl](https://github.com/li-jin-gou/http2curl) - A tool to convert fasthttp requests to curl command line.
 - [OpenTelemetry Golang Compile Time Instrumentation](https://github.com/alibaba/opentelemetry-go-auto-instrumentation) - A tool to monitor fasthttp application without changing any code with OpenTelemetry APIs.
+- [protoc-gen-httpgo](https://github.com/MUlt1mate/protoc-gen-httpgo) - A protoc plugin that generates fasthttp server and client code.
 
 ## FAQ
 
@@ -649,7 +666,9 @@ This is an **unsafe** way, the result string and `[]byte` buffer share the same 
   - net/http API is stable, while fasthttp API constantly evolves.
   - net/http handles more HTTP corner cases.
   - net/http can stream both request and response bodies
-  - net/http can handle bigger bodies as it doesn't read the whole body into memory
+  - net/http can handle bigger bodies as it streams them by default. fasthttp
+    buffers bodies unless streaming is enabled; bound untrusted client responses
+    with `MaxResponseBodySize`.
   - net/http should contain less bugs, since it is used and tested by much
     wider audience.
 
@@ -660,11 +679,10 @@ This is an **unsafe** way, the result string and `[]byte` buffer share the same 
   `string()` if you prefer working with strings instead of byte slices.
   But be aware that this has non-zero overhead.
 
-- _Which GO versions are supported by fasthttp?_
+- _Which Go versions are supported by fasthttp?_
 
   We support the same versions the Go team supports.
-  Currently that is Go 1.24.x and newer.
-  Older versions might work, but won't officially be supported.
+  Go 1.26.0 or newer is required. CI tests Go 1.26.x and Go 1.27.x.
 
 - _Please provide real benchmark data and server information_
 

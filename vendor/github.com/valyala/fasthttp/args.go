@@ -19,7 +19,7 @@ const (
 // The returned Args may be returned to the pool with ReleaseArgs
 // when no longer needed. This allows reducing GC load.
 func AcquireArgs() *Args {
-	return argsPool.Get().(*Args)
+	return argsPool.Get().(*Args) //nolint:forcetypeassert
 }
 
 // ReleaseArgs returns the object acquired via AcquireArgs to the pool.
@@ -139,30 +139,35 @@ func (a *Args) QueryString() []byte {
 
 // Sort sorts Args by key and then value using 'f' as comparison function.
 //
+// f must return a negative value, zero, or a positive value when x is less
+// than, equal to, or greater than y, respectively.
 // For example args.Sort(bytes.Compare).
 func (a *Args) Sort(f func(x, y []byte) int) {
 	sort.SliceStable(a.args, func(i, j int) bool {
 		n := f(a.args[i].key, a.args[j].key)
 		if n == 0 {
-			return f(a.args[i].value, a.args[j].value) == -1
+			return f(a.args[i].value, a.args[j].value) < 0
 		}
-		return n == -1
+		return n < 0
 	})
 }
 
 // SortKeys sorts Args by key only using 'f' as comparison function.
 //
+// f must return a negative value, zero, or a positive value when x is less
+// than, equal to, or greater than y, respectively.
 // For example args.SortKeys(bytes.Compare).
 func (a *Args) SortKeys(f func(x, y []byte) int) {
 	sort.SliceStable(a.args, func(i, j int) bool {
-		return f(a.args[i].key, a.args[j].key) == -1
+		return f(a.args[i].key, a.args[j].key) < 0
 	})
 }
 
 // AppendBytes appends query string to dst and returns the extended dst.
 func (a *Args) AppendBytes(dst []byte) []byte {
-	for i, n := 0, len(a.args); i < n; i++ {
-		kv := &a.args[i]
+	args := a.args
+	for i, n := 0, len(args); i < n; i++ {
+		kv := &args[i]
 		dst = AppendQuotedArg(dst, kv.key)
 		if !kv.noValue {
 			dst = append(dst, '=')
@@ -312,7 +317,7 @@ func (a *Args) HasBytes(key []byte) bool {
 }
 
 // ErrNoArgValue is returned when Args value with the given key is missing.
-var ErrNoArgValue = errors.New("no Args value for the given key")
+var ErrNoArgValue = errors.New("fasthttp: no args value for the given key")
 
 // GetUint returns uint value for the given key.
 func (a *Args) GetUint(key string) (int, error) {
@@ -396,7 +401,7 @@ func copyArgs(dst, src []argsKV) []argsKV {
 	}
 	n := len(src)
 	dst = dst[:n]
-	for i := 0; i < n; i++ {
+	for i := range n {
 		dstKV := &dst[i]
 		srcKV := &src[i]
 		dstKV.key = append(dstKV.key[:0], srcKV.key...)
@@ -443,7 +448,7 @@ func setArgBytes(h []argsKV, key, value []byte, noValue bool) []argsKV {
 
 func setArg(h []argsKV, key, value string, noValue bool) []argsKV {
 	n := len(h)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		kv := &h[i]
 		if key == string(kv.key) {
 			if noValue {
@@ -460,6 +465,32 @@ func setArg(h []argsKV, key, value string, noValue bool) []argsKV {
 
 func appendArgBytes(h []argsKV, key, value []byte, noValue bool) []argsKV {
 	return appendArg(h, b2s(key), b2s(value), noValue)
+}
+
+// appendArgNormalized stores a parsed header field, canonicalizing the key
+// while it is copied so the source bytes stay untouched.
+func appendArgNormalized(args []argsKV, key, value []byte, disableNormalizing bool) []argsKV {
+	var kv *argsKV
+	args, kv = allocArg(args)
+	if disableNormalizing {
+		kv.key = append(kv.key[:0], key...)
+	} else {
+		dst := kv.key[:0]
+		upper := true
+		for _, c := range key {
+			if upper {
+				c = toUpperTable[c]
+			} else {
+				c = toLowerTable[c]
+			}
+			upper = c == '-'
+			dst = append(dst, c)
+		}
+		kv.key = dst
+	}
+	kv.value = append(kv.value[:0], value...)
+	kv.noValue = argsHasValue
+	return args
 }
 
 func appendArg(args []argsKV, key, value string, noValue bool) []argsKV {
@@ -588,15 +619,17 @@ func decodeArgAppend(dst, src []byte) []byte {
 	dst = append(dst, src[:idx]...)
 
 	// slow path
-	for i := idx; i < len(src); i++ {
+	for i := uint(idx); i < uint(len(src)); i++ {
 		c := src[i]
 		switch c {
 		case '%':
-			if i+2 >= len(src) {
+			end := i + 3
+			if end > uint(len(src)) {
 				return append(dst, src[i:]...)
 			}
-			x2 := hex2intTable[src[i+2]]
-			x1 := hex2intTable[src[i+1]]
+			chunk := src[i:end]
+			x2 := hex2intTable[chunk[2]]
+			x1 := hex2intTable[chunk[1]]
 			if x1 == 16 || x2 == 16 {
 				dst = append(dst, '%')
 			} else {
@@ -626,14 +659,16 @@ func decodeArgAppendNoPlus(dst, src []byte) []byte {
 	dst = append(dst, src[:idx]...)
 
 	// slow path
-	for i := idx; i < len(src); i++ {
+	for i := uint(idx); i < uint(len(src)); i++ {
 		c := src[i]
 		if c == '%' {
-			if i+2 >= len(src) {
+			end := i + 3
+			if end > uint(len(src)) {
 				return append(dst, src[i:]...)
 			}
-			x2 := hex2intTable[src[i+2]]
-			x1 := hex2intTable[src[i+1]]
+			chunk := src[i:end]
+			x2 := hex2intTable[chunk[2]]
+			x1 := hex2intTable[chunk[1]]
 			if x1 == 16 || x2 == 16 {
 				dst = append(dst, '%')
 			} else {

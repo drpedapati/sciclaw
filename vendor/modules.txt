@@ -1,10 +1,6 @@
 # github.com/adhocore/gronx v1.19.6
 ## explicit; go 1.13
 github.com/adhocore/gronx
-# github.com/andybalholm/brotli v1.2.0
-## explicit; go 1.22
-github.com/andybalholm/brotli
-github.com/andybalholm/brotli/matchfinder
 # github.com/anthropics/anthropic-sdk-go v1.22.1
 ## explicit; go 1.23.0
 github.com/anthropics/anthropic-sdk-go
@@ -32,26 +28,6 @@ github.com/atotto/clipboard
 # github.com/aymanbagabas/go-osc52/v2 v2.0.1
 ## explicit; go 1.16
 github.com/aymanbagabas/go-osc52/v2
-# github.com/bogdanfinn/fhttp v0.5.27
-## explicit; go 1.20
-github.com/bogdanfinn/fhttp
-github.com/bogdanfinn/fhttp/cookiejar
-github.com/bogdanfinn/fhttp/http2
-github.com/bogdanfinn/fhttp/http2/hpack
-github.com/bogdanfinn/fhttp/httptrace
-github.com/bogdanfinn/fhttp/httputil
-github.com/bogdanfinn/fhttp/internal
-github.com/bogdanfinn/fhttp/internal/nettrace
-# github.com/bogdanfinn/tls-client v1.7.1
-## explicit; go 1.20
-github.com/bogdanfinn/tls-client
-github.com/bogdanfinn/tls-client/profiles
-# github.com/bogdanfinn/utls v1.6.1
-## explicit; go 1.20
-github.com/bogdanfinn/utls
-github.com/bogdanfinn/utls/dicttls
-github.com/bogdanfinn/utls/internal/boring
-github.com/bogdanfinn/utls/internal/helper
 # github.com/bwmarrin/discordgo v0.29.0
 ## explicit; go 1.13
 github.com/bwmarrin/discordgo
@@ -142,48 +118,6 @@ github.com/clipperhouse/stringish
 # github.com/clipperhouse/uax29/v2 v2.5.0
 ## explicit; go 1.18
 github.com/clipperhouse/uax29/v2/graphemes
-# github.com/cloudflare/circl v1.3.6
-## explicit; go 1.19
-github.com/cloudflare/circl/dh/x25519
-github.com/cloudflare/circl/dh/x448
-github.com/cloudflare/circl/ecc/goldilocks
-github.com/cloudflare/circl/ecc/p384
-github.com/cloudflare/circl/hpke
-github.com/cloudflare/circl/internal/conv
-github.com/cloudflare/circl/internal/sha3
-github.com/cloudflare/circl/kem
-github.com/cloudflare/circl/kem/hybrid
-github.com/cloudflare/circl/kem/kyber/kyber1024
-github.com/cloudflare/circl/kem/kyber/kyber512
-github.com/cloudflare/circl/kem/kyber/kyber768
-github.com/cloudflare/circl/math
-github.com/cloudflare/circl/math/fp25519
-github.com/cloudflare/circl/math/fp448
-github.com/cloudflare/circl/math/mlsbset
-github.com/cloudflare/circl/pke/kyber/internal/common
-github.com/cloudflare/circl/pke/kyber/internal/common/params
-github.com/cloudflare/circl/pke/kyber/kyber1024
-github.com/cloudflare/circl/pke/kyber/kyber1024/internal
-github.com/cloudflare/circl/pke/kyber/kyber512
-github.com/cloudflare/circl/pke/kyber/kyber512/internal
-github.com/cloudflare/circl/pke/kyber/kyber768
-github.com/cloudflare/circl/pke/kyber/kyber768/internal
-github.com/cloudflare/circl/pki
-github.com/cloudflare/circl/sign
-github.com/cloudflare/circl/sign/dilithium/internal/common
-github.com/cloudflare/circl/sign/dilithium/internal/common/params
-github.com/cloudflare/circl/sign/dilithium/mode2
-github.com/cloudflare/circl/sign/dilithium/mode2/internal
-github.com/cloudflare/circl/sign/dilithium/mode3
-github.com/cloudflare/circl/sign/dilithium/mode3/internal
-github.com/cloudflare/circl/sign/ed25519
-github.com/cloudflare/circl/sign/ed448
-github.com/cloudflare/circl/sign/eddilithium2
-github.com/cloudflare/circl/sign/eddilithium3
-github.com/cloudflare/circl/sign/schemes
-github.com/cloudflare/circl/simd/keccakf1600
-github.com/cloudflare/circl/xof
-github.com/cloudflare/circl/xof/k12
 # github.com/cloudwego/base64x v0.1.6
 ## explicit; go 1.17
 github.com/cloudwego/base64x
@@ -220,8 +154,8 @@ github.com/grbit/go-json/internal/encoder/vm_color_indent
 github.com/grbit/go-json/internal/encoder/vm_indent
 github.com/grbit/go-json/internal/errors
 github.com/grbit/go-json/internal/runtime
-# github.com/klauspost/compress v1.18.4
-## explicit; go 1.23
+# github.com/klauspost/compress v1.20.3
+## explicit; go 1.25
 github.com/klauspost/compress
 github.com/klauspost/compress/flate
 github.com/klauspost/compress/fse
@@ -229,6 +163,7 @@ github.com/klauspost/compress/gzip
 github.com/klauspost/compress/huff0
 github.com/klauspost/compress/internal/cpuinfo
 github.com/klauspost/compress/internal/le
+github.com/klauspost/compress/internal/regmask
 github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/zlib
 github.com/klauspost/compress/zstd
@@ -236,6 +171,8 @@ github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid/v2 v2.3.0
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
+# github.com/kr/pretty v0.3.1
+## explicit; go 1.12
 # github.com/larksuite/oapi-sdk-go/v3 v3.5.3
 ## explicit; go 1.13
 github.com/larksuite/oapi-sdk-go/v3
@@ -375,6 +312,11 @@ github.com/mattn/go-localereader
 # github.com/mattn/go-runewidth v0.0.19
 ## explicit; go 1.20
 github.com/mattn/go-runewidth
+# github.com/molecule-man/go-brrr v1.3.0
+## explicit; go 1.22.0
+github.com/molecule-man/go-brrr
+github.com/molecule-man/go-brrr/internal/core
+github.com/molecule-man/go-brrr/internal/encoder
 # github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6
 ## explicit; go 1.17
 github.com/muesli/ansi
@@ -426,20 +368,14 @@ github.com/openai/openai-go/v3/responses
 github.com/openai/openai-go/v3/shared
 github.com/openai/openai-go/v3/shared/constant
 github.com/openai/openai-go/v3/webhooks
-# github.com/quic-go/quic-go v0.40.1
-## explicit; go 1.20
-github.com/quic-go/quic-go/internal/protocol
-github.com/quic-go/quic-go/quicvarint
-# github.com/refraction-networking/utls v1.8.2
-## explicit; go 1.24
+# github.com/refraction-networking/utls v1.8.3-0.20261006222701-ff1b50fbbe9a
+## explicit; go 1.27
 github.com/refraction-networking/utls
 github.com/refraction-networking/utls/dicttls
 github.com/refraction-networking/utls/internal/boring
 github.com/refraction-networking/utls/internal/byteorder
 github.com/refraction-networking/utls/internal/fips140tls
 github.com/refraction-networking/utls/internal/helper
-github.com/refraction-networking/utls/internal/hkdf
-github.com/refraction-networking/utls/internal/hpke
 github.com/refraction-networking/utls/internal/quicvarint
 github.com/refraction-networking/utls/internal/quicvarint/protocol
 github.com/refraction-networking/utls/internal/tls12
@@ -449,8 +385,8 @@ github.com/refraction-networking/utls/internal/tls13
 github.com/rivo/uniseg
 # github.com/rogpeppe/go-internal v1.12.0
 ## explicit; go 1.20
-# github.com/slack-go/slack v0.17.3
-## explicit; go 1.22
+# github.com/slack-go/slack v0.30.1
+## explicit; go 1.26
 github.com/slack-go/slack
 github.com/slack-go/slack/internal/backoff
 github.com/slack-go/slack/internal/errorsx
@@ -458,9 +394,6 @@ github.com/slack-go/slack/internal/timex
 github.com/slack-go/slack/slackevents
 github.com/slack-go/slack/slackutilsx
 github.com/slack-go/slack/socketmode
-# github.com/tam7t/hpkp v0.0.0-20160821193359-2b70b4024ed5
-## explicit
-github.com/tam7t/hpkp
 # github.com/tencent-connect/botgo v0.2.1
 ## explicit; go 1.16
 github.com/tencent-connect/botgo
@@ -513,8 +446,8 @@ github.com/twitchyliquid64/golang-asm/unsafeheader
 # github.com/valyala/bytebufferpool v1.0.0
 ## explicit
 github.com/valyala/bytebufferpool
-# github.com/valyala/fasthttp v1.69.0
-## explicit; go 1.24.0
+# github.com/valyala/fasthttp v1.76.0
+## explicit; go 1.26.0
 github.com/valyala/fasthttp
 github.com/valyala/fasthttp/fasthttputil
 github.com/valyala/fasthttp/stackless
@@ -528,10 +461,8 @@ github.com/xo/terminfo
 # golang.org/x/arch v0.24.0
 ## explicit; go 1.24.0
 golang.org/x/arch/x86/x86asm
-# golang.org/x/crypto v0.48.0
-## explicit; go 1.24.0
-golang.org/x/crypto/blake2b
-golang.org/x/crypto/blake2s
+# golang.org/x/crypto v0.58.0
+## explicit; go 1.26.0
 golang.org/x/crypto/chacha20
 golang.org/x/crypto/chacha20poly1305
 golang.org/x/crypto/cryptobyte
@@ -542,32 +473,24 @@ golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/sha3
-# golang.org/x/net v0.50.0
-## explicit; go 1.24.0
-golang.org/x/net/http/httpguts
-golang.org/x/net/http/httpproxy
-golang.org/x/net/idna
-golang.org/x/net/internal/socks
-golang.org/x/net/proxy
+# golang.org/x/net v0.61.0
+## explicit; go 1.26.0
 golang.org/x/net/publicsuffix
 # golang.org/x/oauth2 v0.35.0
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.19.0
-## explicit; go 1.24.0
+# golang.org/x/sync v0.24.0
+## explicit; go 1.26.0
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.41.0
-## explicit; go 1.24.0
+# golang.org/x/sys v0.49.0
+## explicit; go 1.26.0
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.34.0
-## explicit; go 1.24.0
-golang.org/x/text/secure/bidirule
+# golang.org/x/text v0.43.0
+## explicit; go 1.26.0
 golang.org/x/text/transform
-golang.org/x/text/unicode/bidi
-golang.org/x/text/unicode/norm
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3

@@ -20,18 +20,18 @@ type UQUICConn struct {
 	sessionTicketSent bool
 }
 
-// QUICClient returns a new TLS client side connection using QUICTransport as the
+// UQUICClient returns a new TLS client side connection using QUICTransport as the
 // underlying transport. The config cannot be nil.
-//
-// The config's MinVersion must be at least TLS 1.3.
 func UQUICClient(config *QUICConfig, clientHelloID ClientHelloID) *UQUICConn {
-	return newUQUICConn(UClient(nil, config.TLSConfig, clientHelloID))
+	return newUQUICConn(UClient(nil, config.TLSConfig, clientHelloID), config)
 }
 
-func newUQUICConn(uconn *UConn) *UQUICConn {
+func newUQUICConn(uconn *UConn, config *QUICConfig) *UQUICConn {
 	uconn.quic = &quicState{
-		signalc:  make(chan struct{}),
-		blockedc: make(chan struct{}),
+		signalc:             make(chan struct{}),
+		blockedc:            make(chan struct{}),
+		enableSessionEvents: config.EnableSessionEvents,
+		clientHelloInfoConn: config.ClientHelloInfoConn,
 	}
 	uconn.quic.events = uconn.quic.eventArr[:0]
 	return &UQUICConn{
@@ -48,9 +48,6 @@ func (q *UQUICConn) Start(ctx context.Context) error {
 		return quicError(errors.New("tls: Start called more than once"))
 	}
 	q.conn.quic.started = true
-	if q.conn.config.MinVersion < VersionTLS13 {
-		return quicError(errors.New("tls: Config MinVersion must be at least TLS 1.13"))
-	}
 	go q.conn.HandshakeContext(ctx)
 	if _, ok := <-q.conn.quic.blockedc; !ok {
 		return q.conn.handshakeErr
@@ -70,6 +67,11 @@ func (q *UQUICConn) NextEvent() QUICEvent {
 		// Write over some of the previous event's data,
 		// to catch callers erroniously retaining it.
 		qs.events[last].Data[0] = 0
+	}
+	if qs.nextEvent >= len(qs.events) && qs.waitingForDrain {
+		qs.waitingForDrain = false
+		<-qs.signalc
+		<-qs.blockedc
 	}
 	if qs.nextEvent >= len(qs.events) {
 		qs.events = qs.events[:0]
@@ -149,6 +151,24 @@ func (q *UQUICConn) SendSessionTicket(opts QUICSessionTicketOptions) error {
 	}
 	q.sessionTicketSent = true
 	return quicError(c.sendSessionTicket(opts.EarlyData, opts.Extra))
+}
+
+// StoreSession stores a session previously received in a QUICStoreSession event
+// in the ClientSessionCache.
+// The application may process additional events or modify the SessionState
+// before storing the session.
+func (q *UQUICConn) StoreSession(session *SessionState) error {
+	c := q.conn
+	if !c.isClient {
+		return quicError(errors.New("tls: StoreSessionTicket called on the server"))
+	}
+	cacheKey := c.clientSessionCacheKey()
+	if cacheKey == "" {
+		return nil
+	}
+	cs := &ClientSessionState{session: session}
+	c.config.ClientSessionCache.Put(cacheKey, cs)
+	return nil
 }
 
 // ConnectionState returns basic TLS details about the connection.
