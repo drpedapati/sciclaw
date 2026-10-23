@@ -2,8 +2,8 @@
 
 ### Preface
 
-This TLS Client is built upon https://github.com/Carcraftz/fhttp and https://github.com/Carcraftz/utls. Big thanks to
-all contributors so far. Sadly it seems that the original repositories are not maintained anymore.
+This TLS Client is built upon https://github.com/Carcraftz/fhttp and https://github.com/Carcraftz/utls (https://github.com/refraction-networking/utls). Big thanks to
+all contributors so far. Sadly it seems that the original repositories from Carcraftz are not maintained anymore.
 
 ### What is TLS Fingerprinting?
 
@@ -21,8 +21,24 @@ With this library you are able to create a http client implementing an interface
 client interface.
 This TLS Client allows you to specify the Client (Browser and Version) you want to use, when requesting a server.
 
-The Interface of the HTTP Client looks like the following and extends the base net/http Client Interface by some useful functions.
-Most likely you will use the `Do()` function like you did before with net/http Client.
+### Features
+
+- ✅ **HTTP/1.1, HTTP/2, HTTP/3** - Full protocol support with automatic negotiation
+- ✅ **Protocol Racing** - Chrome-like "Happy Eyeballs" for HTTP/2 vs HTTP/3
+- ✅ **TLS Fingerprinting** - Mimic Chrome, Firefox, Safari, and other browsers
+- ✅ **HTTP/3 Fingerprinting** - Accurate QUIC/HTTP/3 fingerprints matching real browsers
+- ✅ **WebSocket Support** - Maintain TLS fingerprinting over WebSocket connections
+- ✅ **Custom Header Ordering** - Control the order of HTTP headers
+- ✅ **Proxy Support** - HTTP and SOCKS5 proxies
+- ✅ **Cookie Jar Management** - Built-in cookie handling
+- ✅ **Certificate Pinning** - Enhanced security with custom certificate validation
+- ✅ **Bandwidth Tracking** - Monitor upload/download bandwidth
+- ✅ **Language Bindings** - Use from JavaScript (Node.js), Python, and C# via FFI
+
+### Interface
+
+The HTTP Client interface extends the base net/http Client with additional functionality:
+
 ```go
 type HttpClient interface {
     GetCookies(u *url.URL) []*http.Cookie
@@ -38,9 +54,16 @@ type HttpClient interface {
     Get(url string) (resp *http.Response, err error)
     Head(url string) (resp *http.Response, err error)
     Post(url, contentType string, body io.Reader) (resp *http.Response, err error)
+
+    GetBandwidthTracker() bandwidth.BandwidthTracker
+    GetDialer() proxy.ContextDialer
+    GetTLSDialer() TLSDialerFunc
 }
 ```
 
+### Detailed Documentation
+
+https://bogdanfinn.gitbook.io/open-source-oasis/
 
 ### Quick Usage Example
 
@@ -58,10 +81,10 @@ import (
 )
 
 func main() {
-    jar := tls_client.NewCookieJar()
+	jar := tls_client.NewCookieJar()
 	options := []tls_client.HttpClientOption{
 		tls_client.WithTimeoutSeconds(30),
-		tls_client.WithClientProfile(profiles.Chrome_105),
+		tls_client.WithClientProfile(profiles.Chrome_150),
 		tls_client.WithNotFollowRedirects(),
 		tls_client.WithCookieJar(jar), // create cookieJar instance and pass it as argument
 	}
@@ -81,7 +104,7 @@ func main() {
 	req.Header = http.Header{
 		"accept":                    {"*/*"},
 		"accept-language":           {"de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7"},
-		"user-agent":                {"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36"},
+		"user-agent":                {"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"},
 		http.HeaderOrderKey: {
 			"accept",
 			"accept-language",
@@ -109,11 +132,38 @@ func main() {
 }
 ```
 
-### Detailed Documentation
-
-https://bogdanfinn.gitbook.io/open-source-oasis/
-
 ### Questions?
 
 Join my discord support server for free: https://discord.gg/7Ej9eJvHqk
 No Support in DMs!
+
+
+### Appreciate my work?
+
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/CaptainBarnius)
+
+Or, if you prefer crypto:
+
+- **ETH** `0x1Ef18abfE61372e49F08eD24B1055cbDD5d7e0Fc`
+- **BTC** `bc1qkfqu5xvayqh55gwjtyannvyqzr4cax4eu3k2u6`
+- **ADA** `addr1qxj5hg5xfq9l5r5ed7av7mzg0gy5xemn64lkna5cuu9e4yt0vk8st6zvmfuqjdz849drd7zgcdky4zrdvm603dzf4dgs5unend`
+- **SOL** `7hYfiX4R5bEbggYY2JRZi2a3EdcEzQ6XbgZiHRiRHjau`
+
+---
+
+## 🛡️ Need Antibot Bypass?
+
+<a href="https://hypersolutions.co/?utm_source=github&utm_medium=readme&utm_campaign=tls-client" target="_blank"><img src="https://raw.githubusercontent.com/bogdanfinn/tls-client/master/.github/assets/hypersolutions.jpg" height="47" width="149"></a>
+
+TLS fingerprinting alone isn't enough for modern bot protection. **[Hyper Solutions](https://hypersolutions.co?utm_source=github&utm_medium=readme&utm_campaign=tls-client)** provides the missing piece - API endpoints that generate valid antibot tokens for:
+
+**Akamai** • **DataDome** • **Kasada** • **Incapsula**
+
+No browser automation. Just simple API calls that return the exact cookies and headers these systems require.
+
+🚀 **[Get Your API Key](https://hypersolutions.co?utm_source=github&utm_medium=readme&utm_campaign=tls-client)** | 📖 **[Docs](https://docs.justhyped.dev)** | 💬 **[Discord](https://discord.gg/akamai)**
+
+---
+
+### Powered by
+[![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSource)

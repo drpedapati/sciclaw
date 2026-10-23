@@ -13,6 +13,16 @@ var H2SettingsMap = map[string]http2.SettingID{
 	"INITIAL_WINDOW_SIZE":    http2.SettingInitialWindowSize,
 	"MAX_FRAME_SIZE":         http2.SettingMaxFrameSize,
 	"MAX_HEADER_LIST_SIZE":   http2.SettingMaxHeaderListSize,
+	"UNKNOWN_SETTING_7":      0x7,
+	"UNKNOWN_SETTING_8":      0x8,
+	"UNKNOWN_SETTING_9":      0x9,
+}
+
+var H3SettingsMap = map[string]uint64{
+	"QPACK_MAX_TABLE_CAPACITY": 0x1,
+	"MAX_FIELD_SECTION_SIZE":   0x6,
+	"QPACK_BLOCKED_STREAMS":    0x7,
+	"H3_DATAGRAM":              0x33,
 }
 
 var tlsVersions = map[string]uint16{
@@ -38,6 +48,14 @@ var signatureAlgorithms = map[string]tls.SignatureScheme{
 	"Ed25519":                tls.Ed25519,
 	"SHA224_RSA":             tls.SHA224_RSA,
 	"SHA224_ECDSA":           tls.SHA224_ECDSA,
+	// Chrome 150 and later advertise the ML-DSA codepoints, and Chrome 152 puts a
+	// GREASE value first. utls replaces the GREASE placeholder with a value drawn
+	// from the connection's seed, so a custom client gets a new one per connection
+	// just like the built in profiles.
+	"MLDSA44": tls.MLDSA44,
+	"MLDSA65": tls.MLDSA65,
+	"MLDSA87": tls.MLDSA87,
+	"GREASE":  tls.SignatureScheme(tls.GREASE_PLACEHOLDER),
 }
 
 var delegatedCredentialsAlgorithms = map[string]tls.SignatureScheme{
@@ -53,6 +71,8 @@ var delegatedCredentialsAlgorithms = map[string]tls.SignatureScheme{
 	"PKCS1WithSHA1":          tls.PKCS1WithSHA1,
 	"ECDSAWithSHA1":          tls.ECDSAWithSHA1,
 	"Ed25519":                tls.Ed25519,
+	"SHA224_RSA":             tls.SHA224_RSA,
+	"SHA224_ECDSA":           tls.SHA224_ECDSA,
 }
 
 var kdfIds = map[string]uint16{
@@ -68,11 +88,16 @@ var aeadIds = map[string]uint16{
 }
 
 var curves = map[string]tls.CurveID{
-	"GREASE": tls.CurveID(tls.GREASE_PLACEHOLDER),
-	"P256":   tls.CurveP256,
-	"P384":   tls.CurveP384,
-	"P521":   tls.CurveP521,
-	"X25519": tls.X25519,
+	"GREASE":            tls.CurveID(tls.GREASE_PLACEHOLDER),
+	"P256":              tls.CurveP256,
+	"P384":              tls.CurveP384,
+	"P521":              tls.CurveP521,
+	"X25519":            tls.X25519,
+	"P256Kyber768":      tls.P256Kyber768Draft00,
+	"X25519Kyber512D":   tls.X25519Kyber512Draft00,
+	"X25519Kyber768":    tls.X25519Kyber768Draft00,
+	"X25519Kyber768Old": tls.X25519Kyber768Draft00Old,
+	"X25519MLKEM768":    tls.X25519MLKEM768,
 }
 
 var certCompression = map[string]tls.CertCompressionAlgo{

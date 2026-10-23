@@ -12,6 +12,8 @@ import "strconv"
 // which wraps AlertError rather than sending a TLS alert.
 type AlertError uint8
 
+var _ error = AlertError(0)
+
 func (e AlertError) Error() string {
 	return alert(e).String()
 }
@@ -95,7 +97,7 @@ var alertText = map[alert]string{
 	alertUnknownPSKIdentity:           "unknown PSK identity",
 	alertCertificateRequired:          "certificate required",
 	alertNoApplicationProtocol:        "no application protocol",
-	alertECHRequired:                  "ECH required",
+	alertECHRequired:                  "encrypted client hello required",
 }
 
 func (e alert) String() string {

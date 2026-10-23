@@ -28,7 +28,7 @@ func acquireGzipReader(r io.Reader) (*gzip.Reader, error) {
 	if v == nil {
 		return gzip.NewReader(r)
 	}
-	zr := v.(*gzip.Reader)
+	zr := v.(*gzip.Reader) //nolint:forcetypeassert
 	if err := zr.Reset(r); err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func acquireFlateReader(r io.Reader) (io.ReadCloser, error) {
 		}
 		return zr, nil
 	}
-	zr := v.(io.ReadCloser)
+	zr := v.(io.ReadCloser) //nolint:forcetypeassert
 	if err := resetFlateReader(zr, r); err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func acquireStacklessGzipWriter(w io.Writer, level int) stackless.Writer {
 			return acquireRealGzipWriter(w, level)
 		})
 	}
-	sw := v.(stackless.Writer)
+	sw := v.(stackless.Writer) //nolint:forcetypeassert
 	sw.Reset(w)
 	return sw
 }
@@ -113,7 +113,7 @@ func acquireRealGzipWriter(w io.Writer, level int) *gzip.Writer {
 		}
 		return zw
 	}
-	zw := v.(*gzip.Writer)
+	zw := v.(*gzip.Writer) //nolint:forcetypeassert
 	zw.Reset(w)
 	return zw
 }
@@ -190,7 +190,7 @@ func stacklessWriteGzip(ctx any) {
 }
 
 func nonblockingWriteGzip(ctxv any) {
-	ctx := ctxv.(*compressCtx)
+	ctx := ctxv.(*compressCtx) //nolint:forcetypeassert
 	zw := acquireRealGzipWriter(ctx.w, ctx.level)
 
 	zw.Write(ctx.p) //nolint:errcheck // no way to handle this error anyway
@@ -212,12 +212,16 @@ func AppendGzipBytes(dst, src []byte) []byte {
 // WriteGunzip writes ungzipped p to w and returns the number of uncompressed
 // bytes written to w.
 func WriteGunzip(w io.Writer, p []byte) (int, error) {
+	return writeGunzip(w, p, 0)
+}
+
+func writeGunzip(w io.Writer, p []byte, maxBodySize int) (int, error) {
 	r := &byteSliceReader{b: p}
 	zr, err := acquireGzipReader(r)
 	if err != nil {
 		return 0, err
 	}
-	n, err := copyZeroAlloc(w, zr)
+	n, err := copyZeroAllocWithLimit(w, zr, maxBodySize)
 	releaseGzipReader(zr)
 	nn := int(n)
 	if int64(nn) != n {
@@ -293,7 +297,7 @@ func stacklessWriteDeflate(ctx any) {
 }
 
 func nonblockingWriteDeflate(ctxv any) {
-	ctx := ctxv.(*compressCtx)
+	ctx := ctxv.(*compressCtx) //nolint:forcetypeassert
 	zw := acquireRealDeflateWriter(ctx.w, ctx.level)
 
 	zw.Write(ctx.p) //nolint:errcheck // no way to handle this error anyway
@@ -321,12 +325,16 @@ func AppendDeflateBytes(dst, src []byte) []byte {
 // WriteInflate writes inflated p to w and returns the number of uncompressed
 // bytes written to w.
 func WriteInflate(w io.Writer, p []byte) (int, error) {
+	return writeInflate(w, p, 0)
+}
+
+func writeInflate(w io.Writer, p []byte, maxBodySize int) (int, error) {
 	r := &byteSliceReader{b: p}
 	zr, err := acquireFlateReader(r)
 	if err != nil {
 		return 0, err
 	}
-	n, err := copyZeroAlloc(w, zr)
+	n, err := copyZeroAllocWithLimit(w, zr, maxBodySize)
 	releaseFlateReader(zr)
 	nn := int(n)
 	if int64(nn) != n {
@@ -387,7 +395,7 @@ func acquireStacklessDeflateWriter(w io.Writer, level int) stackless.Writer {
 			return acquireRealDeflateWriter(w, level)
 		})
 	}
-	sw := v.(stackless.Writer)
+	sw := v.(stackless.Writer) //nolint:forcetypeassert
 	sw.Reset(w)
 	return sw
 }
@@ -417,7 +425,7 @@ func acquireRealDeflateWriter(w io.Writer, level int) *zlib.Writer {
 		}
 		return zw
 	}
-	zw := v.(*zlib.Writer)
+	zw := v.(*zlib.Writer) //nolint:forcetypeassert
 	zw.Reset(w)
 	return zw
 }
@@ -439,8 +447,8 @@ func newCompressWriterPoolMap() []*sync.Pool {
 	// in https://pkg.go.dev/compress/flate#pkg-constants .
 	// Compression levels are normalized with normalizeCompressLevel,
 	// so the fit [0..11].
-	var m []*sync.Pool
-	for i := 0; i < 12; i++ {
+	m := make([]*sync.Pool, 0, 12)
+	for range 12 {
 		m = append(m, &sync.Pool{})
 	}
 	return m

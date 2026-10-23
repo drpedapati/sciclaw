@@ -196,10 +196,11 @@ func (t *transferWriter) shouldSendChunkedRequestBody() bool {
 // headers before the pipe is fed data), we need to be careful and bound how
 // long we wait for it. This delay will only affect users if all the following
 // are true:
-//   * the request body blocks
-//   * the content length is not set (or set to -1)
-//   * the method doesn't usually have a body (GET, HEAD, DELETE, ...)
-//   * there is no transfer-encoding=chunked already set.
+//   - the request body blocks
+//   - the content length is not set (or set to -1)
+//   - the method doesn't usually have a body (GET, HEAD, DELETE, ...)
+//   - there is no transfer-encoding=chunked already set.
+//
 // In other words, this delay will not normally affect anybody, and there
 // are workarounds if it does.
 func (t *transferWriter) probeRequestBody() {
@@ -271,28 +272,21 @@ func (t *transferWriter) shouldSendContentLength() bool {
 	return false
 }
 
-// addHeaders adds transfer headers to an existing header object
-func (t *transferWriter) addHeaders(hdrs *Header, trace *httptrace.ClientTrace) error {
+// addHeaders adds transfer headers to an existing header object, replacing any the caller set with the same name.
+// Content-Length always comes from the request, as in net/http.
+func (t *transferWriter) addHeaders(hdrs *Header) error {
+	deleteHeaderFold(*hdrs, "Content-Length")
 	if t.Close && !hasToken(t.Header.get("Connection"), "close") {
 		hdrs.Add("Connection", "close")
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Connection", []string{"close"})
-		}
 	}
 
 	// Write Content-Length and/or Transfer-Encoding whose Values are a
 	// function of the sanitized field triple (Body, ContentLength,
 	// TransferEncoding)
 	if t.shouldSendContentLength() {
-		hdrs.Add("Content-Length", strconv.FormatInt(t.ContentLength, 10))
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Content-Length", []string{strconv.FormatInt(t.ContentLength, 10)})
-		}
+		setTransferHeader(*hdrs, "Content-Length", strconv.FormatInt(t.ContentLength, 10))
 	} else if chunked(t.TransferEncoding) {
-		hdrs.Add("Transfer-Encoding", "chunked")
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Transfer-Encoding", []string{"chunked"})
-		}
+		setTransferHeader(*hdrs, "Transfer-Encoding", "chunked")
 	}
 
 	// Write Trailer header
@@ -310,14 +304,26 @@ func (t *transferWriter) addHeaders(hdrs *Header, trace *httptrace.ClientTrace) 
 			sort.Strings(keys)
 			// TODO: could do better allocation-wise here, but trailers are rare,
 			// so being lazy for now.
-			hdrs.Add("Trailer", strings.Join(keys, ","))
-			if trace != nil && trace.WroteHeaderField != nil {
-				trace.WroteHeaderField("Trailer", keys)
-			}
+			setTransferHeader(*hdrs, "Trailer", strings.Join(keys, ","))
 		}
 	}
 
 	return nil
+}
+
+// setTransferHeader sets key to value in h, removing the caller's value under any case of key.
+func setTransferHeader(h Header, key, value string) {
+	deleteHeaderFold(h, key)
+	h.Set(key, value)
+}
+
+// deleteHeaderFold deletes key from h under any case.
+func deleteHeaderFold(h Header, key string) {
+	for k := range h {
+		if strings.EqualFold(k, key) {
+			delete(h, k)
+		}
+	}
 }
 
 func (t *transferWriter) writeHeader(w io.Writer, trace *httptrace.ClientTrace) error {
@@ -469,8 +475,8 @@ func (t *transferWriter) doBodyCopy(dst io.Writer, src io.Reader) (n int64, err 
 //
 // This function is only intended for use in writeBody.
 func (t *transferWriter) unwrapBody() io.Reader {
-	if reflect.TypeOf(t.Body) == nopCloserType {
-		return reflect.ValueOf(t.Body).Field(0).Interface().(io.Reader)
+	if r, ok := unwrapNopCloser(t.Body); ok {
+		return r
 	}
 	if r, ok := t.Body.(*readTrackingBody); ok {
 		r.didRead = true
@@ -1126,6 +1132,22 @@ func (fr finishAsyncByteRead) Read(p []byte) (n int, err error) {
 
 var nopCloserType = reflect.TypeOf(io.NopCloser(nil))
 
+// io.NopCloser returns this type instead of nopCloserType when the reader it wraps implements io.WriterTo.
+var nopCloserWriterToType = reflect.TypeOf(io.NopCloser(struct {
+	io.Reader
+	io.WriterTo
+}{}))
+
+// unwrapNopCloser returns the reader that r wraps and true if r was returned by io.NopCloser, or false if it was not.
+func unwrapNopCloser(r io.Reader) (io.Reader, bool) {
+	switch reflect.TypeOf(r) {
+	case nopCloserType, nopCloserWriterToType:
+		return reflect.ValueOf(r).Field(0).Interface().(io.Reader), true
+	default:
+		return nil, false
+	}
+}
+
 // isKnownInMemoryReader reports whether r is a type known to not
 // block on Read. Its caller uses this as an optional optimization to
 // send fewer TCP packets.
@@ -1134,8 +1156,8 @@ func isKnownInMemoryReader(r io.Reader) bool {
 	case *bytes.Reader, *bytes.Buffer, *strings.Reader:
 		return true
 	}
-	if reflect.TypeOf(r) == nopCloserType {
-		return isKnownInMemoryReader(reflect.ValueOf(r).Field(0).Interface().(io.Reader))
+	if r, ok := unwrapNopCloser(r); ok {
+		return isKnownInMemoryReader(r)
 	}
 	if r, ok := r.(*readTrackingBody); ok {
 		return isKnownInMemoryReader(r.ReadCloser)

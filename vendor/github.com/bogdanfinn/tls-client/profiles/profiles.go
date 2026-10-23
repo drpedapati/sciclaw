@@ -2,10 +2,11 @@ package profiles
 
 import (
 	"github.com/bogdanfinn/fhttp/http2"
+	"github.com/bogdanfinn/tls-client/trust_anchors"
 	tls "github.com/bogdanfinn/utls"
 )
 
-var DefaultClientProfile = Chrome_120
+var DefaultClientProfile = Chrome_150
 
 var MappedTLSClients = map[string]ClientProfile{
 	"chrome_103":             Chrome_103,
@@ -22,12 +23,32 @@ var MappedTLSClients = map[string]ClientProfile{
 	"chrome_116_PSK_PQ":      Chrome_116_PSK_PQ,
 	"chrome_117":             Chrome_117,
 	"chrome_120":             Chrome_120,
+	"chrome_124":             Chrome_124,
+	"chrome_130_PSK":         Chrome_130_PSK,
+	"chrome_131":             Chrome_131,
+	"chrome_131_PSK":         Chrome_131_PSK,
+	"chrome_133":             Chrome_133,
+	"chrome_133_PSK":         Chrome_133_PSK,
+	"chrome_144":             Chrome_144,
+	"chrome_144_PSK":         Chrome_144_PSK,
+	"chrome_146":             Chrome_146,
+	"chrome_146_PSK":         Chrome_146_PSK,
+	"chrome_150":             Chrome_150,
+	"chrome_150_PSK":         Chrome_150_PSK,
+	"chrome_152":             Chrome_152,
+	"chrome_152_PSK":         Chrome_152_PSK,
+	"brave_146":              Brave_146,
+	"brave_146_PSK":          Brave_146_PSK,
 	"safari_15_6_1":          Safari_15_6_1,
 	"safari_16_0":            Safari_16_0,
 	"safari_ipad_15_6":       Safari_Ipad_15_6,
 	"safari_ios_15_5":        Safari_IOS_15_5,
 	"safari_ios_15_6":        Safari_IOS_15_6,
 	"safari_ios_16_0":        Safari_IOS_16_0,
+	"safari_ios_17_0":        Safari_IOS_17_0,
+	"safari_ios_18_0":        Safari_IOS_18_0,
+	"safari_ios_18_5":        Safari_IOS_18_5,
+	"safari_ios_26_0":        Safari_IOS_26_0,
 	"firefox_102":            Firefox_102,
 	"firefox_104":            Firefox_104,
 	"firefox_105":            Firefox_105,
@@ -35,6 +56,15 @@ var MappedTLSClients = map[string]ClientProfile{
 	"firefox_108":            Firefox_108,
 	"firefox_110":            Firefox_110,
 	"firefox_117":            Firefox_117,
+	"firefox_120":            Firefox_120,
+	"firefox_123":            Firefox_123,
+	"firefox_132":            Firefox_132,
+	"firefox_133":            Firefox_133,
+	"firefox_135":            Firefox_135,
+	"firefox_146_PSK":        Firefox_146_PSK,
+	"firefox_147":            Firefox_147,
+	"firefox_147_PSK":        Firefox_147_PSK,
+	"firefox_148":            Firefox_148,
 	"opera_89":               Opera_89,
 	"opera_90":               Opera_90,
 	"opera_91":               Opera_91,
@@ -44,6 +74,9 @@ var MappedTLSClients = map[string]ClientProfile{
 	"nike_android_mobile":    NikeAndroidMobile,
 	"cloudscraper":           CloudflareCustom,
 	"mms_ios":                MMSIos,
+	"mms_ios_1":              MMSIos,
+	"mms_ios_2":              MMSIos2,
+	"mms_ios_3":              MMSIos3,
 	"mesh_ios":               MeshIos,
 	"mesh_ios_1":             MeshIos,
 	"mesh_ios_2":             MeshIos2,
@@ -62,24 +95,38 @@ var MappedTLSClients = map[string]ClientProfile{
 }
 
 type ClientProfile struct {
-	clientHelloId     tls.ClientHelloID
-	connectionFlow    uint32
-	headerPriority    *http2.PriorityParam
-	priorities        []http2.Priority
-	pseudoHeaderOrder []string
-	settings          map[http2.SettingID]uint32
-	settingsOrder     []http2.SettingID
+	clientHelloId          tls.ClientHelloID
+	headerPriority         *http2.PriorityParam
+	settings               map[http2.SettingID]uint32
+	settingsOrder          []http2.SettingID
+	priorities             []http2.Priority
+	pseudoHeaderOrder      []string
+	connectionFlow         uint32
+	streamID               uint32
+	allowHTTP              bool
+	http3Settings          map[uint64]uint64
+	http3SettingsOrder     []uint64
+	http3PriorityParam     uint32
+	http3PseudoHeaderOrder []string
+	http3SendGreaseFrames  bool
 }
 
-func NewClientProfile(clientHelloId tls.ClientHelloID, settings map[http2.SettingID]uint32, settingsOrder []http2.SettingID, pseudoHeaderOrder []string, connectionFlow uint32, priorities []http2.Priority, headerPriority *http2.PriorityParam) ClientProfile {
+func NewClientProfile(clientHelloId tls.ClientHelloID, settings map[http2.SettingID]uint32, settingsOrder []http2.SettingID, pseudoHeaderOrder []string, connectionFlow uint32, priorities []http2.Priority, headerPriority *http2.PriorityParam, streamID uint32, allowHTTP bool, http3Settings map[uint64]uint64, http3SettingsOrder []uint64, http3PriorityParam uint32, http3PseudoHeaderOrder []string, http3SendGreaseFrames bool) ClientProfile {
 	return ClientProfile{
-		clientHelloId:     clientHelloId,
-		settings:          settings,
-		settingsOrder:     settingsOrder,
-		pseudoHeaderOrder: pseudoHeaderOrder,
-		connectionFlow:    connectionFlow,
-		priorities:        priorities,
-		headerPriority:    headerPriority,
+		clientHelloId:          clientHelloId,
+		settings:               settings,
+		settingsOrder:          settingsOrder,
+		pseudoHeaderOrder:      pseudoHeaderOrder,
+		connectionFlow:         connectionFlow,
+		priorities:             priorities,
+		headerPriority:         headerPriority,
+		streamID:               streamID,
+		allowHTTP:              allowHTTP,
+		http3Settings:          http3Settings,
+		http3SettingsOrder:     http3SettingsOrder,
+		http3PriorityParam:     http3PriorityParam,
+		http3PseudoHeaderOrder: http3PseudoHeaderOrder,
+		http3SendGreaseFrames:  http3SendGreaseFrames,
 	}
 }
 
@@ -117,4 +164,40 @@ func (c ClientProfile) GetClientHelloId() tls.ClientHelloID {
 
 func (c ClientProfile) GetPriorities() []http2.Priority {
 	return c.priorities
+}
+
+func (c ClientProfile) GetStreamID() uint32 {
+	return c.streamID
+}
+
+func (c ClientProfile) GetAllowHTTP() bool {
+	return c.allowHTTP
+}
+
+func (c ClientProfile) GetHttp3Settings() map[uint64]uint64 {
+	return c.http3Settings
+}
+
+func (c ClientProfile) GetHttp3SettingsOrder() []uint64 {
+	return c.http3SettingsOrder
+}
+
+func (c ClientProfile) GetHttp3PriorityParam() uint32 {
+	return c.http3PriorityParam
+}
+
+func (c ClientProfile) GetHttp3PseudoHeaderOrder() []string {
+	return c.http3PseudoHeaderOrder
+}
+
+func (c ClientProfile) GetHttp3SendGreaseFrames() bool {
+	return c.http3SendGreaseFrames
+}
+
+// BuildTrustAnchorsPayload turns a captured trust_anchors payload into the data
+// for the extension.
+//
+// Deprecated: use trust_anchors.BuildPayload
+func BuildTrustAnchorsPayload(capture string) ([]byte, error) {
+	return trust_anchors.BuildPayload(capture)
 }

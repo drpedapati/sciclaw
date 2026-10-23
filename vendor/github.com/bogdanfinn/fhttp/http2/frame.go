@@ -1413,7 +1413,7 @@ func (mf *metaFrame) checkPseudos() error {
 	pf := mf.pseudoFields()
 	for i, hf := range pf {
 		switch hf.Name {
-		case ":method", ":path", ":scheme", ":authority":
+		case ":method", ":path", ":scheme", ":authority", ":protocol":
 			isRequest = true
 		case ":status":
 			isResponse = true

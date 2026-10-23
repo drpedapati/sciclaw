@@ -219,11 +219,13 @@ func (j *Jar) cookies(u *url.URL, now time.Time) (cookies []*http.Cookie) {
 	})
 	for _, e := range selected {
 		cookies = append(cookies, &http.Cookie{
-			Name:    e.Name,
-			Value:   e.Value,
-			Path:    e.Path,
-			Domain:  e.Domain,
-			Expires: e.Expires,
+			Name:     e.Name,
+			Value:    e.Value,
+			Path:     e.Path,
+			Domain:   e.Domain,
+			Expires:  e.Expires,
+			Secure:   e.Secure,
+			HttpOnly: e.HttpOnly,
 		})
 	}
 

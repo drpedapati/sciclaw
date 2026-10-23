@@ -66,7 +66,10 @@ func (p *pipe) Read(d []byte) (n int, err error) {
 	}
 }
 
-var errClosedPipeWrite = errors.New("write on closed buffer")
+var (
+	errClosedPipeWrite             = errors.New("write on closed buffer")
+	http2errUninitializedPipeWrite = errors.New("write on uninitialized buffer")
+)
 
 // Write copies bytes from p into the buffer and wakes a reader.
 // It is an error to write more data than the buffer can hold.
@@ -84,6 +87,13 @@ func (p *pipe) Write(d []byte) (n int, err error) {
 		p.unread += len(d)
 		return len(d), nil // discard when there is no reader
 	}
+	// pipe.setBuffer is never invoked, leaving the buffer uninitialized.
+	// We shouldn't try to write to an uninitialized pipe,
+	// but returning an error is better than panicking.
+	if p.b == nil {
+		return 0, http2errUninitializedPipeWrite
+	}
+
 	return p.b.Write(d)
 }
 

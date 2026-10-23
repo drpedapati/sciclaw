@@ -61,9 +61,9 @@ type Transport struct {
 
 	// AllowHTTP, if true, permits HTTP/2 requests using the insecure,
 	// plain-text "http" scheme. Note that this does not enable h2c support.
-	AllowHTTP bool
-
-	ConnectionFlow uint32
+	AllowHTTP       bool
+	InitialStreamID uint32
+	ConnectionFlow  uint32
 
 	// ConnPool optionally specifies an alternate connection pool to use.
 	// If nil, the default is used.
@@ -316,13 +316,13 @@ type ClientConn struct {
 	dialedAddr string     // addr dialed to create tconn; not set with NewClientConn
 	flow       flow       // our conn-level flow control quota (cs.flow is per stream)
 	fr         *Framer
-	freeBuf    [][]byte
 
 	goAway      *GoAwayFrame // if non-nil, the GoAwayFrame we received
 	goAwayDebug string       // goAway frame's debug data, retained as a string
 
 	hbuf             bytes.Buffer // HPACK encoder writes into this
 	henc             *hpack.Encoder
+	hencMaxTableSize uint32 // effective max dynamic table size currently applied to henc (guarded by mu, like henc)
 	highestPromiseID uint32 // highest promise id so far received from server
 
 	idleTimeout time.Duration // or 0 for never
@@ -339,6 +339,7 @@ type ClientConn struct {
 
 	mu                    sync.Mutex // guards following
 	nextStreamID          uint32
+	firstStreamID         uint32 // nextStreamID before any request: 1 unless InitialStreamID, AllowHTTP or Priorities moved it
 	peerMaxHeaderListSize uint64
 	pendingRequests       int                       // requests blocked and waiting to be sent because len(streams) == maxConcurrentStreams
 	pings                 map[[8]byte]chan struct{} // in flight ping data to notification channel
@@ -357,7 +358,9 @@ type ClientConn struct {
 	wantSettingsAck bool                 // we sent a SETTINGS frame and haven't heard back
 	werr            error                // first write error that has occurred
 
-	wmu sync.Mutex // held while writing; acquire AFTER mu if holding both
+	wmu        sync.Mutex // held while writing; acquire AFTER mu if holding both
+	connFlow   uint32
+	streamFlow uint32
 }
 
 // clientStream is the state for a single HTTP/2 stream. One of these
@@ -769,6 +772,39 @@ func (t *Transport) newClientConn(c net.Conn, addr string, singleUse bool) (*Cli
 		wantSettingsAck:       true,
 		pings:                 make(map[[8]byte]chan struct{}),
 	}
+
+	// ------------------------------------------------------------------
+	// FIX: Initialize dynamic flow control variables correctly
+	// ------------------------------------------------------------------
+
+	// 1. Determine Stream Flow. This has to match the window the peer will
+	// actually use: we only ever tell it about our window via
+	// SETTINGS_INITIAL_WINDOW_SIZE, so when the profile does not set that
+	// setting the peer stays on the RFC 7540 default and we must too.
+	// Claiming a larger window than we advertised makes the refresh
+	// threshold below unreachable and stalls the stream forever.
+	cc.streamFlow = initialWindowSize
+	if v, ok := t.Settings[SettingInitialWindowSize]; ok && v != 0 {
+		cc.streamFlow = v
+	}
+
+	// 2. Determine Connection Flow (default to ~15MB if not set)
+	cc.connFlow = transportDefaultConnFlow
+	if t.ConnectionFlow != 0 {
+		cc.connFlow = t.ConnectionFlow
+	}
+
+	// ------------------------------------------------------------------
+	// SAFETY: Validate flow control values don't exceed int32 max
+	// RFC 7540 Section 6.9.1: Max window size is 2^31-1
+	// ------------------------------------------------------------------
+	if cc.connFlow > math.MaxInt32 {
+		return nil, fmt.Errorf("http2: connection flow control window too large: %d (max: %d)", cc.connFlow, math.MaxInt32)
+	}
+	if cc.streamFlow > math.MaxInt32 {
+		return nil, fmt.Errorf("http2: stream flow control window too large: %d (max: %d)", cc.streamFlow, math.MaxInt32)
+	}
+
 	if d := t.idleConnTimeout(); d != 0 {
 		cc.idleTimeout = d
 		cc.idleTimer = time.AfterFunc(d, cc.onIdleTimeout)
@@ -796,12 +832,21 @@ func (t *Transport) newClientConn(c net.Conn, addr string, singleUse bool) (*Cli
 
 	cc.fr.MaxHeaderListSize = t.maxHeaderListSize()
 
-	// TODO: SetMaxDynamicTableSize, SetMaxDynamicTableSizeLimit on
-	// henc in response to SETTINGS frames?
 	cc.henc = hpack.NewEncoder(&cc.hbuf)
+	// The encoder starts at the HPACK protocol-default dynamic table size
+	// (4096). We only ever shrink it in response to a peer SETTINGS frame
+	// advertising a smaller SETTINGS_HEADER_TABLE_SIZE (see processSettings);
+	// we never grow above 4096, matching browser encoders. Tracking the
+	// currently-applied size lets us avoid emitting a spurious Dynamic Table
+	// Size Update when the peer allows >= 4096 (the common case).
+	cc.hencMaxTableSize = initialHeaderTableSize
 
 	if t.AllowHTTP {
 		cc.nextStreamID = 3
+	}
+
+	if t.InitialStreamID != 0 {
+		cc.nextStreamID = t.InitialStreamID
 	}
 
 	if cs, ok := c.(connectionStater); ok {
@@ -816,44 +861,43 @@ func (t *Transport) newClientConn(c net.Conn, addr string, singleUse bool) (*Cli
 		pushEnabled = 1
 	}
 
-	//setMaxHeader := false
 	if t.Settings != nil {
-		// we need to iterate over the slice here not the map because of the random range over a map
 		for _, settingId := range t.SettingsOrder {
 			settingValue := t.Settings[settingId]
-
-			/*
-				if settingId == SettingMaxHeaderListSize && settingValue != 0 {
-					// setMaxHeader = true
-					if settingValue != 0 {
-						initialSettings = append(initialSettings, Setting{ID: SettingMaxHeaderListSize, Val: settingValue})
-						continue
-					}
-
-				}*/
-
 			initialSettings = append(initialSettings, Setting{ID: settingId, Val: settingValue})
 		}
 	} else {
-		// when we dont define a custom map on the transport we add Enable Push per default
 		initialSettings = append(initialSettings, Setting{ID: SettingEnablePush, Val: pushEnabled})
 	}
 
 	cc.bw.Write(clientPreface)
 	cc.fr.WriteSettings(initialSettings...)
 
-	cc.fr.WriteWindowUpdate(0, t.ConnectionFlow)
+	// ------------------------------------------------------------------
+	// CRITICAL FIX: Use the sanitized cc.connFlow.
+	// t.ConnectionFlow might be 0, which would send an illegal Window Update of 0.
+	// cc.connFlow is guaranteed to be non-zero (defaults to transportDefaultConnFlow).
+	// ------------------------------------------------------------------
+	if cc.connFlow > 0 {
+		cc.fr.WriteWindowUpdate(0, cc.connFlow)
+	}
 
 	for _, priority := range t.Priorities {
 		cc.fr.WritePriority(priority.StreamID, priority.PriorityParam)
 		cc.nextStreamID = priority.StreamID + 2
 	}
 
-	cc.inflow.add(transportDefaultConnFlow + initialWindowSize)
+	// The first stream is not always 1, so remember where this connection
+	// starts. idleStateLocked uses it to tell an unused connection from a
+	// used one.
+	cc.firstStreamID = cc.nextStreamID
+
+	// Use the dynamic connection flow value we calculated earlier
+	cc.inflow.add(int32(cc.connFlow) + int32(initialWindowSize))
+
 	cc.bw.Flush()
 	if cc.werr != nil {
 		cc.Close()
-
 		return nil, cc.werr
 	}
 
@@ -926,7 +970,7 @@ func (cc *ClientConn) idleState() clientConnIdleState {
 }
 
 func (cc *ClientConn) idleStateLocked() (st clientConnIdleState) {
-	if cc.singleUse && cc.nextStreamID > 1 {
+	if cc.singleUse && cc.nextStreamID > cc.firstStreamID {
 		return
 	}
 	var maxConcurrentOkay bool
@@ -943,7 +987,7 @@ func (cc *ClientConn) idleStateLocked() (st clientConnIdleState) {
 	st.canTakeNewRequest = cc.goAway == nil && !cc.closed && !cc.closing && maxConcurrentOkay &&
 		int64(cc.nextStreamID)+2*int64(cc.pendingRequests) < math.MaxInt32 &&
 		!cc.tooIdleLocked()
-	st.freshConn = cc.nextStreamID == 1 && st.canTakeNewRequest
+	st.freshConn = cc.nextStreamID == cc.firstStreamID && st.canTakeNewRequest
 
 	return
 }
@@ -1088,50 +1132,6 @@ func (cc *ClientConn) closeForLostPing() error {
 	err := errors.New("http2: client connection lost")
 
 	return cc.closeForError(err)
-}
-
-const maxAllocFrameSize = 512 << 10
-
-// frameBuffer returns a scratch buffer suitable for writing DATA frames.
-// They're capped at the min of the peer's max frame size or 512KB
-// (kinda arbitrarily), but definitely capped so we don't allocate 4GB
-// bufers.
-func (cc *ClientConn) frameScratchBuffer() []byte {
-	cc.mu.Lock()
-	size := cc.maxFrameSize
-	if size > maxAllocFrameSize {
-		size = maxAllocFrameSize
-	}
-	for i, buf := range cc.freeBuf {
-		if len(buf) >= int(size) {
-			cc.freeBuf[i] = nil
-			cc.mu.Unlock()
-
-			return buf[:size]
-		}
-	}
-	cc.mu.Unlock()
-
-	return make([]byte, size)
-}
-
-func (cc *ClientConn) putFrameScratchBuffer(buf []byte) {
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-	const maxBufs = 4 // arbitrary; 4 concurrent requests per conn? investigate.
-	if len(cc.freeBuf) < maxBufs {
-		cc.freeBuf = append(cc.freeBuf, buf)
-
-		return
-	}
-	for i, old := range cc.freeBuf {
-		if old == nil {
-			cc.freeBuf[i] = buf
-
-			return
-		}
-	}
-	// forget about it.
 }
 
 // errRequestCanceled is a copy of net/http's errRequestCanceled because it's not
@@ -1506,11 +1506,35 @@ var (
 	errStopReqBodyWriteAndCancel = errors.New("http2: canceling request")
 )
 
+// frameScratchBufferLen returns the length of a buffer to use for
+// outgoing request bodies to read/write to/from.
+//
+// It returns max(1, min(peer's advertised max frame size,
+// Request.ContentLength+1, 512KB)).
+func (cs *clientStream) frameScratchBufferLen(maxFrameSize int) int {
+	const max = 512 << 10
+	n := int64(maxFrameSize)
+	if n > max {
+		n = max
+	}
+	if cl := actualContentLength(cs.req); cl != -1 && cl+1 < n {
+		// Add an extra byte past the declared content-length to
+		// give the caller's Request.Body io.Reader a chance to
+		// give us more bytes than they declared, so we can catch it
+		// early.
+		n = cl + 1
+	}
+	if n < 1 {
+		return 1
+	}
+	return int(n) // doesn't truncate; max is 512K
+}
+
+var bufPool sync.Pool // of *[]byte
+
 func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (err error) {
 	cc := cs.cc
 	sentEnd := false // whether we sent the final DATA frame w/ END_STREAM
-	buf := cc.frameScratchBuffer()
-	defer cc.putFrameScratchBuffer(buf)
 
 	defer func() {
 		traceWroteRequest(cs.trace, err)
@@ -1529,9 +1553,24 @@ func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (
 	remainLen := actualContentLength(req)
 	hasContentLen := remainLen != -1
 
+	cc.mu.Lock()
+	maxFrameSize := int(cc.maxFrameSize)
+	cc.mu.Unlock()
+
+	// Scratch buffer for reading into & writing from.
+	scratchLen := cs.frameScratchBufferLen(maxFrameSize)
+	var buf []byte
+	if bp, ok := bufPool.Get().(*[]byte); ok && len(*bp) >= scratchLen {
+		defer bufPool.Put(bp)
+		buf = *bp
+	} else {
+		buf = make([]byte, scratchLen)
+		defer bufPool.Put(&buf)
+	}
+
 	var sawEOF bool
 	for !sawEOF {
-		n, err := body.Read(buf[:len(buf)-1])
+		n, err := body.Read(buf[:len(buf)])
 		if hasContentLen {
 			remainLen -= int64(n)
 			if remainLen == 0 && err == nil {
@@ -1542,8 +1581,9 @@ func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (
 				// to send the END_STREAM bit early, double-check that we're actually
 				// at EOF. Subsequent reads should return (0, EOF) at this point.
 				// If either value is different, we return an error in one of two ways below.
+				var scratch [1]byte
 				var n1 int
-				n1, err = body.Read(buf[n:])
+				n1, err = body.Read(scratch[:])
 				remainLen -= int64(n1)
 			}
 			if remainLen < 0 {
@@ -1616,10 +1656,6 @@ func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (
 		}
 	}
 
-	cc.mu.Lock()
-	maxFrameSize := int(cc.maxFrameSize)
-	cc.mu.Unlock()
-
 	cc.wmu.Lock()
 	defer cc.wmu.Unlock()
 
@@ -1672,6 +1708,10 @@ func (cs *clientStream) awaitFlowControl(maxBytes int) (taken int32, err error) 
 	}
 }
 
+func isNormalConnect(req *http.Request) bool {
+	return req.Method == "CONNECT" && req.Header.Get(":protocol") == ""
+}
+
 // requires cc.mu be held.
 func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trailers string, contentLength int64) ([]byte, error) {
 	cc.hbuf.Reset()
@@ -1686,7 +1726,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 	}
 
 	var path string
-	if req.Method != "CONNECT" {
+	if !isNormalConnect(req) {
 		path = req.URL.RequestURI()
 		if !validPseudoPath(path) {
 			orig := path
@@ -1705,7 +1745,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 	// potentially pollute our hpack state. (We want to be able to
 	// continue to reuse the hpack encoder for future requests)
 	for k, vv := range req.Header {
-		if !httpguts.ValidHeaderFieldName(k) {
+		if !httpguts.ValidHeaderFieldName(k) && k != ":protocol" {
 			// If the header is magic key, the headers would have been ordered
 			// by this step. It is ok to delete and not raise an error
 			if k == http.HeaderOrderKey || k == http.PHeaderOrderKey {
@@ -1732,7 +1772,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 
 		if !ok {
 			pHeaderOrder = cc.t.PseudoHeaderOrder
-			ok = true
+			ok = len(pHeaderOrder) > 0
 		}
 
 		m := req.Method
@@ -1746,7 +1786,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 				case ":authority":
 					f(":authority", host)
 				case ":method":
-					f(":method", req.Method)
+					f(":method", m)
 				case ":path":
 					if req.Method != "CONNECT" {
 						f(":path", path)
@@ -1765,7 +1805,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 		} else {
 			f(":authority", host)
 			f(":method", m)
-			if req.Method != "CONNECT" {
+			if !isNormalConnect(req) {
 				f(":path", path)
 				f(":scheme", req.URL.Scheme)
 			}
@@ -1777,13 +1817,22 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 		// Should clone, because this function is called twice; to read and to write.
 		// If headers are added to the req, then headers would be added twice.
 		hdrs := req.Header.Clone()
-		if _, ok := req.Header["content-length"]; !ok && shouldSendReqContentLength(req.Method, contentLength) {
+		if hdrs == nil {
+			hdrs = make(http.Header)
+		}
+		// Content-Length comes from the request, not from the caller's header map, as in net/http.
+		for k := range hdrs {
+			if strings.EqualFold(k, "content-length") {
+				delete(hdrs, k)
+			}
+		}
+		if shouldSendReqContentLength(req.Method, contentLength) {
 			hdrs["content-length"] = []string{strconv.FormatInt(contentLength, 10)}
 		}
 
 		// Does not include accept-encoding header if its defined in req.Header
 		if _, ok := hdrs["accept-encoding"]; !ok && addGzipHeader {
-			hdrs["accept-encoding"] = []string{"gzip, deflate, br"}
+			hdrs["accept-encoding"] = []string{"gzip, deflate, br, zstd"}
 		}
 
 		// Formats and writes headers with f function
@@ -1801,7 +1850,13 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 		}
 
 		for _, kv := range kvs {
-			if strings.EqualFold(kv.Key, "host") {
+			if len(kv.Values) == 0 {
+				// feat: skip empty headers
+				// for skip auto headers
+				// header["User-Agent"] = make([]string, 0)
+				// header["User-Agent"] = []string{}
+				continue
+			} else if strings.EqualFold(kv.Key, "host") {
 				// Host is :authority, already sent.
 				continue
 			} else if strings.EqualFold(kv.Key, "connection") || strings.EqualFold(kv.Key, "proxy-connection") ||
@@ -1846,7 +1901,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 					kv.Values = kv.Values[:1]
 				}
 
-				if kv.Values[0] == "" {
+				if len(kv.Values) == 0 || kv.Values[0] == "" {
 					continue
 				}
 			}
@@ -1968,7 +2023,7 @@ func (cc *ClientConn) newStreamWithID(streamID uint32, incNext bool) *clientStre
 	}
 	cs.flow.add(int32(cc.initialWindowSize))
 	cs.flow.setConnFlow(&cc.flow)
-	cs.inflow.add(transportDefaultStreamFlow)
+	cs.inflow.add(int32(cc.streamFlow))
 	cs.inflow.setConnFlow(&cc.inflow)
 	cc.streams[cs.ID] = cs
 
@@ -2395,14 +2450,12 @@ func (b transportResponseBody) Read(p []byte) (n int, err error) {
 				cc.writeStreamReset(cs.ID, ErrCodeProtocol, err)
 			}
 			cs.readErr = err
-
 			return int(cs.bytesRemain), err
 		}
 		cs.bytesRemain -= int64(n)
 		if err == io.EOF && cs.bytesRemain > 0 {
 			err = io.ErrUnexpectedEOF
 			cs.readErr = err
-
 			return n, err
 		}
 	}
@@ -2415,21 +2468,47 @@ func (b transportResponseBody) Read(p []byte) (n int, err error) {
 	defer cc.mu.Unlock()
 
 	var connAdd, streamAdd int32
+
 	// Check the conn-level first, before the stream-level.
-	if v := cc.inflow.available(); v < transportDefaultConnFlow/2 {
-		connAdd = transportDefaultConnFlow - v
+	// Use dynamic connFlow logic
+	if v := cc.inflow.available(); v < int32(cc.connFlow/2) {
+		connAdd = int32(cc.connFlow) - v
 		cc.inflow.add(connAdd)
 	}
-	if err == nil { // No need to refresh if the stream is over or failed.
+
+	if err == nil {
 		// Consider any buffered body data (read from the conn but not
 		// consumed by the client) when computing flow control for this
 		// stream.
-		v := int(cs.inflow.available()) + cs.bufPipe.Len()
-		if v < transportDefaultStreamFlow-transportDefaultStreamMinRefresh {
-			streamAdd = int32(transportDefaultStreamFlow - v)
-			cs.inflow.add(streamAdd)
+
+		// Use dynamic streamFlow logic
+		unsent := int(cc.streamFlow) - int(cs.inflow.available()) - cs.bufPipe.Len()
+
+		// ------------------------------------------------------------------
+		// FIX: Adaptive Logic
+		// ------------------------------------------------------------------
+		const aggressiveThreshold = 16384 // 16KB
+
+		// Check if the configured initial window is small (e.g. Firefox's 128KB or 65KB).
+		// If so, we need to be aggressive with updates.
+		isSmallWindow := cc.initialWindowSize < 1048576 // < 1MB
+
+		if isSmallWindow {
+			if unsent > aggressiveThreshold {
+				streamAdd = int32(unsent)
+				cs.inflow.add(streamAdd)
+			}
+		} else {
+			// Fallback to standard behavior for large windows (Chrome/Default).
+			// FIX: Replaced transportDefaultStreamFlow constant with cc.streamFlow.
+			// This ensures correct behavior if a user sets a custom Large window (e.g. 6MB).
+			if unsent > transportDefaultStreamMinRefresh && unsent > int(cc.streamFlow)/2 {
+				streamAdd = int32(unsent)
+				cs.inflow.add(streamAdd)
+			}
 		}
 	}
+
 	if connAdd != 0 || streamAdd != 0 {
 		cc.wmu.Lock()
 		defer cc.wmu.Unlock()
@@ -2451,7 +2530,11 @@ func (b transportResponseBody) Close() error {
 	cs := b.cs
 	cc := cs.cc
 
-	serverSentStreamEnd := cs.bufPipe.Err() == io.EOF
+	pipeErr := cs.bufPipe.Err()
+	if pipeErr == errClosedResponseBody {
+		return nil
+	}
+	serverSentStreamEnd := pipeErr == io.EOF
 	unread := cs.bufPipe.Len()
 
 	if unread > 0 || !serverSentStreamEnd {
@@ -2671,8 +2754,35 @@ func (rl *clientConnReadLoop) processSettings(f *SettingsFrame) error {
 			cc.cond.Broadcast()
 
 			cc.initialWindowSize = s.Val
+		case SettingHeaderTableSize:
+			// Honor the peer's advertised maximum HPACK dynamic table size
+			// for our request-header encoder (RFC 7541 §4.2 / §6.3). henc is
+			// guarded by cc.mu, which is held here.
+			//
+			// We cap the effective size at the protocol default (4096) — real
+			// browser encoders do not use larger dynamic tables — and only
+			// touch the encoder when the effective size actually changes.
+			// Consequently the common case, where the peer allows >= 4096, is
+			// a no-op and emits NO Dynamic Table Size Update, keeping our HPACK
+			// byte stream identical to a browser that stays at the default.
+			// The change bites only when a peer advertises a table size < 4096
+			// (e.g. 0): previously the encoder kept indexing up to 4096 in
+			// violation of the peer's limit; now it correctly shrinks and
+			// signals the update.
+			effectiveTableSize := s.Val
+			if effectiveTableSize > initialHeaderTableSize {
+				effectiveTableSize = initialHeaderTableSize
+			}
+			if effectiveTableSize != cc.hencMaxTableSize {
+				cc.henc.SetMaxDynamicTableSize(effectiveTableSize)
+				cc.hencMaxTableSize = effectiveTableSize
+			}
+		case SettingEnableConnectProtocol:
+			if err := s.Valid(); err != nil {
+				return err
+			}
 		default:
-			// TODO(bradfitz): handle more settings? SETTINGS_HEADER_TABLE_SIZE probably.
+			// TODO(bradfitz): handle more settings?
 			cc.vlogf("Unhandled Setting: %v", s)
 		}
 

@@ -402,6 +402,12 @@ func (r *Request) ProtoAtLeast(major, minor int) bool {
 		r.ProtoMajor == major && r.ProtoMinor >= minor
 }
 
+// emptyHeaderValue reports whether a header that is present carries nothing:
+// no value at all, or one empty string.
+func emptyHeaderValue(vv []string) bool {
+	return len(vv) == 0 || vv[0] == ""
+}
+
 // UserAgent returns the client's User-Agent, if sent in the request.
 func (r *Request) UserAgent() string {
 	return r.Header.Get("User-Agent")
@@ -433,7 +439,7 @@ func (r *Request) Cookie(name string) (*Cookie, error) {
 // AddCookie only sanitizes c's name and value, and does not sanitize
 // a Cookie header already present in the request.
 func (r *Request) AddCookie(c *Cookie) {
-	s := fmt.Sprintf("%s=%s", sanitizeCookieName(c.Name), sanitizeCookieValue(c.Value))
+	s := fmt.Sprintf("%s=%s", sanitizeCookieName(c.Name), sanitizeCookieValue(c.Value, c.Quoted))
 	if c := r.Header.Get("Cookie"); c != "" {
 		r.Header.Set("Cookie", c+"; "+s)
 	} else {
@@ -514,6 +520,7 @@ const defaultUserAgent = "Go-http-client/1.1"
 
 // Write writes an HTTP/1.1 request, which is the header and body, in wire format.
 // This method consults the following fields of the request:
+//
 //	Host
 //	URL
 //	Method (defaults to "GET")
@@ -614,13 +621,44 @@ func (r *Request) write(w io.Writer, usingProxy bool, extraHeaders Header, waitF
 		return err
 	}
 
-	if _, ok := r.Header["Host"]; !ok {
-		r.Header.Set("Host", host)
+	// Host, User-Agent and the transfer headers are written through a copy of
+	// the header map, so that they participate in the configured header order
+	// without changing r.Header.
+	header := r.Header.Clone()
+	if header == nil {
+		header = make(Header)
 	}
 
-	// if user agent field is not present, add it
-	if uaCap, uaLow := r.Header["User-Agent"], r.Header["user-agent"]; uaCap == nil && uaLow == nil {
-		r.Header.Set("User-Agent", "Go-http-client/1.1")
+	if _, ok := header["Host"]; !ok {
+		if _, ok := header["host"]; !ok {
+			header.Set("Host", host)
+		}
+	}
+
+	// If no User-Agent is given, Go's own goes out. One set to nil or to the
+	// empty string means none, as in net/http and as the HTTP/2 path here
+	// already does; it used to go out as an empty "User-Agent:" line.
+	var exclude map[string]bool
+	uaCap, hasCap := header["User-Agent"]
+	uaLow, hasLow := header["user-agent"]
+	switch {
+	case !hasCap && !hasLow:
+		header.Set("User-Agent", "Go-http-client/1.1")
+	default:
+		exclude = make(map[string]bool, 2)
+		if hasCap && emptyHeaderValue(uaCap) {
+			exclude["User-Agent"] = true
+		}
+		if hasLow && emptyHeaderValue(uaLow) {
+			exclude["user-agent"] = true
+		}
+		// Only the first User-Agent goes out, as over HTTP/2.
+		if len(uaCap) > 1 {
+			header["User-Agent"] = uaCap[:1]
+		}
+		if len(uaLow) > 1 {
+			header["user-agent"] = uaLow[:1]
+		}
 	}
 
 	// Process Body,ContentLength,Close,Trailer
@@ -628,12 +666,12 @@ func (r *Request) write(w io.Writer, usingProxy bool, extraHeaders Header, waitF
 	if err != nil {
 		return err
 	}
-	err = tw.addHeaders(&r.Header, trace)
+	err = tw.addHeaders(&header)
 	if err != nil {
 		return err
 	}
 
-	err = r.Header.write(w, trace)
+	err = header.writeSubset(w, exclude, trace)
 	if err != nil {
 		return err
 	}
@@ -721,9 +759,11 @@ func idnaASCII(v string) (string, error) {
 // into Punycode form, if necessary.
 //
 // Ideally we'd clean the Host header according to the spec:
-//   https://tools.ietf.org/html/rfc7230#section-5.4 (Host = uri-host [ ":" port ]")
-//   https://tools.ietf.org/html/rfc7230#section-2.7 (uri-host -> rfc3986's host)
-//   https://tools.ietf.org/html/rfc3986#section-3.2.2 (definition of host)
+//
+//	https://tools.ietf.org/html/rfc7230#section-5.4 (Host = uri-host [ ":" port ]")
+//	https://tools.ietf.org/html/rfc7230#section-2.7 (uri-host -> rfc3986's host)
+//	https://tools.ietf.org/html/rfc3986#section-3.2.2 (definition of host)
+//
 // But practically, what we are trying to avoid is the situation in
 // issue 11206, where a malformed Host header used in the proxy context
 // would create a bad request. So it is enough to just truncate at the

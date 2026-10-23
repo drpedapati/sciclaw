@@ -8031,50 +8031,6 @@ func (cc *http2ClientConn) closeForLostPing() error {
 	return cc.closeForError(err)
 }
 
-const http2maxAllocFrameSize = 512 << 10
-
-// frameBuffer returns a scratch buffer suitable for writing DATA frames.
-// They're capped at the min of the peer's max frame size or 512KB
-// (kinda arbitrarily), but definitely capped so we don't allocate 4GB
-// bufers.
-func (cc *http2ClientConn) frameScratchBuffer() []byte {
-	cc.mu.Lock()
-	size := cc.maxFrameSize
-	if size > http2maxAllocFrameSize {
-		size = http2maxAllocFrameSize
-	}
-	for i, buf := range cc.freeBuf {
-		if len(buf) >= int(size) {
-			cc.freeBuf[i] = nil
-			cc.mu.Unlock()
-
-			return buf[:size]
-		}
-	}
-	cc.mu.Unlock()
-
-	return make([]byte, size)
-}
-
-func (cc *http2ClientConn) putFrameScratchBuffer(buf []byte) {
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-	const maxBufs = 4 // arbitrary; 4 concurrent requests per conn? investigate.
-	if len(cc.freeBuf) < maxBufs {
-		cc.freeBuf = append(cc.freeBuf, buf)
-
-		return
-	}
-	for i, old := range cc.freeBuf {
-		if old == nil {
-			cc.freeBuf[i] = buf
-
-			return
-		}
-	}
-	// forget about it.
-}
-
 // errRequestCanceled is a copy of net/http's errRequestCanceled because it's not
 // exported. At least they'll be DeepEqual for h1-vs-h2 comparisons tests.
 var http2errRequestCanceled = errors.New("net/http: request canceled")
@@ -8435,11 +8391,36 @@ var (
 	http2errStopReqBodyWriteAndCancel = errors.New("http2: canceling request")
 )
 
+
+// frameScratchBufferLen returns the length of a buffer to use for
+// outgoing request bodies to read/write to/from.
+//
+// It returns max(1, min(peer's advertised max frame size,
+// Request.ContentLength+1, 512KB)).
+func (cs *http2clientStream) frameScratchBufferLen(maxFrameSize int) int {
+	const max = 512 << 10
+	n := int64(maxFrameSize)
+	if n > max {
+		n = max
+	}
+	if cl := http2actualContentLength(cs.req); cl != -1 && cl+1 < n {
+		// Add an extra byte past the declared content-length to
+		// give the caller's Request.Body io.Reader a chance to
+		// give us more bytes than they declared, so we can catch it
+		// early.
+		n = cl + 1
+	}
+	if n < 1 {
+		return 1
+	}
+	return int(n) // doesn't truncate; max is 512K
+}
+
+var bufPool sync.Pool // of *[]byte
+
 func (cs *http2clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (err error) {
 	cc := cs.cc
 	sentEnd := false // whether we sent the final DATA frame w/ END_STREAM
-	buf := cc.frameScratchBuffer()
-	defer cc.putFrameScratchBuffer(buf)
 
 	defer func() {
 		http2traceWroteRequest(cs.trace, err)
@@ -8458,9 +8439,24 @@ func (cs *http2clientStream) writeRequestBody(body io.Reader, bodyCloser io.Clos
 	remainLen := http2actualContentLength(req)
 	hasContentLen := remainLen != -1
 
+	cc.mu.Lock()
+	maxFrameSize := int(cc.maxFrameSize)
+	cc.mu.Unlock()
+
+	// Scratch buffer for reading into & writing from.
+	scratchLen := cs.frameScratchBufferLen(maxFrameSize)
+	var buf []byte
+	if bp, ok := bufPool.Get().(*[]byte); ok && len(*bp) >= scratchLen {
+		defer bufPool.Put(bp)
+		buf = *bp
+	} else {
+		buf = make([]byte, scratchLen)
+		defer bufPool.Put(&buf)
+	}
+
 	var sawEOF bool
 	for !sawEOF {
-		n, err := body.Read(buf[:len(buf)-1])
+		n, err := body.Read(buf[:len(buf)])
 		if hasContentLen {
 			remainLen -= int64(n)
 			if remainLen == 0 && err == nil {
@@ -8471,8 +8467,9 @@ func (cs *http2clientStream) writeRequestBody(body io.Reader, bodyCloser io.Clos
 				// to send the END_STREAM bit early, double-check that we're actually
 				// at EOF. Subsequent reads should return (0, EOF) at this point.
 				// If either value is different, we return an error in one of two ways below.
+				var scratch [1]byte
 				var n1 int
-				n1, err = body.Read(buf[n:])
+				n1, err = body.Read(scratch[:])
 				remainLen -= int64(n1)
 			}
 			if remainLen < 0 {
@@ -8544,10 +8541,6 @@ func (cs *http2clientStream) writeRequestBody(body io.Reader, bodyCloser io.Clos
 			return err
 		}
 	}
-
-	cc.mu.Lock()
-	maxFrameSize := int(cc.maxFrameSize)
-	cc.mu.Unlock()
 
 	cc.wmu.Lock()
 	defer cc.wmu.Unlock()
@@ -8650,6 +8643,41 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 		}
 	}
 
+	// Clone, augment and sort the headers once up front: enumerateHeaders
+	// below is called twice (once to count the header list size, once to
+	// write), and this work is identical between the two passes. Cloning
+	// also keeps the added content-length and accept-encoding headers off
+	// the caller's req.Header.
+	hdrs := req.Header.Clone()
+	if hdrs == nil {
+		hdrs = make(Header)
+	}
+	// Content-Length comes from the request, not from the caller's header map, as in net/http.
+	for k := range hdrs {
+		if strings.EqualFold(k, "content-length") {
+			delete(hdrs, k)
+		}
+	}
+	if http2shouldSendReqContentLength(req.Method, contentLength) {
+		hdrs["content-length"] = []string{strconv.FormatInt(contentLength, 10)}
+	}
+
+	// Does not include accept-encoding header if its defined in req.Header
+	if _, ok := hdrs["accept-encoding"]; !ok && addGzipHeader {
+		hdrs["accept-encoding"] = []string{"gzip, deflate, br, zstd"}
+	}
+
+	var kvs []HeaderKeyValues
+	if headerOrder, ok := hdrs[HeaderOrderKey]; ok {
+		order := make(map[string]int, len(headerOrder))
+		for i, v := range headerOrder {
+			order[v] = i
+		}
+		kvs, _ = hdrs.SortedKeyValuesBy(order, nil)
+	} else {
+		kvs, _ = hdrs.SortedKeyValues(nil)
+	}
+
 	enumerateHeaders := func(f func(name, value string)) {
 		// 8.1.2.3 Request Pseudo-Header Fields
 		// The :path pseudo-header field includes the path and query parts of the
@@ -8661,7 +8689,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 
 		if !ok {
 			pHeaderOrder = cc.t.t1.PseudoHeaderOrder
-			ok = true
+			ok = len(pHeaderOrder) > 0
 		}
 
 		m := req.Method
@@ -8675,7 +8703,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 				case ":authority":
 					f(":authority", host)
 				case ":method":
-					f(":method", req.Method)
+					f(":method", m)
 				case ":path":
 					if req.Method != "CONNECT" {
 						f(":path", path)
@@ -8703,32 +8731,8 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 			f("trailer", trailers)
 		}
 
-		// Should clone, because this function is called twice; to read and to write.
-		// If headers are added to the req, then headers would be added twice.
-		hdrs := req.Header.Clone()
-		if _, ok := req.Header["content-length"]; !ok && http2shouldSendReqContentLength(req.Method, contentLength) {
-			hdrs["content-length"] = []string{strconv.FormatInt(contentLength, 10)}
-		}
-
-		// Does not include accept-encoding header if its defined in req.Header
-		if _, ok := hdrs["accept-encoding"]; !ok && addGzipHeader {
-			hdrs["accept-encoding"] = []string{"gzip, deflate, br"}
-		}
-
 		// Formats and writes headers with f function
 		var didUA bool
-		var kvs []HeaderKeyValues
-
-		if headerOrder, ok := hdrs[HeaderOrderKey]; ok {
-			order := make(map[string]int)
-			for i, v := range headerOrder {
-				order[v] = i
-			}
-			kvs, _ = hdrs.SortedKeyValuesBy(order, make(map[string]bool))
-		} else {
-			kvs, _ = hdrs.SortedKeyValues(make(map[string]bool))
-		}
-
 		for _, kv := range kvs {
 			if strings.EqualFold(kv.Key, "host") {
 				// Host is :authority, already sent.
@@ -8775,7 +8779,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 					kv.Values = kv.Values[:1]
 				}
 
-				if kv.Values[0] == "" {
+				if len(kv.Values) == 0 || kv.Values[0] == "" {
 					continue
 				}
 			}

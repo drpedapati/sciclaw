@@ -18,8 +18,9 @@ import (
 //
 // See https://tools.ietf.org/html/rfc6265 for details.
 type Cookie struct {
-	Name  string
-	Value string
+	Name   string
+	Value  string
+	Quoted bool
 
 	Path       string    // optional
 	Domain     string    // optional
@@ -74,14 +75,15 @@ func readSetCookies(h Header) []*Cookie {
 		if !isCookieNameValid(name) {
 			continue
 		}
-		value, ok := parseCookieValue(value, true)
+		value, quoted, ok := parseCookieValue(value, true)
 		if !ok {
 			continue
 		}
 		c := &Cookie{
-			Name:  name,
-			Value: value,
-			Raw:   line,
+			Name:   name,
+			Value:  value,
+			Raw:    line,
+			Quoted: quoted,
 		}
 		for i := 1; i < len(parts); i++ {
 			parts[i] = textproto.TrimString(parts[i])
@@ -94,7 +96,7 @@ func readSetCookies(h Header) []*Cookie {
 				attr, val = attr[:j], attr[j+1:]
 			}
 			lowerAttr := strings.ToLower(attr)
-			val, ok = parseCookieValue(val, false)
+			val, _, ok = parseCookieValue(val, false)
 			if !ok {
 				c.Unparsed = append(c.Unparsed, parts[i])
 				continue
@@ -179,7 +181,7 @@ func (c *Cookie) String() string {
 	b.Grow(len(c.Name) + len(c.Value) + len(c.Domain) + len(c.Path) + extraCookieLength)
 	b.WriteString(c.Name)
 	b.WriteRune('=')
-	b.WriteString(sanitizeCookieValue(c.Value))
+	b.WriteString(sanitizeCookieValue(c.Value, c.Quoted))
 
 	if len(c.Path) > 0 {
 		b.WriteString("; Path=")
@@ -266,11 +268,11 @@ func ReadCookies(h Header, filter string) []*Cookie {
 			if filter != "" && filter != name {
 				continue
 			}
-			val, ok := parseCookieValue(val, true)
+			val, quoted, ok := parseCookieValue(val, true)
 			if !ok {
 				continue
 			}
-			cookies = append(cookies, &Cookie{Name: name, Value: val})
+			cookies = append(cookies, &Cookie{Name: name, Value: val, Quoted: quoted})
 		}
 	}
 	return cookies
@@ -358,19 +360,21 @@ func sanitizeCookieName(n string) string {
 // https://tools.ietf.org/html/rfc6265#section-4.1.1
 // cookie-value      = *cookie-octet / ( DQUOTE *cookie-octet DQUOTE )
 // cookie-octet      = %x21 / %x23-2B / %x2D-3A / %x3C-5B / %x5D-7E
-//           ; US-ASCII characters excluding CTLs,
-//           ; whitespace DQUOTE, comma, semicolon,
-//           ; and backslash
+//
+//	; US-ASCII characters excluding CTLs,
+//	; whitespace DQUOTE, comma, semicolon,
+//	; and backslash
+//
 // We loosen this as spaces and commas are common in cookie Values
 // but we produce a quoted cookie-value if and only if v contains
 // commas or spaces.
 // See https://golang.org/issue/7243 for the discussion.
-func sanitizeCookieValue(v string) string {
+func sanitizeCookieValue(v string, quoted bool) string {
 	v = sanitizeOrWarn("Cookie.Value", validCookieValueByte, v)
 	if len(v) == 0 {
 		return v
 	}
-	if strings.IndexByte(v, ' ') >= 0 || strings.IndexByte(v, ',') >= 0 {
+	if strings.Contains(v, " ") || quoted {
 		return `"` + v + `"`
 	}
 	return v
@@ -416,17 +420,19 @@ func sanitizeOrWarn(fieldName string, valid func(byte) bool, v string) string {
 	return string(buf)
 }
 
-func parseCookieValue(raw string, allowDoubleQuote bool) (string, bool) {
+// parseCookieValue parses a cookie value according to RFC 6265.
+func parseCookieValue(raw string, allowDoubleQuote bool) (value string, quoted, ok bool) {
 	// Strip the quotes, if present.
 	if allowDoubleQuote && len(raw) > 1 && raw[0] == '"' && raw[len(raw)-1] == '"' {
 		raw = raw[1 : len(raw)-1]
+		quoted = true
 	}
 	for i := 0; i < len(raw); i++ {
 		if !validCookieValueByte(raw[i]) {
-			return "", false
+			return "", quoted, false
 		}
 	}
-	return raw, true
+	return raw, quoted, true
 }
 
 func isCookieNameValid(raw string) bool {

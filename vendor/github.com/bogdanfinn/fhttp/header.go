@@ -6,6 +6,7 @@ package http
 
 import (
 	"io"
+	"maps"
 	"net/textproto"
 	"sort"
 	"strings"
@@ -46,6 +47,14 @@ const PHeaderOrderKey = "PHeader-Order:"
 // CanonicalHeaderKey.
 func (h Header) Add(key, value string) {
 	textproto.MIMEHeader(h).Add(key, value)
+}
+
+// Append adds the Key, value pair to the header by also appending the key to the header order.
+// It appends to any existing Values associated with Key.
+// The Key is case insensitive; it is canonicalized by
+func (h Header) Append(key, value string) {
+	textproto.MIMEHeader(h).Add(key, value)
+	textproto.MIMEHeader(h).Add(HeaderOrderKey, strings.ToLower(key))
 }
 
 // Set sets the header entries associated with Key to the
@@ -169,19 +178,31 @@ type HeaderKeyValues struct {
 type headerSorter struct {
 	kvs   []HeaderKeyValues
 	order map[string]int
+	// orderIdx[i], orderOK[i] cache order[strings.ToLower(kvs[i].Key)],
+	// resolved once per sort by SortedKeyValuesBy so that Less does no
+	// map lookups or lowercasing per comparison. Populated only when
+	// order is non-nil.
+	orderIdx []int
+	orderOK  []bool
 }
 
-func (s *headerSorter) Len() int      { return len(s.kvs) }
-func (s *headerSorter) Swap(i, j int) { s.kvs[i], s.kvs[j] = s.kvs[j], s.kvs[i] }
+func (s *headerSorter) Len() int { return len(s.kvs) }
+func (s *headerSorter) Swap(i, j int) {
+	s.kvs[i], s.kvs[j] = s.kvs[j], s.kvs[i]
+	// orderIdx/orderOK are only populated by SortedKeyValuesBy;
+	// SortedKeyValues sorts without them.
+	if s.order != nil {
+		s.orderIdx[i], s.orderIdx[j] = s.orderIdx[j], s.orderIdx[i]
+		s.orderOK[i], s.orderOK[j] = s.orderOK[j], s.orderOK[i]
+	}
+}
 func (s *headerSorter) Less(i, j int) bool {
 	// If the order isn't defined, sort lexicographically.
 	if s.order == nil {
 		return s.kvs[i].Key < s.kvs[j].Key
 	}
-	//idxi, iok := s.order[s.kvs[i].Key]
-	//idxj, jok := s.order[s.kvs[j].Key]
-	idxi, iok := s.order[strings.ToLower(s.kvs[i].Key)]
-	idxj, jok := s.order[strings.ToLower(s.kvs[j].Key)]
+	idxi, iok := s.orderIdx[i], s.orderOK[i]
+	idxj, jok := s.orderIdx[j], s.orderOK[j]
 	if !iok && !jok {
 		return s.kvs[i].Key < s.kvs[j].Key
 	} else if !iok && jok {
@@ -196,8 +217,6 @@ var headerSorterPool = sync.Pool{
 	New: func() interface{} { return new(headerSorter) },
 }
 
-var mutex = &sync.RWMutex{}
-
 // SortedKeyValues returns h's keys sorted in the returned kvs
 // slice. The headerSorter used to sort is also returned, for possible
 // return to headerSorterCache.
@@ -208,13 +227,15 @@ func (h Header) SortedKeyValues(exclude map[string]bool) (kvs []HeaderKeyValues,
 	}
 	kvs = hs.kvs[:0]
 	for k, vv := range h {
-		mutex.RLock()
 		if !exclude[k] {
 			kvs = append(kvs, HeaderKeyValues{k, vv})
 		}
-		mutex.RUnlock()
 	}
 	hs.kvs = kvs
+	// Reset any order left on the sorter by a previous SortedKeyValuesBy
+	// call, otherwise a pooled sorter sorts by the stale order instead of
+	// lexicographically.
+	hs.order = nil
 	sort.Sort(hs)
 	return kvs, hs
 }
@@ -226,14 +247,26 @@ func (h Header) SortedKeyValuesBy(order map[string]int, exclude map[string]bool)
 	}
 	kvs = hs.kvs[:0]
 	for k, vv := range h {
-		mutex.RLock()
 		if !exclude[k] {
 			kvs = append(kvs, HeaderKeyValues{k, vv})
 		}
-		mutex.RUnlock()
 	}
 	hs.kvs = kvs
 	hs.order = order
+
+	// Decorate-sort-undecorate: resolve each key's order lookup once, so
+	// Less compares the cached results instead of doing two map lookups
+	// (with key lowercasing) per comparison.
+	if cap(hs.orderIdx) < len(kvs) {
+		hs.orderIdx = make([]int, len(kvs))
+		hs.orderOK = make([]bool, len(kvs))
+	}
+	hs.orderIdx = hs.orderIdx[:len(kvs)]
+	hs.orderOK = hs.orderOK[:len(kvs)]
+	for i, kv := range kvs {
+		hs.orderIdx[i], hs.orderOK[i] = order[strings.ToLower(kv.Key)]
+	}
+
 	sort.Sort(hs)
 
 	return kvs, hs
@@ -261,14 +294,16 @@ func (h Header) writeSubset(w io.Writer, exclude map[string]bool, trace *httptra
 		for i, v := range headerOrder {
 			order[v] = i
 		}
-		if exclude == nil {
-			exclude = make(map[string]bool)
-		}
-		mutex.Lock()
-		exclude[HeaderOrderKey] = true
-		exclude[PHeaderOrderKey] = true
-		mutex.Unlock()
-		kvs, sorter = h.SortedKeyValuesBy(order, exclude)
+		// Add the magic keys to a copy of exclude instead of mutating the
+		// caller's map: callers pass shared package-level maps (e.g.
+		// respExcludeHeader), so writing to exclude both raced with other
+		// writers and readers and leaked the exclusions into every later
+		// write that used the same map.
+		excl := make(map[string]bool, len(exclude)+2)
+		maps.Copy(excl, exclude)
+		excl[HeaderOrderKey] = true
+		excl[PHeaderOrderKey] = true
+		kvs, sorter = h.SortedKeyValuesBy(order, excl)
 	} else {
 		kvs, sorter = h.SortedKeyValues(exclude)
 	}

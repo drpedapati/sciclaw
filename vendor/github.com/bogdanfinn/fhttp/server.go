@@ -21,6 +21,7 @@ import (
 	urlpkg "net/url"
 	"os"
 	"path"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -498,8 +499,9 @@ type response struct {
 // prior to the headers being written. If the set of trailers is fixed
 // or known before the header is written, the normal Go trailers mechanism
 // is preferred:
-//    https://golang.org/pkg/net/http/#ResponseWriter
-//    https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
+//
+//	https://golang.org/pkg/net/http/#ResponseWriter
+//	https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
 const TrailerPrefix = "Trailer:"
 
 // finalTrailers is called after the Handler exits and returns a non-nil
@@ -1117,7 +1119,12 @@ func checkWriteHeaderCode(code int) {
 	}
 }
 
-// relevantCaller searches the call stack for the first function outside of net/http.
+// funcPrefix starts the names of this package's functions in stack frames, whatever path the package is imported by.
+var funcPrefix = sync.OnceValue(func() string {
+	return reflect.TypeFor[Header]().PkgPath() + "."
+})
+
+// relevantCaller searches the call stack for the first function outside of this package.
 // The purpose of this function is to provide more helpful error messages.
 func relevantCaller() runtime.Frame {
 	pc := make([]uintptr, 16)
@@ -1126,7 +1133,7 @@ func relevantCaller() runtime.Frame {
 	var frame runtime.Frame
 	for {
 		frame, more := frames.Next()
-		if !strings.HasPrefix(frame.Function, "net/http.") {
+		if !strings.HasPrefix(frame.Function, funcPrefix()) {
 			return frame
 		}
 		if !more {
@@ -1560,14 +1567,14 @@ func (w *response) bodyAllowed() bool {
 //
 // The Writers are wired together like:
 //
-// 1. *response (the ResponseWriter) ->
-// 2. (*response).w, a *bufio.Writer of bufferBeforeChunkingSize bytes
-// 3. chunkWriter.Writer (whose writeHeader finalizes Content-Length/Type)
-//    and which writes the chunk headers, if needed.
-// 4. conn.buf, a bufio.Writer of default (4kB) bytes, writing to ->
-// 5. checkConnErrorWriter{c}, which notes any non-nil error on Write
-//    and populates c.werr with it if so. but otherwise writes to:
-// 6. the rwc, the net.Conn.
+//  1. *response (the ResponseWriter) ->
+//  2. (*response).w, a *bufio.Writer of bufferBeforeChunkingSize bytes
+//  3. chunkWriter.Writer (whose writeHeader finalizes Content-Length/Type)
+//     and which writes the chunk headers, if needed.
+//  4. conn.buf, a bufio.Writer of default (4kB) bytes, writing to ->
+//  5. checkConnErrorWriter{c}, which notes any non-nil error on Write
+//     and populates c.werr with it if so. but otherwise writes to:
+//  6. the rwc, the net.Conn.
 //
 // TODO(bradfitz): short-circuit some of the buffering when the
 // initial header contains both a Content-Type and Content-Length.
@@ -1925,7 +1932,7 @@ func (c *conn) serve(ctx context.Context) {
 					return
 				}
 				publicErr := "400 Bad Request"
-				fmt.Fprintf(c.rwc, "HTTP/1.1 "+publicErr+errorHeaders+publicErr)
+				fmt.Fprint(c.rwc, "HTTP/1.1 "+publicErr+errorHeaders+publicErr)
 				return
 			}
 		}
@@ -2095,7 +2102,7 @@ func Error(w ResponseWriter, error string, code int) {
 func NotFound(w ResponseWriter, r *Request) { Error(w, "404 page not found", StatusNotFound) }
 
 // NotFoundHandler returns a simple request handler
-// that replies to each request with a ``404 page not found'' reply.
+// that replies to each request with a “404 page not found” reply.
 func NotFoundHandler() Handler { return HandlerFunc(NotFound) }
 
 // StripPrefix returns a handler that serves HTTP requests by removing the
@@ -2388,7 +2395,7 @@ func (mux *ServeMux) shouldRedirectRLocked(host, path string) bool {
 // the pattern that will match after following the redirect.
 //
 // If there is no registered handler that applies to the request,
-// Handler returns a ``page not found'' handler and an empty pattern.
+// Handler returns a “page not found” handler and an empty pattern.
 func (mux *ServeMux) Handler(r *Request) (h Handler, pattern string) {
 
 	// CONNECT requests are not canonicalized.

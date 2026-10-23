@@ -4,6 +4,18 @@
 
 // Package tls partially implements TLS 1.2, as specified in RFC 5246,
 // and TLS 1.3, as specified in RFC 8446.
+//
+// # FIPS 140-3 mode
+//
+// When the program is in [FIPS 140-3 mode], this package behaves as if only
+// SP 800-140C and SP 800-140D approved protocol versions, cipher suites,
+// signature algorithms, certificate public key types and sizes, and key
+// exchange and derivation algorithms were implemented. Others are silently
+// ignored and not negotiated, or rejected. This set may depend on the
+// algorithms supported by the FIPS 140-3 Go Cryptographic Module selected with
+// GOFIPS140, and may change across Go versions.
+//
+// [FIPS 140-3 mode]: https://go.dev/doc/security/fips140
 package tls
 
 // BUG(agl): The crypto/tls package only implements some countermeasures
@@ -12,11 +24,11 @@ package tls
 // https://www.imperialviolet.org/2013/02/04/luckythirteen.html.
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -25,8 +37,6 @@ import (
 	"net"
 	"os"
 	"strings"
-
-	circlSign "github.com/cloudflare/circl/sign"
 )
 
 // Server returns a new TLS server side connection
@@ -73,7 +83,7 @@ func (l *listener) Accept() (net.Conn, error) {
 }
 
 // NewListener creates a Listener which accepts connections from an inner
-// Listener and wraps each connection with Server.
+// Listener and wraps each connection with [Server].
 // The configuration config must be non-nil and must include
 // at least one certificate or else set GetCertificate.
 func NewListener(inner net.Listener, config *Config) net.Listener {
@@ -88,6 +98,7 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 // The configuration config must be non-nil and must include
 // at least one certificate or else set GetCertificate.
 func Listen(network, laddr string, config *Config) (net.Listener, error) {
+	// If this condition changes, consider updating http.Server.ServeTLS too.
 	if config == nil || len(config.Certificates) == 0 &&
 		config.GetCertificate == nil && config.GetConfigForClient == nil {
 		return nil, errors.New("tls: neither Certificates, GetCertificate, nor GetConfigForClient set in Config")
@@ -101,6 +112,8 @@ func Listen(network, laddr string, config *Config) (net.Listener, error) {
 
 type timeoutError struct{}
 
+var _ error = timeoutError{}
+
 func (timeoutError) Error() string   { return "tls: DialWithDialer timed out" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
@@ -111,10 +124,10 @@ func (timeoutError) Temporary() bool { return true }
 // handshake as a whole.
 //
 // DialWithDialer interprets a nil configuration as equivalent to the zero
-// configuration; see the documentation of Config for the defaults.
+// configuration; see the documentation of [Config] for the defaults.
 //
 // DialWithDialer uses context.Background internally; to specify the context,
-// use Dialer.DialContext with NetDialer set to the desired dialer.
+// use [Dialer.DialContext] with NetDialer set to the desired dialer.
 func DialWithDialer(dialer *net.Dialer, network, addr string, config *Config) (*Conn, error) {
 	return dial(context.Background(), dialer, network, addr, config)
 }
@@ -191,10 +204,10 @@ type Dialer struct {
 // Dial connects to the given network address and initiates a TLS
 // handshake, returning the resulting TLS connection.
 //
-// The returned Conn, if any, will always be of type *Conn.
+// The returned [Conn], if any, will always be of type *[Conn].
 //
 // Dial uses context.Background internally; to specify the context,
-// use DialContext.
+// use [Dialer.DialContext].
 func (d *Dialer) Dial(network, addr string) (net.Conn, error) {
 	return d.DialContext(context.Background(), network, addr)
 }
@@ -214,7 +227,7 @@ func (d *Dialer) netDialer() *net.Dialer {
 // connected, any expiration of the context will not affect the
 // connection.
 //
-// The returned Conn, if any, will always be of type *Conn.
+// The returned [Conn], if any, will always be of type *[Conn].
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	c, err := dial(ctx, d.netDialer(), network, addr, d.Config)
 	if err != nil {
@@ -224,11 +237,10 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 	return c, nil
 }
 
-// LoadX509KeyPair reads and parses a public/private key pair from a pair
-// of files. The files must contain PEM encoded data. The certificate file
-// may contain intermediate certificates following the leaf certificate to
-// form a certificate chain. On successful return, Certificate.Leaf will
-// be nil because the parsed form of the certificate is not retained.
+// LoadX509KeyPair reads and parses a public/private key pair from a pair of
+// files. The files must contain PEM encoded data. The certificate file may
+// contain intermediate certificates following the leaf certificate to form a
+// certificate chain. On successful return, Certificate.Leaf will be populated.
 func LoadX509KeyPair(certFile, keyFile string) (Certificate, error) {
 	certPEMBlock, err := os.ReadFile(certFile)
 	if err != nil {
@@ -242,8 +254,7 @@ func LoadX509KeyPair(certFile, keyFile string) (Certificate, error) {
 }
 
 // X509KeyPair parses a public/private key pair from a pair of
-// PEM encoded data. On successful return, Certificate.Leaf will be nil because
-// the parsed form of the certificate is not retained.
+// PEM encoded data. On successful return, Certificate.Leaf will be populated.
 func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 	fail := func(err error) (Certificate, error) { return Certificate{}, err }
 
@@ -297,6 +308,7 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 	if err != nil {
 		return fail(err)
 	}
+	cert.Leaf = x509Cert
 
 	cert.PrivateKey, err = parsePrivateKey(keyDERBlock.Bytes)
 	if err != nil {
@@ -309,7 +321,7 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 		if !ok {
 			return fail(errors.New("tls: private key type does not match public key type"))
 		}
-		if pub.N.Cmp(priv.N) != 0 {
+		if !priv.PublicKey.Equal(pub) {
 			return fail(errors.New("tls: private key does not match public key"))
 		}
 	case *ecdsa.PublicKey:
@@ -317,7 +329,7 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 		if !ok {
 			return fail(errors.New("tls: private key type does not match public key type"))
 		}
-		if pub.X.Cmp(priv.X) != 0 || pub.Y.Cmp(priv.Y) != 0 {
+		if !priv.PublicKey.Equal(pub) {
 			return fail(errors.New("tls: private key does not match public key"))
 		}
 	case ed25519.PublicKey:
@@ -325,23 +337,17 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 		if !ok {
 			return fail(errors.New("tls: private key type does not match public key type"))
 		}
-		if !bytes.Equal(priv.Public().(ed25519.PublicKey), pub) {
+		if !priv.Public().(ed25519.PublicKey).Equal(pub) {
 			return fail(errors.New("tls: private key does not match public key"))
 		}
-	// [UTLS SECTION BEGINS]
-	// Ported from cloudflare/go
-	case circlSign.PublicKey:
-		priv, ok := cert.PrivateKey.(circlSign.PrivateKey)
+	case *mldsa.PublicKey:
+		priv, ok := cert.PrivateKey.(*mldsa.PrivateKey)
 		if !ok {
 			return fail(errors.New("tls: private key type does not match public key type"))
 		}
-		pkBytes, err := priv.Public().(circlSign.PublicKey).MarshalBinary()
-		pkBytes2, err2 := pub.MarshalBinary()
-
-		if err != nil || err2 != nil || !bytes.Equal(pkBytes, pkBytes2) {
+		if !priv.PublicKey().Equal(pub) {
 			return fail(errors.New("tls: private key does not match public key"))
 		}
-	// [UTLS SECTION ENDS]
 	default:
 		return fail(errors.New("tls: unknown public key algorithm"))
 	}
@@ -353,20 +359,21 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 // PKCS #1 private keys by default, while OpenSSL 1.0.0 generates PKCS #8 keys.
 // OpenSSL ecparam generates SEC1 EC private keys for ECDSA. We try all three.
 func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
-	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+	key, err := x509.ParsePKCS8PrivateKey(der)
+	pkcs8Err := err // Return the PKCS#8 error if all parsing attempts fail.
+	if err != nil {
+		key, err = x509.ParsePKCS1PrivateKey(der)
+	}
+	if err != nil {
+		key, err = x509.ParseECPrivateKey(der)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tls: failed to parse private key: %w", pkcs8Err)
+	}
+	switch key := key.(type) {
+	case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey, *mldsa.PrivateKey:
 		return key, nil
+	default:
+		return nil, errors.New("tls: found unknown private key type in PKCS#8 wrapping")
 	}
-	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
-		switch key := key.(type) {
-		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey, circlSign.PrivateKey:
-			return key, nil
-		default:
-			return nil, errors.New("tls: found unknown private key type in PKCS#8 wrapping")
-		}
-	}
-	if key, err := x509.ParseECPrivateKey(der); err == nil {
-		return key, nil
-	}
-
-	return nil, errors.New("tls: failed to parse private key")
 }

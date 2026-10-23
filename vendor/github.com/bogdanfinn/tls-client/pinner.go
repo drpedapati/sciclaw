@@ -3,6 +3,7 @@ package tls_client
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	http "github.com/bogdanfinn/fhttp"
@@ -53,8 +54,8 @@ func (cp *certificatePinner) init() error {
 
 		pinnedHost := certificatePinStorage.Lookup(host)
 
-		if pinnedHost != nil {
-			// another pinner instance already initialized the host. we do not need to pin again
+		if pinnedHost != nil && reflect.DeepEqual(pinnedHost.Sha256Pins, pinsByHost) {
+			// another pinner instance with the same Pins already initialized the host. we do not need to pin again
 			continue
 		}
 
@@ -82,17 +83,19 @@ func (cp *certificatePinner) Pin(conn *tls.UConn, host string) error {
 		return nil
 	}
 
+	var actualPins []string
+
 	for _, peerCert := range conn.ConnectionState().PeerCertificates {
 		peerPin := hpkp.Fingerprint(peerCert)
+		actualPins = append(actualPins, peerPin)
 
 		if pinnedHost.Matches(peerPin) {
 			validPin = true
-			break
 		}
 	}
 
 	if !validPin {
-		return ErrBadPinDetected
+		return fmt.Errorf("%w, found pins: %v", ErrBadPinDetected, actualPins)
 	}
 
 	return nil
