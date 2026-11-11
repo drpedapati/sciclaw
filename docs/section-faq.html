@@ -4,18 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FAQ | sciClaw</title>
+    <!-- Homepage section fragment, not a standalone page: kept reachable for
+         deep links from other pages, but excluded from search results. -->
+    <meta name="robots" content="noindex, follow" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="index.html">
+        <a class="brand" href="/">
           <span class="brand-dot" aria-hidden="true"></span>
           sciClaw
         </a>
         <nav class="nav-links">
-          <a class="util" href="index.html">&larr; Home</a>
-          <a class="util" href="docs.html">Documentation</a>
+          <a class="util" href="/">&larr; Home</a>
+          <a class="util" href="/docs">Documentation</a>
         </nav>
       </div>
     </header>
@@ -50,8 +53,8 @@
         <h2>Ready to streamline your research workflow?</h2>
         <p>Install sciClaw and start chatting in under a minute.</p>
         <div class="btn-row">
-          <a class="btn btn-primary" href="section-install.html">Install sciClaw</a>
-          <a class="btn btn-secondary" href="docs.html">Read the documentation</a>
+          <a class="btn btn-primary" href="/section-install">Install sciClaw</a>
+          <a class="btn btn-secondary" href="/docs">Read the documentation</a>
           <a class="btn btn-secondary" href="https://github.com/drpedapati/sciclaw" target="_blank" rel="noopener noreferrer">View on GitHub</a>
         </div>
       </section>

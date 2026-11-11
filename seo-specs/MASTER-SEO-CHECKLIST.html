@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Master SEO Checklist — All Properties</title>
+<style>
+  :root{--ink:#141c2b;--muted:#5b6577;--line:#e3e7ee;--accent:#2f5bd6;--bg:#f4f6fa;--paper:#fff;
+    --good:#1c7a3e;--good-s:#e7f6ec;--warn:#8a5a00;--warn-s:#fff6e6;--bad:#b3261e;--bad-s:#fdecea;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1080px;margin:26px auto;padding:0 20px}
+  header{background:linear-gradient(135deg,#1b2740,#2f5bd6);color:#fff;border-radius:16px;padding:24px 28px;margin-bottom:16px;
+    box-shadow:0 8px 28px rgba(30,50,110,.16)}
+  .brand{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#bcd0ff;font-weight:700}
+  h1{margin:.35em 0 .3em;font-size:23px}
+  .sub{font-size:14.5px;line-height:1.5;color:#eaf0ff;max-width:78ch}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpi{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .kpi .v{font-size:20px;font-weight:800;margin-top:2px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin-bottom:16px;
+    box-shadow:0 6px 24px rgba(20,30,60,.05)}
+  h2{font-size:13.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;
+    padding-bottom:9px;border-bottom:1px solid var(--line)}
+  h2 .n{color:var(--accent)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:7px 6px;border-bottom:2px solid var(--line)}
+  td{padding:7px 6px;border-bottom:1px solid var(--line);color:#39445a;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  .y{color:var(--good);font-weight:800}
+  .n{color:var(--bad);font-weight:800}
+  .q{color:var(--warn);font-weight:800}
+  .site{font-weight:700;color:var(--ink)}
+  .row-bad{background:#fff6f5}
+  .row-warn{background:#fffdf5}
+  .chk{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:start}
+  .chk:last-child{border-bottom:none}
+  .box{width:17px;height:17px;border:2px solid #b9c2d4;border-radius:5px;margin-top:2px}
+  .box.done{background:var(--good);border-color:var(--good)}
+  .chk h4{margin:0 0 2px;font-size:13.5px;font-weight:650}
+  .chk p{margin:0;font-size:12.5px;color:#4a5670}
+  .tag{font-size:9.5px;font-weight:800;text-transform:uppercase;padding:2px 7px;border-radius:20px;margin-left:6px;white-space:nowrap}
+  .t-p0{background:var(--bad-s);color:var(--bad)} .t-p1{background:var(--warn-s);color:var(--warn)} .t-p2{background:#eef2fc;color:var(--accent)}
+  .callout{border-radius:10px;padding:12px 15px;font-size:13px;margin-top:11px}
+  .good{background:var(--good-s);border:1px solid #bfe6ca;color:#15532b}
+  .warn{background:var(--warn-s);border:1px solid #f0dcae;color:#7a5600}
+  .bad{background:var(--bad-s);border:1px solid #f2c4c0;color:#8c2018}
+  code{background:#f0f2f7;border-radius:4px;padding:1px 5px;font-size:11.5px}
+  .note{color:var(--muted);font-size:11.5px;margin-top:12px}
+  @media(max-width:720px){.kpis{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Master SEO Checklist · audited live 2026-07-25</div>
+    <h1>Every property, every indexing requirement — what's done and what's missing</h1>
+    <div class="sub">Built because things get skipped. Every cell below was <b>verified live today</b> (fetched robots.txt, sitemap.xml, 404 behaviour, and Search Console status per property) — not from memory. <b>Two sites have serious gaps, including the FigsHub hub itself.</b></div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><div class="l">Properties</div><div class="v">8</div></div>
+    <div class="kpi"><div class="l">Fully healthy</div><div class="v" style="color:var(--good)">5</div></div>
+    <div class="kpi"><div class="l">Broken / incomplete</div><div class="v" style="color:var(--bad)">2</div></div>
+    <div class="kpi"><div class="l">Minor gaps</div><div class="v" style="color:var(--warn)">1</div></div>
+  </div>
+
+  <div class="card">
+    <h2>⚠ The two that were skipped</h2>
+    <div class="callout bad"><b>atomicqms.com — every D1–D7 defect is still live.</b> No <code>robots.txt</code> (returns the SPA page), no <code>sitemap.xml</code> (returns the SPA page), <b>soft-404s</b> (unknown paths return 200 + homepage), <code>og:url</code> hardcoded to the apex while the site serves on www, and <b>no sitemap submitted in Search Console at all</b>. This site has never had the SEO layer applied.</div>
+    <div class="callout bad" style="margin-top:8px"><b>figshub.com — the hub is half-done, and it's the "root" you mentioned forgetting.</b> <code>robots.txt</code> exists and <i>promises</i> a sitemap at <code>/sitemap.xml</code> — but that URL <b>returns the HTML page, not a sitemap</b>. So: no working sitemap, none submitted in GSC, and the homepage has <b>no canonical and no OG/Twitter tags at all</b> (only title + description + viewport). The portfolio hub is the least optimised page in the portfolio.</div>
+  </div>
+
+  <div class="card">
+    <h2>Status matrix &mdash; <span class="n">verified live today</span></h2>
+    <table>
+      <tr>
+        <th>Property</th><th>GSC verified</th><th>robots.txt</th><th>sitemap.xml</th><th>Sitemap in GSC</th><th>Real 404s</th><th>Canonical + OG</th><th>Status</th>
+      </tr>
+      <tr>
+        <td class="site">sciencefigs.com</td><td class="y">✔</td><td class="y">✔</td><td class="y">✔</td>
+        <td class="y">✔ Success · 17 pages</td><td class="y">✔</td><td class="y">✔</td><td>Healthy — flagship</td>
+      </tr>
+      <tr>
+        <td class="site">medicalfigs.com</td><td class="y">✔</td><td class="y">✔</td><td class="y">✔ 21 URLs</td>
+        <td class="y">✔ re-submitted 7/22</td><td class="y">✔</td><td class="y">✔</td><td>Healthy — 11 new pages live</td>
+      </tr>
+      <tr>
+        <td class="site">qmsfigs.com</td><td class="y">✔</td><td class="y">✔</td><td class="y">✔</td>
+        <td class="y">✔ re-submitted 7/22</td><td class="y">✔</td><td class="y">✔</td><td>Healthy — fishbone/turtle live</td>
+      </tr>
+      <tr>
+        <td class="site">teachfigs.com</td><td class="y">✔</td><td class="y">✔</td><td class="y">✔ 11 URLs</td>
+        <td class="y">✔ Success · 11 pages</td><td class="y">✔</td><td class="y">✔</td><td>Healthy — thin content only</td>
+      </tr>
+      <tr class="row-warn">
+        <td class="site">sciclaw.dev</td><td class="y">✔ new</td><td class="y">✔</td><td class="y">✔ 8 URLs</td>
+        <td class="y">✔ Success · 8 pages</td><td class="q">?</td><td class="q">partial</td><td><b>CORRECTED 7/25</b> — <code>/section-install.html</code> has no canonical/desc/OG and <b>no h1</b></td>
+      </tr>
+      <tr class="row-bad">
+        <td class="site">automacy.org</td><td class="y">✔ new</td><td class="y">✔</td><td class="y">✔ 3 URLs</td>
+        <td class="y">✔ Success 7/25</td><td class="y">✔</td><td class="n">✘ head only, <b>no body</b></td><td><b>CORRECTED 7/25 — no crawler-visible body</b></td>
+      </tr>
+      <tr class="row-bad">
+        <td class="site">figshub.com</td><td class="y">✔ new</td><td class="y">✔</td><td class="n">✘ returns HTML</td>
+        <td class="n">✘ none</td><td class="q">?</td><td class="n">✘ no canonical, no OG</td><td><b>BROKEN — the hub</b></td>
+      </tr>
+      <tr class="row-bad">
+        <td class="site">atomicqms.com</td><td class="y">✔</td><td class="n">✘ returns HTML</td><td class="n">✘ returns HTML</td>
+        <td class="n">✘ none</td><td class="n">✘ soft-404</td><td class="n">✘ apex/www split</td><td><b>BROKEN — never done</b></td>
+      </tr>
+    </table>
+    <div class="callout good">✔ The five Figs properties that went through the D1–D7 remediation are all clean. The gaps are exactly the sites that <b>never went through it</b> (atomicqms) or were <b>only partly done</b> (figshub).</div>
+    <div class="callout bad" style="margin-top:8px"><b>⚠ Two corrections to this table, found 2026-07-25 by a follow-up audit — my earlier pass got these wrong:</b>
+      <ol style="margin:8px 0 0;padding-left:20px">
+        <li><b>automacy.org has no crawler-visible body.</b> I originally marked it healthy because robots/sitemap/canonical/titles all check out. But plain HTTP fetches of <code>/</code>, <code>/blog</code>, and <code>/cheatsheet-builder</code> return a correct <code>&lt;head&gt;</code> and an <b>empty body</b> — the entire 15-section guide is JavaScript-injected. Same G1 defect class as the sister sites. <b>This makes the /guide/* split pointless until fixed</b>, and likely explains weak indexing. Needs a <code>curl -I</code> confirm.</li>
+        <li><b>sciclaw.dev's clean head is not sitewide.</b> I checked only the homepage and generalised. <code>/section-install.html</code> — the primary "Getting started" CTA — has <b>only title + viewport</b>: no canonical, no description, no OG/Twitter, no robots, and <b>no &lt;h1&gt;</b> (starts at h2). That's a bigger defect than the sitemap gap it was scoped around.</li>
+      </ol>
+      <b>Lesson for the pre-flight:</b> check <i>every</i> route, not a representative one — and always diff raw-fetch vs rendered view.</div>
+  </div>
+
+  <div class="card">
+    <h2>Fix checklist &mdash; <span class="n">in priority order</span></h2>
+
+    <div class="chk"><div class="box" style="background:#cfd6e2;border-color:#cfd6e2"></div><div>
+      <h4 style="color:var(--muted)">1. atomicqms.com — apply the full SEO layer <span class="tag" style="background:#eef0f4;color:var(--muted)">DEFERRED by Ernie 7/25</span></h4>
+      <p style="color:var(--muted)"><s>Same D1–D7 fix list already shipped for the Figs sites: real <code>robots.txt</code>, generated <code>sitemap.xml</code>, true 404s, per-route canonical/title/description, fix <code>og:url</code> (apex vs www), apex→www 301.</s> <b>Skipped for now — deliberate decision, not an oversight.</b> All defects remain live; revisit when atomicqms becomes a priority. Reference when resumed: <code>dev-seo-spec.md</code>.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>2. figshub.com — make the sitemap actually exist <span class="tag t-p0">P0 · engineer</span></h4>
+      <p><code>/sitemap.xml</code> currently serves HTML. Generate a real one (hub + any sub-pages), then add canonical + OG/Twitter tags to the homepage — it has none. This is the portfolio's front door.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>3. Submit figshub sitemap in GSC <span class="tag t-p1">P1 · me</span></h4>
+      <p>Blocked until #2 ships — can't submit a sitemap that doesn't exist. I'll do it the moment it's live. (atomicqms deferred.)</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>4. sciclaw.dev — add 2 missing pages to sitemap <span class="tag t-p1">P1 · engineer</span></h4>
+      <p><code>/biography.html</code> and <code>/section-install.html</code> are linked in the nav but absent from <code>sitemap.xml</code>. The install page is a primary CTA.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>5. automacy.org — un-hide the cheatsheet + fix dead nav <span class="tag t-p1">P1 · engineer</span></h4>
+      <p><code>/cheatsheet-builder</code> is <code>noindex</code> but targets <code>macbook shortcuts pdf</code> (390/mo, diff 9). Add an indexable landing page. Also <code>/reference</code> returns nothing — build or unlink it.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>6. Verify automacy sitemap gets read <span class="tag t-p2">P2 · me</span></h4>
+      <p>Submitted 7/25, showed "Couldn't fetch" (normal initial state). File verified valid. Re-check in 24–48h.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>7. Build the P1 content pages already drafted <span class="tag t-p2">P2 · engineer</span></h4>
+      <p>Copy is written and waiting: MedicalFigs BioRender pages (live ✔), sciClaw "Elicit alternative", Automacy "Mac keyboard shortcuts". See <code>P1-page-copy-*.md</code>.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>8. QMSFigs P1 copy — still to write <span class="tag t-p2">P2 · me</span></h4>
+      <p>Fishbone + turtle gallery pages shipped, but the written copy plan for the remaining QMS diagram types (SIPOC, CAPA, swimlane) hasn't been produced yet.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>9. OpenSEO rank tracking <span class="tag t-p2">P2 · me</span></h4>
+      <p>Still not set up. Access session now extended to 1 week, so the login loop is fixed — can be done next session without interruption.</p>
+    </div></div>
+
+    <div class="chk"><div class="box"></div><div>
+      <h4>10. Older loose ends <span class="tag t-p2">P2</span></h4>
+      <p>Plausible: register the 3 sister sites under apex names + re-issue the API key (<b>and rotate the key exposed in chat</b>). Two minor GSC canonical/robots items on sciencefigs + medicalfigs.</p>
+    </div></div>
+  </div>
+
+  <div class="card">
+    <h2>Standing pre-flight — <span class="n">run this on every new site</span></h2>
+    <p style="margin:10px 0 0;font-size:13.5px">The reason things get skipped is that there's no fixed list. Here it is — <b>10 checks, in order</b>. A site isn't "done" until all 10 pass.</p>
+    <table>
+      <tr><th>#</th><th>Check</th><th>How to verify</th></tr>
+      <tr><td>1</td><td>Apex → www 301 (or the reverse — pick one)</td><td>Fetch both, confirm one redirects</td></tr>
+      <tr><td>2</td><td><code>robots.txt</code> returns <b>text/plain</b> + Sitemap line</td><td>Fetch it — if it returns HTML, it's broken</td></tr>
+      <tr><td>3</td><td><code>sitemap.xml</code> returns <b>application/xml</b>, same-domain URLs only</td><td>Fetch it — count <code>&lt;loc&gt;</code> entries</td></tr>
+      <tr><td>4</td><td>Unknown path returns a <b>true 404</b></td><td>Fetch <code>/zzz-nope-123</code></td></tr>
+      <tr><td>5</td><td>Per-route <b>canonical</b> (self, correct host)</td><td>Raw HTML, pre-JS</td></tr>
+      <tr><td>6</td><td>Unique <b>title ≤60</b> + <b>description ≤155</b> per route</td><td>Raw HTML, pre-JS</td></tr>
+      <tr><td>7</td><td>Exactly one <b>&lt;h1&gt;</b> + body content in <b>initial HTML</b></td><td>Critical for SPAs — the #1 recurring defect</td></tr>
+      <tr><td>8</td><td><b>OG + Twitter</b> tags, and JSON-LD where relevant</td><td>Raw HTML</td></tr>
+      <tr><td>9</td><td>GSC: <b>property verified</b> (Domain type, Cloudflare DNS auto-verify)</td><td>Search Console</td></tr>
+      <tr><td>10</td><td>GSC: <b>sitemap submitted + status Success</b></td><td>Search Console → Sitemaps</td></tr>
+    </table>
+    <div class="callout warn">⚠ <b>#7 is the one that keeps biting.</b> These are client-rendered SPAs — a page can look perfect in a browser and be completely empty to Google. Always check the <b>raw, pre-JavaScript HTML</b>, never the rendered view.</div>
+    <div class="note">All statuses verified live 2026-07-25 by fetching each file directly and checking each Search Console property (owner: atomicqms@gmail.com). Cells marked "?" were not tested this pass. Re-run the 10-point list after any deploy.</div>
+  </div>
+</div>
+</body>
+</html>

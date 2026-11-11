@@ -49,3 +49,15 @@ jobs:
 
       - name: Run go test
         run: go test ./...
+
+  # docs/ is the Cloudflare Pages publish root — anything merged there is live
+  # on sciclaw.dev immediately. This guards against internal documents (RFCs,
+  # ops runbooks, correspondence, drafts) being published by accident.
+  docs-publishable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check docs/ contains only publishable files
+        run: python3 scripts/check-docs-publishable.py
