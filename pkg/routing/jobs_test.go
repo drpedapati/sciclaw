@@ -1278,3 +1278,76 @@ func findRecordByID(t *testing.T, records []JobRecord, id string) JobRecord {
 	t.Fatalf("expected job record %q in %#v", id, records)
 	return JobRecord{}
 }
+
+func TestParseAtomicQMSCommand(t *testing.T) {
+	tests := []struct {
+		content    string
+		wantAction string
+		wantOK     bool
+	}{
+		{"/atomicqms connect", "connect", true},
+		{"  /AtomicQMS   Status ", "status", true},
+		{"<@123456> /atomicqms disconnect", "disconnect", true},
+		{"/atomicqms", "", true},
+		{"/atomicqms connect now", "connect now", true},
+		{"/atomicqmsconnect", "", false},
+		{"please /atomicqms connect", "", false},
+		{"/btw /atomicqms connect", "", false},
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		action, ok := ParseAtomicQMSCommand(bus.InboundMessage{Content: tt.content})
+		if action != tt.wantAction || ok != tt.wantOK {
+			t.Errorf("ParseAtomicQMSCommand(%q) = %q, %v; want %q, %v", tt.content, action, ok, tt.wantAction, tt.wantOK)
+		}
+	}
+}
+
+func TestDispatcherAnswersAtomicQMSCommandWithoutJob(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	runner := &fakeJobRunner{started: make(chan struct{})}
+	jm, err := NewJobManager(filepathJoin(t.TempDir(), "jobs.json"), config.JobsConfig{
+		Enabled:             true,
+		MaxConcurrent:       2,
+		DiscordAsyncDefault: true,
+	}, mb, &fakeProgressMessenger{}, func(target LoopTarget) (JobRunner, error) {
+		return runner, nil
+	})
+	if err != nil {
+		t.Fatalf("NewJobManager: %v", err)
+	}
+	d := NewDispatcher(mb, nil, nil)
+	d.SetJobManager(jm)
+	var got []string
+	d.SetCommandHandler(func(_ context.Context, msg bus.InboundMessage, action string) {
+		got = append(got, msg.SenderID+" "+action)
+	})
+
+	target := LoopTarget{Workspace: "/tmp/work", Runtime: RuntimeProfile{Mode: config.ModeCloud}}
+	d.dispatchResolved(context.Background(), dispatchTask{target: target, msg: bus.InboundMessage{
+		Channel: "discord", ChatID: "room-1", SenderID: "1001", Content: "/atomicqms connect",
+	}})
+	if len(got) != 1 || got[0] != "1001 connect" {
+		t.Fatalf("command handler calls = %v", got)
+	}
+	select {
+	case <-runner.started:
+		t.Fatal("/atomicqms started an agent job")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	d.dispatchResolved(context.Background(), dispatchTask{target: target, msg: bus.InboundMessage{
+		Channel: "discord", ChatID: "room-1", SenderID: "1001", Content: "summarize the open CAPAs",
+	}})
+	select {
+	case <-runner.started:
+	case <-time.After(time.Second):
+		t.Fatal("ordinary message did not start a job")
+	}
+	if len(got) != 1 {
+		t.Fatalf("ordinary message reached the command handler: %v", got)
+	}
+	waitForNoActiveJobs(t, jm, target.key())
+}

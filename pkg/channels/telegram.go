@@ -206,6 +206,19 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	return sendTelegramPlainChunks(ctx, c.bot, chatID, placeholderID, content)
 }
 
+// SendDirect sends plain text to the user's private chat, whose chat ID is the
+// user ID. It fails if the user has not started a chat with the bot.
+func (c *TelegramChannel) SendDirect(ctx context.Context, userID, content string) error {
+	if !c.IsRunning() {
+		return fmt.Errorf("telegram bot not running")
+	}
+	chatID, err := parseChatID(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+	return sendTelegramPlainChunks(ctx, c.bot, chatID, nil, content)
+}
+
 func (c *TelegramChannel) sendFile(ctx context.Context, chatID int64, attachment bus.OutboundAttachment) error {
 	if c.sendFileFn != nil {
 		return c.sendFileFn(ctx, chatID, attachment)

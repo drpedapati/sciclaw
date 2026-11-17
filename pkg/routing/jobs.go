@@ -1315,6 +1315,21 @@ func classifyJobRequest(msg bus.InboundMessage) parsedJobRequest {
 	return out
 }
 
+// ParseAtomicQMSCommand recognizes a typed `/atomicqms <action>` with the same
+// normalization classifyJobRequest applies to `/btw`. It returns the lowercased
+// action ("" when none was given) and whether the message is the command.
+func ParseAtomicQMSCommand(msg bus.InboundMessage) (string, bool) {
+	content := compactJobLine(discordMentionPattern.ReplaceAllString(strings.TrimSpace(msg.Content), ""))
+	fields := strings.Fields(strings.ToLower(content))
+	if len(fields) == 0 || fields[0] != "/atomicqms" {
+		return "", false
+	}
+	if len(fields) == 1 {
+		return "", true
+	}
+	return strings.Join(fields[1:], " "), true
+}
+
 func fallbackAskSummary(summary string) string {
 	if strings.TrimSpace(summary) == "" {
 		return "Working request"

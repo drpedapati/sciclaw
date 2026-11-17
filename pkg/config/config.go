@@ -55,6 +55,7 @@ type Config struct {
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	Devices   DevicesConfig   `json:"devices"`
 	Routing   RoutingConfig   `json:"routing"`
+	AtomicQMS AtomicQMSConfig `json:"atomicqms,omitzero"`
 	mu        sync.RWMutex
 }
 
@@ -295,6 +296,58 @@ type PubMedToolsConfig struct {
 type ToolsConfig struct {
 	Web    WebToolsConfig    `json:"web"`
 	PubMed PubMedToolsConfig `json:"pubmed"`
+	MCP    MCPConfig         `json:"mcp,omitzero"`
+}
+
+// MCPServerConfig defines one MCP server reached over streamable HTTP.
+type MCPServerConfig struct {
+	Enabled bool `json:"enabled"`
+	// Type is "http" (streamable HTTP request-response, the default) or "sse"
+	// (streamable HTTP with the standalone SSE listener enabled).
+	Type string `json:"type,omitempty"`
+	URL  string `json:"url"`
+	// Auth names a per-user credential sent as a bearer token on every call,
+	// chosen from the sender of the current message. "atomicqms" is the only
+	// supported value; empty means no Authorization header.
+	Auth string `json:"auth,omitempty"`
+}
+
+// MCPConfig defines the MCP servers whose tools are added to the agent.
+type MCPConfig struct {
+	Enabled bool                       `json:"enabled" env:"PICOCLAW_TOOLS_MCP_ENABLED"`
+	Servers map[string]MCPServerConfig `json:"servers,omitempty"`
+}
+
+// AtomicQMSConfig configures `/atomicqms connect`, which links a chat user to
+// their AtomicQMS (Gitea) account through a public OAuth client.
+type AtomicQMSConfig struct {
+	BaseURL  string `json:"base_url,omitempty" env:"PICOCLAW_ATOMICQMS_BASE_URL"`
+	ClientID string `json:"client_id,omitempty" env:"PICOCLAW_ATOMICQMS_CLIENT_ID"`
+	// RedirectURL is the callback registered on the OAuth app. It must reach
+	// `sciclaw web` at /atomicqms/callback. Defaults to WebURL + that path.
+	RedirectURL string `json:"redirect_url,omitempty" env:"PICOCLAW_ATOMICQMS_REDIRECT_URL"`
+	// WebURL is where the gateway reaches `sciclaw web` over loopback.
+	WebURL string `json:"web_url,omitempty" env:"PICOCLAW_ATOMICQMS_WEB_URL"`
+}
+
+const AtomicQMSCallbackPath = "/atomicqms/callback"
+
+func (c AtomicQMSConfig) Configured() bool {
+	return strings.TrimSpace(c.BaseURL) != "" && strings.TrimSpace(c.ClientID) != ""
+}
+
+func (c AtomicQMSConfig) EffectiveWebURL() string {
+	if u := strings.TrimRight(strings.TrimSpace(c.WebURL), "/"); u != "" {
+		return u
+	}
+	return "http://127.0.0.1:4142"
+}
+
+func (c AtomicQMSConfig) EffectiveRedirectURL() string {
+	if u := strings.TrimSpace(c.RedirectURL); u != "" {
+		return u
+	}
+	return c.EffectiveWebURL() + AtomicQMSCallbackPath
 }
 
 func DefaultConfig() *Config {

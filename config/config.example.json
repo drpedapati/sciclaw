@@ -133,6 +133,17 @@
     },
     "pubmed": {
       "api_key": "YOUR_NCBI_API_KEY"
+    },
+    "mcp": {
+      "enabled": false,
+      "servers": {
+        "atomicqms": {
+          "enabled": true,
+          "type": "http",
+          "url": "http://127.0.0.1:8080/mcp",
+          "auth": "atomicqms"
+        }
+      }
     }
   },
   "heartbeat": {
@@ -146,5 +157,11 @@
   "gateway": {
     "host": "0.0.0.0",
     "port": 18790
+  },
+  "atomicqms": {
+    "base_url": "",
+    "client_id": "",
+    "redirect_url": "",
+    "web_url": "http://127.0.0.1:4142"
   }
 }

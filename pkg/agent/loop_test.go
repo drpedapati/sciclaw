@@ -1843,3 +1843,38 @@ func TestToolResult_UserFacingToolDoesSendMessage(t *testing.T) {
 		t.Errorf("Expected 'Command output: hello world', got: %s", response)
 	}
 }
+
+// senderKeyTool records the sender key a tool sees during a turn.
+type senderKeyTool struct{ got string }
+
+func (t *senderKeyTool) Name() string        { return "sender_key_probe" }
+func (t *senderKeyTool) Description() string { return "probe" }
+func (t *senderKeyTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{"type": "object"}
+}
+func (t *senderKeyTool) Execute(ctx context.Context, _ map[string]interface{}) *tools.ToolResult {
+	t.got = tools.SenderKeyFromContext(ctx)
+	return tools.NewToolResult("ok")
+}
+
+func TestToolsSeeChannelScopedSenderKey(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	provider := &scriptedProvider{responses: []*providers.LLMResponse{
+		{ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "sender_key_probe", Arguments: map[string]interface{}{}}}},
+		{Content: "done"},
+	}}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
+	probe := &senderKeyTool{}
+	al.RegisterTool(probe)
+
+	if _, err := al.processMessage(context.Background(), bus.InboundMessage{
+		Channel: "discord", ChatID: "room-1", SenderID: "1001", SessionKey: "discord:room-1", Content: "check",
+	}); err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	// /atomicqms stores credentials under the same "<channel>:<sender_id>".
+	if probe.got != "discord:1001" {
+		t.Fatalf("sender key = %q, want discord:1001", probe.got)
+	}
+}
