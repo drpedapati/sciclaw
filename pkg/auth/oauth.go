@@ -91,6 +91,25 @@ type OAuthProviderConfig struct {
 	ClientID string
 	Scopes   string
 	Port     int
+	// AuthorizeURL and TokenURL override the endpoints derived from Issuer
+	// (Issuer+"/authorize" and Issuer+"/oauth/token") for providers that use
+	// other paths.
+	AuthorizeURL string
+	TokenURL     string
+}
+
+func (cfg OAuthProviderConfig) authorizeEndpoint() string {
+	if cfg.AuthorizeURL != "" {
+		return cfg.AuthorizeURL
+	}
+	return cfg.Issuer + "/authorize"
+}
+
+func (cfg OAuthProviderConfig) tokenEndpoint() string {
+	if cfg.TokenURL != "" {
+		return cfg.TokenURL
+	}
+	return cfg.Issuer + "/oauth/token"
 }
 
 func OpenAIOAuthConfig() OAuthProviderConfig {
@@ -350,7 +369,7 @@ func RefreshAccessToken(cred *AuthCredential, cfg OAuthProviderConfig) (*AuthCre
 		"scope":         {"openid profile email"},
 	}
 
-	resp, err := authPostForm(cfg.Issuer+"/oauth/token", data)
+	resp, err := authPostForm(cfg.tokenEndpoint(), data)
 	if err != nil {
 		return nil, fmt.Errorf("refreshing token: %w", err)
 	}
@@ -378,7 +397,7 @@ func buildAuthorizeURL(cfg OAuthProviderConfig, pkce PKCECodes, state, redirectU
 		"code_challenge_method": {"S256"},
 		"state":                 {state},
 	}
-	return cfg.Issuer + "/authorize?" + params.Encode()
+	return cfg.authorizeEndpoint() + "?" + params.Encode()
 }
 
 func exchangeCodeForTokens(cfg OAuthProviderConfig, code, codeVerifier, redirectURI string) (*AuthCredential, error) {
@@ -390,7 +409,7 @@ func exchangeCodeForTokens(cfg OAuthProviderConfig, code, codeVerifier, redirect
 		"code_verifier": {codeVerifier},
 	}
 
-	resp, err := authPostForm(cfg.Issuer+"/oauth/token", data)
+	resp, err := authPostForm(cfg.tokenEndpoint(), data)
 	if err != nil {
 		return nil, fmt.Errorf("exchanging code for tokens: %w", err)
 	}
