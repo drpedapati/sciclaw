@@ -1,0 +1,10 @@
+=== RUN   TestAtomicQMSEndToEnd
+    atomicqms_e2e_test.go:203: replayed callback rejected
+    atomicqms_e2e_test.go:219: Gitea access log: - qmsuser [17/Nov/2026:11:47:52 +0000] "GET /api/v1/repos/qmsuser/qms-docs/issues/1 
+    atomicqms_e2e_test.go:233: write with issued token: 403 {"message":"token does not have at least one of required scope(s), required=[write:issue], token scope=read:issue,read:repository,read:user","url":"http://127.0.0.1:40441/api/swagger"}
+    atomicqms_e2e_test.go:258: expiring credential refreshed once
+    atomicqms_e2e_test.go:275: 401 from gitea-mcp triggered one refresh and a successful retry
+    atomicqms_e2e_test.go:312: no issued token in: gateway.log, web.log, gitea-mcp.log, gitea log, chat, DMs, model input
+--- PASS: TestAtomicQMSEndToEnd (5.73s)
+PASS
+ok  	github.com/sipeed/picoclaw/cmd/picoclaw	5.734s
