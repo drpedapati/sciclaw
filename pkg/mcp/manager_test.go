@@ -209,3 +209,19 @@ func TestManagerRejectsUnknownAuth(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestManagerSessionOutlivesCallContext(t *testing.T) {
+	srv := newAuthServer(t, map[string]string{"tok-a": "alice"})
+	m := newTestManager(t, srv, &tokenStore{tokens: map[string]string{"discord:a": "tok-a"}})
+
+	// Each agent job runs under its own cancellable context; the cached
+	// session must not die with the first one.
+	jobCtx, cancel := context.WithCancel(context.Background())
+	if _, err := m.CallTool(jobCtx, "atomicqms", "whoami", "discord:a", map[string]any{}); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	cancel()
+	if got, err := callWhoami(t, m, "discord:a"); err != nil || got != "alice" {
+		t.Fatalf("call after first job context ended = %q, %v", got, err)
+	}
+}

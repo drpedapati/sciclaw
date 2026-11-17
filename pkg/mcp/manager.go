@@ -226,7 +226,9 @@ func (s *server) sessionFor(ctx context.Context, senderKey string) (*mcp.ClientS
 	if session := s.sessions[senderKey]; session != nil {
 		return session, nil
 	}
-	session, err := connect(ctx, s.cfg, &bearerTransport{
+	// The session is cached across agent jobs, so it must not be bound to
+	// this call's (job-scoped, cancellable) context.
+	session, err := connect(context.WithoutCancel(ctx), s.cfg, &bearerTransport{
 		base:      http.DefaultTransport,
 		senderKey: senderKey,
 		tokens:    s.tokens,

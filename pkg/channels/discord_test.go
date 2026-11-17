@@ -14,6 +14,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/routing"
 )
 
 func newTestDiscordChannel() *DiscordChannel {
@@ -1382,5 +1383,41 @@ func TestDiscordSendDirectUsesDMChannel(t *testing.T) {
 	ch.userChannelFn = func(string) (string, error) { return "", errors.New("cannot DM") }
 	if err := ch.SendDirect(context.Background(), "user-1", "x"); err == nil {
 		t.Fatal("SendDirect succeeded without a DM channel")
+	}
+}
+
+func TestDiscordProcessIncomingMessage_TypedAtomicQMSReachesBusIntact(t *testing.T) {
+	for _, tc := range []struct {
+		name, guildID, content string
+	}{
+		{"guild mention", "guild-1", "<@bot-1> /atomicqms connect"},
+		{"direct message", "", "/atomicqms connect"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ch := newTestDiscordChannel()
+			ch.botUserID = "bot-1"
+			session := &discordgo.Session{State: &discordgo.State{Ready: discordgo.Ready{User: &discordgo.User{ID: "bot-1"}}}}
+			ch.processIncomingMessage(session, &discordgo.Message{
+				ID:        "m-" + tc.name,
+				ChannelID: "chan-1",
+				GuildID:   tc.guildID,
+				Content:   tc.content,
+				Author:    &discordgo.User{ID: "user-1", Username: "alice"},
+				Mentions:  []*discordgo.User{{ID: "bot-1"}},
+			}, false)
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			in, ok := ch.BaseChannel.bus.ConsumeInbound(ctx)
+			if !ok {
+				t.Fatal("expected inbound message")
+			}
+			if action, ok := routing.ParseAtomicQMSCommand(in); !ok || action != "connect" || in.SenderID != "user-1" {
+				t.Fatalf("inbound = sender %q content %q parsed %q %v", in.SenderID, in.Content, action, ok)
+			}
+			if tc.guildID == "" && in.Metadata["is_dm"] != "true" {
+				t.Fatalf("is_dm = %q", in.Metadata["is_dm"])
+			}
+		})
 	}
 }

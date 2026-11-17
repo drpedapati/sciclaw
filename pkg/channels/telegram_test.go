@@ -2,10 +2,15 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mymmrac/telego"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -123,5 +128,37 @@ func TestTelegramSend_AttachmentsOnly_UsesSendFileFn(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 attachments to be sent, got %d", len(got))
+	}
+}
+
+func TestTelegramSendDirectSendsPlainTextToUserChat(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]interface{}
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"result":{"message_id":1,"date":0,"chat":{"id":42,"type":"private"}}}`))
+	}))
+	defer api.Close()
+	bot, err := telego.NewBot("123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi", telego.WithAPIServer(api.URL), telego.WithDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewBot: %v", err)
+	}
+	ch := &TelegramChannel{BaseChannel: NewBaseChannel("telegram", config.TelegramConfig{}, bus.NewMessageBus(), nil), bot: bot}
+	ch.setRunning(true)
+
+	link := "Connect AtomicQMS: https://qms.example.org/login/oauth/authorize?client_id=x&response_type=code&code_challenge_method=S256"
+	if err := ch.SendDirect(context.Background(), "42", link); err != nil {
+		t.Fatalf("SendDirect: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/sendMessage") || gotBody["chat_id"] != float64(42) {
+		t.Fatalf("request = %s %v", gotPath, gotBody)
+	}
+	if gotBody["text"] != link || gotBody["parse_mode"] != nil {
+		t.Fatalf("text = %v parse_mode = %v; want the link unchanged as plain text", gotBody["text"], gotBody["parse_mode"])
+	}
+	if err := ch.SendDirect(context.Background(), "not-a-user", link); err == nil {
+		t.Fatal("SendDirect accepted a non-numeric user ID")
 	}
 }
