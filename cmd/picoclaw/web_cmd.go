@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/cmd/picoclaw/tui"
+	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/models"
@@ -74,6 +75,9 @@ type webServer struct {
 	static         http.Handler
 	liteChatRunner func(context.Context, string) (*liteChatResult, error)
 
+	// atomicQMSStates holds pending /atomicqms connect requests in memory.
+	atomicQMSStates *auth.AtomicQMSStates
+
 	// Cached snapshot
 	snapMu   sync.RWMutex
 	snapshot *tui.VMSnapshot
@@ -92,10 +96,11 @@ func newWebServer(exec tui.Executor, distDir string) *webServer {
 		fmt.Fprintf(os.Stderr, "warning: web assets unavailable: %v\n", err)
 	}
 	s := &webServer{
-		exec:     exec,
-		mux:      http.NewServeMux(),
-		distDir:  distDir,
-		staticFS: staticFS,
+		exec:            exec,
+		mux:             http.NewServeMux(),
+		distDir:         distDir,
+		staticFS:        staticFS,
+		atomicQMSStates: auth.NewAtomicQMSStates(),
 	}
 	s.liteChatRunner = s.runLiteChat
 	if staticFS != nil {
@@ -141,6 +146,7 @@ func (s *webServer) registerRoutes() {
 	s.mux.HandleFunc("/api/addons/enabled", s.handleAddonsEnabled)
 	s.mux.HandleFunc("/api/core/users", s.handleCoreUsers)
 	s.mux.HandleFunc("/addons/", s.handleAddonProxy)
+	s.mux.HandleFunc(config.AtomicQMSCallbackPath, s.handleAtomicQMSCallback)
 
 	// Static files
 	if s.static != nil {

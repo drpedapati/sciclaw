@@ -71,6 +71,8 @@ type DiscordChannel struct {
 	editCommandFn         func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error)
 	skillCatalogFn        func(channelID, guildID, userID string) ([]SlashSkillChoice, error)
 	themeSetFn            func(senderID, displayName, theme string) error
+	atomicQMSFn           func(senderID, action string) string
+	userChannelFn         func(userID string) (string, error)
 	inboundMu             sync.Mutex
 	recentInbound         map[string]inboundMessageFingerprint
 }
@@ -78,6 +80,27 @@ type DiscordChannel struct {
 // SetThemeHandler sets the callback for the /theme slash command.
 func (c *DiscordChannel) SetThemeHandler(fn func(senderID, displayName, theme string) error) {
 	c.themeSetFn = fn
+}
+
+// SetAtomicQMSHandler sets the callback for the /atomicqms slash command. It
+// returns the one-line reply for the user.
+func (c *DiscordChannel) SetAtomicQMSHandler(fn func(senderID, action string) string) {
+	c.atomicQMSFn = fn
+}
+
+// SendDirect sends content to userID in a direct message.
+func (c *DiscordChannel) SendDirect(ctx context.Context, userID, content string) error {
+	if !c.IsRunning() {
+		return fmt.Errorf("discord bot not running")
+	}
+	if c.userChannelFn == nil || c.sendMessageFn == nil {
+		return fmt.Errorf("discord direct messages are not configured")
+	}
+	channelID, err := c.userChannelFn(userID)
+	if err != nil {
+		return err
+	}
+	return c.sendMessageFn(channelID, bus.OutboundMessage{Channel: "discord", ChatID: channelID, Content: content})
 }
 
 func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*DiscordChannel, error) {
@@ -136,6 +159,13 @@ func NewDiscordChannel(cfg config.DiscordConfig, messageBus *bus.MessageBus) (*D
 		},
 		editCommandFn: func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
 			return session.ApplicationCommandEdit(appID, guildID, cmdID, cmd)
+		},
+		userChannelFn: func(userID string) (string, error) {
+			ch, err := session.UserChannelCreate(userID)
+			if err != nil {
+				return "", err
+			}
+			return ch.ID, nil
 		},
 		recentInbound: make(map[string]inboundMessageFingerprint),
 	}, nil
@@ -515,6 +545,26 @@ func interactionAuthor(i *discordgo.Interaction) *discordgo.User {
 	return i.User
 }
 
+func buildAtomicQMSSlashCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        "atomicqms",
+		Description: "Connect your AtomicQMS account",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Name:        "action",
+				Description: "What to do",
+				Type:        discordgo.ApplicationCommandOptionString,
+				Required:    true,
+				Choices: []*discordgo.ApplicationCommandOptionChoice{
+					{Name: "connect", Value: "connect"},
+					{Name: "status", Value: "status"},
+					{Name: "disconnect", Value: "disconnect"},
+				},
+			},
+		},
+	}
+}
+
 func slashOptionString(options []*discordgo.ApplicationCommandInteractionDataOption, name string) string {
 	for _, opt := range options {
 		if opt == nil || opt.Name != name {
@@ -646,7 +696,11 @@ func (c *DiscordChannel) ensureSlashCommands() error {
 		}
 		existingByName[existing.Name] = existing
 	}
-	for _, cmd := range []*discordgo.ApplicationCommand{buildBTWSlashCommand(), buildSkillSlashCommand(), buildThemeSlashCommand()} {
+	slashCommands := []*discordgo.ApplicationCommand{buildBTWSlashCommand(), buildSkillSlashCommand(), buildThemeSlashCommand()}
+	if c.atomicQMSFn != nil {
+		slashCommands = append(slashCommands, buildAtomicQMSSlashCommand())
+	}
+	for _, cmd := range slashCommands {
 		existing := existingByName[cmd.Name]
 		if existing == nil {
 			if _, err := c.createCommandFn(c.botUserID, "", cmd); err != nil {
@@ -698,6 +752,8 @@ func (c *DiscordChannel) handleInteractionCreate(_ *discordgo.Session, i *discor
 		c.handleSkillInteraction(i, data)
 	case "theme":
 		c.handleThemeInteraction(i, data)
+	case "atomicqms":
+		c.handleAtomicQMSInteraction(i, data)
 	}
 }
 
@@ -874,6 +930,29 @@ func (c *DiscordChannel) handleThemeInteraction(i *discordgo.InteractionCreate, 
 	}
 	label := strings.ToUpper(style[:1]) + style[1:]
 	c.respondInteractionEphemeral(i.Interaction, fmt.Sprintf("Answer theme set to **%s**. I'll use this style for all your messages.", label))
+}
+
+func (c *DiscordChannel) handleAtomicQMSInteraction(i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	author := interactionAuthor(i.Interaction)
+	if author == nil {
+		return
+	}
+	if !c.IsAllowed(author.ID) {
+		c.respondInteractionEphemeral(i.Interaction, "You are not allowed to use this sciClaw bot.")
+		return
+	}
+	if c.atomicQMSFn == nil {
+		c.respondInteractionEphemeral(i.Interaction, "AtomicQMS is not configured on this sciClaw instance.")
+		return
+	}
+	if err := c.deferInteraction(i.Interaction); err != nil {
+		logger.WarnCF("discord", "Failed to defer /atomicqms interaction", map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+	reply := c.atomicQMSFn(author.ID, slashOptionString(data.Options, "action"))
+	c.editDeferredInteractionMessage(i.Interaction, reply)
 }
 
 func (c *DiscordChannel) respondInteractionEphemeral(interaction *discordgo.Interaction, content string) {

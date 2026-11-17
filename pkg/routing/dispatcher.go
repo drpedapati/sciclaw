@@ -17,9 +17,14 @@ type Dispatcher struct {
 	resolver *Resolver
 	pool     *AgentLoopPool
 	jobs     *JobManager
+	commands CommandHandler
 	lanes    map[string]*dispatchLane
 	mu       sync.RWMutex
 }
+
+// CommandHandler answers a chat command (see ParseAtomicQMSCommand) without
+// starting an agent turn or job.
+type CommandHandler func(ctx context.Context, msg bus.InboundMessage, action string)
 
 type dispatchTask struct {
 	target   LoopTarget
@@ -75,6 +80,18 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			})
 		}
 	}
+}
+
+func (d *Dispatcher) SetCommandHandler(handler CommandHandler) {
+	d.mu.Lock()
+	d.commands = handler
+	d.mu.Unlock()
+}
+
+func (d *Dispatcher) getCommandHandler() CommandHandler {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.commands
 }
 
 func (d *Dispatcher) SetJobManager(jobs *JobManager) {
@@ -146,6 +163,12 @@ func (d *Dispatcher) runDispatchLane(ctx context.Context, key string, lane *disp
 
 func (d *Dispatcher) dispatchResolved(ctx context.Context, task dispatchTask) {
 	msg := task.msg
+	if handler := d.getCommandHandler(); handler != nil {
+		if action, ok := ParseAtomicQMSCommand(msg); ok {
+			handler(ctx, msg, action)
+			return
+		}
+	}
 	if err := prepareInboundMedia(ctx, task.target.Workspace, &msg); err != nil {
 		logger.ErrorCF("routing", "inbound_media_stage_failed", map[string]interface{}{
 			"channel":   msg.Channel,

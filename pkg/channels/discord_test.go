@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1268,5 +1269,118 @@ func TestProcessIncomingMessage_NewMessageWithoutMention(t *testing.T) {
 	}
 	if got.Metadata["is_edit"] != "false" {
 		t.Fatalf("expected is_edit=false, got %q", got.Metadata["is_edit"])
+	}
+}
+
+func TestDiscordEnsureSlashCommandsRegistersAtomicQMSWhenConfigured(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	ch.SetAtomicQMSHandler(func(senderID, action string) string { return "" })
+	ch.listCommandsFn = func(appID, guildID string) ([]*discordgo.ApplicationCommand, error) { return nil, nil }
+	var atomicqms *discordgo.ApplicationCommand
+	ch.createCommandFn = func(appID, guildID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
+		if cmd.Name == "atomicqms" {
+			atomicqms = cmd
+		}
+		return &discordgo.ApplicationCommand{ID: "cmd-" + cmd.Name, Name: cmd.Name}, nil
+	}
+	ch.editCommandFn = func(appID, guildID, cmdID string, cmd *discordgo.ApplicationCommand) (*discordgo.ApplicationCommand, error) {
+		t.Fatalf("did not expect edit")
+		return nil, nil
+	}
+
+	if err := ch.ensureSlashCommands(); err != nil {
+		t.Fatalf("ensureSlashCommands: %v", err)
+	}
+	if atomicqms == nil || len(atomicqms.Options) != 1 || atomicqms.Options[0].Name != "action" || !atomicqms.Options[0].Required {
+		t.Fatalf("unexpected atomicqms command: %#v", atomicqms)
+	}
+	var choices []string
+	for _, c := range atomicqms.Options[0].Choices {
+		choices = append(choices, c.Value.(string))
+	}
+	if strings.Join(choices, ",") != "connect,status,disconnect" {
+		t.Fatalf("choices = %v", choices)
+	}
+}
+
+func TestDiscordHandleInteractionCreateAtomicQMSCallsHandler(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.botUserID = "bot-1"
+	var gotSender, gotAction string
+	ch.SetAtomicQMSHandler(func(senderID, action string) string {
+		gotSender, gotAction = senderID, action
+		return "I sent you a direct message."
+	})
+	var response *discordgo.InteractionResponse
+	var editedContent string
+	ch.interactionRespondFn = func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse) error {
+		response = resp
+		return nil
+	}
+	ch.interactionEditFn = func(interaction *discordgo.Interaction, edit *discordgo.WebhookEdit) error {
+		if edit != nil && edit.Content != nil {
+			editedContent = *edit.Content
+		}
+		return nil
+	}
+
+	ch.handleInteractionCreate(nil, &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			ID:        "ix-1",
+			Type:      discordgo.InteractionApplicationCommand,
+			GuildID:   "guild-1",
+			ChannelID: "chan-1",
+			Member:    &discordgo.Member{User: &discordgo.User{ID: "user-1", Username: "alice"}},
+			Data: discordgo.ApplicationCommandInteractionData{
+				Name: "atomicqms",
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{Name: "action", Type: discordgo.ApplicationCommandOptionString, Value: "connect"},
+				},
+			},
+		},
+	})
+
+	if gotSender != "user-1" || gotAction != "connect" {
+		t.Fatalf("handler called with %q %q", gotSender, gotAction)
+	}
+	if response == nil || response.Type != discordgo.InteractionResponseDeferredChannelMessageWithSource ||
+		response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Fatalf("expected ephemeral deferred response, got %#v", response)
+	}
+	if editedContent != "I sent you a direct message." {
+		t.Fatalf("edited content = %q", editedContent)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, ok := ch.BaseChannel.bus.ConsumeInbound(ctx); ok {
+		t.Fatal("/atomicqms published an inbound agent message")
+	}
+}
+
+func TestDiscordSendDirectUsesDMChannel(t *testing.T) {
+	ch := newTestDiscordChannel()
+	ch.userChannelFn = func(userID string) (string, error) {
+		if userID != "user-1" {
+			t.Fatalf("user = %q", userID)
+		}
+		return "dm-1", nil
+	}
+	var sentTo, sent string
+	ch.sendMessageFn = func(channelID string, msg bus.OutboundMessage) error {
+		sentTo, sent = channelID, msg.Content
+		return nil
+	}
+
+	if err := ch.SendDirect(context.Background(), "user-1", "Connect AtomicQMS: https://qms/x?a_b=c_d"); err != nil {
+		t.Fatalf("SendDirect: %v", err)
+	}
+	if sentTo != "dm-1" || sent != "Connect AtomicQMS: https://qms/x?a_b=c_d" {
+		t.Fatalf("sent %q to %q", sent, sentTo)
+	}
+
+	ch.userChannelFn = func(string) (string, error) { return "", errors.New("cannot DM") }
+	if err := ch.SendDirect(context.Background(), "user-1", "x"); err == nil {
+		t.Fatal("SendDirect succeeded without a DM channel")
 	}
 }

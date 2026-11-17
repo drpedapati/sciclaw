@@ -1712,6 +1712,25 @@ func gatewayCmd() {
 		}
 	}
 
+	mcpManager := newMCPManager(gatewayCtx, cfg)
+	if mcpManager != nil {
+		defer mcpManager.Close()
+		attachMCPTools(agentLoop, mcpManager, cfg.Tools.MCP)
+	}
+
+	var atomicQMSCommand routing.CommandHandler
+	if cfg.AtomicQMS.Configured() {
+		commands := newAtomicQMSCommands(cfg.AtomicQMS, channelManager)
+		atomicQMSCommand = commands.chatHandler(msgBus)
+		if discordCh, ok := channelManager.GetChannel("discord"); ok {
+			if dc, ok := discordCh.(*channels.DiscordChannel); ok {
+				dc.SetAtomicQMSHandler(func(senderID, action string) string {
+					return commands.handle(gatewayCtx, "discord", senderID, false, action)
+				})
+			}
+		}
+	}
+
 	enabledChannels := channelManager.GetEnabledChannels()
 	if len(enabledChannels) > 0 {
 		fmt.Printf("✓ Channels enabled: %s\n", enabledChannels)
@@ -1762,6 +1781,7 @@ func gatewayCmd() {
 			ToolProfile: agent.ToolProfileSideLane,
 		})
 		attachChannelHistoryCallback(al, channelHistoryCB)
+		attachMCPTools(al, mcpManager, cfg.Tools.MCP)
 		return al, nil
 	}
 	if cfg.Jobs.Enabled && cfg.Jobs.DiscordAsyncDefault {
@@ -1807,6 +1827,11 @@ func gatewayCmd() {
 				attachChannelHistoryCallback(al, channelHistoryCB)
 			})
 		}
+		if mcpManager != nil {
+			poolSetup = append(poolSetup, func(al *agent.AgentLoop) {
+				attachMCPTools(al, mcpManager, cfg.Tools.MCP)
+			})
+		}
 		loopPool = routing.NewAgentLoopPool(cfg, msgBus, poolSetup...)
 		if jobManager != nil {
 			jobManager.SetSideLaneResolver(loopPool.ResolveBTWJobHandler)
@@ -1815,6 +1840,7 @@ func gatewayCmd() {
 		if jobManager != nil {
 			routingDispatcher.SetJobManager(jobManager)
 		}
+		routingDispatcher.SetCommandHandler(atomicQMSCommand)
 		go func() {
 			if err := routingDispatcher.Run(ctx); err != nil {
 				logger.ErrorCF("routing", "route_invalid", map[string]interface{}{"reason": err.Error()})
@@ -1825,8 +1851,8 @@ func gatewayCmd() {
 	go watchRoutingReload(ctx, routingDispatcher)
 	fmt.Printf("✓ Routing reload trigger: %s\n", routingReloadTriggerPath())
 	if !cfg.Routing.Enabled {
-		if jobManager != nil {
-			go runGatewayDefaultDispatch(ctx, msgBus, agentLoop, jobManager, routing.LoopTarget{
+		if jobManager != nil || atomicQMSCommand != nil {
+			go runGatewayDefaultDispatch(ctx, msgBus, agentLoop, jobManager, atomicQMSCommand, routing.LoopTarget{
 				Workspace: cfg.WorkspacePath(),
 				Runtime: routing.RuntimeProfile{
 					Mode:         cfg.EffectiveMode(),
@@ -2841,7 +2867,7 @@ func getConfigPath() string {
 	return filepath.Join(home, ".picoclaw", "config.json")
 }
 
-func runGatewayDefaultDispatch(ctx context.Context, msgBus *bus.MessageBus, agentLoop *agent.AgentLoop, jobManager *routing.JobManager, target routing.LoopTarget) {
+func runGatewayDefaultDispatch(ctx context.Context, msgBus *bus.MessageBus, agentLoop *agent.AgentLoop, jobManager *routing.JobManager, commands routing.CommandHandler, target routing.LoopTarget) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -2850,6 +2876,12 @@ func runGatewayDefaultDispatch(ctx context.Context, msgBus *bus.MessageBus, agen
 			msg, ok := msgBus.ConsumeInbound(ctx)
 			if !ok {
 				continue
+			}
+			if commands != nil {
+				if action, ok := routing.ParseAtomicQMSCommand(msg); ok {
+					go commands(ctx, msg, action)
+					continue
+				}
 			}
 			if jobManager != nil && jobManager.ShouldHandleChannel(msg.Channel) {
 				if err := jobManager.Submit(ctx, target, msg); err != nil && !constants.IsInternalChannel(msg.Channel) {
