@@ -1349,4 +1349,5 @@ func TestDispatcherAnswersAtomicQMSCommandWithoutJob(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("ordinary message reached the command handler: %v", got)
 	}
+	waitForNoActiveJobs(t, jm, target.key())
 }
